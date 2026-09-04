@@ -57,6 +57,21 @@ back as `kUnknown`.
 | **Used** | exclude a row from the statistics without deleting it |
 | Export | the visible columns of the visible rows, as CSV |
 
+### Calibration
+
+| Feature | How |
+|---|---|
+| Build a curve | mark samples as **Standard** in the Samples workspace and give them a concentration |
+| Regressions | linear, linear through zero, quadratic, mean response factor |
+| Weighting | 1, 1/x, 1/x², 1/y, 1/y² |
+| Curve pane | the points, the fit, the equation, r and r², and each standard's back-calculated accuracy |
+| Exclude a point | click it on the plot, or double-click its row |
+| **Remove outliers** | drops standards outside a tolerance, one at a time |
+| Concentrations | unknowns are read off the curve, multiplied by the dilution factor |
+| Response | the curve is built from the ratio to the internal standard when there is one, and from the raw area otherwise |
+
+![calibration](docs/screenshot-calibration.png)
+
 
 ### Navigation and display
 
@@ -226,7 +241,8 @@ openpeakview/
   samples.py             batch entries: sample type, concentration, dilution
   session.py             the state shared by every workspace, and the project file
   matching.py            picking the acquisition channel that carries a component
-  quantify.py            extraction, integration and the results set
+  quantify.py            extraction, integration, ratios and the results set
+  calibration.py         curve fitting and reading concentrations back
   chemistry.py           formulas, exact masses, isotope patterns, formula finder
   processing.py          smoothing, baseline, centroiding, peak detection, S/N
   ui/shell.py            the window and its workspace tabs
@@ -234,6 +250,8 @@ openpeakview/
   ui/analytics.py        Analytics workspace
   ui/peak_review.py      the grid of one chromatogram per sample
   ui/results_table.py    results model, table and column chooser
+  ui/integration_panel.py per-component integration settings
+  ui/calibration_panel.py the calibration curve
   ui/method_workspace.py Method workspace
   ui/samples_workspace.py Samples workspace
   ui/plots.py            chromatogram and spectrum panes (pyqtgraph)

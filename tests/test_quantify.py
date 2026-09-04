@@ -484,3 +484,124 @@ def test_noise_is_measured_over_the_trace_not_the_peak_window(method):
     from openpeakview.processing import estimate_noise
     from openpeakview.quantify import measured_noise
     assert measured_noise(x, y, method.defaults) == pytest.approx(estimate_noise(y))
+
+
+# --- calibration end to end ----------------------------------------------------- #
+def _calibration_setup():
+    """Four standards and one unknown, on a clean 2x response."""
+    from openpeakview.samples import STANDARD, UNKNOWN
+
+    method = ProcessingMethod()
+    method.concentration_unit = "ng/mL"
+    method.replace_all([Component("Oxy", 325.20, 183.0, rt=13.1, rt_halfwidth=0.5)])
+
+    entries, results = [], ResultsSet()
+    levels = [(2.0, STANDARD), (10.0, STANDARD), (25.0, STANDARD),
+              (50.0, STANDARD), (None, UNKNOWN)]
+    for index, (concentration, kind) in enumerate(levels):
+        entry = SampleEntry(f"/d/s{index}.wiff", 0, f"S{index}",
+                            sample_type=kind, actual_concentration=concentration)
+        entry.sample = object()          # only its metadata is used here
+        entries.append(entry)
+        area = (concentration if concentration is not None else 30.0) * 2.0
+        results.results.append(
+            PeakResult(entry.key, entry.name, "Oxy", area=area, height=area / 2))
+    return method, entries, results
+
+
+def test_curve_is_built_from_the_standards_only():
+    from openpeakview.quantify import build_calibrations
+
+    method, entries, results = _calibration_setup()
+    curves = build_calibrations(results, entries, method)
+    curve = curves["Oxy"]
+    assert len(curve.points) == 4          # the unknown is not a point
+    assert curve.coefficients[0] == pytest.approx(2.0)
+    assert curve.r2 == pytest.approx(1.0)
+
+
+def test_unknown_reads_back_off_the_curve():
+    from openpeakview.quantify import apply_calibrations, build_calibrations
+
+    method, entries, results = _calibration_setup()
+    curves = build_calibrations(results, entries, method)
+    apply_calibrations(results, entries, method, curves)
+    unknown = results.get(entries[4].key, "Oxy")
+    assert unknown.calculated_concentration == pytest.approx(30.0)
+    assert unknown.accuracy is None        # nothing to compare it against
+
+
+def test_dilution_factor_multiplies_the_result():
+    from openpeakview.quantify import apply_calibrations, build_calibrations
+
+    method, entries, results = _calibration_setup()
+    entries[4].dilution_factor = 5.0
+    curves = build_calibrations(results, entries, method)
+    apply_calibrations(results, entries, method, curves)
+    assert results.get(entries[4].key, "Oxy").calculated_concentration == \
+        pytest.approx(150.0)
+
+
+def test_standards_get_an_accuracy():
+    from openpeakview.quantify import apply_calibrations, build_calibrations
+
+    method, entries, results = _calibration_setup()
+    curves = build_calibrations(results, entries, method)
+    apply_calibrations(results, entries, method, curves)
+    for entry in entries[:4]:
+        assert results.get(entry.key, "Oxy").accuracy == pytest.approx(100.0)
+
+
+def test_standard_without_a_concentration_is_skipped():
+    from openpeakview.quantify import build_calibrations
+
+    method, entries, results = _calibration_setup()
+    entries[0].actual_concentration = None
+    assert len(build_calibrations(results, entries, method)["Oxy"].points) == 3
+
+
+def test_no_standards_gives_no_curve():
+    from openpeakview.samples import UNKNOWN
+    from openpeakview.quantify import build_calibrations
+
+    method, entries, results = _calibration_setup()
+    for entry in entries:
+        entry.sample_type = UNKNOWN
+    assert build_calibrations(results, entries, method) == {}
+
+
+def test_excluded_points_survive_a_refit():
+    """Refitting must not quietly put back a standard the operator dropped."""
+    from openpeakview.quantify import build_calibrations
+
+    method, entries, results = _calibration_setup()
+    curves = build_calibrations(results, entries, method)
+    curves["Oxy"].points[1].used = False
+
+    again = build_calibrations(results, entries, method, previous=curves)
+    assert not again["Oxy"].points[1].used
+    assert len(again["Oxy"].used_points) == 3
+
+
+def test_curve_uses_the_ratio_when_there_is_an_internal_standard():
+    from openpeakview.quantify import build_calibrations
+
+    method, entries, results = _calibration_setup()
+    method.by_name("Oxy").internal_standard = "IS"
+    for result in results:
+        result.area_ratio = result.area / 4.0
+    curve = build_calibrations(results, entries, method)["Oxy"]
+    # the response halved twice, so the slope is a quarter of the area slope
+    assert curve.coefficients[0] == pytest.approx(0.5)
+
+
+def test_automatic_outlier_removal_runs_on_request():
+    from openpeakview.quantify import build_calibrations
+
+    method, entries, results = _calibration_setup()
+    results.get(entries[2].key, "Oxy").area *= 3.0     # 25 ng/mL reads triple
+    plain = build_calibrations(results, entries, method)["Oxy"]
+    cleaned = build_calibrations(results, entries, method, auto_outliers=True,
+                                 tolerance=15.0)["Oxy"]
+    assert len(cleaned.used_points) < len(plain.used_points)
+    assert cleaned.r2 > plain.r2

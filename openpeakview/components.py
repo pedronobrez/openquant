@@ -91,6 +91,8 @@ _ALIASES = {
     "ion_ratio": {"ion_ratio", "expected_ion_ratio", "razao_ionica"},
     "ion_ratio_tolerance": {"ion_ratio_tolerance", "ion_ratio_tol",
                             "tolerancia_razao_ionica"},
+    "regression": {"regression", "curve", "fit", "regressao"},
+    "weighting": {"weighting", "weight", "ponderacao", "peso"},
 }
 
 _TRUE = {"1", "true", "yes", "y", "sim", "is", "istd", "x"}
@@ -122,12 +124,25 @@ class Component:
     #: allowed relative deviation from `ion_ratio`, in percent; 0 uses the
     #: method default
     ion_ratio_tolerance: float = 0.0
+    #: calibration
+    regression: str = "linear"
+    weighting: str = "1"
     #: integration overrides for this component; None uses the method defaults
     integration: IntegrationParams | None = None
 
     @property
     def is_qualifier(self) -> bool:
         return bool(self.qualifier_of)
+
+    @property
+    def calibration_response(self) -> str:
+        """
+        What a calibration curve is built from: the ratio to the internal
+        standard when there is one, and the raw area otherwise. This is the
+        measured quantity, distinct from `response`, which says what the
+        results table reports.
+        """
+        return "ratio" if self.internal_standard else "area"
 
     def __post_init__(self):
         if self.response not in RESPONSES:
@@ -271,6 +286,8 @@ def load_components(path: str | os.PathLike) -> list[Component]:
                 qualifier_of=str(row.get("qualifier_of") or "").strip(),
                 ion_ratio=_to_float(row.get("ion_ratio")),
                 ion_ratio_tolerance=_to_float(row.get("ion_ratio_tolerance"), 0.0) or 0.0,
+                regression=str(row.get("regression") or "linear").strip() or "linear",
+                weighting=str(row.get("weighting") or "1").strip() or "1",
             )
         except ValueError as exc:
             raise ValueError(f"CSV line {number}: {exc}") from exc
@@ -291,7 +308,8 @@ def _fmt(value: float | None) -> str:
 CSV_HEADER = ["name", "group", "precursor", "fragment", "rt", "window",
               "tolerance", "unit", "formula", "adduct", "is",
               "internal_standard", "response", "concentration_unit",
-              "qualifier_of", "ion_ratio", "ion_ratio_tolerance"]
+              "qualifier_of", "ion_ratio", "ion_ratio_tolerance",
+              "regression", "weighting"]
 
 
 def save_components(path: str | os.PathLike, components: list[Component]) -> None:
@@ -306,6 +324,7 @@ def save_components(path: str | os.PathLike, components: list[Component]) -> Non
                 c.adduct, "yes" if c.is_internal_standard else "",
                 c.internal_standard, c.response, c.concentration_unit,
                 c.qualifier_of, _fmt(c.ion_ratio), _fmt(c.ion_ratio_tolerance),
+                c.regression, c.weighting,
             ])
 
 

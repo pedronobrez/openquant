@@ -63,6 +63,9 @@ COLUMNS: list[Column] = [
     Column("Ion ratio %", "ion_ratio", 1, 80),
     Column("Exp. ratio %", "expected_ion_ratio", 1, 80),
     Column("Conf.", "confidence", None, 56),
+    Column("Actual conc.", "actual_concentration", 4, 95),
+    Column("Calc. conc.", "calculated_concentration", 4, 95),
+    Column("Accuracy %", "accuracy", 1, 85),
     Column("Used", "used", None, 46),
     Column("Note", "note", None, 200),
 ]

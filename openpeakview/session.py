@@ -15,6 +15,7 @@ from PyQt6 import QtCore
 
 from .components import Component
 from .matching import components_from_sample, match_channel
+from .calibration import Calibration
 from .method import ProcessingMethod
 from .quantify import ResultsSet, XicCache
 from .samples import SampleEntry, shorten_names
@@ -36,6 +37,7 @@ class Session(QtCore.QObject):
         self.entries: list[SampleEntry] = []
         self.method = ProcessingMethod()
         self.results = ResultsSet()
+        self.calibrations: dict[str, Calibration] = {}
         self.cache = XicCache()
         self.project_path: str | None = None
 
@@ -60,6 +62,7 @@ class Session(QtCore.QObject):
         self.files.clear()
         self.entries.clear()
         self.results.clear()
+        self.calibrations.clear()
         self.cache.clear()
         self.project_path = None
         self.sigSamplesChanged.emit()
@@ -91,6 +94,10 @@ class Session(QtCore.QObject):
         self.results = results
         self.sigResultsChanged.emit()
 
+    def set_calibrations(self, curves: dict[str, Calibration]) -> None:
+        self.calibrations = curves
+        self.sigResultsChanged.emit()
+
     def notify_results_changed(self) -> None:
         self.sigResultsChanged.emit()
 
@@ -113,10 +120,12 @@ class Session(QtCore.QObject):
     # -- project ------------------------------------------------------------------ #
     def to_dict(self) -> dict:
         return {
-            "version": 2,
+            "version": 3,
             "method": self.method.to_dict(),
             "samples": [e.to_dict() for e in self.entries],
             "results": self.results.to_list(),
+            "calibrations": {name: curve.to_dict()
+                             for name, curve in self.calibrations.items()},
         }
 
     def save_project(self, path: str) -> None:
@@ -158,6 +167,10 @@ class Session(QtCore.QObject):
                 entry.sample = wiff.sample(entry.sample_index)
         self.entries = entries
         self.results = ResultsSet.from_list(data.get("results", []))
+        self.calibrations = {
+            name: Calibration.from_dict(row)
+            for name, row in (data.get("calibrations") or {}).items()
+        }
         self.project_path = path
         self.sigMethodChanged.emit()
         self.sigSamplesChanged.emit()

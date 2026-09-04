@@ -11,6 +11,9 @@ from dataclasses import asdict, dataclass, field
 
 import numpy as np
 
+from .calibration import Calibration, CalibrationPoint
+from .calibration import fit as fit_curve
+from .calibration import remove_outliers
 from .components import Component, IntegrationParams
 from .matching import match_channel
 from .method import ProcessingMethod
@@ -23,7 +26,7 @@ from .processing import (
     noise_in_region,
     subtract_baseline,
 )
-from .samples import SampleEntry
+from .samples import CALIBRATION_TYPES, SampleEntry
 
 #: confidence of a qualifier's ion ratio
 PASS = "Pass"
@@ -64,6 +67,10 @@ class PeakResult:
     ion_ratio: float | None = None
     expected_ion_ratio: float | None = None
     confidence: str = NOT_APPLICABLE
+    #: quantitation
+    actual_concentration: float | None = None
+    calculated_concentration: float | None = None
+    accuracy: float | None = None
 
     @property
     def key(self) -> tuple[str, str]:
@@ -82,11 +89,13 @@ class PeakResult:
 
     def response(self, mode: str) -> float | None:
         """
-        The number this component is reported by: the raw area, or its ratio to
-        the internal standard.
+        The number this component is reported by: the raw area, its ratio to
+        the internal standard, or the concentration read off the curve.
         """
         if mode == "ratio":
             return self.area_ratio
+        if mode == "concentration":
+            return self.calculated_concentration
         return self.area
 
     def to_dict(self) -> dict:
@@ -386,6 +395,88 @@ def compute_ion_ratios(results: ResultsSet, method: ProcessingMethod) -> None:
         tolerance, marginal = method.ion_ratio_limits(component)
         result.confidence = ion_ratio_confidence(
             result.ion_ratio, component.ion_ratio, tolerance, marginal)
+
+
+def build_calibrations(results: ResultsSet, entries: list[SampleEntry],
+                       method: ProcessingMethod,
+                       auto_outliers: bool = False,
+                       tolerance: float = 15.0,
+                       previous: dict[str, Calibration] | None = None,
+                       ) -> dict[str, Calibration]:
+    """
+    Fit one curve per component from the samples marked as standards.
+
+    Points the operator excluded by hand are carried over from `previous`, so
+    refitting after a parameter change does not quietly put them back.
+    """
+    by_key = {e.key: e for e in entries}
+    excluded: dict[tuple[str, str], bool] = {}
+    for name, curve in (previous or {}).items():
+        for point in curve.points:
+            excluded[(name, point.sample_key)] = point.used
+
+    curves: dict[str, Calibration] = {}
+    for component in method.components:
+        mode = component.calibration_response
+        points: list[CalibrationPoint] = []
+        for result in results.for_component(component.name):
+            entry = by_key.get(result.sample_key)
+            if entry is None or entry.sample_type not in CALIBRATION_TYPES:
+                continue
+            if entry.actual_concentration is None:
+                continue
+            response = result.response(mode)
+            if response is None:
+                continue
+            points.append(CalibrationPoint(
+                sample_key=result.sample_key, sample_name=result.sample_name,
+                concentration=entry.actual_concentration, response=response,
+                used=excluded.get((component.name, result.sample_key), True),
+            ))
+        if not points:
+            continue
+        points.sort(key=lambda p: p.concentration)
+        curve = fit_curve(points, component.regression, component.weighting,
+                          component.name)
+        if auto_outliers and curve.is_fitted:
+            curve = remove_outliers(curve, tolerance)
+        curves[component.name] = curve
+    return curves
+
+
+def apply_calibrations(results: ResultsSet, entries: list[SampleEntry],
+                       method: ProcessingMethod,
+                       curves: dict[str, Calibration]) -> None:
+    """
+    Read a concentration off each component's curve and score its accuracy.
+
+    The dilution factor multiplies the result, because the curve describes the
+    vial that was injected and the answer wanted is the original sample.
+    """
+    by_key = {e.key: e for e in entries}
+    for result in results:
+        component = method.by_name(result.component)
+        entry = by_key.get(result.sample_key)
+        if entry is not None:
+            result.actual_concentration = entry.actual_concentration
+        result.calculated_concentration = None
+        result.accuracy = None
+        if component is None:
+            continue
+        curve = curves.get(component.name)
+        if curve is None or not curve.is_fitted or not result.found:
+            continue
+        response = result.response(component.calibration_response)
+        if response is None:
+            continue
+        value = curve.concentration_at(response)
+        if value is None:
+            continue
+        dilution = entry.dilution_factor if entry else 1.0
+        result.calculated_concentration = value * (dilution or 1.0)
+        if result.actual_concentration:
+            result.accuracy = (result.calculated_concentration
+                               / result.actual_concentration * 100.0)
 
 
 def process(entries: list[SampleEntry], method: ProcessingMethod,

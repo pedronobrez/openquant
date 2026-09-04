@@ -4,9 +4,19 @@ from __future__ import annotations
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from ..calibration import fit as fit_curve
+from ..calibration import remove_outliers
 from ..components import Component, IntegrationParams
-from ..quantify import PeakResult, extract_xic, integrate_manually, process
+from ..quantify import (
+    PeakResult,
+    apply_calibrations,
+    build_calibrations,
+    extract_xic,
+    integrate_manually,
+    process,
+)
 from ..session import Session
+from .calibration_panel import CalibrationPanel
 from .integration_panel import IntegrationPanel
 from .peak_review import PeakReviewGrid
 from .results_table import ResultsTable
@@ -39,6 +49,11 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.btn_process.setToolTip(
             "Extract and integrate every component in every open sample")
         bar.addWidget(self.btn_process)
+        self.btn_calibrate = QtWidgets.QPushButton("Recalibrate")
+        self.btn_calibrate.setToolTip(
+            "Refit every curve from the samples marked as standards and read "
+            "the unknowns back off them")
+        bar.addWidget(self.btn_calibrate)
         self.btn_magnify = QtWidgets.QPushButton("Magnify peak")
         self.btn_magnify.setCheckable(True)
         self.btn_magnify.setToolTip(
@@ -71,8 +86,13 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         right = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         self.grid = PeakReviewGrid()
         self.results = ResultsTable(session)
+        self.calibration = CalibrationPanel()
+        self.bottom = QtWidgets.QTabWidget()
+        self.bottom.setDocumentMode(True)
+        self.bottom.addTab(self.results, "Results")
+        self.bottom.addTab(self.calibration, "Calibration")
         right.addWidget(self.grid)
-        right.addWidget(self.results)
+        right.addWidget(self.bottom)
         right.setStretchFactor(0, 3)
         right.setStretchFactor(1, 2)
         splitter.addWidget(right)
@@ -83,6 +103,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
 
         self.btn_process.clicked.connect(self.process_batch)
         self.btn_magnify.toggled.connect(self._set_magnified)
+        self.btn_calibrate.clicked.connect(lambda: self._recalibrate())
         self.component_filter.textChanged.connect(self._filter_components)
         self.component_tree.currentItemChanged.connect(self._on_component_changed)
         self.grid.sigSelected.connect(self._on_panel_selected)
@@ -93,10 +114,14 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.integration.sigApplyComponent.connect(self._apply_to_component)
         self.integration.sigApplyGroup.connect(self._apply_to_group)
         self.integration.sigResetComponent.connect(self._reset_component)
+        self.calibration.sigSettingsChanged.connect(self._set_curve_settings)
+        self.calibration.sigPointToggled.connect(self._toggle_point)
+        self.calibration.sigAutoOutliers.connect(self._auto_outliers)
 
         session.sigMethodChanged.connect(self.reload_components)
         session.sigSamplesChanged.connect(self.refresh_grid)
         session.sigResultsChanged.connect(self.refresh_grid)
+        session.sigResultsChanged.connect(self.refresh_calibration)
         self.reload_components()
 
     # -- components ---------------------------------------------------------------- #
@@ -156,6 +181,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self._component = self.session.method.by_name(name) if name else None
         self._show_integration_params()
         self.refresh_grid()
+        self.refresh_calibration()
 
     def _show_integration_params(self) -> None:
         component = self._component
@@ -204,6 +230,74 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             message += f" · qualifier of {quantifier.name}"
         self._report(message)
 
+    # -- calibration ---------------------------------------------------------------- #
+    def refresh_calibration(self) -> None:
+        component = self._component
+        curve = (self.session.calibrations.get(component.name)
+                 if component is not None else None)
+        self.calibration.show_curve(
+            curve, self.session.method.concentration_unit)
+
+    def _recalibrate(self, auto_outliers: bool = False,
+                     tolerance: float = 15.0) -> None:
+        """Refit every curve and read the unknowns back off them."""
+        session = self.session
+        curves = build_calibrations(session.results, session.entries,
+                                    session.method, auto_outliers, tolerance,
+                                    previous=session.calibrations)
+        apply_calibrations(session.results, session.entries, session.method,
+                           curves)
+        session.calibrations = curves
+        session.notify_results_changed()
+        fitted = sum(1 for c in curves.values() if c.is_fitted)
+        if not curves:
+            self._report("No standards found — mark samples as Standard and "
+                         "give them a concentration in the Samples workspace.")
+        else:
+            self._report(f"{fitted} of {len(curves)} curve(s) fitted.")
+
+    def _set_curve_settings(self, regression: str, weighting: str) -> None:
+        component = self._component
+        if component is None:
+            return
+        component.regression = regression
+        component.weighting = weighting
+        self.session.notify_method_changed()
+        self._recalibrate()
+
+    def _toggle_point(self, sample_key: str) -> None:
+        """Include or exclude one standard, then refit."""
+        component = self._component
+        curve = (self.session.calibrations.get(component.name)
+                 if component is not None else None)
+        if curve is None:
+            return
+        for point in curve.points:
+            if point.sample_key == sample_key:
+                point.used = not point.used
+                break
+        refitted = fit_curve(curve.points, curve.regression, curve.weighting,
+                             curve.component)
+        self.session.calibrations[curve.component] = refitted
+        apply_calibrations(self.session.results, self.session.entries,
+                           self.session.method, self.session.calibrations)
+        self.session.notify_results_changed()
+
+    def _auto_outliers(self, tolerance: float) -> None:
+        component = self._component
+        curve = (self.session.calibrations.get(component.name)
+                 if component is not None else None)
+        if curve is None or not curve.is_fitted:
+            return
+        cleaned = remove_outliers(curve, tolerance)
+        self.session.calibrations[curve.component] = cleaned
+        apply_calibrations(self.session.results, self.session.entries,
+                           self.session.method, self.session.calibrations)
+        self.session.notify_results_changed()
+        dropped = sum(1 for p in cleaned.points if not p.used)
+        self._report(f"{curve.component}: {dropped} standard(s) excluded, "
+                     f"r² = {cleaned.r2:.5f}")
+
     # -- integration parameters -------------------------------------------------- #
     def _apply_to_component(self, params: IntegrationParams) -> None:
         component = self._component
@@ -250,7 +344,8 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         results = process(self.session.loaded_entries, self.session.method,
                           self.session.cache, previous=self.session.results,
                           keep_manual=True, only=names)
-        self.session.set_results(results)
+        self.session.results = results
+        self._recalibrate()
 
     # -- manual integration -------------------------------------------------------- #
     def _on_manual_range(self, sample_key: str, start: float, end: float) -> None:
@@ -263,7 +358,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
                                     start, end, previous, self.session.cache)
         self.session.results.replace(result)
         self._relink()
-        self.session.notify_results_changed()
+        self._recalibrate()
         self.results.select(sample_key, component.name)
         self._report(
             f"{entry.name}: integrated {min(start, end):.3f}–{max(start, end):.3f} min "
@@ -312,7 +407,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
                                      self.session.cache)
         self.session.results.replace(result)
         self._relink()
-        self.session.notify_results_changed()
+        self._recalibrate()
         self._report(f"{entry.name}: back to automatic integration.")
 
     def _set_magnified(self, enabled: bool) -> None:
@@ -378,7 +473,8 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
 
         results = process(loaded, method, self.session.cache, report)
         dialog.setValue(total)
-        self.session.set_results(results)
+        self.session.results = results
+        self._recalibrate()
         found = sum(1 for r in results if r.found)
         self._report(f"{len(results)} row(s) across {len(loaded)} sample(s); "
                      f"{found} integrated.")

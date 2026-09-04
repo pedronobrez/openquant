@@ -32,6 +32,7 @@ def _api():
             BasePeakChromatogramSettings,
             ExtractedIonChromatogramSettings,
         )
+        from Clearcore2.Utility import OpenFileMode
 
         _API = {
             "Array": Array,
@@ -40,6 +41,7 @@ def _api():
             "Provider": AnalystWiffDataProvider,
             "BPCSettings": BasePeakChromatogramSettings,
             "XICSettings": ExtractedIonChromatogramSettings,
+            "OpenFileMode": OpenFileMode,
         }
     return _API
 
@@ -118,7 +120,7 @@ class Channel:
             if value is not None and float(value) != 0.0:
                 ce = float(value)
         except Exception:
-            pass
+            ce = None
 
         return ChannelInfo(
             index=self.index,
@@ -178,6 +180,24 @@ class Channel:
         s = self._exp.GetMassSpectrum(lo, hi)
         return _to_numpy(s.GetActualXValues()), _to_numpy(s.GetActualYValues())
 
+    def parameters(self) -> dict[str, str]:
+        """Parametros do experimento no metodo (DP, CE, CES, ...)."""
+        out: dict[str, str] = {}
+        try:
+            table = self._exp.Details.Parameters
+        except Exception:
+            return out
+        for key in table.Keys:
+            parameter = table[key]
+            try:
+                start, stop = float(parameter.Start), float(parameter.Stop)
+            except Exception:
+                out[str(key)] = str(parameter)
+                continue
+            # Start != Stop indica rampa (p.ex. spread de energia de colisao)
+            out[str(key)] = f"{start:g}" if start == stop else f"{start:g} – {stop:g}"
+        return out
+
     def scan_at_rt(self, rt: float) -> int:
         times = self.rt
         if times.size == 0:
@@ -231,6 +251,45 @@ class Sample:
         except Exception:
             return ""
 
+    def metadata(self) -> dict[str, str]:
+        """Informacoes da amostra e da aquisicao, para o painel de detalhes."""
+        details = self._sample.Details
+        wanted = [
+            ("Amostra", "SampleName"),
+            ("ID", "SampleID"),
+            ("Tipo", "SampleType"),
+            ("Aquisicao", None),
+            ("Instrumento", "InstrumentName"),
+            ("Numero de serie", "InstrumentSerialNumber"),
+            ("Metodo", "AcquisitionMethodName"),
+            ("Lote", "BatchName"),
+            ("Rack", "Rack"),
+            ("Placa", "Plate"),
+            ("Vial", "Vial"),
+            ("Volume de injecao", "InjectionVolume"),
+            ("Fator de diluicao", "DilutionFactor"),
+            ("Operador", "UserName"),
+            ("Software", "SoftwareVersion"),
+            ("Comentario", "SampleComment"),
+        ]
+        out: dict[str, str] = {}
+        for label, attr in wanted:
+            if attr is None:
+                out[label] = self.acquisition_time
+                continue
+            try:
+                value = getattr(details, attr)
+            except Exception:
+                continue
+            text = "" if value is None else str(value)
+            if text:
+                out[label] = text
+        out["Canais"] = str(len(self.channels))
+        rt = self.tic()[0]
+        if rt.size:
+            out["Faixa de tempo"] = f"{rt[0]:.2f} – {rt[-1]:.2f} min"
+        return out
+
     def __repr__(self) -> str:
         return f"<Sample {self.name}: {len(self.channels)} canais>"
 
@@ -244,7 +303,10 @@ class WiffFile:
         self.path = os.path.realpath(str(path))
         if not os.path.exists(self.path):
             raise FileNotFoundError(self.path)
-        self._provider = api["Provider"]()
+        # ReadOnlyShared e essencial: no caminho gerenciado (OpenMcdf) o modo
+        # padrao abre o arquivo com trava exclusiva, o que impede uma segunda
+        # janela — ou o proprio Analyst — de abrir o mesmo .wiff.
+        self._provider = api["Provider"](api["OpenFileMode"].ReadOnlyShared)
         self._batch = api["Factory"].CreateBatch(self.path, self._provider)
         self.sample_names = [str(n) for n in self._batch.GetSampleNames()]
         self._samples: dict[int, Sample] = {}

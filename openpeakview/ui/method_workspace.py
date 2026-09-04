@@ -10,7 +10,7 @@ from ..session import Session
 
 COLUMNS = ["Name", "Group", "Precursor", "Fragment", "RT", "± RT", "Tol.",
            "Unit", "Formula", "Adduct", "IS", "Internal standard", "Response",
-           "Conc. unit"]
+           "Conc. unit", "Qualifier of", "Ion ratio %", "± ratio %"]
 COL = {name: i for i, name in enumerate(COLUMNS)}
 
 #: columns parsed as numbers, mapped to the dataclass field they fill
@@ -20,6 +20,8 @@ _NUMERIC = {
     COL["RT"]: "rt",
     COL["± RT"]: "rt_halfwidth",
     COL["Tol."]: "tolerance",
+    COL["Ion ratio %"]: "ion_ratio",
+    COL["± ratio %"]: "ion_ratio_tolerance",
 }
 
 
@@ -83,6 +85,20 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.conc_edit = QtWidgets.QLineEdit(session.method.concentration_unit)
         self.conc_edit.setMaximumWidth(120)
         defaults.addWidget(self.conc_edit)
+        defaults.addSpacing(20)
+        defaults.addWidget(QtWidgets.QLabel("Ion ratio ±"))
+        self.ratio_spin = QtWidgets.QDoubleSpinBox()
+        self.ratio_spin.setRange(0.0, 100.0)
+        self.ratio_spin.setValue(session.method.ion_ratio_tolerance)
+        self.ratio_spin.setSuffix(" %")
+        self.ratio_spin.setToolTip("Deviation from the expected ion ratio that passes")
+        defaults.addWidget(self.ratio_spin)
+        defaults.addWidget(QtWidgets.QLabel("marginal to"))
+        self.marginal_spin = QtWidgets.QDoubleSpinBox()
+        self.marginal_spin.setRange(0.0, 200.0)
+        self.marginal_spin.setValue(session.method.ion_ratio_marginal)
+        self.marginal_spin.setSuffix(" %")
+        defaults.addWidget(self.marginal_spin)
         defaults.addStretch(1)
         self.status = QtWidgets.QLabel("")
         self.status.setStyleSheet("color:#666;")
@@ -98,6 +114,8 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.tol_spin.valueChanged.connect(self._defaults_changed)
         self.unit_combo.currentTextChanged.connect(self._defaults_changed)
         self.conc_edit.textChanged.connect(self._defaults_changed)
+        self.ratio_spin.valueChanged.connect(self._defaults_changed)
+        self.marginal_spin.valueChanged.connect(self._defaults_changed)
         QtGui.QShortcut(QtGui.QKeySequence("Delete"), self.table,
                         activated=self._remove_rows)
 
@@ -126,11 +144,16 @@ class MethodWorkspace(QtWidgets.QWidget):
             COL["Formula"]: c.formula,
             COL["Internal standard"]: c.internal_standard,
             COL["Conc. unit"]: c.concentration_unit,
+            COL["Qualifier of"]: c.qualifier_of,
+            COL["Ion ratio %"]: "" if c.ion_ratio is None else f"{c.ion_ratio:g}",
+            COL["± ratio %"]: ("" if not c.ion_ratio_tolerance
+                               else f"{c.ion_ratio_tolerance:g}"),
         }
         for column, text in values.items():
             item = QtWidgets.QTableWidgetItem(text)
             if column not in (COL["Name"], COL["Group"], COL["Formula"],
-                              COL["Internal standard"], COL["Conc. unit"]):
+                              COL["Internal standard"], COL["Conc. unit"],
+                              COL["Qualifier of"]):
                 item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight
                                       | QtCore.Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(row, column, item)
@@ -190,6 +213,9 @@ class MethodWorkspace(QtWidgets.QWidget):
             internal_standard=text(COL["Internal standard"]),
             response=text(COL["Response"]) or "area",
             concentration_unit=text(COL["Conc. unit"]),
+            qualifier_of=text(COL["Qualifier of"]),
+            ion_ratio=numbers.get("ion_ratio"),
+            ion_ratio_tolerance=numbers.get("ion_ratio_tolerance") or 0.0,
         )
         return component if component.is_valid else None
 
@@ -285,6 +311,8 @@ class MethodWorkspace(QtWidgets.QWidget):
         method.tolerance = self.tol_spin.value()
         method.unit = self.unit_combo.currentText()
         method.concentration_unit = self.conc_edit.text().strip()
+        method.ion_ratio_tolerance = self.ratio_spin.value()
+        method.ion_ratio_marginal = self.marginal_spin.value()
         self.session.notify_method_changed()
 
     def _update_status(self) -> None:

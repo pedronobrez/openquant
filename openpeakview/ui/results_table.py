@@ -7,8 +7,30 @@ from dataclasses import dataclass
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from ..quantify import PeakResult, ResultsSet
+from ..quantify import FAIL, MARGINAL, PASS, PeakResult, ResultsSet
 from ..session import Session
+
+#: colours of the confidence traffic light
+CONFIDENCE_COLOURS = {PASS: "#2ca02c", MARGINAL: "#e8a33d", FAIL: "#d62728"}
+_ICONS: dict[str, QtGui.QIcon] = {}
+
+
+def confidence_icon(status: str) -> QtGui.QIcon | None:
+    """A small coloured dot for the confidence column, built once per status."""
+    colour = CONFIDENCE_COLOURS.get(status)
+    if colour is None:
+        return None
+    if status not in _ICONS:
+        pixmap = QtGui.QPixmap(12, 12)
+        pixmap.fill(QtCore.Qt.GlobalColor.transparent)
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QtGui.QBrush(QtGui.QColor(colour)))
+        painter.setPen(QtGui.QPen(QtGui.QColor(colour).darker(140)))
+        painter.drawEllipse(1, 1, 10, 10)
+        painter.end()
+        _ICONS[status] = QtGui.QIcon(pixmap)
+    return _ICONS[status]
 
 
 @dataclass(frozen=True)
@@ -33,6 +55,14 @@ COLUMNS: list[Column] = [
     Column("Height", "height", 0, 90),
     Column("Width", "width", 3),
     Column("S/N", "snr", 0),
+    Column("IS", "internal_standard", None, 110),
+    Column("IS area", "is_area", 0, 90),
+    Column("Area ratio", "area_ratio", 4, 90),
+    Column("Height ratio", "height_ratio", 4, 90),
+    Column("Response", "response_value", 4, 90),
+    Column("Ion ratio %", "ion_ratio", 1, 80),
+    Column("Exp. ratio %", "expected_ion_ratio", 1, 80),
+    Column("Conf.", "confidence", None, 56),
     Column("Used", "used", None, 46),
     Column("Note", "note", None, 200),
 ]
@@ -85,6 +115,9 @@ class ResultsModel(QtCore.QAbstractTableModel):
             return entry.sample_type if entry else ""
         if column.field == "rt_delta":
             return result.rt_delta
+        if column.field == "response_value":
+            component = self.session.method.by_name(result.component)
+            return result.response(component.response if component else "area")
         return getattr(result, column.field, "")
 
     # -- Qt interface -------------------------------------------------------------- #
@@ -111,8 +144,13 @@ class ResultsModel(QtCore.QAbstractTableModel):
         if role == QtCore.Qt.ItemDataRole.CheckStateRole and index.column() == USED_COLUMN:
             return (QtCore.Qt.CheckState.Checked if result.used
                     else QtCore.Qt.CheckState.Unchecked)
+        if (role == QtCore.Qt.ItemDataRole.DecorationRole
+                and column.field == "confidence"):
+            return confidence_icon(result.confidence)
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             if index.column() == USED_COLUMN:
+                return ""
+            if column.field == "confidence":
                 return ""
             if value is None:
                 return "—"
@@ -291,9 +329,13 @@ class ResultsTable(QtWidgets.QWidget):
         rows = list(self.session.results)
         found = sum(1 for r in rows if r.found)
         unused = sum(1 for r in rows if not r.used)
+        failed = sum(1 for r in rows if r.confidence == FAIL)
+        marginal = sum(1 for r in rows if r.confidence == MARGINAL)
         text = f"{len(rows)} row(s), {found} integrated"
         if unused:
             text += f", {unused} excluded"
+        if failed or marginal:
+            text += f", ion ratio {failed} failed / {marginal} marginal"
         self.summary.setText(text)
 
     # -- selection ------------------------------------------------------------------ #
@@ -345,6 +387,9 @@ class ResultsTable(QtWidgets.QWidget):
                     column = COLUMNS[i]
                     if column.field == "used":
                         row.append("yes" if result.used else "no")
+                        continue
+                    if column.field == "confidence":
+                        row.append(result.confidence)
                         continue
                     value = self.model._value(result, column)
                     row.append("" if value is None else value)

@@ -17,6 +17,12 @@ from .method import ProcessingMethod
 from .processing import ChromPeak, detect_peaks, gaussian_smooth, subtract_baseline
 from .samples import SampleEntry
 
+#: confidence of a qualifier's ion ratio
+PASS = "Pass"
+MARGINAL = "Marginal"
+FAIL = "Fail"
+NOT_APPLICABLE = ""
+
 
 @dataclass
 class PeakResult:
@@ -39,6 +45,17 @@ class PeakResult:
     note: str = ""
     used: bool = True
     manual: bool = False
+    #: internal standard this component is reported against, and its response
+    internal_standard: str = ""
+    is_area: float | None = None
+    is_height: float | None = None
+    area_ratio: float | None = None
+    height_ratio: float | None = None
+    #: qualifier confirmation
+    quantifier: str = ""
+    ion_ratio: float | None = None
+    expected_ion_ratio: float | None = None
+    confidence: str = NOT_APPLICABLE
 
     @property
     def key(self) -> tuple[str, str]:
@@ -54,6 +71,15 @@ class PeakResult:
         if self.expected_rt is None or not self.found:
             return None
         return self.rt - self.expected_rt
+
+    def response(self, mode: str) -> float | None:
+        """
+        The number this component is reported by: the raw area, or its ratio to
+        the internal standard.
+        """
+        if mode == "ratio":
+            return self.area_ratio
+        return self.area
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -235,6 +261,75 @@ def apply_peak(result: PeakResult, peak: ChromPeak, manual: bool = False) -> Pea
     return result
 
 
+def link_internal_standards(results: ResultsSet, method: ProcessingMethod) -> None:
+    """
+    Fill in each result's ratio to its internal standard.
+
+    Done after the whole batch, because the standard's own peak has to be
+    integrated before anything can be divided by it.
+    """
+    for result in results:
+        component = method.by_name(result.component)
+        if component is None:
+            continue
+        standard = method.internal_standard_for(component)
+        if standard is None:
+            continue
+        result.internal_standard = standard.name
+        reference = results.get(result.sample_key, standard.name)
+        if reference is None or not reference.found:
+            result.is_area = None
+            result.is_height = None
+            result.area_ratio = None
+            result.height_ratio = None
+            continue
+        result.is_area = reference.area
+        result.is_height = reference.height
+        result.area_ratio = result.area / reference.area
+        result.height_ratio = (result.height / reference.height
+                               if reference.height else None)
+
+
+def ion_ratio_confidence(measured: float | None, expected: float | None,
+                         tolerance: float, marginal: float) -> str:
+    """
+    Grade a measured ion ratio against the expected one.
+
+    The deviation is relative to the expected ratio, which is how a qualifier
+    tolerance is normally written: "within 20% of the expected ratio".
+    """
+    if measured is None or expected in (None, 0):
+        return NOT_APPLICABLE
+    deviation = abs(measured - expected) / abs(expected) * 100.0
+    if deviation <= tolerance:
+        return PASS
+    if deviation <= marginal:
+        return MARGINAL
+    return FAIL
+
+
+def compute_ion_ratios(results: ResultsSet, method: ProcessingMethod) -> None:
+    """Score every qualifier against its quantifier, in each sample."""
+    for result in results:
+        component = method.by_name(result.component)
+        if component is None:
+            continue
+        quantifier = method.quantifier_for(component)
+        if quantifier is None:
+            continue
+        result.quantifier = quantifier.name
+        result.expected_ion_ratio = component.ion_ratio
+        reference = results.get(result.sample_key, quantifier.name)
+        if reference is None or not reference.found or not result.found:
+            result.ion_ratio = None
+            result.confidence = NOT_APPLICABLE
+            continue
+        result.ion_ratio = result.area / reference.area * 100.0
+        tolerance, marginal = method.ion_ratio_limits(component)
+        result.confidence = ion_ratio_confidence(
+            result.ion_ratio, component.ion_ratio, tolerance, marginal)
+
+
 def process(entries: list[SampleEntry], method: ProcessingMethod,
             cache: XicCache | None = None, progress=None) -> ResultsSet:
     """
@@ -253,5 +348,9 @@ def process(entries: list[SampleEntry], method: ProcessingMethod,
             out.results.append(integrate_component(entry, component, method, cache))
             done += 1
             if progress is not None and progress(done, total) is False:
+                link_internal_standards(out, method)
+                compute_ion_ratios(out, method)
                 return out
+    link_internal_standards(out, method)
+    compute_ion_ratios(out, method)
     return out

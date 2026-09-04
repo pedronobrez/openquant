@@ -42,7 +42,11 @@ back as `kUnknown`.
 | **Same Y** | one intensity scale across the panels, so heights compare directly |
 | **Link X** | zooming one panel zooms them all |
 | **Magnify peak** | one panel filling the pane; double-clicking a panel does the same |
+| **Show IS** | the internal standard drawn behind the analyte, rescaled to it, so retention times and shapes compare |
 | Results table | one row per sample and component: RT, expected RT, ΔRT, area, height, width, S/N, and why a row is empty |
+| Internal standards | mark a component as one, point analytes at it, and get IS area, area ratio and height ratio |
+| Response | area or ratio to the internal standard, chosen per component in the Method workspace |
+| Ion ratio | a qualifier transition is scored against its quantifier, with a Pass / Marginal / Fail traffic light |
 | Two-way linking | clicking a panel selects its row, and selecting a row brings up that component and highlights its panel |
 | Sorting, filtering, view modes | by sample or by component, with a free-text filter over every column |
 | Columns | which ones are shown and to how many decimals |
@@ -78,6 +82,7 @@ back as `kUnknown`.
 | Component table | **Method** workspace: name, group, precursor, fragment, RT, window, tolerance, formula, adduct, internal standard, response |
 | Build the table from the acquisition method | **Generate from acquisition method** — one component per product-ion channel, instead of typing an 80-transition method by hand |
 | Formula instead of a mass | type `C18H30D4O4` with an adduct and the precursor is computed — how a labelled internal standard is entered |
+| Internal standards and qualifiers | mark a component as an internal standard, point analytes at it, or declare a transition the qualifier of another with its expected ion ratio |
 | Import/export the list | CSV, headers in English or Portuguese |
 | Batch extraction | **Extract and integrate all** runs the list over every checked sample |
 | Show one compound | double-click a row for its XIC across all samples |
@@ -156,6 +161,11 @@ name,precursor,fragment,rt,window,tolerance,unit
 12,13-DiHOME,313.2384,183.1391,14.7,0.6,0.02,Da
 9,10-DiHOME,313.2384,201.1496,14.2,0.6,20,ppm
 ```
+
+Further columns cover the quantitative side: `is` marks a component as an
+internal standard, `internal_standard` names the one an analyte is reported
+against, `response` picks between `area` and `ratio`, and `qualifier_of` plus
+`ion_ratio` declare a confirmation transition and the ratio it should hold.
 
 With no `fragment` the XIC uses the precursor itself. With no `rt` the search
 covers the whole run. The method channel is picked by precursor **and** by

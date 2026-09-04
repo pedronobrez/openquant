@@ -47,6 +47,11 @@ _ALIASES = {
     "response": {"response", "response_type", "resposta"},
     "concentration_unit": {"concentration_unit", "conc_unit", "units",
                            "unidade_concentracao"},
+    "qualifier_of": {"qualifier_of", "qualifier", "qualificador_de",
+                     "quantifier", "quantifier_name"},
+    "ion_ratio": {"ion_ratio", "expected_ion_ratio", "razao_ionica"},
+    "ion_ratio_tolerance": {"ion_ratio_tolerance", "ion_ratio_tol",
+                            "tolerancia_razao_ionica"},
 }
 
 _TRUE = {"1", "true", "yes", "y", "sim", "is", "istd", "x"}
@@ -70,8 +75,20 @@ class Component:
     internal_standard: str = ""
     response: str = RESPONSE_AREA
     concentration_unit: str = ""
+    #: name of the quantifier component this one confirms, when it is a
+    #: qualifier transition
+    qualifier_of: str = ""
+    #: expected qualifier/quantifier area ratio, in percent
+    ion_ratio: float | None = None
+    #: allowed relative deviation from `ion_ratio`, in percent; 0 uses the
+    #: method default
+    ion_ratio_tolerance: float = 0.0
     #: per-component integration overrides; filled in a later phase
     integration: dict = field(default_factory=dict)
+
+    @property
+    def is_qualifier(self) -> bool:
+        return bool(self.qualifier_of)
 
     def __post_init__(self):
         if self.response not in RESPONSES:
@@ -208,6 +225,9 @@ def load_components(path: str | os.PathLike) -> list[Component]:
                 internal_standard=str(row.get("internal_standard") or "").strip(),
                 response=response,
                 concentration_unit=str(row.get("concentration_unit") or "").strip(),
+                qualifier_of=str(row.get("qualifier_of") or "").strip(),
+                ion_ratio=_to_float(row.get("ion_ratio")),
+                ion_ratio_tolerance=_to_float(row.get("ion_ratio_tolerance"), 0.0) or 0.0,
             )
         except ValueError as exc:
             raise ValueError(f"CSV line {number}: {exc}") from exc
@@ -227,7 +247,8 @@ def _fmt(value: float | None) -> str:
 
 CSV_HEADER = ["name", "group", "precursor", "fragment", "rt", "window",
               "tolerance", "unit", "formula", "adduct", "is",
-              "internal_standard", "response", "concentration_unit"]
+              "internal_standard", "response", "concentration_unit",
+              "qualifier_of", "ion_ratio", "ion_ratio_tolerance"]
 
 
 def save_components(path: str | os.PathLike, components: list[Component]) -> None:
@@ -241,6 +262,7 @@ def save_components(path: str | os.PathLike, components: list[Component]) -> Non
                 _fmt(c.rt_halfwidth), _fmt(c.tolerance), c.unit, c.formula,
                 c.adduct, "yes" if c.is_internal_standard else "",
                 c.internal_standard, c.response, c.concentration_unit,
+                c.qualifier_of, _fmt(c.ion_ratio), _fmt(c.ion_ratio_tolerance),
             ])
 
 

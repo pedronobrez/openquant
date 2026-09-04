@@ -16,6 +16,7 @@ from ..quantify import PeakResult
 
 FOUND_PEN = "#1f77b4"
 MISSING_PEN = "#b0b0b0"
+IS_PEN = "#d62728"
 SELECTED_BORDER = "#3b6ec8"
 
 
@@ -42,6 +43,10 @@ class PeakPanel(pg.PlotWidget):
             self.getAxis(axis).setStyle(tickFont=tick_font)
 
         self._curve = self.plot([], [], pen=pg.mkPen(FOUND_PEN, width=1.3))
+        self._is_curve = self.plot(
+            [], [], pen=pg.mkPen(IS_PEN, width=1.0,
+                                 style=QtCore.Qt.PenStyle.DashLine))
+        self._is_curve.setZValue(-5)
         self._band = pg.LinearRegionItem(brush=pg.mkBrush(44, 160, 44, 45),
                                          pen=pg.mkPen("#2ca02c", width=1),
                                          movable=False)
@@ -59,16 +64,19 @@ class PeakPanel(pg.PlotWidget):
     def clear_panel(self) -> None:
         self.sample_key = ""
         self._curve.setData([], [])
+        self._is_curve.setData([], [])
         self._band.hide()
         self._expected.hide()
         self.setTitle("")
 
     def set_data(self, result: PeakResult, x: np.ndarray, y: np.ndarray,
-                 expected: tuple[float, float] | None) -> None:
+                 expected: tuple[float, float] | None,
+                 internal_standard: tuple[np.ndarray, np.ndarray] | None = None) -> None:
         self.sample_key = result.sample_key
         found = result.found
         self._curve.setData(x, y, pen=pg.mkPen(FOUND_PEN if found else MISSING_PEN,
                                                width=1.3))
+        self._set_internal_standard(y, internal_standard)
         if found:
             self._band.setRegion((result.start_rt, result.end_rt))
             self._band.show()
@@ -89,6 +97,25 @@ class PeakPanel(pg.PlotWidget):
             title = f"{result.sample_name}   {result.note or 'not found'}"
             colour = "#b03030"
         self.setTitle(title, color=colour, size="8pt")
+
+    def _set_internal_standard(self, y: np.ndarray,
+                               trace: tuple[np.ndarray, np.ndarray] | None) -> None:
+        """
+        Draw the internal standard behind the analyte, rescaled to it.
+
+        The two rarely share a magnitude — a labelled standard is often far the
+        taller — so plotting both on one axis would flatten the analyte. Only
+        the shape and the retention time are being compared here, so the
+        standard is normalised to the analyte's height.
+        """
+        if trace is None or trace[0].size == 0:
+            self._is_curve.setData([], [])
+            return
+        is_x, is_y = trace
+        peak = float(np.max(is_y)) if is_y.size else 0.0
+        target = float(np.max(y)) if y.size else 0.0
+        scale = target / peak if peak > 0 and target > 0 else 1.0
+        self._is_curve.setData(is_x, is_y * scale)
 
     def set_selected(self, selected: bool) -> None:
         self.setStyleSheet(
@@ -117,10 +144,11 @@ class PeakReviewGrid(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._panels: list[PeakPanel] = []
-        self._items: list[tuple] = []       # (result, x, y, expected)
+        self._items: list[tuple] = []   # (result, x, y, expected, is_trace)
         self._page = 0
         self._selected = ""
         self._shared_y = False
+        self._show_is = True
         self._margin = 3.0     # window widths shown on each side
         self._linked_x = True
         self._syncing = False
@@ -146,6 +174,13 @@ class PeakReviewGrid(QtWidgets.QWidget):
         self.row_spin.setRange(1, 8)
         self.row_spin.setValue(2)
         bar.addWidget(self.row_spin)
+        bar.addSpacing(12)
+        self.chk_is = QtWidgets.QCheckBox("Show IS")
+        self.chk_is.setChecked(True)
+        self.chk_is.setToolTip(
+            "Overlay the internal standard, rescaled to the analyte, so their "
+            "retention times and shapes can be compared")
+        bar.addWidget(self.chk_is)
         bar.addSpacing(12)
         self.chk_shared_y = QtWidgets.QCheckBox("Same Y")
         self.chk_shared_y.setToolTip(
@@ -184,6 +219,7 @@ class PeakReviewGrid(QtWidgets.QWidget):
         self.col_spin.valueChanged.connect(self._relayout)
         self.row_spin.valueChanged.connect(self._relayout)
         self.chk_shared_y.toggled.connect(self._set_shared_y)
+        self.chk_is.toggled.connect(self._set_show_is)
         self.zoom_combo.currentIndexChanged.connect(lambda _i: self._fill())
         self.chk_link_x.toggled.connect(self._set_link_x)
         self.btn_prev.clicked.connect(lambda: self.set_page(self._page - 1))
@@ -240,9 +276,16 @@ class PeakReviewGrid(QtWidgets.QWidget):
         self._shared_y = enabled
         self._fill()
 
+    def _set_show_is(self, enabled: bool) -> None:
+        self._show_is = enabled
+        self._fill()
+
     # -- content -------------------------------------------------------------------- #
     def set_items(self, title: str, items: list[tuple]) -> None:
-        """`items` are (result, x, y, expected window) tuples, one per sample."""
+        """
+        `items` are (result, x, y, expected window, internal standard trace)
+        tuples, one per sample; the last entry may be None.
+        """
         self.title.setText(title)
         self._items = list(items)
         self._page = 0
@@ -261,13 +304,15 @@ class PeakReviewGrid(QtWidgets.QWidget):
 
         ceiling = 0.0
         if self._shared_y:
-            for _result, _x, y, _expected in self._items:
+            for item in self._items:
+                y = item[2]
                 if y.size:
                     ceiling = max(ceiling, float(np.max(y)))
 
         for panel, item in zip(self._panels, page_items):
-            result, x, y, expected = item
-            panel.set_data(result, x, y, expected)
+            result, x, y, expected = item[:4]
+            is_trace = item[4] if len(item) > 4 and self._show_is else None
+            panel.set_data(result, x, y, expected, is_trace)
             panel.set_selected(result.sample_key == self._selected)
             panel.enableAutoRange()
             panel.autoRange()

@@ -23,6 +23,10 @@ class ProcessingMethod:
     baseline_window: float = 0.0
     min_relative_height: float = 0.05
     min_snr: float = 3.0
+    #: relative deviation from the expected ion ratio that still passes, and
+    #: the wider band that is only flagged as marginal, both in percent
+    ion_ratio_tolerance: float = 20.0
+    ion_ratio_marginal: float = 30.0
 
     # -- lookups --------------------------------------------------------------- #
     def by_name(self, name: str) -> Component | None:
@@ -45,6 +49,23 @@ class ProcessingMethod:
             return None
         target = self.by_name(component.internal_standard)
         return target if target is not None and target is not component else None
+
+    def qualifiers_for(self, component: Component) -> list[Component]:
+        """The qualifier transitions that confirm a given quantifier."""
+        return [c for c in self.components if c.qualifier_of == component.name]
+
+    def quantifier_for(self, component: Component) -> Component | None:
+        """The quantifier a qualifier belongs to."""
+        if not component.qualifier_of:
+            return None
+        target = self.by_name(component.qualifier_of)
+        return target if target is not None and target is not component else None
+
+    def ion_ratio_limits(self, component: Component) -> tuple[float, float]:
+        """Pass and marginal deviations for a component, in percent."""
+        tolerance = component.ion_ratio_tolerance or self.ion_ratio_tolerance
+        marginal = max(self.ion_ratio_marginal, tolerance)
+        return tolerance, marginal
 
     def groups(self) -> list[str]:
         seen = []

@@ -193,3 +193,131 @@ def test_results_round_trip():
 
 def test_results_from_none_is_empty():
     assert len(ResultsSet.from_list(None)) == 0
+
+
+# --- internal standards and ion ratios ---------------------------------------- #
+def _method_with_is():
+    method = ProcessingMethod()
+    method.replace_all([
+        Component("Analyte", 325.20, 183.0, rt=13.1, rt_halfwidth=0.5,
+                  internal_standard="IS", response="ratio"),
+        Component("Qual", 325.20, 119.0, rt=13.1, rt_halfwidth=0.5,
+                  qualifier_of="Analyte", ion_ratio=50.0),
+        Component("IS", 339.20, 339.2, rt=13.1, rt_halfwidth=0.5,
+                  is_internal_standard=True),
+    ])
+    return method
+
+
+def _results(analyte=100.0, qualifier=50.0, standard=200.0):
+    rows = [
+        PeakResult("s1", "QC", "Analyte", area=analyte, height=analyte / 2),
+        PeakResult("s1", "QC", "Qual", area=qualifier, height=qualifier / 2),
+        PeakResult("s1", "QC", "IS", area=standard, height=standard / 2),
+    ]
+    return ResultsSet(rows)
+
+
+def test_area_and_height_ratios():
+    from openpeakview.quantify import link_internal_standards
+    method, results = _method_with_is(), _results()
+    link_internal_standards(results, method)
+    analyte = results.get("s1", "Analyte")
+    assert analyte.internal_standard == "IS"
+    assert analyte.is_area == 200.0
+    assert analyte.area_ratio == pytest.approx(0.5)
+    assert analyte.height_ratio == pytest.approx(0.5)
+
+
+def test_ratio_is_none_when_the_standard_is_missing():
+    from openpeakview.quantify import link_internal_standards
+    method = _method_with_is()
+    results = _results(standard=0.0)   # the standard did not integrate
+    link_internal_standards(results, method)
+    analyte = results.get("s1", "Analyte")
+    assert analyte.area_ratio is None
+    assert analyte.is_area is None
+
+
+def test_response_follows_the_component_setting():
+    from openpeakview.quantify import link_internal_standards
+    method, results = _method_with_is(), _results()
+    link_internal_standards(results, method)
+    analyte = results.get("s1", "Analyte")
+    assert analyte.response("area") == 100.0
+    assert analyte.response("ratio") == pytest.approx(0.5)
+
+
+def test_ion_ratio_passes_within_tolerance():
+    from openpeakview.quantify import compute_ion_ratios
+    method, results = _method_with_is(), _results(qualifier=50.0)
+    compute_ion_ratios(results, method)
+    qualifier = results.get("s1", "Qual")
+    assert qualifier.quantifier == "Analyte"
+    assert qualifier.ion_ratio == pytest.approx(50.0)
+    assert qualifier.confidence == "Pass"
+
+
+@pytest.mark.parametrize("measured,expected_grade", [
+    (50.0, "Pass"),       # exact
+    (60.0, "Pass"),       # +20%, on the pass boundary
+    (64.0, "Marginal"),   # +28%
+    (65.0, "Marginal"),   # +30%, on the marginal boundary
+    (70.0, "Fail"),       # +40%
+    (30.0, "Fail"),       # -40%, deviation is absolute
+])
+def test_ion_ratio_grading(measured, expected_grade):
+    """Deviation is relative to the expected ratio: 20% passes, 30% is marginal."""
+    from openpeakview.quantify import ion_ratio_confidence
+    assert ion_ratio_confidence(measured, 50.0, 20.0, 30.0) == expected_grade
+
+
+def test_ion_ratio_grading_reaches_the_results():
+    from openpeakview.quantify import compute_ion_ratios
+    method = _method_with_is()
+    results = _results(qualifier=90.0)     # 90% against an expected 50%
+    compute_ion_ratios(results, method)
+    assert results.get("s1", "Qual").confidence == "Fail"
+
+
+def test_ion_ratio_is_not_applicable_without_an_expectation():
+    from openpeakview.quantify import compute_ion_ratios, ion_ratio_confidence
+    assert ion_ratio_confidence(50.0, None, 20.0, 30.0) == ""
+    assert ion_ratio_confidence(None, 50.0, 20.0, 30.0) == ""
+    method = _method_with_is()
+    method.by_name("Qual").ion_ratio = None
+    results = _results()
+    compute_ion_ratios(results, method)
+    qualifier = results.get("s1", "Qual")
+    assert qualifier.ion_ratio == pytest.approx(50.0)   # still measured
+    assert qualifier.confidence == ""                    # but not graded
+
+
+def test_ion_ratio_needs_both_peaks():
+    from openpeakview.quantify import compute_ion_ratios
+    method = _method_with_is()
+    results = _results(analyte=0.0)     # the quantifier did not integrate
+    compute_ion_ratios(results, method)
+    assert results.get("s1", "Qual").ion_ratio is None
+
+
+def test_component_level_tolerance_overrides_the_method():
+    method = _method_with_is()
+    method.by_name("Qual").ion_ratio_tolerance = 45.0
+    assert method.ion_ratio_limits(method.by_name("Qual")) == (45.0, 45.0)
+    assert method.ion_ratio_limits(method.by_name("Analyte")) == (20.0, 30.0)
+
+
+def test_process_fills_ratios_end_to_end():
+    method = ProcessingMethod()
+    method.replace_all([
+        Component("Analyte", 325.20, 183.0, rt=13.1, rt_halfwidth=0.5,
+                  internal_standard="IS"),
+        Component("IS", 325.20, 200.0, rt=13.1, rt_halfwidth=0.5,
+                  is_internal_standard=True),
+    ])
+    entry, _ = make_entry()
+    results = process([entry], method)
+    analyte = results.get(entry.key, "Analyte")
+    assert analyte.internal_standard == "IS"
+    assert analyte.area_ratio == pytest.approx(1.0, rel=0.01)

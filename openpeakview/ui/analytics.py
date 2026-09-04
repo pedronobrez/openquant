@@ -5,7 +5,7 @@ from __future__ import annotations
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from ..components import Component
-from ..quantify import extract_xic, process
+from ..quantify import PeakResult, extract_xic, process
 from ..session import Session
 from .peak_review import PeakReviewGrid
 from .results_table import ResultsTable
@@ -154,7 +154,9 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         if component is None:
             self.grid.clear()
             return
+        method = self.session.method
         expected = component.rt_window()
+        standard = method.internal_standard_for(component)
         items = []
         for entry in self.session.entries:
             if not entry.is_loaded:
@@ -162,20 +164,28 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             result = self.session.results.get(entry.key, component.name)
             if result is None:
                 # not processed yet: still show the trace, unintegrated
-                from ..quantify import PeakResult
                 result = PeakResult(
                     sample_key=entry.key, sample_name=entry.name,
                     component=component.name, group=component.group,
                     expected_rt=component.rt, note="not processed",
                 )
-            x, y, _channel = extract_xic(entry, component, self.session.method,
-                                         self.session.cache)
-            items.append((result, x, y, expected))
+            x, y, _channel = extract_xic(entry, component, method, self.session.cache)
+            is_trace = None
+            if standard is not None:
+                sx, sy, _ = extract_xic(entry, standard, method, self.session.cache)
+                if sx.size:
+                    is_trace = (sx, sy)
+            items.append((result, x, y, expected, is_trace))
         self.grid.set_items(component.label, items)
-        self._report(
-            f"{component.name}: {sum(1 for i in items if i[0].found)} of "
-            f"{len(items)} sample(s) integrated"
-        )
+
+        found = sum(1 for i in items if i[0].found)
+        message = f"{component.name}: {found} of {len(items)} sample(s) integrated"
+        if standard is not None:
+            message += f" · internal standard {standard.name}"
+        quantifier = method.quantifier_for(component)
+        if quantifier is not None:
+            message += f" · qualifier of {quantifier.name}"
+        self._report(message)
 
     def _set_magnified(self, enabled: bool) -> None:
         """One panel filling the pane, or back to the grid."""

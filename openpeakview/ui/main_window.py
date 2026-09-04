@@ -10,11 +10,20 @@ from dataclasses import asdict
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from ..chemistry import (
+    ADDUCTS_BY_NAME,
+    find_formulas,
+    has_isotope_satellites,
+    isotope_pattern,
+    rank_by_isotope_pattern,
+)
 from ..compounds import Compound
 from ..processing import detect_peaks, integrate, signal_to_noise
 from ..wiff import Channel, Sample, WiffFile
 from .chrom_area import ChromatogramArea
 from .compound_panel import CompoundPanel
+from .formula_panel import FormulaPanel
+from .mass_calc_panel import MassCalcPanel
 from .plots import SpectrumView, Trace, colour
 from .results_panel import Result, ResultsPanel
 from .sample_info import SampleInfoPanel
@@ -191,12 +200,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.compound_panel = CompoundPanel()
         self.results_panel = ResultsPanel()
+        self.mass_calc = MassCalcPanel()
+        self.formula_panel = FormulaPanel()
         self.sample_info = SampleInfoPanel()
 
         self.tabs.addTab(self.compound_panel, "Compounds")
         self.tabs.addTab(self.results_panel, "Results")
         self.tabs.addTab(self._build_xic_tab(), "Manual XIC")
         self.tabs.addTab(self._build_peaks_tab(), "Spectrum peaks")
+        self.tabs.addTab(self.mass_calc, "Mass calc")
+        self.tabs.addTab(self.formula_panel, "Formula finder")
         self.tabs.addTab(self.sample_info, "Sample")
 
         dock.setWidget(self.tabs)
@@ -450,6 +463,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.compound_panel.sigShowCompound.connect(self._show_compound)
         self.results_panel.sigResultActivated.connect(self._go_to_result)
 
+        self.spectrum.sigIdentifyRequested.connect(self._identify_peak)
+        self.mass_calc.sigOverlay.connect(self._overlay_pattern)
+        self.mass_calc.sigClearOverlay.connect(self.spectrum.clear_overlay)
+        self.mass_calc.sigSendToFinder.connect(self._send_to_finder)
+        self.formula_panel.sigSearch.connect(self._run_formula_search)
+        self.formula_panel.sigOverlay.connect(self._overlay_hit)
+        self.formula_panel.sigSendToCalculator.connect(
+            self.mass_calc.formula_edit.setText)
+
         QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Left), self,
                         activated=lambda: self._step_scan(-1))
         QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Right), self,
@@ -488,6 +510,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.xic_unit.setCurrentText(s.value("xic/unit", "Da", type=str))
         self.xic_all_channels.setChecked(flag("xic/all_channels", False))
         self.mode_combo.setCurrentText(s.value("chrom/mode", "TIC", type=str))
+        self.formula_panel.tol_spin.setValue(s.value("formula/tolerance", 10.0, type=float))
+        self.formula_panel.unit_combo.setCurrentText(
+            s.value("formula/unit", "ppm", type=str))
+        self.formula_panel.adduct_combo.setCurrentText(
+            s.value("formula/adduct", "[M-H]-", type=str))
+        self.mass_calc.adduct_combo.setCurrentText(
+            s.value("formula/adduct", "[M-H]-", type=str))
+        self.formula_panel.even_electron.setChecked(flag("formula/even_electron", True))
+        self.formula_panel.golden_rules.setChecked(flag("formula/golden_rules", True))
+        self.formula_panel.use_isotopes.setChecked(flag("formula/use_isotopes", True))
+        stored_ranges = s.value("formula/ranges", "", type=str)
+        if stored_ranges:
+            try:
+                self._apply_element_ranges(json.loads(stored_ranges))
+            except (ValueError, TypeError):
+                pass
 
         stored = s.value("compounds/list", "", type=str)
         if stored:
@@ -539,6 +577,22 @@ class MainWindow(QtWidgets.QMainWindow):
             "compounds/list",
             json.dumps([asdict(c) for c in self.compound_panel.compounds()]),
         )
+        s.setValue("formula/tolerance", self.formula_panel.tol_spin.value())
+        s.setValue("formula/unit", self.formula_panel.unit_combo.currentText())
+        s.setValue("formula/adduct", self.formula_panel.adduct_combo.currentText())
+        s.setValue("formula/even_electron", self.formula_panel.even_electron.isChecked())
+        s.setValue("formula/golden_rules", self.formula_panel.golden_rules.isChecked())
+        s.setValue("formula/use_isotopes", self.formula_panel.use_isotopes.isChecked())
+        s.setValue("formula/ranges", json.dumps(self.formula_panel.ranges()))
+
+    def _apply_element_ranges(self, ranges: dict) -> None:
+        """Write stored element ranges back into the finder's table."""
+        table = self.formula_panel.elements
+        for row in range(table.rowCount()):
+            element = table.item(row, 0).text()
+            low, high = ranges.get(element, (0, 0))
+            table.item(row, 1).setText(str(int(low)))
+            table.item(row, 2).setText(str(int(high)))
 
     def _last_dir(self) -> str:
         return self.settings.value("io/last_dir", "", type=str)
@@ -953,6 +1007,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _peak_double_clicked(self, row: int, _column: int) -> None:
         item = self.peak_table.item(row, 0)
         if item:
+            self.mass_calc.set_measured(float(item.text()))
             self.xic_mz.setText(item.text())
             self._extract_from_form()
 
@@ -1231,6 +1286,84 @@ class MainWindow(QtWidgets.QMainWindow):
             f"{len(results)} peak(s) integrated across {len(traces)} trace(s)."
         )
 
+    # ------------------------------------------------------------- chemistry -- #
+    def _identify_peak(self, mz: float) -> None:
+        """Right-click on a spectrum peak: send it to both chemistry panels."""
+        self.mass_calc.set_measured(mz)
+        self.formula_panel.set_target(mz)
+        self.tabs.setCurrentWidget(self.formula_panel)
+        self._update_status(f"m/z {mz:.4f} sent to the formula finder.")
+
+    def _send_to_finder(self, mz: float, adduct: str) -> None:
+        self.formula_panel.set_target(mz, adduct)
+        self.tabs.setCurrentWidget(self.formula_panel)
+
+    def _current_spectrum(self) -> tuple[np.ndarray, np.ndarray] | None:
+        traces = self.spectrum.traces
+        if not traces:
+            return None
+        return self.spectrum.condition(traces[0])
+
+    def _run_formula_search(self, params: dict) -> None:
+        adduct = ADDUCTS_BY_NAME[params["adduct"]]
+        neutral = adduct.neutral_mass(params["mz"])
+        if neutral <= 0:
+            self.formula_panel.set_results([], "That m/z is below the adduct mass.")
+            return
+
+        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
+        try:
+            hits = find_formulas(
+                neutral, params["tolerance"], params["unit"],
+                ranges=params["ranges"], rdbe_range=params["rdbe_range"],
+                even_electron=params["even_electron"],
+                golden_rules=params["golden_rules"],
+            )
+            for hit in hits:
+                hit.mz = adduct.mz(hit.neutral_mass)
+
+            note = f"{len(hits)} candidate(s) within ±{params['tolerance']:g} {params['unit']}"
+            spectrum = self._current_spectrum()
+            if params["use_isotopes"] and hits and spectrum is not None:
+                mz, intensity = spectrum
+                if has_isotope_satellites(mz, intensity, params["mz"], adduct.charge):
+                    hits = rank_by_isotope_pattern(hits, mz, intensity, adduct)
+                    note += ", ranked by isotope pattern"
+                else:
+                    # Nothing to score against: say so rather than showing a
+                    # column of meaningless numbers, and point at the scan that
+                    # does carry the pattern.
+                    note += ("; this spectrum has no isotope satellites for that "
+                             "ion, so candidates are ranked by mass error — a "
+                             "product-ion scan isolates the monoisotopic "
+                             "precursor, so use the TOF MS survey channel to "
+                             "bring the pattern into play")
+            elif params["use_isotopes"] and spectrum is None:
+                note += "; no spectrum on screen, so ranked by mass error only"
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+
+        self.formula_panel.set_results(hits, note)
+        if hits:
+            self._overlay_hit(hits[0])
+        self._update_status(note)
+
+    def _overlay_hit(self, hit) -> None:
+        adduct = ADDUCTS_BY_NAME[self.formula_panel.adduct_combo.currentText()]
+        pattern = isotope_pattern(hit.counts, adduct, min_abundance=0.005,
+                                  max_peaks=6)
+        self.spectrum.set_overlay(pattern, f"{hit.formula} {adduct.name}")
+        self._update_status(
+            f"{hit.formula} · m/z {hit.mz:.5f} · {hit.error_ppm:+.2f} ppm · "
+            f"RDBE {hit.rdbe:g}"
+            + (f" · isotope match {hit.isotope_score * 100:.0f}%"
+               if hit.isotope_score else "")
+        )
+
+    def _overlay_pattern(self, pattern: list, label: str) -> None:
+        self.spectrum.set_overlay(pattern, label)
+        self._update_status(f"Theoretical pattern of {label} overlaid.")
+
     # ------------------------------------------------------------------ misc -- #
     def _set_select_mode(self, enabled: bool) -> None:
         self.chrom.set_select_mode(enabled)
@@ -1340,6 +1473,12 @@ class MainWindow(QtWidgets.QMainWindow):
             "• Stack gives each trace its own pane with the time axes locked<br>"
             "• Overview adds a navigator showing where the current zoom sits<br>"
             "• Mirror flips every other trace; Cascade offsets them in x and y<br><br>"
+            "<b>Chemistry</b><br>"
+            "• Mass calc: type a formula for its exact masses, RDBE and isotope "
+            "pattern, and overlay that pattern on the spectrum<br>"
+            "• right-click a spectrum peak → “Find formula for this peak”<br>"
+            "• the finder ranks candidates by how well their isotope pattern "
+            "matches the spectrum on screen<br><br>"
             "<b>Processing</b><br>"
             "• smoothing and baseline apply to the display, the integration and "
             "the export alike<br>"

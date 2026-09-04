@@ -569,6 +569,7 @@ class SpectrumView(BasePlot):
     """Bottom pane: mass spectrum of one scan or of an averaged range."""
 
     sigExtractRequested = QtCore.pyqtSignal(float, float)  # m/z range for an XIC
+    sigIdentifyRequested = QtCore.pyqtSignal(float)        # send an m/z to the finder
 
     def __init__(self, parent=None):
         super().__init__("m/z", "", "Intensity, cps", parent)
@@ -577,6 +578,8 @@ class SpectrumView(BasePlot):
         self._show_labels = True
         self._centroid = False
         self._title = ""
+        self._overlay: tuple[list[tuple[float, float]], str, str] | None = None
+        self._overlay_items: list[pg.GraphicsObject] = []
         self.legend.setVisible(False)  # the title already names the spectrum
 
     def _y_label_raw(self) -> str:
@@ -627,7 +630,80 @@ class SpectrumView(BasePlot):
         return pick_peaks(x, y, max_peaks=max_peaks, min_relative=0.005,
                           min_distance=0.03)
 
+    # -- theoretical overlay ---------------------------------------------------- #
+    def set_overlay(self, peaks: list[tuple[float, float]], label: str = "",
+                    colour: str = "#7a3fbf") -> None:
+        """
+        Draw a theoretical isotope pattern over the measured spectrum, scaled to
+        its base peak so the two can be compared by eye.
+        """
+        self._overlay = (list(peaks), label, colour) if peaks else None
+        self._draw_overlay()
+
+    def clear_overlay(self) -> None:
+        self._overlay = None
+        self._draw_overlay()
+
+    @property
+    def has_overlay(self) -> bool:
+        return self._overlay is not None
+
+    def _draw_overlay(self) -> None:
+        for item in self._overlay_items:
+            self.plot.removeItem(item)
+        self._overlay_items.clear()
+        if self._overlay is None:
+            return
+        peaks, label, colour = self._overlay
+        scale = self._overlay_scale(peaks)
+        xs, ys = [], []
+        for mz, abundance in peaks:
+            xs.extend([mz, mz, np.nan])
+            ys.extend([0.0, abundance * scale, np.nan])
+        curve = self.plot.plot(
+            np.array(xs), np.array(ys), connect="finite",
+            pen=pg.mkPen(colour, width=1.6, style=QtCore.Qt.PenStyle.DashLine),
+        )
+        curve.setZValue(-5)
+        self._overlay_items.append(curve)
+        if label:
+            text = pg.TextItem(label, color=colour, anchor=(0, 0))
+            font = QtGui.QFont()
+            font.setPointSize(9)
+            text.setFont(font)
+            rect = self.viewbox.viewRect()
+            text.setPos(rect.left(), rect.top())
+            self.plot.addItem(text, ignoreBounds=True)
+            self._overlay_items.append(text)
+
+    def _overlay_scale(self, peaks: list[tuple[float, float]],
+                       tolerance: float = 0.02) -> float:
+        """
+        Height for the theoretical pattern.
+
+        It is anchored on the measured monoisotopic peak, not on the base peak
+        of the spectrum: the ion being identified is often a minor one, and
+        scaling to the tallest peak in the scan would either bury the overlay
+        or make it tower over the data, in both cases making the satellite
+        heights impossible to compare by eye.
+        """
+        traces = self.traces
+        if not traces or not peaks:
+            return 1.0
+        x, y = self.condition(traces[0])
+        if y.size == 0:
+            return 1.0
+        if self._normalise:
+            peak = float(np.max(np.abs(y)))
+            y = y / peak * 100.0 if peak > 0 else y
+        target = peaks[0][0]
+        window = (x >= target - tolerance) & (x <= target + tolerance)
+        if window.any() and float(y[window].max()) > 0:
+            return float(y[window].max()) / max(peaks[0][1], 1e-12)
+        return float(np.max(y))
+
     def _after_traces_changed(self) -> None:
+        self._draw_overlay()
         for item in self._labels:
             self.plot.removeItem(item)
         self._labels.clear()
@@ -652,17 +728,27 @@ class SpectrumView(BasePlot):
     def contextMenuEvent(self, event):  # noqa: N802 (Qt API)
         selection = self.selected_range()
         menu = QtWidgets.QMenu(self)
+        local = self.plot.mapFromGlobal(event.globalPos())
+        position = float(self.viewbox.mapSceneToView(self.plot.mapToScene(local)).x())
+
         extract = menu.addAction("Extract XIC from selection")
         extract.setEnabled(selection is not None)
+        identify = menu.addAction("Find formula for this peak")
+        menu.addSeparator()
         add_marker = menu.addAction("Add marker here")
         clear_markers = menu.addAction("Clear markers")
         clear_markers.setEnabled(bool(self._arrows))
+        clear_overlay = menu.addAction("Clear theoretical overlay")
+        clear_overlay.setEnabled(self.has_overlay)
+
         chosen = menu.exec(event.globalPos())
         if chosen is extract and selection:
             self.sigExtractRequested.emit(*selection)
+        elif chosen is identify:
+            self.sigIdentifyRequested.emit(self._snap_to_peak(position))
         elif chosen is add_marker:
-            local = self.plot.mapFromGlobal(event.globalPos())
-            scene_pos = self.plot.mapToScene(local)
-            self.add_marker(float(self.viewbox.mapSceneToView(scene_pos).x()))
+            self.add_marker(position)
         elif chosen is clear_markers:
             self.clear_markers()
+        elif chosen is clear_overlay:
+            self.clear_overlay()

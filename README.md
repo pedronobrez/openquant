@@ -57,8 +57,28 @@ Runs on **macOS (Apple Silicon included)**, Linux and Windows.
 | **Centroid** | turns the profile spectrum into sticks |
 | **Markers** | drop a marker on a peak; the others are then labelled with their distance to it, which is how neutral losses and isotope spacings are read |
 
+### Chemistry
+
+| Feature | How |
+|---|---|
+| Exact masses | **Mass calc** tab: monoisotopic, average, RDBE and the ion m/z for a formula |
+| Formula syntax | groups and multipliers (`C6H4(NO2)2`), plus single isotopes — `[13C]`, or `D` for deuterium, so labelled internal standards work |
+| Adducts | [M−H]⁻, [M+Cl]⁻, [M+HCOO]⁻, [M+CH₃COO]⁻, [M−2H]²⁻, [M+H]⁺, [M+NH₄]⁺, [M+Na]⁺, [M+K]⁺, [M+2H]²⁺ |
+| Mass accuracy | type a measured m/z for the error in mDa and ppm |
+| Theoretical isotope pattern | table of m/z and abundance, and **Overlay on spectrum** to compare it with the data |
+| **Formula finder** | right-click a spectrum peak → *Find formula for this peak*, or type an m/z |
+| Search constraints | tolerance in ppm or Da, per-element ranges, RDBE range, even-electron only, element-ratio rules |
+| Isotope ranking | candidates are scored against the isotope satellites of the spectrum on screen |
+
 Smoothing and baseline removal apply to the drawing, the integration and the
 export alike, so area and height always match what is on screen.
+
+Exact mass alone rarely separates candidates above a few hundred daltons; the
+relative heights of M+1 and M+2 usually do, which is why the finder scores them.
+That only works on a spectrum that has the satellites: a product-ion scan
+isolates the monoisotopic precursor in Q1, so run the finder on the TOF MS
+survey channel. The program checks for this and says so instead of reporting
+meaningless scores.
 
 Mouse conventions in both panes: drag = rubber-band zoom, double-click = fit,
 right-click = pyqtgraph menu (export image, axis options and so on).
@@ -143,10 +163,13 @@ openpeakview/
   bootstrap.py           .NET runtime setup and the Clearcore2 patch
   wiff.py                WiffFile / Sample / Channel → numpy arrays
   compounds.py           target compound list (CSV)
+  chemistry.py           formulas, exact masses, isotope patterns, formula finder
   processing.py          smoothing, baseline, centroiding, peak detection, S/N
   ui/plots.py            chromatogram and spectrum panes (pyqtgraph)
   ui/chrom_area.py       stacked panes with linked time axes
   ui/compound_panel.py   compound manager
+  ui/mass_calc_panel.py  mass calculator
+  ui/formula_panel.py    formula finder
   ui/results_panel.py    results table
   ui/sample_info.py      sample information
   ui/main_window.py      main window
@@ -168,6 +191,23 @@ rt, tic = channel.tic()
 rt, xic = channel.xic(183.0137, tolerance=0.02)      # fragment
 mz, i = channel.spectrum(channel.scan_at_rt(13.14))  # one scan
 mz, i = channel.spectrum_rt_range(13.0, 13.3)        # average over a region
+```
+
+Profile spectra come back with the zero-intensity points restored
+(`add_zeros=False` turns that off). SCIEX strips them from the file, and
+without them a line plot runs straight from one peak to the next, making the
+gaps look like signal.
+
+The chemistry layer is independent of both the UI and the vendor libraries:
+
+```python
+from openpeakview import chemistry as ch
+
+counts = ch.parse_formula("C18H34O4")                # 12,13-DiHOME
+ch.monoisotopic_mass(counts)                         # 314.245709
+ch.ADDUCTS_BY_NAME["[M-H]-"].mz(_)                   # 313.238433
+ch.isotope_pattern(counts, ch.ADDUCTS_BY_NAME["[M-H]-"])
+ch.find_formulas(314.2457, tolerance=5, unit="ppm")  # candidate compositions
 ```
 
 ## Data

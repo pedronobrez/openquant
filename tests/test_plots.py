@@ -84,3 +84,34 @@ def test_centroid_mode_shortens_the_axis(qapp, two_traces):
     centroid_x, _ = view.conditioned("a")
     assert centroid_x.size < profile_x.size
     assert view.centroided
+
+
+def test_overlay_is_anchored_on_the_measured_monoisotopic_peak(qapp):
+    """A minor ion's overlay must match its own height, not the base peak's."""
+    mz = np.array([100.0, 200.0, 201.0034])
+    intensity = np.array([10_000.0, 500.0, 100.0])  # base peak is elsewhere
+    view = SpectrumView()
+    view.set_traces([Trace("s", "spectrum", mz, intensity, "#1f77b4")])
+    pattern = [(200.0, 1.0), (201.0034, 0.2)]
+    scale = view._overlay_scale(pattern)
+    assert scale == pytest.approx(500.0)          # anchored on m/z 200, not 10000
+    assert scale * pattern[1][1] == pytest.approx(100.0)
+
+
+def test_overlay_falls_back_to_the_base_peak_when_the_ion_is_absent(qapp):
+    mz = np.array([100.0, 150.0])
+    intensity = np.array([10_000.0, 500.0])
+    view = SpectrumView()
+    view.set_traces([Trace("s", "spectrum", mz, intensity, "#1f77b4")])
+    assert view._overlay_scale([(400.0, 1.0)]) == pytest.approx(10_000.0)
+
+
+def test_overlay_can_be_set_and_cleared(qapp):
+    mz = np.linspace(100, 200, 100)
+    view = SpectrumView()
+    view.set_traces([Trace("s", "spectrum", mz, np.ones(100), "#1f77b4")])
+    assert not view.has_overlay
+    view.set_overlay([(150.0, 1.0), (151.0, 0.2)], "C10H20O")
+    assert view.has_overlay
+    view.clear_overlay()
+    assert not view.has_overlay

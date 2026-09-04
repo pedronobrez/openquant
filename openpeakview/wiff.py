@@ -167,18 +167,35 @@ class Channel:
         return _to_numpy(c.GetActualXValues()), _to_numpy(c.GetActualYValues())
 
     # -- spectra -------------------------------------------------------------- #
-    def spectrum(self, scan: int) -> tuple[np.ndarray, np.ndarray]:
+    def _read_spectrum(self, spectrum, add_zeros: bool) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Pull the arrays out of a MassSpectrum, optionally restoring the zeros.
+
+        SCIEX stores profile spectra with the zero-intensity points stripped
+        out. Plotted as they come, a line is drawn straight from one peak to
+        the next and the gaps between them look like signal. AddZeros puts a
+        zero back on each side of every gap, using the instrument's own step
+        size, which is what makes a profile spectrum render correctly.
+        """
+        if add_zeros:
+            try:
+                self._exp.AddZeros(spectrum, 1)
+            except Exception:
+                pass
+        return (_to_numpy(spectrum.GetActualXValues()),
+                _to_numpy(spectrum.GetActualYValues()))
+
+    def spectrum(self, scan: int,
+                 add_zeros: bool = True) -> tuple[np.ndarray, np.ndarray]:
         """Spectrum of a single scan (0-based cycle index)."""
         scan = int(np.clip(scan, 0, max(self.info.n_scans - 1, 0)))
-        s = self._exp.GetMassSpectrum(scan)
-        return _to_numpy(s.GetActualXValues()), _to_numpy(s.GetActualYValues())
+        return self._read_spectrum(self._exp.GetMassSpectrum(scan), add_zeros)
 
-    def spectrum_rt_range(self, rt_start: float,
-                          rt_end: float) -> tuple[np.ndarray, np.ndarray]:
+    def spectrum_rt_range(self, rt_start: float, rt_end: float,
+                          add_zeros: bool = True) -> tuple[np.ndarray, np.ndarray]:
         """Average spectrum of the scans inside the given time range."""
         lo, hi = sorted((float(rt_start), float(rt_end)))
-        s = self._exp.GetMassSpectrum(lo, hi)
-        return _to_numpy(s.GetActualXValues()), _to_numpy(s.GetActualYValues())
+        return self._read_spectrum(self._exp.GetMassSpectrum(lo, hi), add_zeros)
 
     def parameters(self) -> dict[str, str]:
         """Experiment parameters from the method (DP, CE, CES, ...)."""

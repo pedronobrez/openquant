@@ -66,6 +66,8 @@ COLUMNS: list[Column] = [
     Column("Actual conc.", "actual_concentration", 4, 95),
     Column("Calc. conc.", "calculated_concentration", 4, 95),
     Column("Accuracy %", "accuracy", 1, 85),
+    Column("Status", "status", None, 56),
+    Column("Flags", "flags_text", None, 190),
     Column("Used", "used", None, 46),
     Column("Note", "note", None, 200),
 ]
@@ -118,6 +120,8 @@ class ResultsModel(QtCore.QAbstractTableModel):
             return entry.sample_type if entry else ""
         if column.field == "rt_delta":
             return result.rt_delta
+        if column.field == "flags_text":
+            return ", ".join(result.flags)
         if column.field == "response_value":
             component = self.session.method.by_name(result.component)
             return result.response(component.response if component else "area")
@@ -147,13 +151,15 @@ class ResultsModel(QtCore.QAbstractTableModel):
         if role == QtCore.Qt.ItemDataRole.CheckStateRole and index.column() == USED_COLUMN:
             return (QtCore.Qt.CheckState.Checked if result.used
                     else QtCore.Qt.CheckState.Unchecked)
-        if (role == QtCore.Qt.ItemDataRole.DecorationRole
-                and column.field == "confidence"):
-            return confidence_icon(result.confidence)
+        if role == QtCore.Qt.ItemDataRole.DecorationRole:
+            if column.field == "confidence":
+                return confidence_icon(result.confidence)
+            if column.field == "status":
+                return confidence_icon(result.status)
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             if index.column() == USED_COLUMN:
                 return ""
-            if column.field == "confidence":
+            if column.field in ("confidence", "status"):
                 return ""
             if value is None:
                 return "—"
@@ -197,6 +203,31 @@ class ResultsModel(QtCore.QAbstractTableModel):
             self.sigUsedChanged.emit()
             return True
         return False
+
+
+class StatusFilterProxy(QtCore.QSortFilterProxyModel):
+    """Text filter plus an acceptance-status filter, applied together."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._status = "All"
+
+    def set_status(self, status: str) -> None:
+        self._status = status
+        self.invalidateFilter()
+
+    def filterAcceptsRow(self, row, parent):  # noqa: N802 (Qt API)
+        if not super().filterAcceptsRow(row, parent):
+            return False
+        if self._status == "All":
+            return True
+        model = self.sourceModel()
+        result = model.result_at(row)
+        if result is None:
+            return True
+        if self._status == "Not integrated":
+            return not result.found
+        return result.status == self._status
 
 
 class ColumnDialog(QtWidgets.QDialog):
@@ -273,6 +304,12 @@ class ResultsTable(QtWidgets.QWidget):
         self.filter_edit.setPlaceholderText("Filter rows…")
         self.filter_edit.setClearButtonEnabled(True)
         bar.addWidget(self.filter_edit, 1)
+        bar.addWidget(QtWidgets.QLabel("Show"))
+        self.status_combo = QtWidgets.QComboBox()
+        self.status_combo.addItems(["All", "Pass", "Marginal", "Fail",
+                                    "Not integrated"])
+        self.status_combo.setToolTip("Filter by the acceptance status")
+        bar.addWidget(self.status_combo)
         bar.addWidget(QtWidgets.QLabel("View"))
         self.view_combo = QtWidgets.QComboBox()
         self.view_combo.addItems(["By sample", "By component"])
@@ -284,7 +321,7 @@ class ResultsTable(QtWidgets.QWidget):
         layout.addLayout(bar)
 
         self.model = ResultsModel(session, self)
-        self.proxy = QtCore.QSortFilterProxyModel(self)
+        self.proxy = StatusFilterProxy(self)
         self.proxy.setSourceModel(self.model)
         self.proxy.setSortRole(QtCore.Qt.ItemDataRole.EditRole)
         self.proxy.setFilterKeyColumn(-1)
@@ -309,6 +346,7 @@ class ResultsTable(QtWidgets.QWidget):
         layout.addWidget(self.summary)
 
         self.filter_edit.textChanged.connect(self.proxy.setFilterFixedString)
+        self.status_combo.currentTextChanged.connect(self.proxy.set_status)
         self.view_combo.currentIndexChanged.connect(self._apply_view_mode)
         self.btn_columns.clicked.connect(self._choose_columns)
         self.btn_export.clicked.connect(self._export)
@@ -332,13 +370,14 @@ class ResultsTable(QtWidgets.QWidget):
         rows = list(self.session.results)
         found = sum(1 for r in rows if r.found)
         unused = sum(1 for r in rows if not r.used)
-        failed = sum(1 for r in rows if r.confidence == FAIL)
-        marginal = sum(1 for r in rows if r.confidence == MARGINAL)
+        failed = sum(1 for r in rows if r.status == FAIL)
+        marginal = sum(1 for r in rows if r.status == MARGINAL)
+        passed = sum(1 for r in rows if r.status == PASS)
         text = f"{len(rows)} row(s), {found} integrated"
         if unused:
             text += f", {unused} excluded"
-        if failed or marginal:
-            text += f", ion ratio {failed} failed / {marginal} marginal"
+        if passed or failed or marginal:
+            text += f" · {passed} pass, {marginal} marginal, {failed} fail"
         self.summary.setText(text)
 
     # -- selection ------------------------------------------------------------------ #
@@ -391,8 +430,8 @@ class ResultsTable(QtWidgets.QWidget):
                     if column.field == "used":
                         row.append("yes" if result.used else "no")
                         continue
-                    if column.field == "confidence":
-                        row.append(result.confidence)
+                    if column.field in ("confidence", "status"):
+                        row.append(getattr(result, column.field))
                         continue
                     value = self.model._value(result, column)
                     row.append("" if value is None else value)

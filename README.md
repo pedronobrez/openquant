@@ -72,6 +72,21 @@ back as `kUnknown`.
 
 ![calibration](docs/screenshot-calibration.png)
 
+### Review
+
+| Feature | How |
+|---|---|
+| Acceptance criteria | max ΔRT, max accuracy deviation and min S/N, per component or for the whole method |
+| Status | a Pass / Marginal / Fail light per row, with the reasons spelled out in **Flags** |
+| Filter | **Show** narrows the table to Pass, Marginal, Fail or Not integrated |
+| **Statistics** | mean, SD and **%CV** per component, grouped by concentration, sample name or sample type, with the individual values behind them |
+| **Metric plot** | any numeric column against the row order or another column; clicking a point selects its row |
+
+A method that has not been given criteria reports no status at all rather than a
+green light — except for a row that failed to integrate, which always fails.
+
+![review](docs/screenshot-review.png)
+
 
 ### Navigation and display
 
@@ -243,6 +258,7 @@ openpeakview/
   matching.py            picking the acquisition channel that carries a component
   quantify.py            extraction, integration, ratios and the results set
   calibration.py         curve fitting and reading concentrations back
+  statistics.py          grouped mean, SD and %CV
   chemistry.py           formulas, exact masses, isotope patterns, formula finder
   processing.py          smoothing, baseline, centroiding, peak detection, S/N
   ui/shell.py            the window and its workspace tabs
@@ -252,6 +268,9 @@ openpeakview/
   ui/results_table.py    results model, table and column chooser
   ui/integration_panel.py per-component integration settings
   ui/calibration_panel.py the calibration curve
+  ui/acceptance_panel.py per-component acceptance criteria
+  ui/statistics_panel.py grouped statistics
+  ui/metric_plot.py      column against column
   ui/method_workspace.py Method workspace
   ui/samples_workspace.py Samples workspace
   ui/plots.py            chromatogram and spectrum panes (pyqtgraph)

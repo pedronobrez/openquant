@@ -14,7 +14,7 @@ import numpy as np
 from .calibration import Calibration, CalibrationPoint
 from .calibration import fit as fit_curve
 from .calibration import remove_outliers
-from .components import Component, IntegrationParams
+from .components import AcceptanceLimits, Component, IntegrationParams
 from .matching import match_channel
 from .method import ProcessingMethod
 from .processing import (
@@ -71,6 +71,9 @@ class PeakResult:
     actual_concentration: float | None = None
     calculated_concentration: float | None = None
     accuracy: float | None = None
+    #: acceptance review
+    flags: list[str] = field(default_factory=list)
+    status: str = NOT_APPLICABLE
 
     @property
     def key(self) -> tuple[str, str]:
@@ -395,6 +398,67 @@ def compute_ion_ratios(results: ResultsSet, method: ProcessingMethod) -> None:
         tolerance, marginal = method.ion_ratio_limits(component)
         result.confidence = ion_ratio_confidence(
             result.ion_ratio, component.ion_ratio, tolerance, marginal)
+
+
+def evaluate_acceptance(results: ResultsSet, entries: list[SampleEntry],
+                        method: ProcessingMethod) -> None:
+    """
+    Score every row against its component's acceptance criteria.
+
+    A row with no criteria set gets no status at all rather than a green light:
+    a method that has not been told what to check has not checked anything, and
+    saying otherwise would be worse than saying nothing.
+    """
+    by_key = {e.key: e for e in entries}
+    for result in results:
+        result.flags = []
+        result.status = NOT_APPLICABLE
+        component = method.by_name(result.component)
+        if component is None:
+            continue
+        limits = method.acceptance_for(component)
+        checked = False
+
+        if not result.found:
+            result.flags.append("not integrated")
+            result.status = FAIL
+            continue
+
+        if limits.rt_tolerance:
+            checked = True
+            delta = result.rt_delta
+            if delta is not None and abs(delta) > limits.rt_tolerance:
+                result.flags.append(f"RT {delta:+.3f} min")
+
+        if limits.min_snr:
+            checked = True
+            if result.snr < limits.min_snr:
+                result.flags.append(f"S/N {result.snr:.0f}")
+
+        if limits.accuracy_tolerance:
+            entry = by_key.get(result.sample_key)
+            wanted = entry is not None and entry.actual_concentration is not None
+            if wanted:
+                checked = True
+                if result.accuracy is None:
+                    result.flags.append("no concentration")
+                elif abs(result.accuracy - 100.0) > limits.accuracy_tolerance:
+                    result.flags.append(f"accuracy {result.accuracy:.0f}%")
+
+        if result.confidence == FAIL:
+            checked = True
+            result.flags.append(f"ion ratio {result.ion_ratio:.1f}%")
+        elif result.confidence == MARGINAL:
+            checked = True
+
+        if not checked:
+            continue
+        if result.flags:
+            result.status = FAIL
+        elif result.confidence == MARGINAL:
+            result.status = MARGINAL
+        else:
+            result.status = PASS
 
 
 def build_calibrations(results: ResultsSet, entries: list[SampleEntry],

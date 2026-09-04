@@ -7,6 +7,7 @@ import os
 from dataclasses import asdict, dataclass, field
 
 from .components import (
+    AcceptanceLimits,
     Component,
     IntegrationParams,
     load_components,
@@ -25,6 +26,8 @@ class ProcessingMethod:
     concentration_unit: str = "ng/mL"
     #: integration settings every component inherits unless it overrides them
     defaults: IntegrationParams = field(default_factory=IntegrationParams)
+    #: acceptance criteria every component inherits unless it overrides them
+    acceptance: AcceptanceLimits = field(default_factory=AcceptanceLimits)
     #: relative deviation from the expected ion ratio that still passes, and
     #: the wider band that is only flagged as marginal, both in percent
     ion_ratio_tolerance: float = 20.0
@@ -69,6 +72,10 @@ class ProcessingMethod:
                 component.integration = params.copy()
                 touched += 1
         return touched
+
+    def acceptance_for(self, component: Component) -> AcceptanceLimits:
+        """The acceptance criteria actually used for a component."""
+        return component.acceptance or self.acceptance
 
     def qualifiers_for(self, component: Component) -> list[Component]:
         """The qualifier transitions that confirm a given quantifier."""
@@ -119,12 +126,17 @@ class ProcessingMethod:
             for row in raw.pop("components", [])
         ]
         defaults = raw.pop("defaults", None)
+        acceptance = raw.pop("acceptance", None)
         known = {k: v for k, v in raw.items() if k in cls.__dataclass_fields__}
         method = cls(**known)
         if isinstance(defaults, dict):
             method.defaults = IntegrationParams(
                 **{k: v for k, v in defaults.items()
                    if k in IntegrationParams.__dataclass_fields__})
+        if isinstance(acceptance, dict):
+            method.acceptance = AcceptanceLimits(
+                **{k: v for k, v in acceptance.items()
+                   if k in AcceptanceLimits.__dataclass_fields__})
         method.components = components
         return method
 

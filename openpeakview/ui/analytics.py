@@ -11,13 +11,17 @@ from ..quantify import (
     PeakResult,
     apply_calibrations,
     build_calibrations,
+    evaluate_acceptance,
     extract_xic,
     integrate_manually,
     process,
 )
 from ..session import Session
+from .acceptance_panel import AcceptancePanel
 from .calibration_panel import CalibrationPanel
 from .integration_panel import IntegrationPanel
+from .metric_plot import MetricPlotPanel
+from .statistics_panel import StatisticsPanel
 from .peak_review import PeakReviewGrid
 from .results_table import ResultsTable
 
@@ -81,16 +85,22 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         left_layout.addWidget(self.component_tree, 1)
         self.integration = IntegrationPanel()
         left_layout.addWidget(self.integration)
+        self.acceptance = AcceptancePanel()
+        left_layout.addWidget(self.acceptance)
         splitter.addWidget(left)
 
         right = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         self.grid = PeakReviewGrid()
         self.results = ResultsTable(session)
         self.calibration = CalibrationPanel()
+        self.statistics = StatisticsPanel(session)
+        self.metrics = MetricPlotPanel(session)
         self.bottom = QtWidgets.QTabWidget()
         self.bottom.setDocumentMode(True)
         self.bottom.addTab(self.results, "Results")
         self.bottom.addTab(self.calibration, "Calibration")
+        self.bottom.addTab(self.statistics, "Statistics")
+        self.bottom.addTab(self.metrics, "Metric plot")
         right.addWidget(self.grid)
         right.addWidget(self.bottom)
         right.setStretchFactor(0, 3)
@@ -117,6 +127,9 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.calibration.sigSettingsChanged.connect(self._set_curve_settings)
         self.calibration.sigPointToggled.connect(self._toggle_point)
         self.calibration.sigAutoOutliers.connect(self._auto_outliers)
+        self.acceptance.sigApplyComponent.connect(self._apply_acceptance_component)
+        self.acceptance.sigApplyAll.connect(self._apply_acceptance_all)
+        self.metrics.sigPointActivated.connect(self._on_row_selected)
 
         session.sigMethodChanged.connect(self.reload_components)
         session.sigSamplesChanged.connect(self.refresh_grid)
@@ -190,6 +203,8 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         params = self.session.method.integration_for(component)
         self.integration.set_params(params, component.integration is not None)
         self.grid.set_noise_region(params.noise_region)
+        self.acceptance.set_limits(self.session.method.acceptance_for(component),
+                                   component.acceptance is not None)
 
     # -- grid ------------------------------------------------------------------------ #
     def refresh_grid(self) -> None:
@@ -230,6 +245,31 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             message += f" · qualifier of {quantifier.name}"
         self._report(message)
 
+    # -- acceptance ------------------------------------------------------------------ #
+    def _apply_acceptance_component(self, limits) -> None:
+        component = self._component
+        if component is None:
+            return
+        component.acceptance = limits.copy()
+        self.session.notify_method_changed()
+        self._revalidate()
+        self._report(f"Acceptance criteria applied to {component.name}.")
+
+    def _apply_acceptance_all(self, limits) -> None:
+        method = self.session.method
+        method.acceptance = limits.copy()
+        for component in method.components:
+            component.acceptance = None
+        self.session.notify_method_changed()
+        self._show_integration_params()
+        self._revalidate()
+        self._report("Acceptance criteria applied to every component.")
+
+    def _revalidate(self) -> None:
+        evaluate_acceptance(self.session.results, self.session.entries,
+                            self.session.method)
+        self.session.notify_results_changed()
+
     # -- calibration ---------------------------------------------------------------- #
     def refresh_calibration(self) -> None:
         component = self._component
@@ -248,6 +288,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         apply_calibrations(session.results, session.entries, session.method,
                            curves)
         session.calibrations = curves
+        evaluate_acceptance(session.results, session.entries, session.method)
         session.notify_results_changed()
         fitted = sum(1 for c in curves.values() if c.is_fitted)
         if not curves:
@@ -281,6 +322,8 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.session.calibrations[curve.component] = refitted
         apply_calibrations(self.session.results, self.session.entries,
                            self.session.method, self.session.calibrations)
+        evaluate_acceptance(self.session.results, self.session.entries,
+                            self.session.method)
         self.session.notify_results_changed()
 
     def _auto_outliers(self, tolerance: float) -> None:
@@ -293,6 +336,8 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.session.calibrations[curve.component] = cleaned
         apply_calibrations(self.session.results, self.session.entries,
                            self.session.method, self.session.calibrations)
+        evaluate_acceptance(self.session.results, self.session.entries,
+                            self.session.method)
         self.session.notify_results_changed()
         dropped = sum(1 for p in cleaned.points if not p.used)
         self._report(f"{curve.component}: {dropped} standard(s) excluded, "

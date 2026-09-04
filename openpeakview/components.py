@@ -28,6 +28,30 @@ DEFAULT_UNIT = "Da"
 
 
 @dataclass
+class AcceptanceLimits:
+    """
+    What a row has to satisfy to pass review.
+
+    Every limit of zero is off, so a fresh method flags nothing until the
+    criteria are actually stated.
+    """
+
+    #: largest allowed |measured RT - expected RT|, in minutes
+    rt_tolerance: float = 0.0
+    #: largest allowed |accuracy - 100|, in percent
+    accuracy_tolerance: float = 0.0
+    #: smallest acceptable signal-to-noise
+    min_snr: float = 0.0
+
+    @property
+    def is_active(self) -> bool:
+        return bool(self.rt_tolerance or self.accuracy_tolerance or self.min_snr)
+
+    def copy(self) -> "AcceptanceLimits":
+        return AcceptanceLimits(**asdict(self))
+
+
+@dataclass
 class IntegrationParams:
     """
     How one component's peaks are found and measured.
@@ -129,6 +153,8 @@ class Component:
     weighting: str = "1"
     #: integration overrides for this component; None uses the method defaults
     integration: IntegrationParams | None = None
+    #: acceptance overrides for this component; None uses the method defaults
+    acceptance: AcceptanceLimits | None = None
 
     @property
     def is_qualifier(self) -> bool:
@@ -151,6 +177,10 @@ class Component:
             known = {k: v for k, v in self.integration.items()
                      if k in IntegrationParams.__dataclass_fields__}
             self.integration = IntegrationParams(**known)
+        if isinstance(self.acceptance, dict):
+            known = {k: v for k, v in self.acceptance.items()
+                     if k in AcceptanceLimits.__dataclass_fields__}
+            self.acceptance = AcceptanceLimits(**known)
         if not self.precursor and self.formula:
             computed = self.precursor_from_formula()
             if computed is not None:

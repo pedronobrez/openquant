@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from .. import lipidmaps
+from .. import lipidmaps, precursor
 from ..chemistry import ADDUCTS
 from ..components import RESPONSES, Component, load_components, save_components
 from ..session import Session
-from .annotate_dialog import AnnotateDialog, propose
+from .annotate_dialog import AnnotateDialog, _looks_unnamed, propose
 
 COLUMNS = ["Name", "Group", "Precursor", "Fragment", "RT", "± RT", "Tol.",
            "Unit", "Formula", "Adduct", "IS", "Internal standard", "Response",
@@ -326,8 +326,14 @@ class MethodWorkspace(QtWidgets.QWidget):
             self._report("Build the component list first.")
             return
 
+        wanted = [c for c in components if _looks_unnamed(c)]
+        if not wanted:
+            self._report("Every component already has a name.")
+            return
+
+        measured = self._measure_precursors(wanted)
         proposals = propose(components, adduct="[M-H]-", tolerance=10.0,
-                            unit="ppm", only_unnamed=True)
+                            unit="ppm", only_unnamed=True, measured=measured)
         if not proposals:
             self._report("Every component already has a name.")
             return
@@ -344,6 +350,39 @@ class MethodWorkspace(QtWidgets.QWidget):
                 proposal.component.adduct = "[M-H]-"
         self.session.set_components(components)
         self._report(f"{len(accepted)} component(s) annotated.")
+
+    def _measure_precursors(self, components: list) -> dict:
+        """
+        Read each precursor's real mass off the survey scan before searching.
+
+        The method's own list is only good to the decimals it was typed with,
+        which at these masses is around fifteen parts per million — enough for
+        a database search to return a confident, wrong answer.
+        """
+        loaded = self.session.loaded_entries
+        if not loaded:
+            self._report("Open the samples first — the accurate mass is "
+                         "measured from their survey scans.")
+            return {}
+
+        dialog = QtWidgets.QProgressDialog(
+            "Measuring precursor masses from the survey scan…", "Cancel",
+            0, len(components), self)
+        dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        dialog.setMinimumDuration(300)
+
+        def report(done: int, _total: int) -> bool:
+            dialog.setValue(done)
+            QtWidgets.QApplication.processEvents()
+            return not dialog.wasCanceled()
+
+        measured = precursor.measure_all(loaded, components,
+                                         self.session.method, progress=report)
+        dialog.setValue(len(components))
+        reliable = sum(1 for c in measured.values() if c.is_reliable)
+        self._report(f"{reliable} of {len(measured)} precursor(s) measured "
+                     "from the survey scan.")
+        return measured
 
     def _defaults_changed(self, *_args) -> None:
         method = self.session.method

@@ -144,12 +144,25 @@ green light — except for a row that failed to integrate, which always fails.
 | Local LIPID MAPS index | one 21 MB download becomes a 1.3 MB index of 49,969 curated structures; lookups need no network and take under a millisecond |
 | Candidates for a mass | **LIPID MAPS** tab, or right-click a spectrum peak → *Find formula for this peak* |
 | Species, then structures | results group by species, with the isomers that share it underneath — a mass cannot separate them |
+| Accurate mass from the data | before searching, each precursor is measured in the TOF MS survey scan at the time its own transition peaks, and cross-checked against the surviving precursor in the product-ion scan |
 | Annotate a whole table | **Annotate from LIPID MAPS…** in the Method workspace proposes a species for every component still named after its precursor |
 | Traceability | the LM_ID travels with the component and through the CSV |
 
-Two things keep the annotation honest. The search window is never narrower than
-the precursor's own precision — a mass written as `351.20` is known to ±5 mDa,
-so asking for 10 ppm of it would be inventing digits — and a component is only
+Where the survey scan can measure a precursor, the search uses that mass at
+±10 ppm. Where it cannot, the window falls back to the precursor's own
+precision — a mass written as `351.20` is known to ±5 mDa, so asking for 10 ppm
+of it would be inventing digits. On real data the difference decides the
+answer: a transition written as `325.20` matches `FA 18:3;O3` at nominal
+precision, but the survey scan puts the ion at 325.1887 and the product-ion
+scan agrees to within 1 ppm, which rules that species out at 41 ppm.
+
+A survey measurement is only used when the batch agrees on it to within 25 ppm
+and the product-ion scan confirms it. That second check matters: the survey
+sees everything eluting at that moment, so a strong interference inside the
+search window can win, while whatever survives fragmentation must have passed
+through Q1's isolation window first.
+
+A component is only
 offered for automatic naming when exactly one species fits that window. On a
 component table generated from the acquisition method, where precursors carry
 one or two decimals, that means most rows come back marked *needs an accurate
@@ -287,6 +300,7 @@ openpeakview/
   statistics.py          grouped mean, SD and %CV
   chemistry.py           formulas, exact masses, isotope patterns, formula finder
   lipidmaps.py           local LIPID MAPS index and mass lookup
+  precursor.py           measuring a precursor's accurate mass from the survey scan
   processing.py          smoothing, baseline, centroiding, peak detection, S/N
   ui/shell.py            the window and its workspace tabs
   ui/explorer.py         Explorer workspace

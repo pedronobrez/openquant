@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from PyQt6 import QtCore, QtWidgets
 
-COLUMNS = ["Compound", "Sample", "Channel", "m/z", "RT", "Area", "Height",
+COLUMNS = ["Component", "Sample", "Channel", "m/z", "RT", "Area", "Height",
            "Width", "S/N", "Note"]
 
 
@@ -15,7 +15,7 @@ COLUMNS = ["Compound", "Sample", "Channel", "m/z", "RT", "Area", "Height",
 class Result:
     """One table row: an integrated peak of one trace."""
 
-    compound: str
+    component: str
     sample: str
     channel: str
     mz: str
@@ -31,7 +31,7 @@ class Result:
 
     def as_row(self) -> list[str]:
         return [
-            self.compound,
+            self.component,
             self.sample,
             self.channel,
             self.mz,
@@ -126,7 +126,7 @@ class ResultsPanel(QtWidgets.QWidget):
             writer.writerow(COLUMNS)
             for result in self._results:
                 writer.writerow([
-                    result.compound, result.sample, result.channel, result.mz,
+                    result.component, result.sample, result.channel, result.mz,
                     f"{result.rt:.4f}", f"{result.area:.4f}",
                     f"{result.height:.4f}", f"{result.width:.4f}",
                     "" if result.snr == float("inf") else f"{result.snr:.2f}",

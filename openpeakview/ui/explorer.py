@@ -1,11 +1,9 @@
-"""OpenPeakView main window."""
+"""Explorer workspace: the qualitative review of raw samples."""
 
 from __future__ import annotations
 
 import csv
-import json
 import os
-from dataclasses import asdict
 
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
@@ -17,11 +15,14 @@ from ..chemistry import (
     isotope_pattern,
     rank_by_isotope_pattern,
 )
-from ..compounds import Compound
+from ..components import Component
+from ..matching import match_channel
 from ..processing import detect_peaks, integrate, signal_to_noise
-from ..wiff import Channel, Sample, WiffFile
+from ..samples import SampleEntry
+from ..session import Session
+from ..wiff import Channel
 from .chrom_area import ChromatogramArea
-from .compound_panel import CompoundPanel
+from .component_list import ComponentListPanel
 from .formula_panel import FormulaPanel
 from .mass_calc_panel import MassCalcPanel
 from .plots import SpectrumView, Trace, colour
@@ -30,24 +31,30 @@ from .sample_info import SampleInfoPanel
 
 ROLE_REF = QtCore.Qt.ItemDataRole.UserRole
 
-# Largest gap, in Da, between a compound precursor and a method channel
-# precursor that still counts as the same target.
-PRECURSOR_MATCH_DA = 0.7
-
 
 class ChannelRef:
     """A tree node: either the sample TIC or one specific channel."""
 
-    def __init__(self, wiff: WiffFile, sample: Sample, channel: Channel | None):
-        self.wiff = wiff
-        self.sample = sample
+    def __init__(self, entry: SampleEntry, channel: Channel | None):
+        self.entry = entry
         self.channel = channel
-        self.alias = os.path.splitext(os.path.basename(wiff.path))[0]
+
+    @property
+    def sample(self):
+        return self.entry.sample
+
+    @property
+    def alias(self) -> str:
+        return self.entry.name
+
+    @property
+    def filename(self) -> str:
+        return self.entry.filename
 
     @property
     def key(self) -> str:
         idx = "TIC" if self.channel is None else str(self.channel.index)
-        return f"{self.wiff.path}|{self.sample.index}|{idx}"
+        return f"{self.entry.key}|{idx}"
 
     @property
     def label(self) -> str:
@@ -57,20 +64,28 @@ class ChannelRef:
 
     @property
     def full_label(self) -> str:
-        base = os.path.splitext(self.wiff.filename)[0]
+        base = os.path.splitext(self.filename)[0]
         if self.channel is None:
             return f"{base} · sample TIC"
         return f"{base} · {self.channel.info.label}"
 
 
-class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("OpenPeakView")
-        self.resize(1600, 980)
+class ExplorerWorkspace(QtWidgets.QMainWindow):
+    """
+    Qualitative review of the raw data.
 
+    A QMainWindow so it keeps dock widgets and toolbars while living inside a
+    tab of the shell; the shell owns the real window and its menu bar.
+    """
+
+    sigStatus = QtCore.pyqtSignal(str)
+
+    def __init__(self, session: Session, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(QtCore.Qt.WindowType.Widget)
+
+        self.session = session
         self.settings = QtCore.QSettings("OpenPeakView", "OpenPeakView")
-        self.files: list[WiffFile] = []
         self.refs: dict[str, ChannelRef] = {}
         self.xic_defs: list[dict] = []
         self.active_ref: ChannelRef | None = None
@@ -83,6 +98,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_ui()
         self._connect()
         self._restore_settings()
+        self.session.sigSamplesChanged.connect(self.rebuild_tree)
+        self.session.sigMethodChanged.connect(self._refresh_components)
         self._update_status("Open a .wiff file to start.")
 
     # ------------------------------------------------------------------ UI -- #
@@ -97,8 +114,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._build_tree_dock()
         self._build_side_dock()
         self._build_toolbars()
-        self._build_menu()
-        self.statusBar().showMessage("")
 
     def _wrap_chromatogram(self) -> QtWidgets.QWidget:
         box = QtWidgets.QWidget()
@@ -198,13 +213,13 @@ class MainWindow(QtWidgets.QMainWindow):
         dock.setObjectName("dock_side")
         self.tabs = QtWidgets.QTabWidget()
 
-        self.compound_panel = CompoundPanel()
+        self.component_list = ComponentListPanel()
         self.results_panel = ResultsPanel()
         self.mass_calc = MassCalcPanel()
         self.formula_panel = FormulaPanel()
         self.sample_info = SampleInfoPanel()
 
-        self.tabs.addTab(self.compound_panel, "Compounds")
+        self.tabs.addTab(self.component_list, "Components")
         self.tabs.addTab(self.results_panel, "Results")
         self.tabs.addTab(self._build_xic_tab(), "Manual XIC")
         self.tabs.addTab(self._build_peaks_tab(), "Spectrum peaks")
@@ -279,8 +294,6 @@ class MainWindow(QtWidgets.QMainWindow):
         bar = self.addToolBar("Main")
         bar.setObjectName("toolbar_main")
         bar.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.act_open = bar.addAction("Open .wiff")
-        bar.addSeparator()
         self.act_select = QtGui.QAction("Select range", self, checkable=True)
         self.act_select.setToolTip(
             "Dragging selects a range instead of zooming "
@@ -373,38 +386,25 @@ class MainWindow(QtWidgets.QMainWindow):
         self.act_clear_bg = proc.addAction("Clear background")
         proc.addSeparator()
         self.act_detect = proc.addAction("Detect peaks")
+        self.act_exp_chrom = QtGui.QAction("Export chromatograms (CSV)…", self)
+        self.act_exp_spec = QtGui.QAction("Export spectrum (CSV)…", self)
         self.act_detect.setToolTip(
             "Integrate the peaks of every chromatogram trace and fill the Results tab"
         )
 
-    def _build_menu(self) -> None:
-        file_menu = self.menuBar().addMenu("&File")
-        file_menu.addAction(self.act_open)
-        self.act_close = file_menu.addAction("Close all")
-        file_menu.addSeparator()
-        self.act_exp_chrom = file_menu.addAction("Export chromatograms (CSV)…")
-        self.act_exp_spec = file_menu.addAction("Export spectrum (CSV)…")
-        file_menu.addSeparator()
-        file_menu.addAction("Quit").triggered.connect(self.close)
-
-        view_menu = self.menuBar().addMenu("&View")
-        for action in (self.act_autoscale, self.act_norm, self.act_mirror,
-                       self.act_stack, self.act_overview, self.act_labels,
-                       self.act_apex, self.act_relative, self.act_legend):
-            view_menu.addAction(action)
-
-        proc_menu = self.menuBar().addMenu("&Process")
-        for action in (self.act_centroid, self.act_marker, self.act_marker_clear,
-                       self.act_set_bg, self.act_clear_bg, self.act_detect):
-            proc_menu.addAction(action)
-
-        help_menu = self.menuBar().addMenu("&Help")
-        help_menu.addAction("How to use…").triggered.connect(self._show_help)
+    def build_actions(self) -> dict:
+        """Actions the shell adds to its own menus for this workspace."""
+        return {
+            "File": [self.act_exp_chrom, self.act_exp_spec],
+            "View": [self.act_autoscale, self.act_norm, self.act_mirror,
+                     self.act_stack, self.act_overview, self.act_labels,
+                     self.act_apex, self.act_relative, self.act_legend],
+            "Process": [self.act_centroid, self.act_marker, self.act_marker_clear,
+                        self.act_set_bg, self.act_clear_bg, self.act_detect],
+        }
 
     # -------------------------------------------------------------- signals -- #
     def _connect(self) -> None:
-        self.act_open.triggered.connect(self.open_files)
-        self.act_close.triggered.connect(self.close_all)
         self.act_autoscale.triggered.connect(self._autoscale_both)
         self.act_select.toggled.connect(self._set_select_mode)
         self.act_norm.toggled.connect(self._set_normalised)
@@ -459,8 +459,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_xic_clear.clicked.connect(self._clear_xics)
         self.peak_table.cellDoubleClicked.connect(self._peak_double_clicked)
 
-        self.compound_panel.sigExtractAll.connect(self._extract_compounds)
-        self.compound_panel.sigShowCompound.connect(self._show_compound)
+        self.component_list.sigExtractAll.connect(self._extract_components)
+        self.component_list.sigShowComponent.connect(self._show_component)
         self.results_panel.sigResultActivated.connect(self._go_to_result)
 
         self.spectrum.sigIdentifyRequested.connect(self._identify_peak)
@@ -482,10 +482,7 @@ class MainWindow(QtWidgets.QMainWindow):
     # ---------------------------------------------------------- preferences -- #
     def _restore_settings(self) -> None:
         s = self.settings
-        geometry = s.value("window/geometry")
-        if geometry is not None:
-            self.restoreGeometry(geometry)
-        state = s.value("window/state")
+        state = s.value("explorer/state")
         if state is not None:
             self.restoreState(state)
 
@@ -523,16 +520,8 @@ class MainWindow(QtWidgets.QMainWindow):
         stored_ranges = s.value("formula/ranges", "", type=str)
         if stored_ranges:
             try:
-                self._apply_element_ranges(json.loads(stored_ranges))
-            except (ValueError, TypeError):
-                pass
-
-        stored = s.value("compounds/list", "", type=str)
-        if stored:
-            try:
-                self.compound_panel.set_compounds(
-                    [Compound(**row) for row in json.loads(stored)]
-                )
+                import json as _json
+                self._apply_element_ranges(_json.loads(stored_ranges))
             except (ValueError, TypeError):
                 pass
 
@@ -551,10 +540,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._set_smoothing(self.smooth_spin.value())
         self.chrom.set_baseline(self.baseline_spin.value())
 
-    def _save_settings(self) -> None:
+    def save_settings(self) -> None:
         s = self.settings
-        s.setValue("window/geometry", self.saveGeometry())
-        s.setValue("window/state", self.saveState())
+        s.setValue("explorer/state", self.saveState())
         s.setValue("view/normalise", self.act_norm.isChecked())
         s.setValue("view/mirror", self.act_mirror.isChecked())
         s.setValue("view/stacked", self.act_stack.isChecked())
@@ -573,17 +561,14 @@ class MainWindow(QtWidgets.QMainWindow):
         s.setValue("xic/unit", self.xic_unit.currentText())
         s.setValue("xic/all_channels", self.xic_all_channels.isChecked())
         s.setValue("chrom/mode", self.mode_combo.currentText())
-        s.setValue(
-            "compounds/list",
-            json.dumps([asdict(c) for c in self.compound_panel.compounds()]),
-        )
         s.setValue("formula/tolerance", self.formula_panel.tol_spin.value())
         s.setValue("formula/unit", self.formula_panel.unit_combo.currentText())
         s.setValue("formula/adduct", self.formula_panel.adduct_combo.currentText())
         s.setValue("formula/even_electron", self.formula_panel.even_electron.isChecked())
         s.setValue("formula/golden_rules", self.formula_panel.golden_rules.isChecked())
         s.setValue("formula/use_isotopes", self.formula_panel.use_isotopes.isChecked())
-        s.setValue("formula/ranges", json.dumps(self.formula_panel.ranges()))
+        import json as _json
+        s.setValue("formula/ranges", _json.dumps(self.formula_panel.ranges()))
 
     def _apply_element_ranges(self, ranges: dict) -> None:
         """Write stored element ranges back into the finder's table."""
@@ -600,66 +585,56 @@ class MainWindow(QtWidgets.QMainWindow):
     def _remember_dir(self, path: str) -> None:
         self.settings.setValue("io/last_dir", os.path.dirname(path))
 
-    # --------------------------------------------------------------- files --- #
-    def open_files(self) -> None:
-        paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
-            self, "Open SCIEX files", self._last_dir(),
-            "wiff files (*.wiff);;All files (*)"
-        )
-        for path in paths:
-            self.load_file(path)
-        if paths:
-            self._remember_dir(paths[0])
-
-    def load_file(self, path: str) -> None:
-        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
-        try:
-            wiff = WiffFile(path)
-            self.files.append(wiff)
-            self._add_file_to_tree(wiff)
-        except Exception as exc:  # pragma: no cover - depends on the file
-            QtWidgets.QMessageBox.critical(
-                self, "Could not open", f"{os.path.basename(path)}\n\n{exc}"
-            )
-        finally:
-            QtWidgets.QApplication.restoreOverrideCursor()
-
-    def _add_file_to_tree(self, wiff: WiffFile) -> None:
+    # -------------------------------------------------------- samples/tree --- #
+    def rebuild_tree(self) -> None:
+        """Rebuild the sample and channel tree from the session."""
+        # A node keeps whatever the user had set; a node that was never in the
+        # tree is new, and a new sample comes in with its TIC shown.
+        previous = self._tree_items()
+        checked = {k for k, item in previous.items()
+                   if item.checkState(0) == QtCore.Qt.CheckState.Checked}
         self.tree.blockSignals(True)
-        file_item = QtWidgets.QTreeWidgetItem(self.tree, [wiff.filename])
-        font = file_item.font(0)
-        font.setBold(True)
-        file_item.setFont(0, font)
+        self.tree.clear()
+        self.refs.clear()
 
-        for s in range(len(wiff.sample_names)):
-            sample = wiff.sample(s)
+        by_file: dict[str, QtWidgets.QTreeWidgetItem] = {}
+        for entry in self.session.entries:
+            if not entry.is_loaded:
+                continue
+            file_item = by_file.get(entry.path)
+            if file_item is None:
+                file_item = QtWidgets.QTreeWidgetItem(self.tree, [entry.filename])
+                font = file_item.font(0)
+                font.setBold(True)
+                file_item.setFont(0, font)
+                by_file[entry.path] = file_item
+
+            sample = entry.sample
             sample_item = QtWidgets.QTreeWidgetItem(
-                file_item, [f"{sample.name}  ({sample.instrument})"]
+                file_item, [f"{entry.name}  ({sample.instrument})"]
             )
-            self._add_leaf(sample_item, "Sample TIC (all channels)",
-                           ChannelRef(wiff, sample, None), checked=True)
+            tic = ChannelRef(entry, None)
+            self._add_leaf(sample_item, "Sample TIC (all channels)", tic,
+                           checked=tic.key in checked or tic.key not in previous)
             for channel in sample.channels:
-                self._add_leaf(sample_item, channel.info.label,
-                               ChannelRef(wiff, sample, channel), checked=False)
+                ref = ChannelRef(entry, channel)
+                self._add_leaf(sample_item, channel.info.label, ref,
+                               checked=ref.key in checked)
             sample_item.setExpanded(True)
-        file_item.setExpanded(True)
+            file_item.setExpanded(True)
         self.tree.blockSignals(False)
-        self._recompute_aliases()
         self._rebuild_active_combo()
         self.refresh_chromatogram()
 
-    def _recompute_aliases(self) -> None:
-        """
-        Shorten the names used in the legend by dropping the prefix shared by
-        every open file: `..._demo_QC001` and `..._demo_S001` become
-        `QC001` and `S001`.
-        """
-        stems = [os.path.splitext(os.path.basename(w.path))[0] for w in self.files]
-        prefix = os.path.commonprefix(stems) if len(stems) > 1 else ""
-        prefix = prefix[: prefix.rfind("_") + 1] if "_" in prefix else ""
-        for ref in self.refs.values():
-            stem = os.path.splitext(os.path.basename(ref.wiff.path))[0]
-            ref.alias = stem[len(prefix):] or stem
+    def _tree_items(self) -> dict:
+        out = {}
+        it = QtWidgets.QTreeWidgetItemIterator(self.tree)
+        while it.value():
+            key = it.value().data(0, ROLE_REF)
+            if key:
+                out[key] = it.value()
+            it += 1
+        return out
 
     def _add_leaf(self, parent, text: str, ref: ChannelRef, checked: bool) -> None:
         item = QtWidgets.QTreeWidgetItem(parent, [text])
@@ -671,10 +646,8 @@ class MainWindow(QtWidgets.QMainWindow):
         item.setData(0, ROLE_REF, ref.key)
         self.refs[ref.key] = ref
 
-    def close_all(self) -> None:
-        for wiff in self.files:
-            wiff.close()
-        self.files.clear()
+    def clear_views(self) -> None:
+        """Drop everything that referred to samples that are no longer open."""
         self.refs.clear()
         self.xic_defs.clear()
         self.active_ref = None
@@ -690,6 +663,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.results_panel.clear()
         self.sample_info.clear()
         self._update_status("No files open.")
+
+    def _refresh_components(self) -> None:
+        self.component_list.set_components(self.session.method.components)
 
     # ----------------------------------------------------------------- tree -- #
     def _checked_refs(self) -> list[ChannelRef]:
@@ -708,16 +684,13 @@ class MainWindow(QtWidgets.QMainWindow):
         """One reference per checked sample, in tree order."""
         seen, out = set(), []
         for ref in self._checked_refs():
-            identity = (ref.wiff.path, ref.sample.index)
-            if identity not in seen:
-                seen.add(identity)
+            if ref.entry.key not in seen:
+                seen.add(ref.entry.key)
                 out.append(ref)
         if out:
             return out
-        for wiff in self.files:  # nothing checked: fall back to every sample
-            for index in range(len(wiff.sample_names)):
-                out.append(ChannelRef(wiff, wiff.sample(index), None))
-        return out
+        # nothing checked: fall back to every loaded sample
+        return [ChannelRef(e, None) for e in self.session.loaded_entries]
 
     def _bulk_check(self, predicate) -> None:
         self.tree.blockSignals(True)
@@ -1079,66 +1052,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.xic_list.clear()
         self.refresh_chromatogram()
 
-    # ------------------------------------------------------------- compounds -- #
-    @staticmethod
-    def _covers_rt(channel: Channel, rt: float | None) -> bool:
-        """Was the channel acquired at that time? With no RT given, accept any."""
-        if rt is None:
-            return True
-        times = channel.rt
-        return bool(times.size and times[0] <= rt <= times[-1])
-
-    def _match_channel(self, sample: Sample, compound: Compound) -> Channel | None:
-        """
-        Pick the method channel that corresponds to the compound.
-
-        Scheduled methods repeat the same precursor in different periods — on
-        this instrument, for instance, 313.24 shows up in two experiments, one
-        covering 0–13 min and another 13–21.5 min. That is why the expected
-        retention time is part of the criterion: matching on precursor alone
-        would pick the wrong channel, one that was not even acquired then.
-        """
-        target = compound.target_mz
-
-        def candidates(require_rt: bool):
-            found = []
-            for channel in sample.channels:
-                precursor = channel.info.precursor
-                if precursor is None:
-                    continue
-                delta = abs(precursor - compound.precursor)
-                if delta > PRECURSOR_MATCH_DA:
-                    continue
-                if not (channel.info.start_mass <= target <= channel.info.end_mass):
-                    continue
-                if require_rt and not self._covers_rt(channel, compound.rt):
-                    continue
-                found.append((delta, channel.index, channel))
-            return sorted(found)
-
-        matches = candidates(require_rt=True) or candidates(require_rt=False)
-        if matches:
-            return matches[0][2]
-
-        ms1 = [
-            c for c in sample.channels
-            if c.info.is_ms1 and c.info.start_mass <= target <= c.info.end_mass
-        ]
-        for channel in ms1:
-            if self._covers_rt(channel, compound.rt):
-                return channel
-        return ms1[0] if ms1 else None
-
-    def _integrate_compound(self, ref: ChannelRef, channel: Channel,
-                            compound: Compound) -> Result:
-        mz_lo, mz_hi = compound.mass_window()
+    # ------------------------------------------------------------ components -- #
+    def _integrate_component(self, ref: ChannelRef, channel: Channel,
+                            component: Component) -> Result:
+        mz_lo, mz_hi = component.mass_window()
         mz_text = f"{(mz_lo + mz_hi) / 2:.4f}"
 
         def empty(note: str) -> Result:
             return Result(
-                compound=compound.name, sample=ref.alias,
+                component=component.name, sample=ref.alias,
                 channel=channel.info.short_label, mz=mz_text,
-                rt=compound.rt or 0.0, area=0.0, height=0.0, width=0.0,
+                rt=component.rt or 0.0, area=0.0, height=0.0, width=0.0,
                 snr=0.0, note=note,
             )
 
@@ -1146,7 +1070,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if x.size == 0:
             return empty("no data")
 
-        window = compound.rt_window()
+        window = component.rt_window()
         if window is None:
             mask = np.ones(x.size, dtype=bool)
         else:
@@ -1163,23 +1087,23 @@ class MainWindow(QtWidgets.QMainWindow):
 
         peak = peaks[0]
         return Result(
-            compound=compound.name, sample=ref.alias,
+            component=component.name, sample=ref.alias,
             channel=channel.info.short_label, mz=mz_text,
             rt=peak.apex_rt, area=peak.area, height=peak.height,
             width=peak.width, snr=peak.snr,
             start_rt=peak.start_rt, end_rt=peak.end_rt,
         )
 
-    def _extract_compounds(self, compounds: list[Compound]) -> None:
-        if not compounds:
-            self._update_status("No valid compound in the list.")
+    def _extract_components(self, components: list[Component]) -> None:
+        if not components:
+            self._update_status("No valid component in the list.")
             return
         samples = self._checked_samples()
         if not samples:
             self._update_status("Open at least one file before extracting.")
             return
 
-        total = len(compounds) * len(samples)
+        total = len(components) * len(samples)
         progress = QtWidgets.QProgressDialog(
             "Extracting and integrating…", "Cancel", 0, total, self
         )
@@ -1189,19 +1113,19 @@ class MainWindow(QtWidgets.QMainWindow):
         results: list[Result] = []
         done = 0
         for ref in samples:
-            for compound in compounds:
+            for component in components:
                 if progress.wasCanceled():
                     break
-                channel = self._match_channel(ref.sample, compound)
+                channel = match_channel(ref.sample, component)
                 if channel is None:
                     results.append(Result(
-                        compound=compound.name, sample=ref.alias, channel="—",
-                        mz=f"{compound.target_mz:.4f}", rt=compound.rt or 0.0,
+                        component=component.name, sample=ref.alias, channel="—",
+                        mz=f"{component.target_mz:.4f}", rt=component.rt or 0.0,
                         area=0.0, height=0.0, width=0.0, snr=0.0,
                         note="no matching channel",
                     ))
                 else:
-                    results.append(self._integrate_compound(ref, channel, compound))
+                    results.append(self._integrate_component(ref, channel, component))
                 done += 1
                 progress.setValue(done)
                 QtWidgets.QApplication.processEvents()
@@ -1217,26 +1141,21 @@ class MainWindow(QtWidgets.QMainWindow):
             f"{found} with a detected peak."
         )
 
-    def _show_compound(self, compound: Compound) -> None:
-        """Plot one compound's XIC across every checked sample."""
+    def _show_component(self, component: Component) -> None:
+        """Plot one component's XIC across every checked sample."""
         samples = self._checked_samples()
         targets = []
         for ref in samples:
-            channel = self._match_channel(ref.sample, compound)
+            channel = match_channel(ref.sample, component)
             if channel is not None:
-                targets.append(ChannelRef(ref.wiff, ref.sample, channel))
+                targets.append(ChannelRef(ref.entry, channel))
         if not targets:
-            self._update_status(f"No channel matches {compound.name}.")
+            self._update_status(f"No channel matches {component.name}.")
             return
-        for target in targets:
-            target.alias = next(
-                (r.alias for r in self.refs.values()
-                 if r.wiff.path == target.wiff.path), target.alias
-            )
-        mz_lo, mz_hi = compound.mass_window()
+        mz_lo, mz_hi = component.mass_window()
         self._add_xic(mz_lo, mz_hi,
-                      f"{compound.name} {compound.target_mz:.4f}", targets)
-        window = compound.rt_window()
+                      f"{component.name} {component.target_mz:.4f}", targets)
+        window = component.rt_window()
         if window:
             self.chrom.set_x_range(*window)
 
@@ -1247,7 +1166,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.chrom.set_x_range(result.start_rt - span, result.end_rt + span)
             self.chrom.mark(result.rt)
         self._update_status(
-            f"{result.compound} · {result.sample} · {result.channel} · "
+            f"{result.component} · {result.sample} · {result.channel} · "
             f"RT {result.rt:.3f} min · area {result.area:,.0f}"
         )
 
@@ -1272,7 +1191,7 @@ class MainWindow(QtWidgets.QMainWindow):
             for peak in peaks:
                 results.append(
                     Result(
-                        compound="(detected)", sample=sample_name,
+                        component="(detected)", sample=sample_name,
                         channel=channel_name, mz="—", rt=peak.apex_rt,
                         area=peak.area, height=peak.height, width=peak.width,
                         snr=peak.snr, trace_key=trace.key,
@@ -1446,9 +1365,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 writer.writerow([])
         self._update_status(f"Exported to {path}")
 
-    def _update_status(self, text: str) -> None:
-        self.statusBar().showMessage(text)
-
     def _show_help(self) -> None:
         QtWidgets.QMessageBox.information(
             self,
@@ -1465,10 +1381,10 @@ class MainWindow(QtWidgets.QMainWindow):
             "• with a marker present, other peaks are labelled by their distance "
             "to it — that is how neutral losses and isotope spacings are read<br>"
             "• double-click a row of the Spectrum peaks tab to extract its XIC<br><br>"
-            "<b>Compounds</b><br>"
-            "• build or import the list in the Compounds tab<br>"
+            "<b>Components</b><br>"
+            "• the list comes from the Method workspace and is shared<br>"
             "• “Extract and integrate all” runs it over every checked sample<br>"
-            "• double-click a row to show that compound's XIC<br><br>"
+            "• double-click a row to show that component's XIC<br><br>"
             "<b>View</b><br>"
             "• Stack gives each trace its own pane with the time axes locked<br>"
             "• Overview adds a navigator showing where the current zoom sits<br>"
@@ -1487,8 +1403,6 @@ class MainWindow(QtWidgets.QMainWindow):
             "• Centroid turns the profile spectrum into sticks",
         )
 
-    def closeEvent(self, event):  # noqa: N802 (Qt API)
-        self._save_settings()
-        for wiff in self.files:
-            wiff.close()
-        super().closeEvent(event)
+    def _update_status(self, text: str) -> None:
+        self.statusBar().showMessage(text)
+        self.sigStatus.emit(text)

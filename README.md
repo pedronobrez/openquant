@@ -9,6 +9,25 @@ Runs on **macOS (Apple Silicon included)**, Linux and Windows.
 
 ![screenshot](docs/screenshot.png)
 
+## Workspaces
+
+The window is organised the way SCIEX OS is, with the workspaces on tabs and a
+single session behind them, so the sample list and the component table exist
+once rather than once per view.
+
+| Workspace | What it is for |
+|---|---|
+| **Explorer** | qualitative review of the raw data: chromatograms, spectra, XICs, chemistry |
+| **Method** | the component table — what to extract, where, and how the result is reported |
+| **Samples** | the batch: sample type, expected concentration, dilution |
+
+`Ctrl+1/2/3` switch between them. `File ▸ Save project` writes a `.opvproj`
+holding the method and the batch, so the annotation survives closing the
+program — none of it is recorded in the raw file, where every injection comes
+back as `kUnknown`.
+
+![method workspace](docs/screenshot-method.png)
+
 ## What it does
 
 ### Navigation and display
@@ -36,7 +55,9 @@ Runs on **macOS (Apple Silicon included)**, Linux and Windows.
 
 | Feature | How |
 |---|---|
-| Target compound list | **Compounds** tab: name, precursor, fragment, RT, window, tolerance |
+| Component table | **Method** workspace: name, group, precursor, fragment, RT, window, tolerance, formula, adduct, internal standard, response |
+| Build the table from the acquisition method | **Generate from acquisition method** — one component per product-ion channel, instead of typing an 80-transition method by hand |
+| Formula instead of a mass | type `C18H30D4O4` with an adduct and the precursor is computed — how a labelled internal standard is entered |
 | Import/export the list | CSV, headers in English or Portuguese |
 | Batch extraction | **Extract and integrate all** runs the list over every checked sample |
 | Show one compound | double-click a row for its XIC across all samples |
@@ -162,17 +183,24 @@ the files to mzML with `msconvert` and read the mzML with
 openpeakview/
   bootstrap.py           .NET runtime setup and the Clearcore2 patch
   wiff.py                WiffFile / Sample / Channel → numpy arrays
-  compounds.py           target compound list (CSV)
+  components.py          the component table (CSV)
+  method.py              processing method: components plus project defaults
+  samples.py             batch entries: sample type, concentration, dilution
+  session.py             the state shared by every workspace, and the project file
+  matching.py            picking the acquisition channel that carries a component
   chemistry.py           formulas, exact masses, isotope patterns, formula finder
   processing.py          smoothing, baseline, centroiding, peak detection, S/N
+  ui/shell.py            the window and its workspace tabs
+  ui/explorer.py         Explorer workspace
+  ui/method_workspace.py Method workspace
+  ui/samples_workspace.py Samples workspace
   ui/plots.py            chromatogram and spectrum panes (pyqtgraph)
   ui/chrom_area.py       stacked panes with linked time axes
-  ui/compound_panel.py   compound manager
+  ui/component_list.py   read-only component list for the Explorer
   ui/mass_calc_panel.py  mass calculator
   ui/formula_panel.py    formula finder
   ui/results_panel.py    results table
   ui/sample_info.py      sample information
-  ui/main_window.py      main window
   app.py                 entry point
 tests/                   pytest suite
 ```

@@ -22,9 +22,9 @@ def main(argv: list[str] | None = None) -> int:
     app = QtWidgets.QApplication(sys.argv[:1])
     app.setApplicationName("OpenPeakView")
 
-    from .ui.main_window import MainWindow
+    from .ui.shell import MainShell
 
-    window = MainWindow()
+    window = MainShell()
     window.show()
     for path in args.files:
         window.load_file(path)

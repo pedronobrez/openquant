@@ -1,0 +1,331 @@
+"""
+Peak review: one chromatogram per sample for the selected component.
+
+This is the view MultiQuant is built around — the same analyte across the whole
+batch at once, so an outlier stands out against its neighbours instead of
+having to be hunted down sample by sample.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pyqtgraph as pg
+from PyQt6 import QtCore, QtGui, QtWidgets
+
+from ..quantify import PeakResult
+
+FOUND_PEN = "#1f77b4"
+MISSING_PEN = "#b0b0b0"
+SELECTED_BORDER = "#3b6ec8"
+
+
+class PeakPanel(pg.PlotWidget):
+    """One sample's chromatogram, with its integrated peak shaded."""
+
+    sigClicked = QtCore.pyqtSignal(str)        # sample key
+    sigDoubleClicked = QtCore.pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent, background="w")
+        self.sample_key = ""
+        self.showGrid(x=True, y=True, alpha=0.12)
+        self.setMenuEnabled(False)
+        self.hideButtons()
+        self.getAxis("left").setWidth(46)
+        # A QFont built with an empty family name crashes Qt when the axis
+        # measures its tick labels; start from the default font instead.
+        tick_font = QtGui.QFont()
+        tick_font.setPointSize(7)
+        for axis in ("bottom", "left"):
+            self.getAxis(axis).setPen(pg.mkPen("#bbb"))
+            self.getAxis(axis).setTextPen(pg.mkPen("#555"))
+            self.getAxis(axis).setStyle(tickFont=tick_font)
+
+        self._curve = self.plot([], [], pen=pg.mkPen(FOUND_PEN, width=1.3))
+        self._band = pg.LinearRegionItem(brush=pg.mkBrush(44, 160, 44, 45),
+                                         pen=pg.mkPen("#2ca02c", width=1),
+                                         movable=False)
+        self._band.setZValue(-10)
+        self._band.hide()
+        self.addItem(self._band, ignoreBounds=True)
+        self._expected = pg.LinearRegionItem(brush=pg.mkBrush(120, 120, 200, 28),
+                                             pen=pg.mkPen(None), movable=False)
+        self._expected.setZValue(-20)
+        self._expected.hide()
+        self.addItem(self._expected, ignoreBounds=True)
+        self.set_selected(False)
+
+    # -- content ---------------------------------------------------------------- #
+    def clear_panel(self) -> None:
+        self.sample_key = ""
+        self._curve.setData([], [])
+        self._band.hide()
+        self._expected.hide()
+        self.setTitle("")
+
+    def set_data(self, result: PeakResult, x: np.ndarray, y: np.ndarray,
+                 expected: tuple[float, float] | None) -> None:
+        self.sample_key = result.sample_key
+        found = result.found
+        self._curve.setData(x, y, pen=pg.mkPen(FOUND_PEN if found else MISSING_PEN,
+                                               width=1.3))
+        if found:
+            self._band.setRegion((result.start_rt, result.end_rt))
+            self._band.show()
+        else:
+            self._band.hide()
+        if expected is not None:
+            self._expected.setRegion(expected)
+            self._expected.show()
+        else:
+            self._expected.hide()
+
+        if found:
+            manual = " ✎" if result.manual else ""
+            title = (f"{result.sample_name}{manual}   {result.area:,.0f}"
+                     f"   S/N {result.snr:.0f}   {result.rt:.2f}")
+            colour = "#222"
+        else:
+            title = f"{result.sample_name}   {result.note or 'not found'}"
+            colour = "#b03030"
+        self.setTitle(title, color=colour, size="8pt")
+
+    def set_selected(self, selected: bool) -> None:
+        self.setStyleSheet(
+            f"border: 2px solid {SELECTED_BORDER};" if selected
+            else "border: 1px solid #ddd;"
+        )
+
+    # -- interaction -------------------------------------------------------------- #
+    def mousePressEvent(self, event):  # noqa: N802 (Qt API)
+        if self.sample_key:
+            self.sigClicked.emit(self.sample_key)
+        super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):  # noqa: N802 (Qt API)
+        if self.sample_key:
+            self.sigDoubleClicked.emit(self.sample_key)
+        super().mouseDoubleClickEvent(event)
+
+
+class PeakReviewGrid(QtWidgets.QWidget):
+    """A page of peak panels, with the layout and paging controls."""
+
+    sigSelected = QtCore.pyqtSignal(str)   # sample key
+    sigMagnified = QtCore.pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._panels: list[PeakPanel] = []
+        self._items: list[tuple] = []       # (result, x, y, expected)
+        self._page = 0
+        self._selected = ""
+        self._shared_y = False
+        self._margin = 3.0     # window widths shown on each side
+        self._linked_x = True
+        self._syncing = False
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(4)
+
+        bar = QtWidgets.QHBoxLayout()
+        self.title = QtWidgets.QLabel("—")
+        font = self.title.font()
+        font.setBold(True)
+        self.title.setFont(font)
+        bar.addWidget(self.title)
+        bar.addStretch(1)
+        bar.addWidget(QtWidgets.QLabel("Columns"))
+        self.col_spin = QtWidgets.QSpinBox()
+        self.col_spin.setRange(1, 8)
+        self.col_spin.setValue(3)
+        bar.addWidget(self.col_spin)
+        bar.addWidget(QtWidgets.QLabel("Rows"))
+        self.row_spin = QtWidgets.QSpinBox()
+        self.row_spin.setRange(1, 8)
+        self.row_spin.setValue(2)
+        bar.addWidget(self.row_spin)
+        bar.addSpacing(12)
+        self.chk_shared_y = QtWidgets.QCheckBox("Same Y")
+        self.chk_shared_y.setToolTip(
+            "One intensity scale for every panel, so heights compare directly")
+        bar.addWidget(self.chk_shared_y)
+        bar.addSpacing(12)
+        bar.addWidget(QtWidgets.QLabel("Zoom"))
+        self.zoom_combo = QtWidgets.QComboBox()
+        self.zoom_combo.addItems(["Expected window", "Peak", "Whole run"])
+        self.zoom_combo.setToolTip(
+            "How much time each panel shows: the window the component is "
+            "expected in, tight around the integrated peak, or everything")
+        bar.addWidget(self.zoom_combo)
+        bar.addSpacing(12)
+        self.chk_link_x = QtWidgets.QCheckBox("Link X")
+        self.chk_link_x.setChecked(True)
+        self.chk_link_x.setToolTip("Zooming one panel zooms them all")
+        bar.addWidget(self.chk_link_x)
+        bar.addSpacing(12)
+        self.btn_prev = QtWidgets.QToolButton()
+        self.btn_prev.setText("◀")
+        self.page_label = QtWidgets.QLabel("0/0")
+        self.btn_next = QtWidgets.QToolButton()
+        self.btn_next.setText("▶")
+        bar.addWidget(self.btn_prev)
+        bar.addWidget(self.page_label)
+        bar.addWidget(self.btn_next)
+        layout.addLayout(bar)
+
+        self.container = QtWidgets.QWidget()
+        self.grid = QtWidgets.QGridLayout(self.container)
+        self.grid.setContentsMargins(0, 0, 0, 0)
+        self.grid.setSpacing(4)
+        layout.addWidget(self.container, 1)
+
+        self.col_spin.valueChanged.connect(self._relayout)
+        self.row_spin.valueChanged.connect(self._relayout)
+        self.chk_shared_y.toggled.connect(self._set_shared_y)
+        self.zoom_combo.currentIndexChanged.connect(lambda _i: self._fill())
+        self.chk_link_x.toggled.connect(self._set_link_x)
+        self.btn_prev.clicked.connect(lambda: self.set_page(self._page - 1))
+        self.btn_next.clicked.connect(lambda: self.set_page(self._page + 1))
+        self._relayout()
+
+    # -- layout ------------------------------------------------------------------- #
+    @property
+    def page_size(self) -> int:
+        return self.col_spin.value() * self.row_spin.value()
+
+    @property
+    def page_count(self) -> int:
+        if not self._items:
+            return 0
+        return (len(self._items) + self.page_size - 1) // self.page_size
+
+    def _relayout(self) -> None:
+        """Rebuild the panel widgets for the current rows x columns."""
+        while self.grid.count():
+            item = self.grid.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+        self._panels.clear()
+
+        columns, rows = self.col_spin.value(), self.row_spin.value()
+        for index in range(columns * rows):
+            panel = PeakPanel()
+            panel.sigClicked.connect(self._on_panel_clicked)
+            panel.sigDoubleClicked.connect(self.sigMagnified)
+            panel.getViewBox().sigXRangeChanged.connect(
+                lambda _vb, rng, p=panel: self._link(p, rng))
+            self.grid.addWidget(panel, index // columns, index % columns)
+            self._panels.append(panel)
+        self.set_page(self._page)
+
+    def _link(self, source: PeakPanel, rng) -> None:
+        if not self._linked_x or self._syncing:
+            return
+        self._syncing = True
+        try:
+            for panel in self._panels:
+                if panel is not source and panel.sample_key:
+                    panel.getViewBox().setXRange(rng[0], rng[1], padding=0)
+        finally:
+            self._syncing = False
+
+    def _set_link_x(self, enabled: bool) -> None:
+        self._linked_x = enabled
+
+    def _set_shared_y(self, enabled: bool) -> None:
+        self._shared_y = enabled
+        self._fill()
+
+    # -- content -------------------------------------------------------------------- #
+    def set_items(self, title: str, items: list[tuple]) -> None:
+        """`items` are (result, x, y, expected window) tuples, one per sample."""
+        self.title.setText(title)
+        self._items = list(items)
+        self._page = 0
+        self._fill()
+
+    def clear(self) -> None:
+        self.set_items("—", [])
+
+    def set_page(self, page: int) -> None:
+        self._page = int(np.clip(page, 0, max(self.page_count - 1, 0)))
+        self._fill()
+
+    def _fill(self) -> None:
+        start = self._page * self.page_size
+        page_items = self._items[start:start + self.page_size]
+
+        ceiling = 0.0
+        if self._shared_y:
+            for _result, _x, y, _expected in self._items:
+                if y.size:
+                    ceiling = max(ceiling, float(np.max(y)))
+
+        for panel, item in zip(self._panels, page_items):
+            result, x, y, expected = item
+            panel.set_data(result, x, y, expected)
+            panel.set_selected(result.sample_key == self._selected)
+            panel.enableAutoRange()
+            panel.autoRange()
+            span = self._x_range(result, expected)
+            if span is not None:
+                panel.setXRange(*span, padding=0)
+            if self._shared_y and ceiling > 0:
+                panel.setYRange(0, ceiling * 1.05, padding=0)
+            panel.show()
+        for panel in self._panels[len(page_items):]:
+            panel.clear_panel()
+            panel.set_selected(False)
+            panel.hide()
+
+        self.page_label.setText(f"{self._page + 1}/{max(self.page_count, 1)}")
+        self.btn_prev.setEnabled(self._page > 0)
+        self.btn_next.setEnabled(self._page + 1 < self.page_count)
+
+    def _x_range(self, result, expected) -> tuple[float, float] | None:
+        """
+        The time span a panel shows.
+
+        Defaulting to the whole run makes every peak a sliver: the point of the
+        grid is comparing the same peak across samples, so the expected window
+        is the useful default, with the run available when the peak has to be
+        hunted down.
+        """
+        mode = self.zoom_combo.currentIndex()
+        if mode == 2:
+            return None
+        if mode == 1 and result.found and result.end_rt > result.start_rt:
+            width = result.end_rt - result.start_rt
+            return result.start_rt - width, result.end_rt + width
+        if expected is not None:
+            width = max(expected[1] - expected[0], 1e-6)
+            centre = (expected[0] + expected[1]) / 2
+            half = width / 2 * (1 + self._margin)
+            return centre - half, centre + half
+        if result.found and result.end_rt > result.start_rt:
+            width = result.end_rt - result.start_rt
+            return result.start_rt - width, result.end_rt + width
+        return None
+
+    # -- selection --------------------------------------------------------------- #
+    def _on_panel_clicked(self, sample_key: str) -> None:
+        self.select(sample_key)
+        self.sigSelected.emit(sample_key)
+
+    def select(self, sample_key: str) -> None:
+        """Highlight a sample, paging to it when it is not on screen."""
+        self._selected = sample_key
+        index = next((i for i, item in enumerate(self._items)
+                      if item[0].sample_key == sample_key), None)
+        if index is not None:
+            page = index // self.page_size
+            if page != self._page:
+                self._page = page
+                self._fill()
+                return
+        for panel in self._panels:
+            panel.set_selected(panel.sample_key == sample_key)

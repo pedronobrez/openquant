@@ -26,6 +26,18 @@ class Info:
     def is_ms1(self) -> bool:
         return self.precursor is None
 
+    @property
+    def name(self) -> str:
+        return "TOF MS" if self.is_ms1 else "TOF PI"
+
+    @property
+    def short_label(self) -> str:
+        return self.name if self.is_ms1 else f"{self.name} {self.precursor:.2f}"
+
+    @property
+    def label(self) -> str:
+        return f"{self.short_label}  {self.start_mass:.0f}-{self.end_mass:.0f}"
+
 
 class Channel:
     def __init__(self, index, precursor, start_mass, end_mass, rt0, rt1, n=100):

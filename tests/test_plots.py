@@ -115,3 +115,94 @@ def test_overlay_can_be_set_and_cleared(qapp):
     assert view.has_overlay
     view.clear_overlay()
     assert not view.has_overlay
+
+
+def test_peak_panels_survive_repainting(qapp):
+    """
+    Regression: axis tick fonts built from an empty family name segfaulted Qt
+    the moment a panel measured its tick labels.
+    """
+    from openpeakview.quantify import PeakResult
+    from openpeakview.ui.peak_review import PeakReviewGrid
+
+    grid = PeakReviewGrid()
+    grid.resize(900, 500)
+    grid.show()
+    x = np.linspace(12.0, 14.0, 300)
+    y = np.exp(-((x - 13.0) ** 2) / 0.005) * 1000
+    items = []
+    for i in range(6):
+        result = PeakResult(f"s{i}", f"sample {i}", "Oxy", area=1000.0 + i,
+                            rt=13.0, start_rt=12.8, end_rt=13.2, snr=20.0)
+        items.append((result, x, y, (12.7, 13.3)))
+    grid.set_items("Oxy", items)
+    for _ in range(5):
+        qapp.processEvents()
+        grid.grab()
+    assert len(grid._items) == 6
+
+
+def test_peak_grid_pages_and_selection(qapp):
+    from openpeakview.quantify import PeakResult
+    from openpeakview.ui.peak_review import PeakReviewGrid
+
+    grid = PeakReviewGrid()
+    grid.col_spin.setValue(2)
+    grid.row_spin.setValue(1)
+    x = np.linspace(0, 10, 50)
+    items = [
+        (PeakResult(f"s{i}", f"sample {i}", "Oxy", area=1.0, rt=5.0,
+                    start_rt=4.0, end_rt=6.0), x, x * 0 + i, None)
+        for i in range(5)
+    ]
+    grid.set_items("Oxy", items)
+    assert grid.page_size == 2
+    assert grid.page_count == 3
+    grid.select("s4")           # last item, on the final page
+    assert grid._page == 2
+    grid.set_page(0)
+    assert grid.page_label.text() == "1/3"
+
+
+def test_peak_panel_reports_a_missing_peak(qapp):
+    from openpeakview.quantify import PeakResult
+    from openpeakview.ui.peak_review import PeakPanel
+
+    panel = PeakPanel()
+    result = PeakResult("s1", "QC", "Oxy", note="no peak above noise")
+    panel.set_data(result, np.linspace(0, 10, 20), np.zeros(20), None)
+    assert not panel._band.isVisible()
+    assert panel.sample_key == "s1"
+
+
+def test_peak_grid_zoom_modes(qapp):
+    from openpeakview.quantify import PeakResult
+    from openpeakview.ui.peak_review import PeakReviewGrid
+
+    grid = PeakReviewGrid()
+    result = PeakResult("s", "QC", "Oxy", area=10.0, rt=13.1,
+                        start_rt=13.0, end_rt=13.2, snr=20.0)
+    expected = (12.6, 13.6)
+
+    grid.zoom_combo.setCurrentIndex(0)                  # expected window
+    lo, hi = grid._x_range(result, expected)
+    assert lo == pytest.approx(11.1) and hi == pytest.approx(15.1)
+
+    grid.zoom_combo.setCurrentIndex(1)                  # tight on the peak
+    lo, hi = grid._x_range(result, expected)
+    assert lo == pytest.approx(12.8) and hi == pytest.approx(13.4)
+
+    grid.zoom_combo.setCurrentIndex(2)                  # whole run
+    assert grid._x_range(result, expected) is None
+
+
+def test_peak_grid_zoom_without_an_expected_window(qapp):
+    from openpeakview.quantify import PeakResult
+    from openpeakview.ui.peak_review import PeakReviewGrid
+
+    grid = PeakReviewGrid()
+    grid.zoom_combo.setCurrentIndex(0)
+    missing = PeakResult("s", "QC", "Oxy")
+    assert grid._x_range(missing, None) is None
+    found = PeakResult("s", "QC", "Oxy", area=1.0, start_rt=5.0, end_rt=6.0)
+    assert grid._x_range(found, None) == pytest.approx((4.0, 7.0))

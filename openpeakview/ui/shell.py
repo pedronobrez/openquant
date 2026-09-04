@@ -13,6 +13,7 @@ import os
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from ..session import PROJECT_SUFFIX, Session
+from .analytics import AnalyticsWorkspace
 from .explorer import ExplorerWorkspace
 from .method_workspace import MethodWorkspace
 from .samples_workspace import SamplesWorkspace
@@ -32,9 +33,11 @@ class MainShell(QtWidgets.QMainWindow):
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setDocumentMode(True)
         self.explorer = ExplorerWorkspace(self.session)
+        self.analytics = AnalyticsWorkspace(self.session)
         self.method = MethodWorkspace(self.session)
         self.samples = SamplesWorkspace(self.session)
         self.tabs.addTab(self.explorer, "Explorer")
+        self.tabs.addTab(self.analytics, "Analytics")
         self.tabs.addTab(self.method, "Method")
         self.tabs.addTab(self.samples, "Samples")
         self.setCentralWidget(self.tabs)
@@ -42,7 +45,7 @@ class MainShell(QtWidgets.QMainWindow):
         self._build_menu()
         self.statusBar().showMessage("Open a .wiff file to start.")
 
-        for workspace in (self.explorer, self.method, self.samples):
+        for workspace in (self.explorer, self.analytics, self.method, self.samples):
             workspace.sigStatus.connect(self.statusBar().showMessage)
         self.explorer.component_list.sigEditRequested.connect(
             lambda: self.tabs.setCurrentWidget(self.method))
@@ -76,7 +79,7 @@ class MainShell(QtWidgets.QMainWindow):
                 menu.addAction(action)
 
         workspace_menu = self.menuBar().addMenu("&Workspace")
-        for index, label in enumerate(("Explorer", "Method", "Samples")):
+        for index, label in enumerate(("Explorer", "Analytics", "Method", "Samples")):
             action = workspace_menu.addAction(label)
             action.setShortcut(QtGui.QKeySequence(f"Ctrl+{index + 1}"))
             action.triggered.connect(

@@ -18,17 +18,37 @@ once rather than once per view.
 | Workspace | What it is for |
 |---|---|
 | **Explorer** | qualitative review of the raw data: chromatograms, spectra, XICs, chemistry |
+| **Analytics** | the batch, quantitatively: one chromatogram per sample for each component, and the results table |
 | **Method** | the component table — what to extract, where, and how the result is reported |
 | **Samples** | the batch: sample type, expected concentration, dilution |
 
-`Ctrl+1/2/3` switch between them. `File ▸ Save project` writes a `.opvproj`
+`Ctrl+1/2/3/4` switch between them. `File ▸ Save project` writes a `.opvproj`
 holding the method and the batch, so the annotation survives closing the
 program — none of it is recorded in the raw file, where every injection comes
 back as `kUnknown`.
 
-![method workspace](docs/screenshot-method.png)
+![analytics workspace](docs/screenshot-analytics.png)
 
 ## What it does
+
+### Analytics: reviewing a batch
+
+| Feature | How |
+|---|---|
+| Process the batch | **Process batch** extracts and integrates every component in every open sample |
+| One panel per sample | the review grid shows the selected component across the whole batch, so an outlier stands out against its neighbours |
+| Grid layout | columns and rows, with paging when the batch is larger than a page |
+| Zoom | the expected window, tight on the peak, or the whole run |
+| **Same Y** | one intensity scale across the panels, so heights compare directly |
+| **Link X** | zooming one panel zooms them all |
+| **Magnify peak** | one panel filling the pane; double-clicking a panel does the same |
+| Results table | one row per sample and component: RT, expected RT, ΔRT, area, height, width, S/N, and why a row is empty |
+| Two-way linking | clicking a panel selects its row, and selecting a row brings up that component and highlights its panel |
+| Sorting, filtering, view modes | by sample or by component, with a free-text filter over every column |
+| Columns | which ones are shown and to how many decimals |
+| **Used** | exclude a row from the statistics without deleting it |
+| Export | the visible columns of the visible rows, as CSV |
+
 
 ### Navigation and display
 
@@ -188,10 +208,14 @@ openpeakview/
   samples.py             batch entries: sample type, concentration, dilution
   session.py             the state shared by every workspace, and the project file
   matching.py            picking the acquisition channel that carries a component
+  quantify.py            extraction, integration and the results set
   chemistry.py           formulas, exact masses, isotope patterns, formula finder
   processing.py          smoothing, baseline, centroiding, peak detection, S/N
   ui/shell.py            the window and its workspace tabs
   ui/explorer.py         Explorer workspace
+  ui/analytics.py        Analytics workspace
+  ui/peak_review.py      the grid of one chromatogram per sample
+  ui/results_table.py    results model, table and column chooser
   ui/method_workspace.py Method workspace
   ui/samples_workspace.py Samples workspace
   ui/plots.py            chromatogram and spectrum panes (pyqtgraph)

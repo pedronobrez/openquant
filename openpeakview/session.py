@@ -16,6 +16,7 @@ from PyQt6 import QtCore
 from .components import Component
 from .matching import components_from_sample, match_channel
 from .method import ProcessingMethod
+from .quantify import ResultsSet, XicCache
 from .samples import SampleEntry, shorten_names
 from .wiff import WiffFile
 
@@ -27,12 +28,15 @@ class Session(QtCore.QObject):
 
     sigSamplesChanged = QtCore.pyqtSignal()
     sigMethodChanged = QtCore.pyqtSignal()
+    sigResultsChanged = QtCore.pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.files: list[WiffFile] = []
         self.entries: list[SampleEntry] = []
         self.method = ProcessingMethod()
+        self.results = ResultsSet()
+        self.cache = XicCache()
         self.project_path: str | None = None
 
     # -- files ------------------------------------------------------------------ #
@@ -55,8 +59,11 @@ class Session(QtCore.QObject):
             wiff.close()
         self.files.clear()
         self.entries.clear()
+        self.results.clear()
+        self.cache.clear()
         self.project_path = None
         self.sigSamplesChanged.emit()
+        self.sigResultsChanged.emit()
 
     @property
     def loaded_entries(self) -> list[SampleEntry]:
@@ -74,7 +81,18 @@ class Session(QtCore.QObject):
         self.sigMethodChanged.emit()
 
     def notify_method_changed(self) -> None:
+        # Conditioning is baked into the cached traces, so a method change
+        # invalidates them.
+        self.cache.clear()
         self.sigMethodChanged.emit()
+
+    # -- results ------------------------------------------------------------------ #
+    def set_results(self, results: ResultsSet) -> None:
+        self.results = results
+        self.sigResultsChanged.emit()
+
+    def notify_results_changed(self) -> None:
+        self.sigResultsChanged.emit()
 
     def generate_components(self) -> list[Component]:
         """
@@ -95,9 +113,10 @@ class Session(QtCore.QObject):
     # -- project ------------------------------------------------------------------ #
     def to_dict(self) -> dict:
         return {
-            "version": 1,
+            "version": 2,
             "method": self.method.to_dict(),
             "samples": [e.to_dict() for e in self.entries],
+            "results": self.results.to_list(),
         }
 
     def save_project(self, path: str) -> None:
@@ -138,7 +157,9 @@ class Session(QtCore.QObject):
             if entry.sample_index < len(wiff.sample_names):
                 entry.sample = wiff.sample(entry.sample_index)
         self.entries = entries
+        self.results = ResultsSet.from_list(data.get("results", []))
         self.project_path = path
         self.sigMethodChanged.emit()
         self.sigSamplesChanged.emit()
+        self.sigResultsChanged.emit()
         return missing

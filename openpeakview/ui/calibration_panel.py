@@ -6,6 +6,7 @@ import numpy as np
 import pyqtgraph as pg
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from . import theme
 from ..calibration import REGRESSIONS, WEIGHTINGS, Calibration
 
 POINT_USED = "#1f77b4"
@@ -53,15 +54,14 @@ class CalibrationPanel(QtWidgets.QWidget):
         layout.addLayout(bar)
 
         body = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
-        self.plot = pg.PlotWidget(background="w")
+        self.plot = pg.PlotWidget(background=theme.background())
         self.plot.showGrid(x=True, y=True, alpha=0.15)
         self.plot.setLabel("bottom", "Concentration")
         self.plot.setLabel("left", "Response")
-        for axis in ("bottom", "left"):
-            self.plot.getAxis(axis).setPen(pg.mkPen("#444"))
-            self.plot.getAxis(axis).setTextPen(pg.mkPen("#222"))
+        theme.style_axes(self.plot)
         self._line = self.plot.plot([], [], pen=pg.mkPen(CURVE_PEN, width=1.5))
-        self._scatter = pg.ScatterPlotItem(size=10, pen=pg.mkPen("#333"))
+        self._scatter = pg.ScatterPlotItem(size=10,
+                                           pen=pg.mkPen(theme.axis()))
         self._scatter.sigClicked.connect(self._on_point_clicked)
         self.plot.addItem(self._scatter)
         body.addWidget(self.plot)

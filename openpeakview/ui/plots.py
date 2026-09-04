@@ -8,6 +8,7 @@ import numpy as np
 import pyqtgraph as pg
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from . import theme
 from ..processing import (
     ChromPeak,
     centroid_spectrum,
@@ -96,17 +97,15 @@ class BasePlot(QtWidgets.QWidget):
         self._syncing_overview = False
 
         self.viewbox = _DragViewBox()
-        self.plot = pg.PlotWidget(viewBox=self.viewbox, background="w")
+        self.plot = pg.PlotWidget(viewBox=self.viewbox,
+                                  background=theme.background())
         self.plot.showGrid(x=True, y=True, alpha=0.15)
         self.plot.setLabel("bottom", x_label, units=x_units or None)
         self.plot.setLabel("left", y_label)
-        for axis in ("bottom", "left"):
-            self.plot.getAxis(axis).setPen(pg.mkPen("#444"))
-            self.plot.getAxis(axis).setTextPen(pg.mkPen("#222"))
+        theme.style_axes(self.plot)
         self.legend = self.plot.addLegend(
-            offset=(-10, 10), labelTextColor="#222",
-            brush=pg.mkBrush(255, 255, 255, 205),
-            pen=pg.mkPen("#ccc"), verSpacing=-4,
+            offset=(-10, 10), labelTextColor=theme.foreground(),
+            brush=theme.legend_brush(), pen=theme.legend_pen(), verSpacing=-4,
         )
         self.legend.setLabelTextSize("8pt")
 
@@ -128,18 +127,18 @@ class BasePlot(QtWidgets.QWidget):
         self.vline.hide()
         self.plot.addItem(self.vline, ignoreBounds=True)
 
-        self.readout = pg.TextItem(color="#333", anchor=(0, 1))
+        self.readout = pg.TextItem(color=theme.foreground(), anchor=(0, 1))
         self.readout.setZValue(100)
         self.plot.addItem(self.readout, ignoreBounds=True)
 
         # navigator: always shows the full range, with the current view marked
-        self.overview = pg.PlotWidget(background="#fafafa")
+        self.overview = pg.PlotWidget(background=theme.background())
         self.overview.setFixedHeight(64)
         self.overview.setMenuEnabled(False)
         self.overview.hideButtons()
         self.overview.getPlotItem().hideAxis("left")
-        self.overview.getAxis("bottom").setPen(pg.mkPen("#bbb"))
-        self.overview.getAxis("bottom").setTextPen(pg.mkPen("#666"))
+        self.overview.getAxis("bottom").setPen(pg.mkPen(theme.faint_axis()))
+        self.overview.getAxis("bottom").setTextPen(pg.mkPen(theme.muted()))
         self.overview.setMouseEnabled(x=False, y=False)
         self.overview_region = pg.LinearRegionItem(
             brush=pg.mkBrush(200, 120, 200, 55),
@@ -590,7 +589,7 @@ class SpectrumView(BasePlot):
 
     def set_title(self, text: str) -> None:
         self._title = text
-        self.plot.setTitle(text, color="#222", size="10pt")
+        self.plot.setTitle(text, color=theme.foreground(), size="10pt")
 
     @property
     def title(self) -> str:
@@ -716,7 +715,7 @@ class SpectrumView(BasePlot):
                                             min_relative=0.02, min_distance=0.05):
                 below = self._mirror and n % 2 == 1
                 sign = -1.0 if below else 1.0
-                text = pg.TextItem(self._label_for(mz), color="#333",
+                text = pg.TextItem(self._label_for(mz), color=theme.foreground(),
                                    anchor=(0.5, 0.0 if below else 1.0))
                 font = QtGui.QFont()
                 font.setPointSize(8)

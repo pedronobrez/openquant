@@ -6,6 +6,7 @@ import numpy as np
 import pyqtgraph as pg
 from PyQt6 import QtCore, QtWidgets
 
+from . import theme
 from ..session import Session
 from .results_table import COLUMNS
 
@@ -49,12 +50,10 @@ class MetricPlotPanel(QtWidgets.QWidget):
         bar.addWidget(self.component_combo, 1)
         layout.addLayout(bar)
 
-        self.plot = pg.PlotWidget(background="w")
+        self.plot = pg.PlotWidget(background=theme.background())
         self.plot.showGrid(x=True, y=True, alpha=0.15)
-        for axis in ("bottom", "left"):
-            self.plot.getAxis(axis).setPen(pg.mkPen("#444"))
-            self.plot.getAxis(axis).setTextPen(pg.mkPen("#222"))
-        self.scatter = pg.ScatterPlotItem(size=9, pen=pg.mkPen("#333"),
+        theme.style_axes(self.plot)
+        self.scatter = pg.ScatterPlotItem(size=9, pen=pg.mkPen(theme.axis()),
                                           brush=pg.mkBrush("#1f77b4"))
         self.scatter.sigClicked.connect(self._on_clicked)
         self.plot.addItem(self.scatter)

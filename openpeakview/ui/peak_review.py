@@ -12,6 +12,7 @@ import numpy as np
 import pyqtgraph as pg
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from . import theme
 from ..quantify import PeakResult
 
 FOUND_PEN = "#1f77b4"
@@ -51,20 +52,14 @@ class PeakPanel(pg.PlotWidget):
 
     def __init__(self, parent=None):
         self.viewbox = _PanelViewBox()
-        super().__init__(parent, background="w", viewBox=self.viewbox)
+        super().__init__(parent, background=theme.background(),
+                         viewBox=self.viewbox)
         self.sample_key = ""
         self.showGrid(x=True, y=True, alpha=0.12)
         self.setMenuEnabled(False)
         self.hideButtons()
         self.getAxis("left").setWidth(46)
-        # A QFont built with an empty family name crashes Qt when the axis
-        # measures its tick labels; start from the default font instead.
-        tick_font = QtGui.QFont()
-        tick_font.setPointSize(7)
-        for axis in ("bottom", "left"):
-            self.getAxis(axis).setPen(pg.mkPen("#bbb"))
-            self.getAxis(axis).setTextPen(pg.mkPen("#555"))
-            self.getAxis(axis).setStyle(tickFont=tick_font)
+        theme.style_axes(self, faint=True, tick_points=7)
 
         self._curve = self.plot([], [], pen=pg.mkPen(FOUND_PEN, width=1.3))
         self._is_curve = self.plot(
@@ -144,10 +139,10 @@ class PeakPanel(pg.PlotWidget):
             manual = " ✎" if result.manual else ""
             title = (f"{result.sample_name}{manual}   {result.area:,.0f}"
                      f"   S/N {result.snr:.0f}   {result.rt:.2f}")
-            colour = "#222"
+            colour = theme.foreground()
         else:
             title = f"{result.sample_name}   {result.note or 'not found'}"
-            colour = "#b03030"
+            colour = "#e06666" if theme.is_dark() else "#b03030"
         self.setTitle(title, color=colour, size="8pt")
 
     def _set_internal_standard(self, y: np.ndarray,
@@ -177,9 +172,10 @@ class PeakPanel(pg.PlotWidget):
         return float(lo), float(hi)
 
     def set_selected(self, selected: bool) -> None:
+        edge = "#444" if theme.is_dark() else "#ddd"
         self.setStyleSheet(
             f"border: 2px solid {SELECTED_BORDER};" if selected
-            else "border: 1px solid #ddd;"
+            else f"border: 1px solid {edge};"
         )
 
     # -- interaction -------------------------------------------------------------- #

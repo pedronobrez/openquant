@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openpeakview"
+version = "0.1.0"
+description = "Visualizador open source de dados LC-MS SCIEX (.wiff), no estilo do PeakView"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=1.24",
+    "PyQt6>=6.5",
+    "pyqtgraph>=0.13",
+    "alpharaw>=0.7",
+    "pythonnet>=3.0",
+    "certifi",
+]
+
+[project.scripts]
+openpeakview = "openpeakview.app:main"
+
+[tool.setuptools.packages.find]
+include = ["openpeakview*"]

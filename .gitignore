@@ -1,0 +1,27 @@
+# Dados brutos de aquisicao: binarios grandes e proprietarios, nunca versionados
+*.wiff
+*.wiff.scan
+*.wiff2
+*.wiff2.scan
+*.timeseries.data
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Exportacoes e resultados locais
+exports/
+*.csv
+!tests/fixtures/*.csv
+
+# Sistema
+.DS_Store
+Thumbs.db

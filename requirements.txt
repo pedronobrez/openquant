@@ -1,0 +1,6 @@
+numpy>=1.24
+PyQt6>=6.5
+pyqtgraph>=0.13
+alpharaw>=0.7          # traz as bibliotecas SCIEX Clearcore2 + pythonnet
+pythonnet>=3.0
+certifi

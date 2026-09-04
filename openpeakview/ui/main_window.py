@@ -3,16 +3,26 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
+from dataclasses import asdict
 
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from ..processing import integrate, signal_to_noise
+from ..compounds import Compound
+from ..processing import detect_peaks, integrate, signal_to_noise
 from ..wiff import Channel, Sample, WiffFile
+from .compound_panel import CompoundPanel
 from .plots import ChromatogramView, SpectrumView, Trace, colour
+from .results_panel import Result, ResultsPanel
+from .sample_info import SampleInfoPanel
 
 ROLE_REF = QtCore.Qt.ItemDataRole.UserRole
+
+# Diferenca maxima, em Da, entre o precursor de um composto e o de um canal do
+# metodo para considerar que o canal e o daquele composto.
+PRECURSOR_MATCH_DA = 0.7
 
 
 class ChannelRef:
@@ -47,20 +57,23 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("OpenPeakView")
-        self.resize(1500, 950)
+        self.resize(1600, 980)
 
+        self.settings = QtCore.QSettings("OpenPeakView", "OpenPeakView")
         self.files: list[WiffFile] = []
         self.refs: dict[str, ChannelRef] = {}
         self.xic_defs: list[dict] = []
         self.active_ref: ChannelRef | None = None
         self.current_scan: int = 0
+        self._background_cache: dict[tuple, tuple[np.ndarray, np.ndarray]] = {}
 
         self.chrom = ChromatogramView()
         self.spectrum = SpectrumView()
 
         self._build_ui()
         self._connect()
-        self._update_status("Abra um arquivo .wiff para comecar.")
+        self._restore_settings()
+        self._update_status("Abra um arquivo .wiff para começar.")
 
     # ------------------------------------------------------------------ UI -- #
     def _build_ui(self) -> None:
@@ -73,7 +86,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._build_tree_dock()
         self._build_side_dock()
-        self._build_toolbar()
+        self._build_toolbars()
         self._build_menu()
         self.statusBar().showMessage("")
 
@@ -94,7 +107,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.active_combo = QtWidgets.QComboBox()
         self.active_combo.setMinimumWidth(320)
         bar.addWidget(self.active_combo, 1)
-        box.setLayout(layout)
         layout.addLayout(bar)
         layout.addWidget(self.chrom)
         return box
@@ -111,13 +123,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_prev.setToolTip("Scan anterior (seta esquerda)")
         self.btn_next = QtWidgets.QToolButton()
         self.btn_next.setText("▶")
-        self.btn_next.setToolTip("Proximo scan (seta direita)")
+        self.btn_next.setToolTip("Próximo scan (seta direita)")
         self.scan_spin = QtWidgets.QSpinBox()
         self.scan_spin.setMinimum(1)
         self.scan_spin.setMaximum(1)
-        self.scan_spin.setToolTip("Numero do scan (1 = primeiro ciclo do canal)")
+        self.scan_spin.setToolTip("Número do scan (1 = primeiro ciclo do canal)")
         self.rt_label = QtWidgets.QLabel("—")
-        self.rt_label.setMinimumWidth(150)
+        self.rt_label.setMinimumWidth(170)
 
         bar.addWidget(QtWidgets.QLabel("Scan:"))
         bar.addWidget(self.btn_prev)
@@ -125,9 +137,12 @@ class MainWindow(QtWidgets.QMainWindow):
         bar.addWidget(self.btn_next)
         bar.addWidget(self.rt_label)
         bar.addStretch(1)
-        self.btn_avg = QtWidgets.QPushButton("Media da faixa selecionada")
+        self.bg_label = QtWidgets.QLabel("")
+        self.bg_label.setStyleSheet("color:#b07800;")
+        bar.addWidget(self.bg_label)
+        self.btn_avg = QtWidgets.QPushButton("Média da faixa selecionada")
         self.btn_avg.setToolTip(
-            "Espectro medio dos scans dentro da faixa marcada no cromatograma"
+            "Espectro médio dos scans dentro da faixa marcada no cromatograma"
         )
         bar.addWidget(self.btn_avg)
         layout.addLayout(bar)
@@ -166,16 +181,27 @@ class MainWindow(QtWidgets.QMainWindow):
                              | QtCore.Qt.DockWidgetArea.RightDockWidgetArea)
         self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, dock)
         dock.setMinimumWidth(330)
+        self.dock_tree = dock
 
     def _build_side_dock(self) -> None:
-        dock = QtWidgets.QDockWidget("XIC e picos", self)
+        dock = QtWidgets.QDockWidget("Painéis", self)
         dock.setObjectName("dock_side")
-        tabs = QtWidgets.QTabWidget()
-        tabs.addTab(self._build_xic_tab(), "XIC")
-        tabs.addTab(self._build_peaks_tab(), "Picos do espectro")
-        dock.setWidget(tabs)
+        self.tabs = QtWidgets.QTabWidget()
+
+        self.compound_panel = CompoundPanel()
+        self.results_panel = ResultsPanel()
+        self.sample_info = SampleInfoPanel()
+
+        self.tabs.addTab(self.compound_panel, "Compostos")
+        self.tabs.addTab(self.results_panel, "Resultados")
+        self.tabs.addTab(self._build_xic_tab(), "XIC manual")
+        self.tabs.addTab(self._build_peaks_tab(), "Picos do espectro")
+        self.tabs.addTab(self.sample_info, "Amostra")
+
+        dock.setWidget(self.tabs)
         self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, dock)
-        dock.setMinimumWidth(300)
+        dock.setMinimumWidth(360)
+        self.dock_side = dock
 
     def _build_xic_tab(self) -> QtWidgets.QWidget:
         page = QtWidgets.QWidget()
@@ -183,7 +209,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         form = QtWidgets.QFormLayout()
         self.xic_mz = QtWidgets.QLineEdit()
-        self.xic_mz.setPlaceholderText("183.1385, 313.2384")
+        self.xic_mz.setPlaceholderText("183.1391, 313.2384")
         form.addRow("m/z (separe por vírgula):", self.xic_mz)
 
         tol_row = QtWidgets.QHBoxLayout()
@@ -237,26 +263,28 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.peak_table)
         return page
 
-    def _build_toolbar(self) -> None:
+    def _build_toolbars(self) -> None:
         bar = self.addToolBar("Principal")
         bar.setObjectName("toolbar_main")
         bar.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
 
         self.act_open = bar.addAction("Abrir .wiff")
         bar.addSeparator()
-
         self.act_select = QtGui.QAction("Selecionar faixa", self, checkable=True)
         self.act_select.setToolTip(
             "Arrastar seleciona faixa em vez de dar zoom "
             "(Shift + arrastar faz o mesmo a qualquer momento)"
         )
         bar.addAction(self.act_select)
-
         self.act_autoscale = bar.addAction("Ajustar escala")
         bar.addSeparator()
-
         self.act_norm = QtGui.QAction("Normalizar", self, checkable=True)
         bar.addAction(self.act_norm)
+        self.act_mirror = QtGui.QAction("Espelhar", self, checkable=True)
+        self.act_mirror.setToolTip(
+            "Inverte os traços pares — compara amostra e branco em espelho"
+        )
+        bar.addAction(self.act_mirror)
         self.act_labels = QtGui.QAction("Rótulos m/z", self, checkable=True)
         self.act_labels.setChecked(True)
         bar.addAction(self.act_labels)
@@ -266,6 +294,43 @@ class MainWindow(QtWidgets.QMainWindow):
         self.act_legend = QtGui.QAction("Legenda", self, checkable=True)
         self.act_legend.setChecked(True)
         bar.addAction(self.act_legend)
+
+        proc = self.addToolBar("Processamento")
+        proc.setObjectName("toolbar_proc")
+        proc.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+
+        proc.addWidget(QtWidgets.QLabel(" Suavizar (σ, scans): "))
+        self.smooth_spin = QtWidgets.QDoubleSpinBox()
+        self.smooth_spin.setRange(0.0, 25.0)
+        self.smooth_spin.setSingleStep(0.5)
+        self.smooth_spin.setDecimals(1)
+        self.smooth_spin.setToolTip("Suavização gaussiana; 0 desliga")
+        proc.addWidget(self.smooth_spin)
+
+        proc.addWidget(QtWidgets.QLabel("  Linha de base (min): "))
+        self.baseline_spin = QtWidgets.QDoubleSpinBox()
+        self.baseline_spin.setRange(0.0, 60.0)
+        self.baseline_spin.setSingleStep(0.5)
+        self.baseline_spin.setDecimals(1)
+        self.baseline_spin.setToolTip(
+            "Largura da janela usada para estimar a linha de base; 0 desliga.\n"
+            "Deve ser maior que o pico mais largo que você quer preservar."
+        )
+        proc.addWidget(self.baseline_spin)
+        proc.addSeparator()
+
+        self.act_set_bg = proc.addAction("Definir background")
+        self.act_set_bg.setToolTip(
+            "Usa a faixa selecionada no cromatograma como branco: todo espectro "
+            "gerado a partir daí sai com esse fundo subtraído"
+        )
+        self.act_clear_bg = proc.addAction("Limpar background")
+        proc.addSeparator()
+        self.act_detect = proc.addAction("Detectar picos")
+        self.act_detect.setToolTip(
+            "Integra os picos de todos os traços do cromatograma e "
+            "preenche a aba Resultados"
+        )
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("&Arquivo")
@@ -279,11 +344,13 @@ class MainWindow(QtWidgets.QMainWindow):
         quit_action.triggered.connect(self.close)
 
         view_menu = self.menuBar().addMenu("&Exibir")
-        view_menu.addAction(self.act_autoscale)
-        view_menu.addAction(self.act_norm)
-        view_menu.addAction(self.act_labels)
-        view_menu.addAction(self.act_apex)
-        view_menu.addAction(self.act_legend)
+        for action in (self.act_autoscale, self.act_norm, self.act_mirror,
+                       self.act_labels, self.act_apex, self.act_legend):
+            view_menu.addAction(action)
+
+        proc_menu = self.menuBar().addMenu("&Processar")
+        for action in (self.act_set_bg, self.act_clear_bg, self.act_detect):
+            proc_menu.addAction(action)
 
         help_menu = self.menuBar().addMenu("A&juda")
         help_menu.addAction("Como usar…").triggered.connect(self._show_help)
@@ -295,11 +362,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.act_autoscale.triggered.connect(self._autoscale_both)
         self.act_select.toggled.connect(self._set_select_mode)
         self.act_norm.toggled.connect(self._set_normalised)
+        self.act_mirror.toggled.connect(self._set_mirror)
         self.act_labels.toggled.connect(self.spectrum.set_labels_enabled)
         self.act_apex.toggled.connect(self.chrom.set_apex_labels)
         self.act_legend.toggled.connect(self.chrom.set_legend_visible)
-        self.act_exp_chrom.triggered.connect(lambda: self._export(self.chrom, "cromatogramas"))
-        self.act_exp_spec.triggered.connect(lambda: self._export(self.spectrum, "espectro"))
+        self.act_exp_chrom.triggered.connect(
+            lambda: self._export(self.chrom, "cromatogramas"))
+        self.act_exp_spec.triggered.connect(
+            lambda: self._export(self.spectrum, "espectro"))
+        self.act_set_bg.triggered.connect(self._set_background)
+        self.act_clear_bg.triggered.connect(self._clear_background)
+        self.act_detect.triggered.connect(self._detect_peaks)
+
+        self.smooth_spin.valueChanged.connect(self._set_smoothing)
+        self.baseline_spin.valueChanged.connect(self.chrom.set_baseline)
 
         self.tree.itemChanged.connect(self._on_tree_changed)
         self.tree.currentItemChanged.connect(self._on_tree_selection)
@@ -316,6 +392,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.chrom.sigClicked.connect(self._on_chrom_click)
         self.chrom.sigRangeSelected.connect(self._on_chrom_range)
+        self.chrom.sigBackgroundChanged.connect(self._on_background_changed)
         self.spectrum.sigExtractRequested.connect(self._extract_from_range)
 
         self.btn_prev.clicked.connect(lambda: self._step_scan(-1))
@@ -327,6 +404,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_xic_clear.clicked.connect(self._clear_xics)
         self.peak_table.cellDoubleClicked.connect(self._peak_double_clicked)
 
+        self.compound_panel.sigExtractAll.connect(self._extract_compounds)
+        self.compound_panel.sigShowCompound.connect(self._show_compound)
+        self.results_panel.sigResultActivated.connect(self._go_to_result)
+
         QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Left), self,
                         activated=lambda: self._step_scan(-1))
         QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Right), self,
@@ -334,13 +415,88 @@ class MainWindow(QtWidgets.QMainWindow):
         QtGui.QShortcut(QtGui.QKeySequence("Delete"), self.xic_list,
                         activated=self._remove_selected_xic)
 
+    # ---------------------------------------------------------- preferencias - #
+    def _restore_settings(self) -> None:
+        s = self.settings
+        geometry = s.value("window/geometry")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+        state = s.value("window/state")
+        if state is not None:
+            self.restoreState(state)
+
+        def flag(key: str, default: bool) -> bool:
+            return s.value(key, default, type=bool)
+
+        self.act_norm.setChecked(flag("view/normalise", False))
+        self.act_mirror.setChecked(flag("view/mirror", False))
+        self.act_labels.setChecked(flag("view/labels", True))
+        self.act_apex.setChecked(flag("view/apex", True))
+        self.act_legend.setChecked(flag("view/legend", True))
+        self.act_select.setChecked(flag("view/select_mode", False))
+        self.smooth_spin.setValue(s.value("proc/smooth", 0.0, type=float))
+        self.baseline_spin.setValue(s.value("proc/baseline", 0.0, type=float))
+        self.xic_tol.setValue(s.value("xic/tolerance", 0.02, type=float))
+        self.xic_unit.setCurrentText(s.value("xic/unit", "Da", type=str))
+        self.xic_all_channels.setChecked(flag("xic/all_channels", False))
+        self.mode_combo.setCurrentText(s.value("chrom/mode", "TIC", type=str))
+
+        stored = s.value("compounds/list", "", type=str)
+        if stored:
+            try:
+                self.compound_panel.set_compounds(
+                    [Compound(**row) for row in json.loads(stored)]
+                )
+            except (ValueError, TypeError):
+                pass
+
+        # aplica o que foi restaurado (os sinais ja estao conectados)
+        self._set_select_mode(self.act_select.isChecked())
+        self._set_normalised(self.act_norm.isChecked())
+        self._set_mirror(self.act_mirror.isChecked())
+        self.spectrum.set_labels_enabled(self.act_labels.isChecked())
+        self.chrom.set_apex_labels(self.act_apex.isChecked())
+        self.chrom.set_legend_visible(self.act_legend.isChecked())
+        self._set_smoothing(self.smooth_spin.value())
+        self.chrom.set_baseline(self.baseline_spin.value())
+
+    def _save_settings(self) -> None:
+        s = self.settings
+        s.setValue("window/geometry", self.saveGeometry())
+        s.setValue("window/state", self.saveState())
+        s.setValue("view/normalise", self.act_norm.isChecked())
+        s.setValue("view/mirror", self.act_mirror.isChecked())
+        s.setValue("view/labels", self.act_labels.isChecked())
+        s.setValue("view/apex", self.act_apex.isChecked())
+        s.setValue("view/legend", self.act_legend.isChecked())
+        s.setValue("view/select_mode", self.act_select.isChecked())
+        s.setValue("proc/smooth", self.smooth_spin.value())
+        s.setValue("proc/baseline", self.baseline_spin.value())
+        s.setValue("xic/tolerance", self.xic_tol.value())
+        s.setValue("xic/unit", self.xic_unit.currentText())
+        s.setValue("xic/all_channels", self.xic_all_channels.isChecked())
+        s.setValue("chrom/mode", self.mode_combo.currentText())
+        s.setValue(
+            "compounds/list",
+            json.dumps([asdict(c) for c in self.compound_panel.compounds()]),
+        )
+
+    def _last_dir(self) -> str:
+        return self.settings.value("io/last_dir", "", type=str)
+
+    def _remember_dir(self, path: str) -> None:
+        self.settings.setValue("io/last_dir", os.path.dirname(path))
+
     # -------------------------------------------------------------- arquivos - #
     def open_files(self) -> None:
         paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
-            self, "Abrir arquivos SCIEX", "", "Arquivos wiff (*.wiff);;Todos (*)"
+            self, "Abrir arquivos SCIEX", self._last_dir(),
+            "Arquivos wiff (*.wiff);;Todos (*)"
         )
         for path in paths:
             self.load_file(path)
+        if paths:
+            self._remember_dir(paths[0])
 
     def load_file(self, path: str) -> None:
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
@@ -367,12 +523,11 @@ class MainWindow(QtWidgets.QMainWindow):
             sample_item = QtWidgets.QTreeWidgetItem(
                 file_item, [f"{sample.name}  ({sample.instrument})"]
             )
-            tic_ref = ChannelRef(wiff, sample, None)
-            self._add_leaf(sample_item, "TIC da amostra (todos os canais)", tic_ref,
-                           checked=True)
+            self._add_leaf(sample_item, "TIC da amostra (todos os canais)",
+                           ChannelRef(wiff, sample, None), checked=True)
             for channel in sample.channels:
-                ref = ChannelRef(wiff, sample, channel)
-                self._add_leaf(sample_item, channel.info.label, ref, checked=False)
+                self._add_leaf(sample_item, channel.info.label,
+                               ChannelRef(wiff, sample, channel), checked=False)
             sample_item.setExpanded(True)
         file_item.setExpanded(True)
         self.tree.blockSignals(False)
@@ -383,7 +538,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def _recompute_aliases(self) -> None:
         """
         Encurta os nomes usados na legenda removendo o prefixo comum a todos os
-        arquivos abertos: `..._DiHOME001` e `..._S001` viram `DiHOME001` e `S001`.
+        arquivos abertos: `..._demo_QC001` e `..._demo_S001` viram
+        `QC001` e `S001`.
         """
         stems = [os.path.splitext(os.path.basename(w.path))[0] for w in self.files]
         prefix = os.path.commonprefix(stems) if len(stems) > 1 else ""
@@ -409,12 +565,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.refs.clear()
         self.xic_defs.clear()
         self.active_ref = None
+        self._background_cache.clear()
         self.tree.clear()
         self.xic_list.clear()
         self.active_combo.clear()
         self.chrom.clear_traces()
+        self.chrom.clear_peak_markers()
+        self.chrom.clear_background_range()
         self.spectrum.clear_traces()
         self.peak_table.setRowCount(0)
+        self.results_panel.clear()
+        self.sample_info.clear()
         self._update_status("Nenhum arquivo aberto.")
 
     # ------------------------------------------------------------------ arvore #
@@ -430,6 +591,22 @@ class MainWindow(QtWidgets.QMainWindow):
             it += 1
         return out
 
+    def _checked_samples(self) -> list[ChannelRef]:
+        """Uma referencia por amostra marcada, preservando a ordem da arvore."""
+        seen, out = set(), []
+        for ref in self._checked_refs():
+            identity = (ref.wiff.path, ref.sample.index)
+            if identity not in seen:
+                seen.add(identity)
+                out.append(ref)
+        if out:
+            return out
+        # nada marcado: usa todas as amostras abertas
+        for wiff in self.files:
+            for index in range(len(wiff.sample_names)):
+                out.append(ChannelRef(wiff, wiff.sample(index), None))
+        return out
+
     def _bulk_check(self, predicate) -> None:
         self.tree.blockSignals(True)
         it = QtWidgets.QTreeWidgetItemIterator(self.tree)
@@ -437,9 +614,11 @@ class MainWindow(QtWidgets.QMainWindow):
             item = it.value()
             key = item.data(0, ROLE_REF)
             if key in self.refs:
-                state = (QtCore.Qt.CheckState.Checked if predicate(self.refs[key])
-                         else QtCore.Qt.CheckState.Unchecked)
-                item.setCheckState(0, state)
+                item.setCheckState(
+                    0,
+                    QtCore.Qt.CheckState.Checked if predicate(self.refs[key])
+                    else QtCore.Qt.CheckState.Unchecked,
+                )
             it += 1
         self.tree.blockSignals(False)
         self._rebuild_active_combo()
@@ -489,6 +668,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.scan_spin.blockSignals(True)
         self.scan_spin.setMaximum(max(channel.info.n_scans if channel else 1, 1))
         self.scan_spin.blockSignals(False)
+        if self.active_ref is not None:
+            self.sample_info.show_sample(self.active_ref.sample, channel)
 
     def _on_active_changed(self, _index: int) -> None:
         self._sync_active_ref()
@@ -506,7 +687,7 @@ class MainWindow(QtWidgets.QMainWindow):
             for i, ref in enumerate(refs):
                 if ref.channel is None:
                     x, y = ref.sample.tic()
-                    label = f"{ref.label} ({mode if mode == 'TIC' else 'TIC'})"
+                    label = f"{ref.label} (TIC)"
                 elif mode == "BPC":
                     x, y = ref.channel.bpc()
                     label = f"{ref.label} (BPC)"
@@ -537,8 +718,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._show_scan(channel.scan_at_rt(rt))
 
     def _on_chrom_range(self, rt0: float, rt1: float) -> None:
-        channel = self.active_ref.channel if self.active_ref else None
-        if channel is None:
+        if self.active_ref is None or self.active_ref.channel is None:
             return
         self._show_average(rt0, rt1)
         self._report_integration(rt0, rt1)
@@ -552,14 +732,70 @@ class MainWindow(QtWidgets.QMainWindow):
              if self.active_ref and t.source is self.active_ref.channel),
             traces[0],
         )
-        stats = integrate(target.x, target.y, rt0, rt1)
-        snr = signal_to_noise(target.x, target.y, rt0, rt1)
+        conditioned = self.chrom.conditioned(target.key)
+        x, y = conditioned if conditioned else (target.x, target.y)
+        stats = integrate(x, y, rt0, rt1)
+        snr = signal_to_noise(x, y, rt0, rt1)
         self._update_status(
             f"{target.label} · {rt0:.3f}–{rt1:.3f} min · "
             f"área {stats['area']:,.0f} · altura {stats['height']:,.0f} · "
             f"ápice {stats['apex_rt']:.3f} min · S/N ≈ {snr:.0f} · "
             f"{stats['n_points']} scans"
         )
+
+    # ------------------------------------------------------------- background - #
+    def _set_background(self) -> None:
+        selection = self.chrom.selected_range()
+        if selection is None:
+            self._update_status(
+                "Selecione a faixa de branco no cromatograma (Shift + arrastar) "
+                "antes de definir o background."
+            )
+            return
+        self.chrom.set_background_range(*selection)
+
+    def _clear_background(self) -> None:
+        self.chrom.clear_background_range()
+
+    def _on_background_changed(self) -> None:
+        self._background_cache.clear()
+        window = self.chrom.background_range()
+        if window is None:
+            self.bg_label.setText("")
+            self._update_status("Subtração de background desligada.")
+        else:
+            self.bg_label.setText(
+                f"background {window[0]:.2f}–{window[1]:.2f} min"
+            )
+            self._update_status(
+                f"Background definido em {window[0]:.3f}–{window[1]:.3f} min; "
+                "novos espectros saem com esse fundo subtraído."
+            )
+
+    def _background_spectrum(self, channel: Channel):
+        window = self.chrom.background_range()
+        if window is None:
+            return None
+        key = (id(channel), round(window[0], 5), round(window[1], 5))
+        if key not in self._background_cache:
+            self._background_cache[key] = channel.spectrum_rt_range(*window)
+        return self._background_cache[key]
+
+    def _apply_background(self, channel: Channel, mz: np.ndarray,
+                          intensity: np.ndarray) -> tuple[np.ndarray, bool]:
+        """
+        Subtrai o espectro medio do branco. As grades de m/z do espectro e do
+        branco nao coincidem em dados de perfil, entao o branco e interpolado
+        para a grade do espectro antes da subtracao.
+        """
+        background = self._background_spectrum(channel)
+        if background is None:
+            return intensity, False
+        bmz, bi = background
+        if bmz.size < 2 or mz.size == 0:
+            return intensity, False
+        interpolated = np.interp(mz, bmz, bi, left=0.0, right=0.0)
+        return np.clip(intensity - interpolated, 0.0, None), True
 
     # -------------------------------------------------------------- espectro - #
     def _show_scan(self, scan: int) -> None:
@@ -568,6 +804,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self.current_scan = int(np.clip(scan, 0, max(channel.info.n_scans - 1, 0)))
         mz, intensity = channel.spectrum(self.current_scan)
+        intensity, subtracted = self._apply_background(channel, mz, intensity)
         rt = channel.rt_at_scan(self.current_scan)
         self.spectrum.set_traces(
             [Trace("spec", "espectro", mz, intensity, "#1f77b4", channel)]
@@ -576,6 +813,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spectrum.set_title(
             f"{self.active_ref.label} · scan {self.current_scan + 1}"
             f"/{channel.info.n_scans} · RT {rt:.3f} min"
+            + (" · background subtraído" if subtracted else "")
         )
         self.scan_spin.blockSignals(True)
         self.scan_spin.setValue(self.current_scan + 1)
@@ -589,6 +827,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if channel is None:
             return
         mz, intensity = channel.spectrum_rt_range(rt0, rt1)
+        intensity, subtracted = self._apply_background(channel, mz, intensity)
         first, last = channel.scans_in_range(rt0, rt1)
         self.spectrum.set_traces(
             [Trace("spec", "espectro médio", mz, intensity, "#d62728", channel)]
@@ -597,6 +836,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spectrum.set_title(
             f"{self.active_ref.label} · média de {last - first + 1} scans "
             f"({first + 1}–{last + 1}) · RT {min(rt0, rt1):.3f}–{max(rt0, rt1):.3f} min"
+            + (" · background subtraído" if subtracted else "")
         )
         self.rt_label.setText(f"RT {min(rt0, rt1):.3f}–{max(rt0, rt1):.3f} min")
         self.chrom.mark(None)
@@ -670,8 +910,9 @@ class MainWindow(QtWidgets.QMainWindow):
         lo, hi = sorted((mz0, mz1))
         self._add_xic(lo, hi, f"XIC {lo:.4f}–{hi:.4f}")
 
-    def _add_xic(self, mz_lo: float, mz_hi: float, label: str) -> None:
-        targets = self._xic_targets()
+    def _add_xic(self, mz_lo: float, mz_hi: float, label: str,
+                 targets: list[ChannelRef] | None = None) -> None:
+        targets = targets if targets is not None else self._xic_targets()
         if not targets:
             self._update_status("Escolha um canal ativo antes de extrair o XIC.")
             return
@@ -681,10 +922,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 x, y = ref.channel.xic_range(mz_lo, mz_hi)
                 if x.size == 0:
                     continue
-                full = f"{ref.label} · {label}"
                 key = f"xic|{ref.key}|{mz_lo:.5f}|{mz_hi:.5f}"
                 if any(d["key"] == key for d in self.xic_defs):
                     continue
+                full = f"{ref.label} · {label}"
                 self.xic_defs.append(
                     {"key": key, "label": full, "x": x, "y": y, "channel": ref.channel}
                 )
@@ -705,6 +946,213 @@ class MainWindow(QtWidgets.QMainWindow):
         self.xic_list.clear()
         self.refresh_chromatogram()
 
+    # ------------------------------------------------------------ compostos -- #
+    @staticmethod
+    def _covers_rt(channel: Channel, rt: float | None) -> bool:
+        """O canal foi adquirido no tempo pedido? Sem RT informado, aceita qualquer um."""
+        if rt is None:
+            return True
+        times = channel.rt
+        return bool(times.size and times[0] <= rt <= times[-1])
+
+    def _match_channel(self, sample: Sample, compound: Compound) -> Channel | None:
+        """
+        Escolhe o canal do metodo correspondente ao composto.
+
+        Metodos escalonados repetem o mesmo precursor em periodos diferentes —
+        neste equipamento, por exemplo, 313.24 aparece em dois experimentos, um
+        cobrindo 0–13 min e outro 13–21,5 min. Por isso o tempo de retencao
+        esperado entra no criterio: escolher so pelo precursor pegaria o canal
+        errado, que nem sequer foi adquirido naquele instante.
+        """
+        target = compound.target_mz
+
+        def candidates(require_rt: bool):
+            found = []
+            for channel in sample.channels:
+                precursor = channel.info.precursor
+                if precursor is None:
+                    continue
+                delta = abs(precursor - compound.precursor)
+                if delta > PRECURSOR_MATCH_DA:
+                    continue
+                if not (channel.info.start_mass <= target <= channel.info.end_mass):
+                    continue
+                if require_rt and not self._covers_rt(channel, compound.rt):
+                    continue
+                found.append((delta, channel.index, channel))
+            return sorted(found)
+
+        matches = candidates(require_rt=True) or candidates(require_rt=False)
+        if matches:
+            return matches[0][2]
+
+        ms1 = [
+            c for c in sample.channels
+            if c.info.is_ms1 and c.info.start_mass <= target <= c.info.end_mass
+        ]
+        for channel in ms1:
+            if self._covers_rt(channel, compound.rt):
+                return channel
+        return ms1[0] if ms1 else None
+
+    def _integrate_compound(self, ref: ChannelRef, channel: Channel,
+                            compound: Compound) -> Result:
+        mz_lo, mz_hi = compound.mass_window()
+        mz_text = f"{(mz_lo + mz_hi) / 2:.4f}"
+
+        def empty(note: str) -> Result:
+            return Result(
+                compound=compound.name, sample=ref.alias,
+                channel=channel.info.short_label, mz=mz_text,
+                rt=compound.rt or 0.0, area=0.0, height=0.0, width=0.0,
+                snr=0.0, note=note,
+            )
+
+        x, y = channel.xic_range(mz_lo, mz_hi)
+        if x.size == 0:
+            return empty("sem dados")
+
+        window = compound.rt_window()
+        if window is None:
+            mask = np.ones(x.size, dtype=bool)
+        else:
+            mask = (x >= window[0]) & (x <= window[1])
+            # Sem varredura da corrida inteira quando a janela nao é coberta:
+            # devolver um pico de outro tempo seria um resultado errado, nao um
+            # resultado aproximado.
+            if mask.sum() < 3:
+                return empty(f"canal não cobre {window[0]:.2f}–{window[1]:.2f} min")
+
+        peaks = detect_peaks(x[mask], y[mask], min_relative=0.05, min_snr=3.0)
+        if not peaks:
+            return empty("nenhum pico acima do ruído")
+
+        peak = peaks[0]
+        return Result(
+            compound=compound.name, sample=ref.alias,
+            channel=channel.info.short_label, mz=mz_text,
+            rt=peak.apex_rt, area=peak.area, height=peak.height,
+            width=peak.width, snr=peak.snr,
+            start_rt=peak.start_rt, end_rt=peak.end_rt,
+        )
+
+    def _extract_compounds(self, compounds: list[Compound]) -> None:
+        if not compounds:
+            self._update_status("Nenhum composto válido na lista.")
+            return
+        samples = self._checked_samples()
+        if not samples:
+            self._update_status("Abra pelo menos um arquivo antes de extrair.")
+            return
+
+        total = len(compounds) * len(samples)
+        progress = QtWidgets.QProgressDialog(
+            "Extraindo e integrando…", "Cancelar", 0, total, self
+        )
+        progress.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(300)
+
+        results: list[Result] = []
+        done = 0
+        for ref in samples:
+            for compound in compounds:
+                if progress.wasCanceled():
+                    break
+                channel = self._match_channel(ref.sample, compound)
+                if channel is None:
+                    results.append(Result(
+                        compound=compound.name, sample=ref.alias, channel="—",
+                        mz=f"{compound.target_mz:.4f}", rt=compound.rt or 0.0,
+                        area=0.0, height=0.0, width=0.0, snr=0.0,
+                        note="nenhum canal compatível",
+                    ))
+                else:
+                    results.append(self._integrate_compound(ref, channel, compound))
+                done += 1
+                progress.setValue(done)
+                QtWidgets.QApplication.processEvents()
+            if progress.wasCanceled():
+                break
+        progress.setValue(total)
+
+        self.results_panel.set_results(results)
+        self.tabs.setCurrentWidget(self.results_panel)
+        found = sum(1 for r in results if r.area > 0)
+        self._update_status(
+            f"{len(results)} extrações em {len(samples)} amostra(s); "
+            f"{found} com pico detectado."
+        )
+
+    def _show_compound(self, compound: Compound) -> None:
+        """Plota o XIC de um composto em todas as amostras marcadas."""
+        samples = self._checked_samples()
+        targets = []
+        for ref in samples:
+            channel = self._match_channel(ref.sample, compound)
+            if channel is not None:
+                targets.append(ChannelRef(ref.wiff, ref.sample, channel))
+        if not targets:
+            self._update_status(f"Nenhum canal compatível com {compound.name}.")
+            return
+        for target in targets:
+            target.alias = next(
+                (r.alias for r in self.refs.values()
+                 if r.wiff.path == target.wiff.path), target.alias
+            )
+        mz_lo, mz_hi = compound.mass_window()
+        self._add_xic(mz_lo, mz_hi,
+                      f"{compound.name} {compound.target_mz:.4f}", targets)
+        window = compound.rt_window()
+        if window:
+            self.chrom.plot.setXRange(*window)
+
+    def _go_to_result(self, result: Result) -> None:
+        """Leva o cromatograma ate o pico de uma linha da tabela de resultados."""
+        if result.end_rt > result.start_rt:
+            span = max(result.end_rt - result.start_rt, 0.05)
+            self.chrom.plot.setXRange(result.start_rt - span, result.end_rt + span)
+            self.chrom.mark(result.rt)
+        self._update_status(
+            f"{result.compound} · {result.sample} · {result.channel} · "
+            f"RT {result.rt:.3f} min · área {result.area:,.0f}"
+        )
+
+    # ------------------------------------------------------- picos do cromat. #
+    def _detect_peaks(self) -> None:
+        traces = self.chrom.traces
+        if not traces:
+            self._update_status("Nada no cromatograma para integrar.")
+            return
+        results: list[Result] = []
+        markers = []
+        for trace in traces:
+            conditioned = self.chrom.conditioned(trace.key)
+            x, y = conditioned if conditioned else (trace.x, trace.y)
+            peaks = detect_peaks(x, y, min_relative=0.05, min_snr=3.0)
+            markers.extend(peaks)
+            ref = self.refs.get(trace.key)
+            sample_name = ref.alias if ref else "—"
+            channel_name = (
+                trace.source.info.short_label if trace.source is not None else "TIC"
+            )
+            for peak in peaks:
+                results.append(
+                    Result(
+                        compound="(detectado)", sample=sample_name,
+                        channel=channel_name, mz="—", rt=peak.apex_rt,
+                        area=peak.area, height=peak.height, width=peak.width,
+                        snr=peak.snr, trace_key=trace.key,
+                        start_rt=peak.start_rt, end_rt=peak.end_rt,
+                    )
+                )
+        self.chrom.set_peak_markers(markers)
+        self.results_panel.set_results(results)
+        self.tabs.setCurrentWidget(self.results_panel)
+        self._update_status(
+            f"{len(results)} pico(s) integrado(s) em {len(traces)} traço(s)."
+        )
+
     # ------------------------------------------------------------- utilidades #
     def _set_select_mode(self, enabled: bool) -> None:
         self.chrom.set_select_mode(enabled)
@@ -713,6 +1161,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def _set_normalised(self, enabled: bool) -> None:
         self.chrom.set_normalised(enabled)
         self.spectrum.set_normalised(enabled)
+
+    def _set_mirror(self, enabled: bool) -> None:
+        self.chrom.set_mirror(enabled)
+        self.spectrum.set_mirror(enabled)
+
+    def _set_smoothing(self, sigma: float) -> None:
+        self.chrom.set_smoothing(sigma)
+        self.spectrum.set_smoothing(sigma)
 
     def _autoscale_both(self) -> None:
         self.chrom.autoscale()
@@ -724,16 +1180,20 @@ class MainWindow(QtWidgets.QMainWindow):
             self._update_status(f"Nada para exportar em {what}.")
             return
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, f"Exportar {what}", f"{what}.csv", "CSV (*.csv)"
+            self, f"Exportar {what}", os.path.join(self._last_dir(), f"{what}.csv"),
+            "CSV (*.csv)"
         )
         if not path:
             return
+        self._remember_dir(path)
         with open(path, "w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
             for trace in traces:
+                conditioned = view.conditioned(trace.key)
+                x, y = conditioned if conditioned else (trace.x, trace.y)
                 writer.writerow([trace.label])
                 writer.writerow(["x", "y"])
-                writer.writerows(zip(trace.x.tolist(), trace.y.tolist()))
+                writer.writerows(zip(x.tolist(), y.tolist()))
                 writer.writerow([])
         self._update_status(f"Exportado para {path}")
 
@@ -753,12 +1213,20 @@ class MainWindow(QtWidgets.QMainWindow):
             "• Shift + arrastar seleciona faixa de m/z<br>"
             "• botão direito na faixa → extrair XIC<br>"
             "• duplo clique na aba “Picos do espectro” extrai o XIC da massa<br><br>"
-            "<b>Canais</b><br>"
-            "• marque na árvore à esquerda para sobrepor no cromatograma<br>"
-            "• o combo “Canal ativo” define de onde vêm espectros e XICs",
+            "<b>Compostos</b><br>"
+            "• monte ou importe a lista na aba “Compostos”<br>"
+            "• “Extrair e integrar todos” roda a lista em todas as amostras marcadas<br>"
+            "• duplo clique numa linha mostra o XIC daquele composto<br><br>"
+            "<b>Processamento</b><br>"
+            "• suavização e linha de base valem para o que está na tela e para a "
+            "integração<br>"
+            "• selecione uma faixa de branco e clique “Definir background” para "
+            "subtraí-la dos espectros<br>"
+            "• “Espelhar” inverte os traços pares, para comparar amostra e branco",
         )
 
     def closeEvent(self, event):  # noqa: N802 (API Qt)
+        self._save_settings()
         for wiff in self.files:
             wiff.close()
         super().closeEvent(event)

@@ -137,6 +137,29 @@ green light — except for a row that failed to integrate, which always fails.
 | **Centroid** | turns the profile spectrum into sticks |
 | **Markers** | drop a marker on a peak; the others are then labelled with their distance to it, which is how neutral losses and isotope spacings are read |
 
+### Lipid annotation
+
+| Feature | How |
+|---|---|
+| Local LIPID MAPS index | one 21 MB download becomes a 1.3 MB index of 49,969 curated structures; lookups need no network and take under a millisecond |
+| Candidates for a mass | **LIPID MAPS** tab, or right-click a spectrum peak → *Find formula for this peak* |
+| Species, then structures | results group by species, with the isomers that share it underneath — a mass cannot separate them |
+| Annotate a whole table | **Annotate from LIPID MAPS…** in the Method workspace proposes a species for every component still named after its precursor |
+| Traceability | the LM_ID travels with the component and through the CSV |
+
+Two things keep the annotation honest. The search window is never narrower than
+the precursor's own precision — a mass written as `351.20` is known to ±5 mDa,
+so asking for 10 ppm of it would be inventing digits — and a component is only
+offered for automatic naming when exactly one species fits that window. On a
+component table generated from the acquisition method, where precursors carry
+one or two decimals, that means most rows come back marked *needs an accurate
+mass* rather than guessed at.
+
+Searches are also restricted to structures built from C, H, N, O, P, S and Se.
+LMSD holds organoarsenic and fluorinated lipids; they are valid records and
+absurd candidates for a plasma oxylipin panel, and a rounded precursor mass
+matches one happily.
+
 ### Chemistry
 
 | Feature | How |
@@ -238,6 +261,9 @@ Wine and no Analyst installed. Files are opened with
 `OpenFileMode.ReadOnlyShared`, so a second window — or Analyst itself — can
 still open the same file.
 
+The LIPID MAPS Structure Database is redistributed by LIPID MAPS under
+CC BY 4.0 and is downloaded on request, not bundled.
+
 **On licensing:** the code in this project is MIT. The Clearcore2 libraries
 belong to SCIEX and are *not* open source — they are redistributable, the same
 arrangement ProteoWizard relies on. There is no fully vendor-free `.wiff`
@@ -260,6 +286,7 @@ openpeakview/
   calibration.py         curve fitting and reading concentrations back
   statistics.py          grouped mean, SD and %CV
   chemistry.py           formulas, exact masses, isotope patterns, formula finder
+  lipidmaps.py           local LIPID MAPS index and mass lookup
   processing.py          smoothing, baseline, centroiding, peak detection, S/N
   ui/shell.py            the window and its workspace tabs
   ui/explorer.py         Explorer workspace
@@ -278,6 +305,8 @@ openpeakview/
   ui/component_list.py   read-only component list for the Explorer
   ui/mass_calc_panel.py  mass calculator
   ui/formula_panel.py    formula finder
+  ui/lipid_panel.py      lipid candidates for a mass
+  ui/annotate_dialog.py  reviewing batch annotation proposals
   ui/results_panel.py    results table
   ui/sample_info.py      sample information
   app.py                 entry point

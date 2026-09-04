@@ -117,6 +117,7 @@ _ALIASES = {
                             "tolerancia_razao_ionica"},
     "regression": {"regression", "curve", "fit", "regressao"},
     "weighting": {"weighting", "weight", "ponderacao", "peso"},
+    "lm_id": {"lm_id", "lipidmaps", "lipidmaps_id", "lmid"},
 }
 
 _TRUE = {"1", "true", "yes", "y", "sim", "is", "istd", "x"}
@@ -151,6 +152,8 @@ class Component:
     #: calibration
     regression: str = "linear"
     weighting: str = "1"
+    #: LIPID MAPS identifier, when the component has been annotated
+    lm_id: str = ""
     #: integration overrides for this component; None uses the method defaults
     integration: IntegrationParams | None = None
     #: acceptance overrides for this component; None uses the method defaults
@@ -318,6 +321,7 @@ def load_components(path: str | os.PathLike) -> list[Component]:
                 ion_ratio_tolerance=_to_float(row.get("ion_ratio_tolerance"), 0.0) or 0.0,
                 regression=str(row.get("regression") or "linear").strip() or "linear",
                 weighting=str(row.get("weighting") or "1").strip() or "1",
+                lm_id=str(row.get("lm_id") or "").strip(),
             )
         except ValueError as exc:
             raise ValueError(f"CSV line {number}: {exc}") from exc
@@ -339,7 +343,7 @@ CSV_HEADER = ["name", "group", "precursor", "fragment", "rt", "window",
               "tolerance", "unit", "formula", "adduct", "is",
               "internal_standard", "response", "concentration_unit",
               "qualifier_of", "ion_ratio", "ion_ratio_tolerance",
-              "regression", "weighting"]
+              "regression", "weighting", "lm_id"]
 
 
 def save_components(path: str | os.PathLike, components: list[Component]) -> None:
@@ -354,7 +358,7 @@ def save_components(path: str | os.PathLike, components: list[Component]) -> Non
                 c.adduct, "yes" if c.is_internal_standard else "",
                 c.internal_standard, c.response, c.concentration_unit,
                 c.qualifier_of, _fmt(c.ion_ratio), _fmt(c.ion_ratio_tolerance),
-                c.regression, c.weighting,
+                c.regression, c.weighting, c.lm_id,
             ])
 
 

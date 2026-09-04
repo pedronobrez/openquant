@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from .. import lipidmaps
 from ..chemistry import ADDUCTS
 from ..components import RESPONSES, Component, load_components, save_components
 from ..session import Session
+from .annotate_dialog import AnnotateDialog, propose
 
 COLUMNS = ["Name", "Group", "Precursor", "Fragment", "RT", "± RT", "Tol.",
            "Unit", "Formula", "Adduct", "IS", "Internal standard", "Response",
@@ -52,8 +54,12 @@ class MethodWorkspace(QtWidgets.QWidget):
         )
         self.btn_import = QtWidgets.QPushButton("Import CSV…")
         self.btn_export = QtWidgets.QPushButton("Export CSV…")
+        self.btn_annotate = QtWidgets.QPushButton("Annotate from LIPID MAPS…")
+        self.btn_annotate.setToolTip(
+            "Propose a lipid species for every component still named after its "
+            "precursor mass")
         for widget in (self.btn_add, self.btn_remove, self.btn_generate,
-                       self.btn_import, self.btn_export):
+                       self.btn_import, self.btn_export, self.btn_annotate):
             bar.addWidget(widget)
         bar.addStretch(1)
         layout.addLayout(bar)
@@ -110,6 +116,7 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.btn_generate.clicked.connect(self._generate)
         self.btn_import.clicked.connect(self._import)
         self.btn_export.clicked.connect(self._export)
+        self.btn_annotate.clicked.connect(self._annotate)
         self.table.itemChanged.connect(self._on_edit)
         self.tol_spin.valueChanged.connect(self._defaults_changed)
         self.unit_combo.currentTextChanged.connect(self._defaults_changed)
@@ -305,6 +312,38 @@ class MethodWorkspace(QtWidgets.QWidget):
         if path:
             save_components(path, components)
             self._report(f"Exported to {path}")
+
+    def _annotate(self) -> None:
+        """Name the unnamed components from their precursor masses."""
+        if lipidmaps.database() is None:
+            QtWidgets.QMessageBox.information(
+                self, "LIPID MAPS not installed",
+                "Open the Explorer's LIPID MAPS tab and download the database "
+                "first. It is a one-off 21 MB download.")
+            return
+        components = self.components()
+        if not components:
+            self._report("Build the component list first.")
+            return
+
+        proposals = propose(components, adduct="[M-H]-", tolerance=10.0,
+                            unit="ppm", only_unnamed=True)
+        if not proposals:
+            self._report("Every component already has a name.")
+            return
+
+        dialog = AnnotateDialog(proposals, self)
+        if not dialog.exec():
+            return
+        accepted = dialog.accepted_proposals()
+        for proposal in accepted:
+            proposal.component.name = proposal.species
+            proposal.component.formula = proposal.formula
+            proposal.component.lm_id = proposal.lm_id
+            if not proposal.component.adduct:
+                proposal.component.adduct = "[M-H]-"
+        self.session.set_components(components)
+        self._report(f"{len(accepted)} component(s) annotated.")
 
     def _defaults_changed(self, *_args) -> None:
         method = self.session.method

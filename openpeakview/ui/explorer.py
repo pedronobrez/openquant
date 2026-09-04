@@ -24,6 +24,7 @@ from ..wiff import Channel
 from .chrom_area import ChromatogramArea
 from .component_list import ComponentListPanel
 from .formula_panel import FormulaPanel
+from .lipid_panel import LipidPanel
 from .mass_calc_panel import MassCalcPanel
 from .plots import SpectrumView, Trace, colour
 from .results_panel import Result, ResultsPanel
@@ -217,6 +218,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.results_panel = ResultsPanel()
         self.mass_calc = MassCalcPanel()
         self.formula_panel = FormulaPanel()
+        self.lipid_panel = LipidPanel()
         self.sample_info = SampleInfoPanel()
 
         self.tabs.addTab(self.component_list, "Components")
@@ -225,6 +227,11 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.tabs.addTab(self._build_peaks_tab(), "Spectrum peaks")
         self.tabs.addTab(self.mass_calc, "Mass calc")
         self.tabs.addTab(self.formula_panel, "Formula finder")
+        self.tabs.addTab(self.lipid_panel, "LIPID MAPS")
+        # eight tabs in a narrow dock elide into unreadable stubs; scroll
+        # buttons keep the full names and let the reader page through them
+        self.tabs.setUsesScrollButtons(True)
+        self.tabs.tabBar().setElideMode(QtCore.Qt.TextElideMode.ElideNone)
         self.tabs.addTab(self.sample_info, "Sample")
 
         dock.setWidget(self.tabs)
@@ -471,6 +478,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.formula_panel.sigOverlay.connect(self._overlay_hit)
         self.formula_panel.sigSendToCalculator.connect(
             self.mass_calc.formula_edit.setText)
+        self.lipid_panel.sigAnnotate.connect(self._lipid_annotation)
 
         QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Left), self,
                         activated=lambda: self._step_scan(-1))
@@ -1207,11 +1215,17 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
 
     # ------------------------------------------------------------- chemistry -- #
     def _identify_peak(self, mz: float) -> None:
-        """Right-click on a spectrum peak: send it to both chemistry panels."""
+        """Right-click on a spectrum peak: send it to every chemistry panel."""
         self.mass_calc.set_measured(mz)
         self.formula_panel.set_target(mz)
+        self.lipid_panel.set_target(mz)
         self.tabs.setCurrentWidget(self.formula_panel)
         self._update_status(f"m/z {mz:.4f} sent to the formula finder.")
+
+    def _lipid_annotation(self, name: str, formula: str, lm_id: str) -> None:
+        """A structure picked in the LIPID MAPS tab feeds the chemistry panels."""
+        self.mass_calc.formula_edit.setText(formula)
+        self._update_status(f"{name} · {formula} · {lm_id}")
 
     def _send_to_finder(self, mz: float, adduct: str) -> None:
         self.formula_panel.set_target(mz, adduct)

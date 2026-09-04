@@ -20,14 +20,38 @@ IS_PEN = "#d62728"
 SELECTED_BORDER = "#3b6ec8"
 
 
+class _PanelViewBox(pg.ViewBox):
+    """ViewBox whose horizontal drag becomes a manual integration range."""
+
+    sigRangeDrag = QtCore.pyqtSignal(float, float, bool)   # start, end, finished
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.manual_mode = False
+
+    def mouseDragEvent(self, ev, axis=None):
+        shift = bool(ev.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier)
+        left = ev.button() == QtCore.Qt.MouseButton.LeftButton
+        if left and (self.manual_mode or shift):
+            ev.accept()
+            start = float(self.mapToView(ev.buttonDownPos()).x())
+            end = float(self.mapToView(ev.pos()).x())
+            self.sigRangeDrag.emit(start, end, ev.isFinish())
+            return
+        super().mouseDragEvent(ev, axis)
+
+
 class PeakPanel(pg.PlotWidget):
     """One sample's chromatogram, with its integrated peak shaded."""
 
     sigClicked = QtCore.pyqtSignal(str)        # sample key
     sigDoubleClicked = QtCore.pyqtSignal(str)
+    sigManualRange = QtCore.pyqtSignal(str, float, float)   # key, start, end
+    sigContextMenu = QtCore.pyqtSignal(str, object)         # key, global pos
 
     def __init__(self, parent=None):
-        super().__init__(parent, background="w")
+        self.viewbox = _PanelViewBox()
+        super().__init__(parent, background="w", viewBox=self.viewbox)
         self.sample_key = ""
         self.showGrid(x=True, y=True, alpha=0.12)
         self.setMenuEnabled(False)
@@ -58,7 +82,35 @@ class PeakPanel(pg.PlotWidget):
         self._expected.setZValue(-20)
         self._expected.hide()
         self.addItem(self._expected, ignoreBounds=True)
+        self._noise = pg.LinearRegionItem(brush=pg.mkBrush(150, 150, 150, 45),
+                                          pen=pg.mkPen("#999", width=1,
+                                                       style=QtCore.Qt.PenStyle.DotLine),
+                                          movable=False)
+        self._noise.setZValue(-25)
+        self._noise.hide()
+        self.addItem(self._noise, ignoreBounds=True)
+        self.viewbox.sigRangeDrag.connect(self._on_drag)
         self.set_selected(False)
+
+    def set_manual_mode(self, enabled: bool) -> None:
+        self.viewbox.manual_mode = enabled
+        self.setCursor(QtCore.Qt.CursorShape.SplitHCursor if enabled
+                       else QtCore.Qt.CursorShape.ArrowCursor)
+
+    def set_noise_region(self, region: tuple[float, float] | None) -> None:
+        if region is None:
+            self._noise.hide()
+        else:
+            self._noise.setRegion(region)
+            self._noise.show()
+
+    def _on_drag(self, start: float, end: float, finished: bool) -> None:
+        if not self.sample_key or abs(end - start) <= 0:
+            return
+        self._band.setRegion(tuple(sorted((start, end))))
+        self._band.show()
+        if finished:
+            self.sigManualRange.emit(self.sample_key, start, end)
 
     # -- content ---------------------------------------------------------------- #
     def clear_panel(self) -> None:
@@ -117,6 +169,13 @@ class PeakPanel(pg.PlotWidget):
         scale = target / peak if peak > 0 and target > 0 else 1.0
         self._is_curve.setData(is_x, is_y * scale)
 
+    def integration_range(self) -> tuple[float, float] | None:
+        """The range currently shaded on this panel, if any."""
+        if not self._band.isVisible():
+            return None
+        lo, hi = self._band.getRegion()
+        return float(lo), float(hi)
+
     def set_selected(self, selected: bool) -> None:
         self.setStyleSheet(
             f"border: 2px solid {SELECTED_BORDER};" if selected
@@ -134,12 +193,21 @@ class PeakPanel(pg.PlotWidget):
             self.sigDoubleClicked.emit(self.sample_key)
         super().mouseDoubleClickEvent(event)
 
+    def contextMenuEvent(self, event):  # noqa: N802 (Qt API)
+        if self.sample_key:
+            self.sigContextMenu.emit(self.sample_key, event.globalPos())
+            event.accept()
+            return
+        super().contextMenuEvent(event)
+
 
 class PeakReviewGrid(QtWidgets.QWidget):
     """A page of peak panels, with the layout and paging controls."""
 
     sigSelected = QtCore.pyqtSignal(str)   # sample key
     sigMagnified = QtCore.pyqtSignal(str)
+    sigManualRange = QtCore.pyqtSignal(str, float, float)
+    sigContextMenu = QtCore.pyqtSignal(str, object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -149,6 +217,8 @@ class PeakReviewGrid(QtWidgets.QWidget):
         self._selected = ""
         self._shared_y = False
         self._show_is = True
+        self._manual_mode = False
+        self._noise_region: tuple[float, float] | None = None
         self._margin = 3.0     # window widths shown on each side
         self._linked_x = True
         self._syncing = False
@@ -174,6 +244,12 @@ class PeakReviewGrid(QtWidgets.QWidget):
         self.row_spin.setRange(1, 8)
         self.row_spin.setValue(2)
         bar.addWidget(self.row_spin)
+        bar.addSpacing(12)
+        self.chk_manual = QtWidgets.QCheckBox("Manual")
+        self.chk_manual.setToolTip(
+            "Drag across a peak to integrate exactly that range "
+            "(Shift + drag does the same at any time)")
+        bar.addWidget(self.chk_manual)
         bar.addSpacing(12)
         self.chk_is = QtWidgets.QCheckBox("Show IS")
         self.chk_is.setChecked(True)
@@ -220,6 +296,7 @@ class PeakReviewGrid(QtWidgets.QWidget):
         self.row_spin.valueChanged.connect(self._relayout)
         self.chk_shared_y.toggled.connect(self._set_shared_y)
         self.chk_is.toggled.connect(self._set_show_is)
+        self.chk_manual.toggled.connect(self.set_manual_mode)
         self.zoom_combo.currentIndexChanged.connect(lambda _i: self._fill())
         self.chk_link_x.toggled.connect(self._set_link_x)
         self.btn_prev.clicked.connect(lambda: self.set_page(self._page - 1))
@@ -227,6 +304,10 @@ class PeakReviewGrid(QtWidgets.QWidget):
         self._relayout()
 
     # -- layout ------------------------------------------------------------------- #
+    @property
+    def views(self) -> list[PeakPanel]:
+        return list(self._panels)
+
     @property
     def page_size(self) -> int:
         return self.col_spin.value() * self.row_spin.value()
@@ -252,6 +333,9 @@ class PeakReviewGrid(QtWidgets.QWidget):
             panel = PeakPanel()
             panel.sigClicked.connect(self._on_panel_clicked)
             panel.sigDoubleClicked.connect(self.sigMagnified)
+            panel.sigManualRange.connect(self.sigManualRange)
+            panel.sigContextMenu.connect(self.sigContextMenu)
+            panel.set_manual_mode(self._manual_mode)
             panel.getViewBox().sigXRangeChanged.connect(
                 lambda _vb, rng, p=panel: self._link(p, rng))
             self.grid.addWidget(panel, index // columns, index % columns)
@@ -279,6 +363,17 @@ class PeakReviewGrid(QtWidgets.QWidget):
     def _set_show_is(self, enabled: bool) -> None:
         self._show_is = enabled
         self._fill()
+
+    def set_manual_mode(self, enabled: bool) -> None:
+        """Dragging inside a panel marks the integration range instead of panning."""
+        self._manual_mode = enabled
+        for panel in self._panels:
+            panel.set_manual_mode(enabled)
+
+    def set_noise_region(self, region: tuple[float, float] | None) -> None:
+        self._noise_region = region
+        for panel in self._panels:
+            panel.set_noise_region(region)
 
     # -- content -------------------------------------------------------------------- #
     def set_items(self, title: str, items: list[tuple]) -> None:
@@ -313,6 +408,7 @@ class PeakReviewGrid(QtWidgets.QWidget):
             result, x, y, expected = item[:4]
             is_trace = item[4] if len(item) > 4 and self._show_is else None
             panel.set_data(result, x, y, expected, is_trace)
+            panel.set_noise_region(self._noise_region)
             panel.set_selected(result.sample_key == self._selected)
             panel.enableAutoRange()
             panel.autoRange()

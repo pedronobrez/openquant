@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import csv
 import os
-from dataclasses import dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields
 
 from .chemistry import ADDUCTS_BY_NAME, FormulaError, monoisotopic_mass, parse_formula
+from .processing import SNR_MODES, SNR_PEAK_TO_PEAK
 
 #: how a component's result is reported
 RESPONSE_AREA = "area"
@@ -24,6 +25,44 @@ RESPONSES = (RESPONSE_AREA, RESPONSE_RATIO, RESPONSE_CONCENTRATION)
 
 DEFAULT_TOLERANCE = 0.02
 DEFAULT_UNIT = "Da"
+
+
+@dataclass
+class IntegrationParams:
+    """
+    How one component's peaks are found and measured.
+
+    The method carries a set of defaults and a component may override them, so
+    a single awkward analyte can be tuned without disturbing the rest of the
+    batch.
+    """
+
+    smoothing: float = 0.0
+    baseline_window: float = 0.0
+    min_relative_height: float = 0.05
+    min_snr: float = 3.0
+    #: stretch of baseline used to measure noise; None falls back to the
+    #: automatic estimate over the whole trace
+    noise_start: float | None = None
+    noise_end: float | None = None
+    snr_mode: str = SNR_PEAK_TO_PEAK
+
+    def __post_init__(self):
+        if self.snr_mode not in SNR_MODES:
+            self.snr_mode = SNR_PEAK_TO_PEAK
+
+    @property
+    def noise_region(self) -> tuple[float, float] | None:
+        if self.noise_start is None or self.noise_end is None:
+            return None
+        return self.noise_start, self.noise_end
+
+    def copy(self) -> "IntegrationParams":
+        return IntegrationParams(**asdict(self))
+
+    def cache_key(self) -> tuple:
+        """Only the parts that change the conditioned trace."""
+        return (self.smoothing, self.baseline_window)
 
 # Header aliases, English and Portuguese, keyed by dataclass field name. Lists
 # written by earlier versions used Portuguese headers, so both keep working.
@@ -83,8 +122,8 @@ class Component:
     #: allowed relative deviation from `ion_ratio`, in percent; 0 uses the
     #: method default
     ion_ratio_tolerance: float = 0.0
-    #: per-component integration overrides; filled in a later phase
-    integration: dict = field(default_factory=dict)
+    #: integration overrides for this component; None uses the method defaults
+    integration: IntegrationParams | None = None
 
     @property
     def is_qualifier(self) -> bool:
@@ -93,6 +132,10 @@ class Component:
     def __post_init__(self):
         if self.response not in RESPONSES:
             self.response = RESPONSE_AREA
+        if isinstance(self.integration, dict):
+            known = {k: v for k, v in self.integration.items()
+                     if k in IntegrationParams.__dataclass_fields__}
+            self.integration = IntegrationParams(**known)
         if not self.precursor and self.formula:
             computed = self.precursor_from_formula()
             if computed is not None:

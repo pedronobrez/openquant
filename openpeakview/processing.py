@@ -212,6 +212,31 @@ def signal_to_noise(x: np.ndarray, y: np.ndarray, x0: float, x1: float,
     return float((y[inside].max() - np.median(y[outside])) / noise)
 
 
+#: how the noise behind a signal-to-noise ratio is measured
+SNR_PEAK_TO_PEAK = "peak-to-peak"
+SNR_STANDARD_DEVIATION = "standard deviation"
+SNR_MODES = (SNR_PEAK_TO_PEAK, SNR_STANDARD_DEVIATION)
+
+
+def noise_in_region(x: np.ndarray, y: np.ndarray, start: float, end: float,
+                    mode: str = SNR_PEAK_TO_PEAK) -> float | None:
+    """
+    Noise measured over a stretch of baseline the user picked.
+
+    Peak-to-peak takes the full swing of the region and is the stricter, more
+    conservative reading; the standard deviation is the gentler one. Both are
+    in use, so which one a number came from has to be stated alongside it.
+    """
+    lo, hi = sorted((float(start), float(end)))
+    window = (x >= lo) & (x <= hi)
+    if window.sum() < 3:
+        return None
+    region = y[window]
+    if mode == SNR_STANDARD_DEVIATION:
+        return float(np.std(region))
+    return float(region.max() - region.min())
+
+
 @dataclass(frozen=True)
 class ChromPeak:
     """An integrated chromatographic peak."""
@@ -226,10 +251,46 @@ class ChromPeak:
     snr: float
 
 
+def integrate_window(x: np.ndarray, y: np.ndarray, start: float, end: float,
+                     noise: float | None = None,
+                     noise_floor: float = NOISE_FLOOR) -> ChromPeak | None:
+    """
+    Integrate exactly the stretch the user marked, with no peak finding.
+
+    This is what manual integration does: the operator has decided where the
+    peak begins and ends, so the only job left is the arithmetic — a straight
+    baseline between the two edges and the area above it.
+    """
+    lo, hi = sorted((float(start), float(end)))
+    window = (x >= lo) & (x <= hi)
+    if window.sum() < 3:
+        return None
+    xs, ys = x[window], y[window]
+    baseline = np.linspace(ys[0], ys[-1], xs.size)
+    corrected = np.clip(ys - baseline, 0.0, None)
+    height = float(corrected.max())
+    apex_local = int(corrected.argmax())
+    apex = int(np.nonzero(window)[0][apex_local])
+    half = corrected >= height / 2.0
+    width = float(xs[half][-1] - xs[half][0]) if half.any() else 0.0
+    reference = max(noise if noise is not None else estimate_noise(y), noise_floor)
+    return ChromPeak(
+        apex_rt=float(x[apex]),
+        apex_index=apex,
+        start_rt=float(xs[0]),
+        end_rt=float(xs[-1]),
+        height=height,
+        area=float(np.trapezoid(corrected, xs)),
+        width=width,
+        snr=float(height / reference),
+    )
+
+
 def detect_peaks(x: np.ndarray, y: np.ndarray, min_relative: float = 0.02,
                  min_snr: float = 3.0, smooth_sigma: float = 1.0,
                  max_peaks: int = 50,
-                 noise_floor: float = NOISE_FLOOR) -> list[ChromPeak]:
+                 noise_floor: float = NOISE_FLOOR,
+                 noise: float | None = None) -> list[ChromPeak]:
     """
     Detect and integrate the peaks of a chromatogram.
 
@@ -247,7 +308,7 @@ def detect_peaks(x: np.ndarray, y: np.ndarray, min_relative: float = 0.02,
     if float(smoothed.max()) <= 0:
         return []
 
-    noise = max(estimate_noise(y), noise_floor)
+    noise = max(noise if noise is not None else estimate_noise(y), noise_floor)
     threshold = float(smoothed.max()) * min_relative
     apexes = local_maxima(smoothed)
     apexes = apexes[smoothed[apexes] >= threshold]

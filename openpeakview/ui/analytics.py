@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from ..components import Component
-from ..quantify import PeakResult, extract_xic, process
+from ..components import Component, IntegrationParams
+from ..quantify import PeakResult, extract_xic, integrate_manually, process
 from ..session import Session
+from .integration_panel import IntegrationPanel
 from .peak_review import PeakReviewGrid
 from .results_table import ResultsTable
 
@@ -63,6 +64,8 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.component_tree.setHeaderHidden(True)
         self.component_tree.setAlternatingRowColors(True)
         left_layout.addWidget(self.component_tree, 1)
+        self.integration = IntegrationPanel()
+        left_layout.addWidget(self.integration)
         splitter.addWidget(left)
 
         right = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
@@ -75,7 +78,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         splitter.addWidget(right)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([260, 1200])
+        splitter.setSizes([300, 1200])
         layout.addWidget(splitter, 1)
 
         self.btn_process.clicked.connect(self.process_batch)
@@ -84,7 +87,12 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.component_tree.currentItemChanged.connect(self._on_component_changed)
         self.grid.sigSelected.connect(self._on_panel_selected)
         self.grid.sigMagnified.connect(self._on_panel_magnified)
+        self.grid.sigManualRange.connect(self._on_manual_range)
+        self.grid.sigContextMenu.connect(self._panel_menu)
         self.results.sigSelected.connect(self._on_row_selected)
+        self.integration.sigApplyComponent.connect(self._apply_to_component)
+        self.integration.sigApplyGroup.connect(self._apply_to_group)
+        self.integration.sigResetComponent.connect(self._reset_component)
 
         session.sigMethodChanged.connect(self.reload_components)
         session.sigSamplesChanged.connect(self.refresh_grid)
@@ -146,7 +154,16 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
     def _on_component_changed(self, current, _previous) -> None:
         name = current.data(0, ROLE_NAME) if current is not None else None
         self._component = self.session.method.by_name(name) if name else None
+        self._show_integration_params()
         self.refresh_grid()
+
+    def _show_integration_params(self) -> None:
+        component = self._component
+        if component is None:
+            return
+        params = self.session.method.integration_for(component)
+        self.integration.set_params(params, component.integration is not None)
+        self.grid.set_noise_region(params.noise_region)
 
     # -- grid ------------------------------------------------------------------------ #
     def refresh_grid(self) -> None:
@@ -186,6 +203,117 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         if quantifier is not None:
             message += f" · qualifier of {quantifier.name}"
         self._report(message)
+
+    # -- integration parameters -------------------------------------------------- #
+    def _apply_to_component(self, params: IntegrationParams) -> None:
+        component = self._component
+        if component is None:
+            return
+        self.session.method.set_integration(component, params)
+        self.session.notify_method_changed()
+        self._reprocess([component.name])
+        self.integration.report(f"Applied to {component.name}.")
+
+    def _apply_to_group(self, params: IntegrationParams) -> None:
+        component = self._component
+        if component is None:
+            return
+        if not component.group:
+            self.integration.report(
+                "This component has no group; use “update for component”.")
+            return
+        method = self.session.method
+        touched = method.apply_integration_to_group(component.group, params)
+        self.session.notify_method_changed()
+        names = [c.name for c in method.components if c.group == component.group]
+        self._reprocess(names)
+        self.integration.report(
+            f"Applied to {touched} component(s) of {component.group}.")
+
+    def _reset_component(self) -> None:
+        component = self._component
+        if component is None:
+            return
+        self.session.method.set_integration(component, None)
+        self.session.notify_method_changed()
+        self._show_integration_params()
+        self._reprocess([component.name])
+        self.integration.report(f"{component.name} back to the method defaults.")
+
+    def _reprocess(self, names: list[str]) -> None:
+        """
+        Re-integrate only the components that changed, keeping rows the
+        operator integrated by hand.
+        """
+        if not self.session.results.results:
+            return
+        results = process(self.session.loaded_entries, self.session.method,
+                          self.session.cache, previous=self.session.results,
+                          keep_manual=True, only=names)
+        self.session.set_results(results)
+
+    # -- manual integration -------------------------------------------------------- #
+    def _on_manual_range(self, sample_key: str, start: float, end: float) -> None:
+        component = self._component
+        entry = self.session.entry_by_key(sample_key)
+        if component is None or entry is None:
+            return
+        previous = self.session.results.get(sample_key, component.name)
+        result = integrate_manually(entry, component, self.session.method,
+                                    start, end, previous, self.session.cache)
+        self.session.results.replace(result)
+        self._relink()
+        self.session.notify_results_changed()
+        self.results.select(sample_key, component.name)
+        self._report(
+            f"{entry.name}: integrated {min(start, end):.3f}–{max(start, end):.3f} min "
+            f"by hand — area {result.area:,.0f}")
+
+    def _relink(self) -> None:
+        from ..quantify import compute_ion_ratios, link_internal_standards
+        link_internal_standards(self.session.results, self.session.method)
+        compute_ion_ratios(self.session.results, self.session.method)
+
+    def _panel_menu(self, sample_key: str, position) -> None:
+        component = self._component
+        if component is None:
+            return
+        result = self.session.results.get(sample_key, component.name)
+        menu = QtWidgets.QMenu(self)
+        noise = menu.addAction("Set noise region from the shaded range")
+        revert = menu.addAction("Back to automatic integration")
+        revert.setEnabled(result is not None and result.manual)
+        chosen = menu.exec(position)
+        if chosen is noise:
+            self._noise_from_panel(sample_key)
+        elif chosen is revert:
+            self._revert_manual(sample_key)
+
+    def _noise_from_panel(self, sample_key: str) -> None:
+        panel = next((p for p in self.grid.views if p.sample_key == sample_key), None)
+        if panel is None:
+            return
+        region = panel.integration_range()
+        if region is None:
+            self.integration.report("Drag across a stretch of baseline first.")
+            return
+        self.integration.set_noise_region(region)
+        self.grid.set_noise_region(region)
+        self.integration.report(
+            f"Noise region {region[0]:.2f}–{region[1]:.2f} min — apply to keep it.")
+
+    def _revert_manual(self, sample_key: str) -> None:
+        component = self._component
+        entry = self.session.entry_by_key(sample_key)
+        if component is None or entry is None:
+            return
+        from ..quantify import integrate_component
+        result = integrate_component(entry, component, self.session.method,
+                                     self.session.cache)
+        self.session.results.replace(result)
+        self._relink()
+        self.session.notify_results_changed()
+        self._report(f"{entry.name}: back to automatic integration.")
 
     def _set_magnified(self, enabled: bool) -> None:
         """One panel filling the pane, or back to the grid."""

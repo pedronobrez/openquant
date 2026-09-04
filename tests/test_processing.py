@@ -147,3 +147,58 @@ def test_centroid_spectrum_collapses_profile_peaks():
 def test_centroid_spectrum_empty_input():
     cmz, ci = pr.centroid_spectrum(np.zeros(0), np.zeros(0))
     assert cmz.size == 0 and ci.size == 0
+
+
+# --- noise regions and manual integration ------------------------------------- #
+def test_noise_in_region_modes_differ():
+    rng = np.random.default_rng(3)
+    x = np.linspace(0, 10, 500)
+    y = rng.normal(0, 5.0, x.size)
+    peak_to_peak = pr.noise_in_region(x, y, 1.0, 9.0, pr.SNR_PEAK_TO_PEAK)
+    deviation = pr.noise_in_region(x, y, 1.0, 9.0, pr.SNR_STANDARD_DEVIATION)
+    # the full swing of a noisy stretch is several standard deviations wide
+    assert peak_to_peak > deviation * 3
+    assert deviation == pytest.approx(5.0, rel=0.2)
+
+
+def test_noise_in_region_needs_enough_points():
+    x = np.linspace(0, 10, 100)
+    assert pr.noise_in_region(x, x, 5.0, 5.0) is None
+
+
+def test_integrate_window_uses_exactly_the_given_range():
+    x = np.linspace(0, 20, 2000)
+    y = gaussian(x, 10.0, 0.1, 1000.0) + 5.0
+    peak = pr.integrate_window(x, y, 9.5, 10.5)
+    assert peak.start_rt == pytest.approx(9.5, abs=0.02)
+    assert peak.end_rt == pytest.approx(10.5, abs=0.02)
+    assert peak.apex_rt == pytest.approx(10.0, abs=0.02)
+    assert peak.height == pytest.approx(1000.0, rel=0.02)
+
+
+def test_integrate_window_ignores_a_taller_peak_outside_it():
+    x = np.linspace(0, 20, 2000)
+    y = gaussian(x, 5.0, 0.1, 5000.0) + gaussian(x, 15.0, 0.1, 500.0)
+    peak = pr.integrate_window(x, y, 14.5, 15.5)
+    assert peak.apex_rt == pytest.approx(15.0, abs=0.02)
+    assert peak.height == pytest.approx(500.0, rel=0.02)
+
+
+def test_integrate_window_rejects_a_sliver():
+    x = np.linspace(0, 20, 2000)
+    assert pr.integrate_window(x, x, 10.0, 10.0) is None
+
+
+def test_integrate_window_uses_the_supplied_noise():
+    x = np.linspace(0, 20, 2000)
+    y = gaussian(x, 10.0, 0.1, 1000.0)
+    loud = pr.integrate_window(x, y, 9.5, 10.5, noise=100.0)
+    quiet = pr.integrate_window(x, y, 9.5, 10.5, noise=1.0)
+    assert loud.snr == pytest.approx(quiet.snr / 100, rel=0.01)
+
+
+def test_detect_peaks_accepts_an_external_noise_value():
+    x = np.linspace(0, 20, 2000)
+    y = gaussian(x, 10.0, 0.1, 100.0)
+    assert pr.detect_peaks(x, y, min_snr=3.0, noise=1.0)
+    assert pr.detect_peaks(x, y, min_snr=3.0, noise=1000.0) == []

@@ -78,7 +78,19 @@ def test_changing_the_method_bypasses_the_cache(method):
     entry, channel = make_entry()
     cache = XicCache()
     extract_xic(entry, method.components[0], method, cache)
-    method.smoothing = 2.0
+    method.defaults.smoothing = 2.0
+    extract_xic(entry, method.components[0], method, cache)
+    assert channel.calls == 2
+
+
+def test_component_override_bypasses_the_shared_cache_entry(method):
+    """Two components on the same channel must not share a conditioned trace."""
+    from openpeakview.components import IntegrationParams
+
+    entry, channel = make_entry()
+    cache = XicCache()
+    extract_xic(entry, method.components[0], method, cache)
+    method.components[0].integration = IntegrationParams(smoothing=3.0)
     extract_xic(entry, method.components[0], method, cache)
     assert channel.calls == 2
 
@@ -321,3 +333,154 @@ def test_process_fills_ratios_end_to_end():
     analyte = results.get(entry.key, "Analyte")
     assert analyte.internal_standard == "IS"
     assert analyte.area_ratio == pytest.approx(1.0, rel=0.01)
+
+
+# --- per-component integration and manual work --------------------------------- #
+def test_integration_defaults_and_overrides():
+    from openpeakview.components import IntegrationParams
+
+    method = ProcessingMethod()
+    component = Component("A", 100.0)
+    method.replace_all([component])
+    assert method.integration_for(component) is method.defaults
+
+    method.set_integration(component, IntegrationParams(smoothing=5.0))
+    assert method.integration_for(component).smoothing == 5.0
+    assert method.defaults.smoothing == 0.0     # the defaults are untouched
+
+    method.set_integration(component, None)
+    assert method.integration_for(component) is method.defaults
+
+
+def test_apply_integration_to_a_group_copies_rather_than_shares():
+    from openpeakview.components import IntegrationParams
+
+    method = ProcessingMethod()
+    method.replace_all([
+        Component("A", 100.0, group="g"),
+        Component("B", 200.0, group="g"),
+        Component("C", 300.0, group="other"),
+    ])
+    touched = method.apply_integration_to_group("g", IntegrationParams(min_snr=9.0))
+    assert touched == 2
+    assert method.by_name("C").integration is None
+    method.by_name("A").integration.min_snr = 1.0
+    assert method.by_name("B").integration.min_snr == 9.0   # not the same object
+
+
+def test_manual_integration_marks_the_row_and_uses_the_range(method):
+    from openpeakview.quantify import integrate_manually
+
+    entry, _ = make_entry(apex=13.1)
+    result = integrate_manually(entry, method.components[0], method, 13.0, 13.2)
+    assert result.manual
+    assert result.found
+    assert result.start_rt == pytest.approx(13.0, abs=0.02)
+    assert result.end_rt == pytest.approx(13.2, abs=0.02)
+
+
+def test_manual_integration_can_pick_a_range_with_no_peak(method):
+    """The operator's boundaries win: no peak finding second-guesses them."""
+    from openpeakview.quantify import integrate_manually
+
+    entry, _ = make_entry(apex=13.1)
+    result = integrate_manually(entry, method.components[0], method, 12.2, 12.5)
+    assert result.manual
+    assert result.rt == pytest.approx(12.35, abs=0.2)
+
+
+def test_manual_integration_rejects_a_sliver(method):
+    from openpeakview.quantify import integrate_manually
+
+    entry, _ = make_entry()
+    result = integrate_manually(entry, method.components[0], method, 13.1, 13.1)
+    assert "too narrow" in result.note
+
+
+def test_reprocessing_keeps_manual_rows(method):
+    from openpeakview.quantify import integrate_manually
+
+    entry, _ = make_entry()
+    first = process([entry], method)
+    manual = integrate_manually(entry, method.components[0], method, 13.0, 13.2)
+    first.replace(manual)
+
+    method.defaults.smoothing = 5.0
+    again = process([entry], method, previous=first, keep_manual=True)
+    kept = again.get(entry.key, "Oxy")
+    assert kept.manual and kept.area == pytest.approx(manual.area)
+
+    forced = process([entry], method, previous=first, keep_manual=False)
+    assert not forced.get(entry.key, "Oxy").manual
+
+
+def test_reprocessing_only_named_components(method):
+    method.add(Component("Other", 325.20, 200.0, rt=13.1, rt_halfwidth=0.5))
+    entry, _ = make_entry()
+    first = process([entry], method)
+    first.get(entry.key, "Other").note = "left alone"
+
+    again = process([entry], method, previous=first, only=["Oxy"])
+    assert len(again) == 2
+    assert again.get(entry.key, "Other").note == "left alone"
+    assert again.get(entry.key, "Oxy").note == ""
+
+
+class NoisyChannel(TracedChannel):
+    """A peak sitting on real noise, so a noise region has something to measure."""
+
+    def xic_range(self, mz_lo, mz_hi):
+        self.calls += 1
+        x = self.rt
+        rng = np.random.default_rng(1)
+        return x, gaussian(x, self.apex, 0.05, self.height) + abs(
+            rng.normal(0, 20.0, x.size))
+
+
+def test_noise_region_drives_the_reported_snr(method):
+    from openpeakview.components import IntegrationParams
+
+    entry = SampleEntry("/d/noisy.wiff", 0, "noisy")
+    entry.sample = Sample([NoisyChannel(1, 325.20, 50.0, 330.0, 12.0, 14.0,
+                                        n=800, apex=13.1, height=1000.0)])
+    component = method.components[0]
+
+    automatic = integrate_component(entry, component, method).snr
+
+    # peak-to-peak over a stretch of pure baseline is the stricter reading
+    method.set_integration(component, IntegrationParams(
+        noise_start=12.0, noise_end=12.6, min_snr=0.0,
+        snr_mode="peak-to-peak"))
+    peak_to_peak = integrate_component(entry, component, method).snr
+
+    method.set_integration(component, IntegrationParams(
+        noise_start=12.0, noise_end=12.6, min_snr=0.0,
+        snr_mode="standard deviation"))
+    deviation = integrate_component(entry, component, method).snr
+
+    assert peak_to_peak < deviation
+    assert automatic > 0
+
+
+def test_noise_is_measured_over_the_trace_not_the_peak_window(method):
+    """
+    Automatic and manual integration must report comparable S/N.
+
+    The retention-time window is mostly peak, so estimating noise inside it
+    measures the peak's own slope; both paths take the whole trace instead.
+    """
+    from openpeakview.quantify import extract_xic, integrate_manually
+
+    entry = SampleEntry("/d/noisy.wiff", 0, "noisy")
+    entry.sample = Sample([NoisyChannel(1, 325.20, 50.0, 330.0, 12.0, 14.0,
+                                        n=800, apex=13.1, height=1000.0)])
+    component = method.components[0]
+    automatic = integrate_component(entry, component, method)
+    manual = integrate_manually(entry, component, method,
+                                automatic.start_rt, automatic.end_rt)
+    assert automatic.snr == pytest.approx(manual.snr, rel=0.2)
+
+    x, y, _ = extract_xic(entry, component, method)
+    from openpeakview.processing import estimate_noise
+    from openpeakview.quantify import measured_noise
+    assert measured_noise(x, y, method.defaults) == pytest.approx(estimate_noise(y))

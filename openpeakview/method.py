@@ -6,7 +6,12 @@ import json
 import os
 from dataclasses import asdict, dataclass, field
 
-from .components import Component, load_components, save_components
+from .components import (
+    Component,
+    IntegrationParams,
+    load_components,
+    save_components,
+)
 
 
 @dataclass
@@ -18,11 +23,8 @@ class ProcessingMethod:
     tolerance: float = 0.02
     unit: str = "Da"
     concentration_unit: str = "ng/mL"
-    #: signal processing shared by every component until phase C makes it local
-    smoothing: float = 0.0
-    baseline_window: float = 0.0
-    min_relative_height: float = 0.05
-    min_snr: float = 3.0
+    #: integration settings every component inherits unless it overrides them
+    defaults: IntegrationParams = field(default_factory=IntegrationParams)
     #: relative deviation from the expected ion ratio that still passes, and
     #: the wider band that is only flagged as marginal, both in percent
     ion_ratio_tolerance: float = 20.0
@@ -49,6 +51,24 @@ class ProcessingMethod:
             return None
         target = self.by_name(component.internal_standard)
         return target if target is not None and target is not component else None
+
+    def integration_for(self, component: Component) -> IntegrationParams:
+        """The settings actually used for a component."""
+        return component.integration or self.defaults
+
+    def set_integration(self, component: Component,
+                        params: IntegrationParams | None) -> None:
+        component.integration = params.copy() if params is not None else None
+
+    def apply_integration_to_group(self, group: str,
+                                   params: IntegrationParams) -> int:
+        """Give every component of a group the same settings."""
+        touched = 0
+        for component in self.components:
+            if component.group == group:
+                component.integration = params.copy()
+                touched += 1
+        return touched
 
     def qualifiers_for(self, component: Component) -> list[Component]:
         """The qualifier transitions that confirm a given quantifier."""
@@ -98,8 +118,13 @@ class ProcessingMethod:
                          if k in Component.__dataclass_fields__})
             for row in raw.pop("components", [])
         ]
+        defaults = raw.pop("defaults", None)
         known = {k: v for k, v in raw.items() if k in cls.__dataclass_fields__}
         method = cls(**known)
+        if isinstance(defaults, dict):
+            method.defaults = IntegrationParams(
+                **{k: v for k, v in defaults.items()
+                   if k in IntegrationParams.__dataclass_fields__})
         method.components = components
         return method
 

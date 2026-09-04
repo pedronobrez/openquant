@@ -11,10 +11,18 @@ from dataclasses import asdict, dataclass, field
 
 import numpy as np
 
-from .components import Component
+from .components import Component, IntegrationParams
 from .matching import match_channel
 from .method import ProcessingMethod
-from .processing import ChromPeak, detect_peaks, gaussian_smooth, subtract_baseline
+from .processing import (
+    ChromPeak,
+    detect_peaks,
+    estimate_noise,
+    gaussian_smooth,
+    integrate_window,
+    noise_in_region,
+    subtract_baseline,
+)
 from .samples import SampleEntry
 
 #: confidence of a qualifier's ion ratio
@@ -164,12 +172,13 @@ class XicCache:
         self._data[key] = value
 
 
-def condition(x: np.ndarray, y: np.ndarray, method: ProcessingMethod) -> np.ndarray:
-    """Apply the method's baseline and smoothing, as the display does."""
-    if method.baseline_window > 0:
-        y = subtract_baseline(x, y, method.baseline_window)
-    if method.smoothing > 0:
-        y = gaussian_smooth(y, method.smoothing)
+def condition(x: np.ndarray, y: np.ndarray,
+              params: IntegrationParams) -> np.ndarray:
+    """Apply a component's baseline and smoothing, as the display does."""
+    if params.baseline_window > 0:
+        y = subtract_baseline(x, y, params.baseline_window)
+    if params.smoothing > 0:
+        y = gaussian_smooth(y, params.smoothing)
     return y
 
 
@@ -188,15 +197,16 @@ def extract_xic(entry: SampleEntry, component: Component,
     channel = match_channel(entry.sample, component)
     if channel is None:
         return empty
+    params = method.integration_for(component)
     mz_lo, mz_hi = component.mass_window()
     key = (entry.key, channel.index, round(mz_lo, 6), round(mz_hi, 6),
-           method.baseline_window, method.smoothing)
+           params.cache_key())
     if cache is not None:
         hit = cache.get(key)
         if hit is not None:
             return hit[0], hit[1], channel
     x, y = channel.xic_range(mz_lo, mz_hi)
-    y = condition(x, y, method)
+    y = condition(x, y, params)
     if cache is not None:
         cache.put(key, (x, y))
     return x, y, channel
@@ -238,13 +248,61 @@ def integrate_component(entry: SampleEntry, component: Component,
                            f"{window[0]:.2f}–{window[1]:.2f} min")
             return result
 
+    params = method.integration_for(component)
+    noise = measured_noise(x, y, params)
     peaks = detect_peaks(x[mask], y[mask],
-                         min_relative=method.min_relative_height,
-                         min_snr=method.min_snr)
+                         min_relative=params.min_relative_height,
+                         min_snr=params.min_snr, noise=noise)
     if not peaks:
         result.note = "no peak above noise"
         return result
     return apply_peak(result, peaks[0])
+
+
+def measured_noise(x: np.ndarray, y: np.ndarray,
+                   params: IntegrationParams) -> float | None:
+    """
+    The noise a signal-to-noise ratio is measured against.
+
+    Taken over the component's noise region when one is set, and otherwise
+    over the whole chromatogram. It deliberately is not measured inside the
+    retention-time window: that stretch is mostly peak, so its point-to-point
+    spread reports the peak's own slope — on real data that read 16,944 where
+    the trace's actual noise was 505, and the same peak came out at S/N 19
+    automatically against 531 by hand.
+    """
+    region = params.noise_region
+    if region is not None:
+        return noise_in_region(x, y, region[0], region[1], params.snr_mode)
+    return estimate_noise(y)
+
+
+def integrate_manually(entry: SampleEntry, component: Component,
+                       method: ProcessingMethod, start: float, end: float,
+                       previous: PeakResult | None = None,
+                       cache: XicCache | None = None) -> PeakResult:
+    """
+    Integrate exactly the stretch the operator marked on a chromatogram.
+
+    No peak finding runs: the boundaries are the answer. The row is flagged
+    manual so a later reprocessing can be told to leave it alone.
+    """
+    mz_lo, mz_hi = component.mass_window()
+    result = previous or PeakResult(
+        sample_key=entry.key, sample_name=entry.name, component=component.name,
+        group=component.group, mz=(mz_lo + mz_hi) / 2, expected_rt=component.rt,
+    )
+    x, y, channel = extract_xic(entry, component, method, cache)
+    if channel is None or x.size == 0:
+        result.note = "no data"
+        return result
+    result.channel = channel.info.short_label
+    params = method.integration_for(component)
+    peak = integrate_window(x, y, start, end, measured_noise(x, y, params))
+    if peak is None:
+        result.note = "selection too narrow to integrate"
+        return result
+    return apply_peak(result, peak, manual=True)
 
 
 def apply_peak(result: PeakResult, peak: ChromPeak, manual: bool = False) -> PeakResult:
@@ -331,26 +389,43 @@ def compute_ion_ratios(results: ResultsSet, method: ProcessingMethod) -> None:
 
 
 def process(entries: list[SampleEntry], method: ProcessingMethod,
-            cache: XicCache | None = None, progress=None) -> ResultsSet:
+            cache: XicCache | None = None, progress=None,
+            previous: ResultsSet | None = None,
+            keep_manual: bool = True,
+            only: list[str] | None = None) -> ResultsSet:
     """
-    Run every component over every sample.
+    Run the method over the batch.
 
-    `progress` is called as (done, total) and may return False to stop, which
-    keeps whatever was computed so far rather than throwing it away.
+    `previous` carries the rows of an earlier run. With `keep_manual`, any row
+    the operator integrated by hand is carried across untouched, so adjusting a
+    parameter does not silently undo their work. `only` limits the run to named
+    components, which is what makes re-tuning one analyte cheap.
     """
     components = [c for c in method.components if c.is_valid]
+    if only is not None:
+        wanted = set(only)
+        components = [c for c in components if c.name in wanted]
     loaded = [e for e in entries if e.is_loaded]
     total = len(components) * len(loaded)
     out = ResultsSet()
+    if previous is not None and only is not None:
+        keep = set(only)
+        out.results = [r for r in previous if r.component not in keep]
     done = 0
     for entry in loaded:
         for component in components:
-            out.results.append(integrate_component(entry, component, method, cache))
+            kept = previous.get(entry.key, component.name) if previous else None
+            if keep_manual and kept is not None and kept.manual:
+                out.results.append(kept)
+            else:
+                out.results.append(
+                    integrate_component(entry, component, method, cache))
             done += 1
             if progress is not None and progress(done, total) is False:
-                link_internal_standards(out, method)
-                compute_ion_ratios(out, method)
-                return out
+                break
+        else:
+            continue
+        break
     link_internal_standards(out, method)
     compute_ion_ratios(out, method)
     return out

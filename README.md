@@ -42,6 +42,10 @@ back as `kUnknown`.
 | **Same Y** | one intensity scale across the panels, so heights compare directly |
 | **Link X** | zooming one panel zooms them all |
 | **Magnify peak** | one panel filling the pane; double-clicking a panel does the same |
+| **Manual** | drag across a peak to integrate exactly that range; the row is marked ✎ and survives reprocessing |
+| Back to automatic | right-click a hand-integrated panel |
+| Integration parameters | per component, with **Update method for component** / **for group**, **Back to method defaults**, and copy/paste between components |
+| Noise region | right-click a panel with a stretch of baseline shaded to measure S/N there, peak-to-peak or by standard deviation |
 | **Show IS** | the internal standard drawn behind the analyte, rescaled to it, so retention times and shapes compare |
 | Results table | one row per sample and component: RT, expected RT, ΔRT, area, height, width, S/N, and why a row is empty |
 | Internal standards | mark a component as one, point analytes at it, and get IS area, area ratio and height ratio |
@@ -118,6 +122,10 @@ back as `kUnknown`.
 
 Smoothing and baseline removal apply to the drawing, the integration and the
 export alike, so area and height always match what is on screen.
+
+Signal-to-noise is measured over the whole chromatogram, or over a noise region
+if one is set — never inside the retention-time window, which is mostly peak
+and would report the peak's own slope as noise.
 
 Exact mass alone rarely separates candidates above a few hundred daltons; the
 relative heights of M+1 and M+2 usually do, which is why the finder scores them.

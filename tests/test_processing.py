@@ -1,4 +1,4 @@
-"""Testes das rotinas numericas (nao dependem de arquivos .wiff)."""
+"""Tests for the numeric helpers (no .wiff files required)."""
 
 import numpy as np
 import pytest
@@ -103,13 +103,13 @@ def test_detect_peaks_empty_signal():
 
 
 def test_estimate_noise_falls_back_when_mad_is_zero():
-    # sinal quantizado: mais da metade das diferencas e exatamente zero
+    # quantised signal: more than half the differences are exactly zero
     y = np.array([0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 1.0, 0.0])
     assert pr.estimate_noise(y) > 0
 
 
 def test_detect_peaks_rejects_single_count_spikes():
-    # XIC esparso tipico de baixa contagem: quase tudo zero, um respingo de 1
+    # sparse low-count XIC: almost all zero, with a single-count spike
     x = np.linspace(0, 10, 200)
     y = np.zeros_like(x)
     y[100] = 1.0
@@ -131,3 +131,19 @@ def test_signal_to_noise_is_finite_on_zero_noise():
     y = np.zeros_like(x)
     y[100] = 50.0
     assert np.isfinite(pr.signal_to_noise(x, y, 4.9, 5.1))
+
+
+def test_centroid_spectrum_collapses_profile_peaks():
+    mz = np.linspace(180, 200, 20000)
+    y = gaussian(mz, 183.139, 0.004, 1000.0) + gaussian(mz, 195.140, 0.004, 400.0)
+    cmz, ci = pr.centroid_spectrum(mz, y)
+    assert cmz.size == 2
+    assert np.all(np.diff(cmz) > 0)  # sorted by mass
+    assert cmz[0] == pytest.approx(183.139, abs=0.002)
+    assert cmz[1] == pytest.approx(195.140, abs=0.002)
+    assert ci[0] > ci[1]
+
+
+def test_centroid_spectrum_empty_input():
+    cmz, ci = pr.centroid_spectrum(np.zeros(0), np.zeros(0))
+    assert cmz.size == 0 and ci.size == 0

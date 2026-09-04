@@ -1,4 +1,4 @@
-"""Ponto de entrada da aplicacao."""
+"""Application entry point."""
 
 from __future__ import annotations
 
@@ -12,9 +12,9 @@ from PyQt6 import QtWidgets
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="openpeakview",
-        description="Visualizador open source de dados LC-MS SCIEX (.wiff).",
+        description="Open source viewer for SCIEX LC-MS data (.wiff).",
     )
-    parser.add_argument("files", nargs="*", help="arquivos .wiff para abrir")
+    parser.add_argument("files", nargs="*", help=".wiff files to open")
     args = parser.parse_args(argv)
 
     pg.setConfigOptions(antialias=True, background="w", foreground="#222")

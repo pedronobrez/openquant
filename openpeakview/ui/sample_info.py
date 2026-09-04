@@ -1,4 +1,4 @@
-"""Painel de informacoes da amostra e do canal ativo."""
+"""Sample and active-channel information panel."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from PyQt6 import QtWidgets
 
 
 class SampleInfoPanel(QtWidgets.QWidget):
-    """Mostra metadados da injecao e os parametros do experimento selecionado."""
+    """Injection metadata plus the parameters of the selected experiment."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -15,12 +15,11 @@ class SampleInfoPanel(QtWidgets.QWidget):
 
         self.tree = QtWidgets.QTreeWidget()
         self.tree.setColumnCount(2)
-        self.tree.setHeaderLabels(["Campo", "Valor"])
+        self.tree.setHeaderLabels(["Field", "Value"])
         self.tree.setAlternatingRowColors(True)
-        self.tree.setRootIsDecorated(True)
         layout.addWidget(self.tree)
 
-        self.copy_button = QtWidgets.QPushButton("Copiar tudo")
+        self.copy_button = QtWidgets.QPushButton("Copy all")
         self.copy_button.clicked.connect(self._copy)
         layout.addWidget(self.copy_button)
 
@@ -28,40 +27,40 @@ class SampleInfoPanel(QtWidgets.QWidget):
 
     def clear(self) -> None:
         self.tree.clear()
-        placeholder = QtWidgets.QTreeWidgetItem(self.tree, ["—", "nenhuma amostra"])
+        placeholder = QtWidgets.QTreeWidgetItem(self.tree, ["—", "no sample loaded"])
         placeholder.setDisabled(True)
 
     def show_sample(self, sample, channel=None) -> None:
-        """Preenche o painel com os dados da amostra e, se houver, do canal."""
+        """Fill the panel with the sample and, when given, the channel."""
         self.tree.clear()
 
-        group = QtWidgets.QTreeWidgetItem(self.tree, ["Amostra", ""])
+        group = QtWidgets.QTreeWidgetItem(self.tree, ["Sample", ""])
         for key, value in sample.metadata().items():
             QtWidgets.QTreeWidgetItem(group, [key, value])
         group.setExpanded(True)
 
         if channel is not None:
             info = channel.info
-            group = QtWidgets.QTreeWidgetItem(self.tree, ["Canal ativo", ""])
+            group = QtWidgets.QTreeWidgetItem(self.tree, ["Active channel", ""])
             rows = [
-                ("Indice", str(info.index)),
-                ("Nome", info.name),
-                ("Tipo", info.experiment_type),
-                ("Polaridade", info.polarity),
+                ("Index", str(info.index)),
+                ("Name", info.name),
+                ("Type", info.experiment_type),
+                ("Polarity", info.polarity),
                 ("Precursor", "—" if info.precursor is None else f"{info.precursor:.4f}"),
-                ("Faixa de massa", f"{info.start_mass:.1f} – {info.end_mass:.1f}"),
+                ("Mass range", f"{info.start_mass:.1f} – {info.end_mass:.1f}"),
                 ("Scans", str(info.n_scans)),
             ]
             rt = channel.rt
             if rt.size:
-                rows.append(("Faixa de tempo", f"{rt[0]:.3f} – {rt[-1]:.3f} min"))
+                rows.append(("Time range", f"{rt[0]:.3f} – {rt[-1]:.3f} min"))
             for key, value in rows:
                 QtWidgets.QTreeWidgetItem(group, [key, value])
             group.setExpanded(True)
 
             parameters = channel.parameters()
             if parameters:
-                group = QtWidgets.QTreeWidgetItem(self.tree, ["Parâmetros do método", ""])
+                group = QtWidgets.QTreeWidgetItem(self.tree, ["Method parameters", ""])
                 for key, value in parameters.items():
                     QtWidgets.QTreeWidgetItem(group, [key, value])
                 group.setExpanded(False)

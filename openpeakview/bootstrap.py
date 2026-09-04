@@ -1,19 +1,19 @@
 """
-Inicializacao do runtime .NET usado para ler arquivos SCIEX WIFF.
+Bootstrap of the .NET runtime used to read SCIEX WIFF files.
 
-Os arquivos .wiff/.wiff.scan sao um formato proprietario. As bibliotecas
-gerenciadas Clearcore2 da SCIEX (redistribuidas pelo pacote open source
-`alpharaw`, MIT) sao as unicas capazes de decodifica-los. Este modulo faz o
-trabalho necessario para que elas rodem fora do Windows:
+The .wiff/.wiff.scan format is proprietary. SCIEX's managed Clearcore2
+libraries (redistributed by the open source `alpharaw` package, MIT) are the
+only ones able to decode it. This module does the work needed to run them off
+Windows:
 
-1. localiza (ou instala) um runtime .NET;
-2. baixa alguns assemblies de compatibilidade que o .NET Core nao traz;
-3. registra um resolvedor de assemblies para esses shims;
-4. troca a implementacao de "structured storage" da Clearcore2 do caminho COM
-   (API `StgOpenStorageEx`, exclusiva do Windows) para o caminho gerenciado
-   OpenMcdf, que funciona em macOS e Linux.
+1. locate (or install) a .NET runtime;
+2. download the compatibility assemblies that .NET Core does not ship;
+3. register an assembly resolver for those shims;
+4. switch Clearcore2's structured storage from the COM path (the Windows-only
+   `StgOpenStorageEx` API) to the managed OpenMcdf path, which works on macOS
+   and Linux.
 
-Depois de `ensure()` o namespace `Clearcore2` esta importavel normalmente.
+After `ensure()` the `Clearcore2` namespace imports normally.
 """
 
 from __future__ import annotations
@@ -31,8 +31,8 @@ CACHE_DIR = Path(os.environ.get("OPENPEAKVIEW_HOME", Path.home() / ".openpeakvie
 SHIM_DIR = CACHE_DIR / "shim"
 DOTNET_CHANNEL = "8.0"
 
-# Assemblies que a Clearcore2 (compilada para .NET Framework) espera encontrar e
-# que nao fazem parte do .NET Core. Vem do NuGet, licenca MIT.
+# Assemblies that Clearcore2 (built for .NET Framework) expects to find and
+# that are not part of .NET Core. From NuGet, MIT licensed.
 SHIM_PACKAGES = [
     ("system.configuration.configurationmanager", "8.0.1"),
     ("system.diagnostics.eventlog", "8.0.1"),
@@ -46,7 +46,7 @@ _IS_WINDOWS = platform.system() == "Windows"
 
 
 def urlopen(url):
-    """urlopen com CA bundle do certifi (o Python.org do macOS nao usa o do sistema)."""
+    """urlopen with certifi's CA bundle (macOS python.org builds ignore the system one)."""
     context = None
     try:
         import ssl
@@ -64,10 +64,10 @@ class BootstrapError(RuntimeError):
 
 
 # --------------------------------------------------------------------------- #
-# runtime .NET
+# .NET runtime
 # --------------------------------------------------------------------------- #
 def find_dotnet_root() -> Path | None:
-    """Procura uma instalacao de runtime .NET utilizavel."""
+    """Look for a usable .NET runtime installation."""
     env = os.environ.get("DOTNET_ROOT")
     candidates = [Path(env)] if env else []
     candidates += [
@@ -86,12 +86,12 @@ def find_dotnet_root() -> Path | None:
 
 
 def install_dotnet(channel: str = DOTNET_CHANNEL) -> Path:
-    """Instala o runtime .NET em ~/.dotnet (sem sudo, ~30 MB)."""
+    """Install the .NET runtime into ~/.dotnet (no sudo, about 30 MB)."""
     target = Path.home() / ".dotnet"
-    print(f"[openpeakview] instalando runtime .NET {channel} em {target} ...")
+    print(f"[openpeakview] installing .NET runtime {channel} into {target} ...")
     if _IS_WINDOWS:
         raise BootstrapError(
-            "Instale o .NET Desktop Runtime pelo site da Microsoft: "
+            "Install the .NET Desktop Runtime from Microsoft: "
             "https://dotnet.microsoft.com/download"
         )
     script = CACHE_DIR / "dotnet-install.sh"
@@ -108,10 +108,10 @@ def install_dotnet(channel: str = DOTNET_CHANNEL) -> Path:
 
 
 # --------------------------------------------------------------------------- #
-# assemblies de compatibilidade
+# compatibility assemblies
 # --------------------------------------------------------------------------- #
 def ensure_shims() -> Path:
-    """Baixa do NuGet os assemblies de compatibilidade, se ainda nao houver."""
+    """Download the compatibility assemblies from NuGet if not cached yet."""
     marker = SHIM_DIR / "System.Configuration.ConfigurationManager.dll"
     if marker.exists():
         return SHIM_DIR
@@ -122,7 +122,7 @@ def ensure_shims() -> Path:
         pkg = tmp / f"{name}.{version}.nupkg"
         if not pkg.exists():
             url = f"https://www.nuget.org/api/v2/package/{name}/{version}"
-            print(f"[openpeakview] baixando {name} {version} ...")
+            print(f"[openpeakview] downloading {name} {version} ...")
             with urlopen(url) as r:
                 pkg.write_bytes(r.read())
         with zipfile.ZipFile(pkg) as z:
@@ -134,10 +134,10 @@ def ensure_shims() -> Path:
 
 
 # --------------------------------------------------------------------------- #
-# inicializacao
+# bootstrap
 # --------------------------------------------------------------------------- #
 def ensure(auto_install_dotnet: bool = False) -> None:
-    """Deixa o namespace `Clearcore2` pronto para uso. Idempotente."""
+    """Make the `Clearcore2` namespace ready to use. Idempotent."""
     global _READY
     if _READY:
         return
@@ -147,22 +147,22 @@ def ensure(auto_install_dotnet: bool = False) -> None:
         if root is None:
             if not auto_install_dotnet:
                 raise BootstrapError(
-                    "Runtime .NET nao encontrado. Rode:\n"
+                    "No .NET runtime found. Run:\n"
                     "    python -m openpeakview.bootstrap --install\n"
-                    "ou instale o .NET 8 e aponte DOTNET_ROOT para ele."
+                    "or install .NET 8 and point DOTNET_ROOT at it."
                 )
             root = install_dotnet()
         os.environ["DOTNET_ROOT"] = str(root)
         os.environ.setdefault("ALPHARAW_DOTNET_RUNTIME", "coreclr")
         shim_dir = ensure_shims()
 
-    # Carrega o runtime via alpharaw ANTES de qualquer outro `import clr`,
-    # porque a escolha de runtime do pythonnet vale para o processo inteiro.
+    # Load the runtime through alpharaw BEFORE any other `import clr`, because
+    # pythonnet's runtime choice is process-wide.
     try:
         import alpharaw.raw_access.clr_utils as clr_utils  # noqa: F401
     except ImportError as exc:  # pragma: no cover
         raise BootstrapError(
-            "pacote `alpharaw` ausente. Instale com: pip install alpharaw"
+            "the `alpharaw` package is missing. Install it with: pip install alpharaw"
         ) from exc
 
     import System
@@ -176,14 +176,14 @@ def ensure(auto_install_dotnet: bool = False) -> None:
 
     if not reader.HAS_DOTNET:
         raise BootstrapError(
-            "Nao foi possivel carregar as bibliotecas SCIEX Clearcore2. "
-            "Verifique a instalacao do .NET e do pythonnet."
+            "Could not load the SCIEX Clearcore2 libraries. "
+            "Check the .NET and pythonnet installation."
         )
     _READY = True
 
 
 def _register_shim_resolver(System, Assembly, shim_dir: Path) -> None:
-    """Resolve por nome os assemblies de compatibilidade baixados do NuGet."""
+    """Resolve the NuGet compatibility assemblies by simple name."""
     loaded: dict[str, object] = {}
     for dll in sorted(shim_dir.glob("*.dll")):
         try:
@@ -206,16 +206,16 @@ def _register_shim_resolver(System, Assembly, shim_dir: Path) -> None:
     System.AppDomain.CurrentDomain.add_AssemblyResolve(
         System.ResolveEventHandler(resolve)
     )
-    # mantem referencia viva para o GC nao coletar o delegate
+    # keep a live reference so the GC does not collect the delegate
     _register_shim_resolver.__dict__["_keepalive"] = resolve
 
 
 def _use_managed_structured_storage(Assembly, BindingFlags, ext_dir: str) -> None:
     """
-    Clearcore2.StructuredStorage escolhe entre a API COM do Windows
-    (`StgOpenStorageEx`) e uma implementacao gerenciada (OpenMcdf) atraves do
-    campo estatico privado `StgStorage.sWindows`. Em macOS/Linux o campo vem
-    como True e a chamada COM falha; forcamos o caminho gerenciado.
+    Clearcore2.StructuredStorage picks between the Windows COM API
+    (`StgOpenStorageEx`) and a managed implementation (OpenMcdf) through the
+    private static field `StgStorage.sWindows`. On macOS/Linux the field comes
+    up True and the COM call fails, so we force the managed path.
     """
     dll = Path(ext_dir) / "sciex" / "Clearcore2.StructuredStorage.dll"
     asm = Assembly.LoadFile(str(dll))
@@ -224,8 +224,8 @@ def _use_managed_structured_storage(Assembly, BindingFlags, ext_dir: str) -> Non
     )
     if field is None:  # pragma: no cover
         raise BootstrapError(
-            "Layout inesperado de Clearcore2.StructuredStorage "
-            "(campo sWindows nao encontrado)."
+            "Unexpected Clearcore2.StructuredStorage layout "
+            "(field sWindows not found)."
         )
     field.SetValue(None, False)
 
@@ -236,7 +236,7 @@ def _main(argv: list[str]) -> int:
             install_dotnet()
         ensure_shims()
     ensure(auto_install_dotnet=True)
-    print("[openpeakview] runtime .NET + bibliotecas SCIEX prontos.")
+    print("[openpeakview] .NET runtime and SCIEX libraries ready.")
     return 0
 
 

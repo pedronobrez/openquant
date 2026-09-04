@@ -1,4 +1,4 @@
-"""Rotinas numericas de apoio: suavizacao, deteccao de picos e integracao."""
+"""Numeric helpers: smoothing, baseline removal, peak picking and integration."""
 
 from __future__ import annotations
 
@@ -6,9 +6,15 @@ from dataclasses import dataclass
 
 import numpy as np
 
+# Noise floor. In low-count XICs the measured noise is exactly zero (most
+# points are 0), which would make every signal-to-noise ratio infinite and let
+# a single-count spike pass the peak filter. One count is the smallest noise
+# that is physically meaningful in that data.
+NOISE_FLOOR = 1.0
+
 
 def moving_average(y: np.ndarray, window: int) -> np.ndarray:
-    """Media movel centrada; `window` <= 1 devolve o vetor original."""
+    """Centred moving average; a `window` of 1 or less returns the input."""
     if window <= 1 or y.size < window:
         return y
     kernel = np.ones(window, dtype=np.float64) / window
@@ -16,18 +22,101 @@ def moving_average(y: np.ndarray, window: int) -> np.ndarray:
     return np.convolve(padded, kernel, mode="valid")
 
 
+def gaussian_kernel(sigma: float) -> np.ndarray:
+    """Normalised Gaussian kernel truncated at +-3 sigma."""
+    radius = max(int(round(3.0 * sigma)), 1)
+    offsets = np.arange(-radius, radius + 1, dtype=np.float64)
+    kernel = np.exp(-0.5 * (offsets / sigma) ** 2)
+    return kernel / kernel.sum()
+
+
+def gaussian_smooth(y: np.ndarray, sigma: float) -> np.ndarray:
+    """
+    Gaussian smoothing with `sigma` given in points. This is the right filter
+    for chromatograms: unlike a rectangular moving average it preserves peak
+    position and area.
+    """
+    if sigma <= 0 or y.size < 3:
+        return y
+    kernel = gaussian_kernel(sigma)
+    radius = kernel.size // 2
+    padded = np.pad(y, radius, mode="edge")
+    return np.convolve(padded, kernel, mode="valid")
+
+
 def local_maxima(y: np.ndarray) -> np.ndarray:
-    """Indices dos maximos locais (estritos a esquerda, nao estritos a direita)."""
+    """Indices of local maxima (strict on the left, non-strict on the right)."""
     if y.size < 3:
         return np.zeros(0, dtype=int)
     return np.nonzero((y[1:-1] > y[:-2]) & (y[1:-1] >= y[2:]))[0] + 1
 
 
+def rolling_minimum(y: np.ndarray, window: int) -> np.ndarray:
+    """
+    Lower envelope of `y`, in O(n): block minima over `window` points, linearly
+    interpolated between block centres.
+    """
+    n = y.size
+    window = int(np.clip(window, 2, max(n, 2)))
+    if n < 3:
+        return y.copy()
+    centres, minima = [], []
+    for start in range(0, n, window):
+        stop = min(start + window, n)
+        if stop <= start:
+            continue
+        centres.append((start + stop - 1) / 2.0)
+        minima.append(float(y[start:stop].min()))
+    if len(centres) < 2:
+        return np.full(n, min(minima) if minima else 0.0)
+    return np.interp(np.arange(n, dtype=np.float64), np.array(centres),
+                     np.array(minima))
+
+
+def subtract_baseline(x: np.ndarray, y: np.ndarray,
+                      window: float = 1.0) -> np.ndarray:
+    """
+    Remove the baseline of a chromatogram. `window` is the width, in units of
+    `x` (minutes), used to estimate the lower envelope: it must be wider than
+    the broadest peak worth keeping.
+    """
+    if y.size < 3 or x.size != y.size:
+        return y
+    span = float(x[-1] - x[0])
+    if span <= 0:
+        return y
+    points = max(int(round(window / span * y.size)), 2)
+    baseline = rolling_minimum(y, points)
+    baseline = gaussian_smooth(baseline, max(points / 4.0, 1.0))
+    return y - baseline
+
+
+def estimate_noise(y: np.ndarray) -> float:
+    """
+    Robust noise from the median absolute deviation of point-to-point
+    differences, scaled to a standard deviation. Insensitive to peaks.
+
+    In low-count XICs the signal is quantised and more than half the
+    differences are exactly zero, which zeroes the MAD. The fallback is the
+    standard deviation of the lower half of the points, which rarely contains a
+    peak. Returning zero would make every signal-to-noise ratio infinite and
+    the peak filter would accept anything.
+    """
+    if y.size < 3:
+        return 0.0
+    diffs = np.diff(y)
+    mad = float(np.median(np.abs(diffs - np.median(diffs))))
+    if mad > 0:
+        return mad * 1.4826 / np.sqrt(2.0)
+    lower_half = np.sort(y)[: max(y.size // 2, 3)]
+    return float(np.std(lower_half))
+
+
 def centroid_mz(mz: np.ndarray, intensity: np.ndarray, apex: int,
                 span: int = 2) -> float:
     """
-    Refina a massa de um pico em dados de perfil pelo centro de gravidade
-    dos pontos vizinhos ao apice.
+    Refine a peak mass in profile data using the centre of gravity of the
+    points around the apex.
     """
     lo = max(apex - span, 0)
     hi = min(apex + span + 1, mz.size)
@@ -42,12 +131,12 @@ def pick_peaks(mz: np.ndarray, intensity: np.ndarray, max_peaks: int = 15,
                min_relative: float = 0.01, centroid: bool = True,
                min_distance: float = 0.03) -> list[tuple[float, float]]:
     """
-    Lista de (m/z, intensidade) dos picos mais intensos, do maior para o menor.
+    The most intense peaks as (m/z, intensity), strongest first.
 
-    `min_relative` e a fracao da altura do pico base abaixo da qual os picos sao
-    descartados. `min_distance` (em Da) funde maximos locais vizinhos: em dados
-    de perfil o topo de um mesmo pico costuma render varios maximos, que de
-    outro modo apareceriam como massas repetidas.
+    `min_relative` is the fraction of the base peak height below which peaks
+    are dropped. `min_distance` (in Da) merges neighbouring local maxima: in
+    profile data the top of a single peak usually yields several maxima, which
+    would otherwise show up as repeated masses.
     """
     if mz.size == 0 or intensity.size == 0:
         return []
@@ -58,7 +147,6 @@ def pick_peaks(mz: np.ndarray, intensity: np.ndarray, max_peaks: int = 15,
     idx = idx[intensity[idx] >= threshold]
     if idx.size == 0:
         return []
-    # do mais intenso para o menos intenso, descartando vizinhos muito proximos
     order = idx[np.argsort(intensity[idx])[::-1]]
     peaks: list[tuple[float, float]] = []
     for i in order:
@@ -71,10 +159,30 @@ def pick_peaks(mz: np.ndarray, intensity: np.ndarray, max_peaks: int = 15,
     return peaks
 
 
+def centroid_spectrum(mz: np.ndarray, intensity: np.ndarray,
+                      min_relative: float = 0.0005,
+                      min_distance: float = 0.005) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Convert a profile spectrum into centroids: one stick per peak, placed at
+    the intensity-weighted centre of mass and as tall as the profile apex.
+
+    Returns two arrays, so the m/z axis of the result is shorter than the
+    input — centroided data is not a per-point transform of the profile.
+    """
+    peaks = pick_peaks(mz, intensity, max_peaks=100_000,
+                       min_relative=min_relative, centroid=True,
+                       min_distance=min_distance)
+    if not peaks:
+        return np.zeros(0), np.zeros(0)
+    peaks.sort(key=lambda p: p[0])
+    return (np.array([p[0] for p in peaks], dtype=np.float64),
+            np.array([p[1] for p in peaks], dtype=np.float64))
+
+
 def integrate(x: np.ndarray, y: np.ndarray, x0: float, x1: float) -> dict:
     """
-    Integra a faixa [x0, x1] de um cromatograma subtraindo uma linha de base
-    reta entre os extremos da selecao.
+    Integrate the range [x0, x1] of a chromatogram, subtracting a straight
+    baseline drawn between the ends of the selection.
     """
     lo, hi = sorted((float(x0), float(x1)))
     mask = (x >= lo) & (x <= hi)
@@ -92,16 +200,9 @@ def integrate(x: np.ndarray, y: np.ndarray, x0: float, x1: float) -> dict:
     }
 
 
-# Piso de ruido. Em XICs de baixa contagem o ruido medido e exatamente zero
-# (a maioria dos pontos vale 0), o que tornaria toda relacao sinal/ruido
-# infinita e faria qualquer respingo de um unico count passar pelo filtro de
-# picos. Um count e o menor ruido fisicamente possivel nesses dados.
-NOISE_FLOOR = 1.0
-
-
 def signal_to_noise(x: np.ndarray, y: np.ndarray, x0: float, x1: float,
                     noise_floor: float = NOISE_FLOOR) -> float:
-    """Razao sinal/ruido grosseira: altura do pico sobre o desvio fora da faixa."""
+    """Rough signal-to-noise: peak height over the spread outside the range."""
     lo, hi = sorted((float(x0), float(x1)))
     inside = (x >= lo) & (x <= hi)
     outside = ~inside
@@ -111,93 +212,9 @@ def signal_to_noise(x: np.ndarray, y: np.ndarray, x0: float, x1: float,
     return float((y[inside].max() - np.median(y[outside])) / noise)
 
 
-def gaussian_kernel(sigma: float) -> np.ndarray:
-    """Kernel gaussiano normalizado, com largura de +-3 sigma."""
-    radius = max(int(round(3.0 * sigma)), 1)
-    offsets = np.arange(-radius, radius + 1, dtype=np.float64)
-    kernel = np.exp(-0.5 * (offsets / sigma) ** 2)
-    return kernel / kernel.sum()
-
-
-def gaussian_smooth(y: np.ndarray, sigma: float) -> np.ndarray:
-    """
-    Suavizacao gaussiana com `sigma` em pontos. Equivale ao Gaussian Smooth do
-    PeakView e e o filtro certo para cromatogramas: preserva a posicao e a area
-    do pico, ao contrario da media movel retangular.
-    """
-    if sigma <= 0 or y.size < 3:
-        return y
-    kernel = gaussian_kernel(sigma)
-    radius = kernel.size // 2
-    padded = np.pad(y, radius, mode="edge")
-    return np.convolve(padded, kernel, mode="valid")
-
-
-def rolling_minimum(y: np.ndarray, window: int) -> np.ndarray:
-    """
-    Envoltoria inferior de `y`, em O(n): minimo por blocos de `window` pontos,
-    interpolado linearmente entre os centros dos blocos.
-    """
-    n = y.size
-    window = int(np.clip(window, 2, max(n, 2)))
-    if n < 3:
-        return y.copy()
-    edges = np.arange(0, n, window)
-    centres, minima = [], []
-    for start in edges:
-        stop = min(start + window, n)
-        if stop - start <= 0:
-            continue
-        centres.append((start + stop - 1) / 2.0)
-        minima.append(float(y[start:stop].min()))
-    if len(centres) < 2:
-        return np.full(n, min(minima) if minima else 0.0)
-    return np.interp(np.arange(n, dtype=np.float64), np.array(centres),
-                     np.array(minima))
-
-
-def subtract_baseline(x: np.ndarray, y: np.ndarray,
-                      window: float = 1.0) -> np.ndarray:
-    """
-    Subtrai a linha de base de um cromatograma. `window` e a largura, nas
-    unidades de `x` (minutos), usada para estimar a envoltoria inferior: deve
-    ser maior que o pico mais largo que se quer preservar.
-    """
-    if y.size < 3 or x.size != y.size:
-        return y
-    span = float(x[-1] - x[0])
-    if span <= 0:
-        return y
-    points = max(int(round(window / span * y.size)), 2)
-    baseline = rolling_minimum(y, points)
-    baseline = gaussian_smooth(baseline, max(points / 4.0, 1.0))
-    return y - baseline
-
-
-def estimate_noise(y: np.ndarray) -> float:
-    """
-    Ruido robusto pelo desvio absoluto mediano das diferencas ponto a ponto,
-    escalado para equivaler a um desvio padrao. Insensivel a picos.
-
-    Em XICs de baixa contagem o sinal e quantizado e mais da metade das
-    diferencas e exatamente zero, o que zera o MAD. Nesse caso o ruido e
-    estimado pelo desvio padrao da metade inferior dos pontos, que quase nunca
-    contem pico. Devolver zero faria toda relacao sinal/ruido virar infinito e
-    o filtro de picos deixaria passar qualquer coisa.
-    """
-    if y.size < 3:
-        return 0.0
-    diffs = np.diff(y)
-    mad = float(np.median(np.abs(diffs - np.median(diffs))))
-    if mad > 0:
-        return mad * 1.4826 / np.sqrt(2.0)
-    lower_half = np.sort(y)[: max(y.size // 2, 3)]
-    return float(np.std(lower_half))
-
-
 @dataclass(frozen=True)
 class ChromPeak:
-    """Pico cromatografico integrado."""
+    """An integrated chromatographic peak."""
 
     apex_rt: float
     apex_index: int
@@ -214,12 +231,15 @@ def detect_peaks(x: np.ndarray, y: np.ndarray, min_relative: float = 0.02,
                  max_peaks: int = 50,
                  noise_floor: float = NOISE_FLOOR) -> list[ChromPeak]:
     """
-    Detecta e integra picos de um cromatograma.
+    Detect and integrate the peaks of a chromatogram.
 
-    Cada apice e expandido para os dois lados ate o vale mais proximo (ou ate a
-    inclinacao inverter), a linha de base e a reta que liga as bordas, e a area
-    e integrada acima dela. `min_relative` e a altura minima em fracao do maior
-    pico; `min_snr` descarta picos indistinguiveis do ruido.
+    Each apex is expanded on both sides to the nearest valley (or until the
+    slope reverses), the baseline is the line joining the edges, and the area
+    is integrated above it. `min_relative` is the minimum height as a fraction
+    of the tallest peak; `min_snr` drops peaks indistinguishable from noise.
+    Noise is never taken as smaller than `noise_floor`, otherwise an almost
+    entirely zero XIC would give infinite signal-to-noise for its largest
+    spike.
     """
     if x.size != y.size or y.size < 5:
         return []

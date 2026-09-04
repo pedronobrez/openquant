@@ -1,4 +1,4 @@
-"""Janela principal do OpenPeakView."""
+"""OpenPeakView main window."""
 
 from __future__ import annotations
 
@@ -13,20 +13,21 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 from ..compounds import Compound
 from ..processing import detect_peaks, integrate, signal_to_noise
 from ..wiff import Channel, Sample, WiffFile
+from .chrom_area import ChromatogramArea
 from .compound_panel import CompoundPanel
-from .plots import ChromatogramView, SpectrumView, Trace, colour
+from .plots import SpectrumView, Trace, colour
 from .results_panel import Result, ResultsPanel
 from .sample_info import SampleInfoPanel
 
 ROLE_REF = QtCore.Qt.ItemDataRole.UserRole
 
-# Diferenca maxima, em Da, entre o precursor de um composto e o de um canal do
-# metodo para considerar que o canal e o daquele composto.
+# Largest gap, in Da, between a compound precursor and a method channel
+# precursor that still counts as the same target.
 PRECURSOR_MATCH_DA = 0.7
 
 
 class ChannelRef:
-    """Referencia a um no da arvore: TIC da amostra ou um canal especifico."""
+    """A tree node: either the sample TIC or one specific channel."""
 
     def __init__(self, wiff: WiffFile, sample: Sample, channel: Channel | None):
         self.wiff = wiff
@@ -49,7 +50,7 @@ class ChannelRef:
     def full_label(self) -> str:
         base = os.path.splitext(self.wiff.filename)[0]
         if self.channel is None:
-            return f"{base} · TIC da amostra"
+            return f"{base} · sample TIC"
         return f"{base} · {self.channel.info.label}"
 
 
@@ -67,13 +68,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.current_scan: int = 0
         self._background_cache: dict[tuple, tuple[np.ndarray, np.ndarray]] = {}
 
-        self.chrom = ChromatogramView()
+        self.chrom = ChromatogramArea()
         self.spectrum = SpectrumView()
 
         self._build_ui()
         self._connect()
         self._restore_settings()
-        self._update_status("Abra um arquivo .wiff para começar.")
+        self._update_status("Open a .wiff file to start.")
 
     # ------------------------------------------------------------------ UI -- #
     def _build_ui(self) -> None:
@@ -97,13 +98,13 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.setSpacing(4)
 
         bar = QtWidgets.QHBoxLayout()
-        bar.addWidget(QtWidgets.QLabel("Cromatograma:"))
+        bar.addWidget(QtWidgets.QLabel("Chromatogram:"))
         self.mode_combo = QtWidgets.QComboBox()
         self.mode_combo.addItems(["TIC", "BPC"])
-        self.mode_combo.setToolTip("Tipo de cromatograma dos canais marcados")
+        self.mode_combo.setToolTip("Chromatogram type for the checked channels")
         bar.addWidget(self.mode_combo)
         bar.addSpacing(16)
-        bar.addWidget(QtWidgets.QLabel("Canal ativo (espectros / XIC):"))
+        bar.addWidget(QtWidgets.QLabel("Active channel (spectra / XIC):"))
         self.active_combo = QtWidgets.QComboBox()
         self.active_combo.setMinimumWidth(320)
         bar.addWidget(self.active_combo, 1)
@@ -120,14 +121,14 @@ class MainWindow(QtWidgets.QMainWindow):
         bar = QtWidgets.QHBoxLayout()
         self.btn_prev = QtWidgets.QToolButton()
         self.btn_prev.setText("◀")
-        self.btn_prev.setToolTip("Scan anterior (seta esquerda)")
+        self.btn_prev.setToolTip("Previous scan (left arrow)")
         self.btn_next = QtWidgets.QToolButton()
         self.btn_next.setText("▶")
-        self.btn_next.setToolTip("Próximo scan (seta direita)")
+        self.btn_next.setToolTip("Next scan (right arrow)")
         self.scan_spin = QtWidgets.QSpinBox()
         self.scan_spin.setMinimum(1)
         self.scan_spin.setMaximum(1)
-        self.scan_spin.setToolTip("Número do scan (1 = primeiro ciclo do canal)")
+        self.scan_spin.setToolTip("Scan number (1 is the channel's first cycle)")
         self.rt_label = QtWidgets.QLabel("—")
         self.rt_label.setMinimumWidth(170)
 
@@ -140,9 +141,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.bg_label = QtWidgets.QLabel("")
         self.bg_label.setStyleSheet("color:#b07800;")
         bar.addWidget(self.bg_label)
-        self.btn_avg = QtWidgets.QPushButton("Média da faixa selecionada")
+        self.btn_avg = QtWidgets.QPushButton("Average selected range")
         self.btn_avg.setToolTip(
-            "Espectro médio dos scans dentro da faixa marcada no cromatograma"
+            "Average spectrum of the scans inside the range marked on the chromatogram"
         )
         bar.addWidget(self.btn_avg)
         layout.addLayout(bar)
@@ -150,14 +151,14 @@ class MainWindow(QtWidgets.QMainWindow):
         return box
 
     def _build_tree_dock(self) -> None:
-        dock = QtWidgets.QDockWidget("Amostras e canais", self)
+        dock = QtWidgets.QDockWidget("Samples and channels", self)
         dock.setObjectName("dock_tree")
         panel = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(panel)
         layout.setContentsMargins(6, 6, 6, 6)
 
         self.filter_edit = QtWidgets.QLineEdit()
-        self.filter_edit.setPlaceholderText("Filtrar canais (ex.: 313.2)")
+        self.filter_edit.setPlaceholderText("Filter channels (e.g. 313.2)")
         self.filter_edit.setClearButtonEnabled(True)
         layout.addWidget(self.filter_edit)
 
@@ -170,8 +171,8 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.tree, 1)
 
         buttons = QtWidgets.QHBoxLayout()
-        self.btn_none = QtWidgets.QPushButton("Desmarcar tudo")
-        self.btn_ms1 = QtWidgets.QPushButton("Só TOF MS")
+        self.btn_none = QtWidgets.QPushButton("Uncheck all")
+        self.btn_ms1 = QtWidgets.QPushButton("TOF MS only")
         buttons.addWidget(self.btn_none)
         buttons.addWidget(self.btn_ms1)
         layout.addLayout(buttons)
@@ -184,7 +185,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dock_tree = dock
 
     def _build_side_dock(self) -> None:
-        dock = QtWidgets.QDockWidget("Painéis", self)
+        dock = QtWidgets.QDockWidget("Panels", self)
         dock.setObjectName("dock_side")
         self.tabs = QtWidgets.QTabWidget()
 
@@ -192,11 +193,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.results_panel = ResultsPanel()
         self.sample_info = SampleInfoPanel()
 
-        self.tabs.addTab(self.compound_panel, "Compostos")
-        self.tabs.addTab(self.results_panel, "Resultados")
-        self.tabs.addTab(self._build_xic_tab(), "XIC manual")
-        self.tabs.addTab(self._build_peaks_tab(), "Picos do espectro")
-        self.tabs.addTab(self.sample_info, "Amostra")
+        self.tabs.addTab(self.compound_panel, "Compounds")
+        self.tabs.addTab(self.results_panel, "Results")
+        self.tabs.addTab(self._build_xic_tab(), "Manual XIC")
+        self.tabs.addTab(self._build_peaks_tab(), "Spectrum peaks")
+        self.tabs.addTab(self.sample_info, "Sample")
 
         dock.setWidget(self.tabs)
         self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, dock)
@@ -210,7 +211,7 @@ class MainWindow(QtWidgets.QMainWindow):
         form = QtWidgets.QFormLayout()
         self.xic_mz = QtWidgets.QLineEdit()
         self.xic_mz.setPlaceholderText("183.1391, 313.2384")
-        form.addRow("m/z (separe por vírgula):", self.xic_mz)
+        form.addRow("m/z (comma separated):", self.xic_mz)
 
         tol_row = QtWidgets.QHBoxLayout()
         self.xic_tol = QtWidgets.QDoubleSpinBox()
@@ -221,29 +222,27 @@ class MainWindow(QtWidgets.QMainWindow):
         self.xic_unit.addItems(["Da", "ppm"])
         tol_row.addWidget(self.xic_tol)
         tol_row.addWidget(self.xic_unit)
-        form.addRow("Tolerância (±):", tol_row)
+        form.addRow("Tolerance (±):", tol_row)
         layout.addLayout(form)
 
-        self.xic_all_channels = QtWidgets.QCheckBox(
-            "Extrair de todos os canais marcados"
-        )
+        self.xic_all_channels = QtWidgets.QCheckBox("Extract from every checked channel")
         layout.addWidget(self.xic_all_channels)
 
         buttons = QtWidgets.QHBoxLayout()
-        self.btn_xic = QtWidgets.QPushButton("Extrair XIC")
-        self.btn_xic_clear = QtWidgets.QPushButton("Limpar XICs")
+        self.btn_xic = QtWidgets.QPushButton("Extract XIC")
+        self.btn_xic_clear = QtWidgets.QPushButton("Clear XICs")
         buttons.addWidget(self.btn_xic)
         buttons.addWidget(self.btn_xic_clear)
         layout.addLayout(buttons)
 
-        layout.addWidget(QtWidgets.QLabel("XICs ativos:"))
+        layout.addWidget(QtWidgets.QLabel("Active XICs:"))
         self.xic_list = QtWidgets.QListWidget()
-        self.xic_list.setToolTip("Delete remove o XIC selecionado")
+        self.xic_list.setToolTip("Delete removes the selected XIC")
         layout.addWidget(self.xic_list, 1)
 
         hint = QtWidgets.QLabel(
-            "Dica: selecione uma faixa no espectro (Shift + arrastar) e clique "
-            "com o botão direito para extrair o XIC dela."
+            "Tip: select a range on the spectrum (Shift + drag) and right-click "
+            "to extract its XIC."
         )
         hint.setWordWrap(True)
         hint.setStyleSheet("color:#666; font-size:11px;")
@@ -254,108 +253,142 @@ class MainWindow(QtWidgets.QMainWindow):
         page = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(page)
         self.peak_table = QtWidgets.QTableWidget(0, 3)
-        self.peak_table.setHorizontalHeaderLabels(["m/z", "Intensidade", "% base"])
+        self.peak_table.setHorizontalHeaderLabels(["m/z", "Intensity", "% base"])
         self.peak_table.horizontalHeader().setStretchLastSection(True)
         self.peak_table.setEditTriggers(
             QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
         )
-        self.peak_table.setToolTip("Duplo clique extrai o XIC daquela massa")
+        self.peak_table.setToolTip("Double-click to extract that mass as an XIC")
         layout.addWidget(self.peak_table)
         return page
 
     def _build_toolbars(self) -> None:
-        bar = self.addToolBar("Principal")
+        bar = self.addToolBar("Main")
         bar.setObjectName("toolbar_main")
         bar.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-
-        self.act_open = bar.addAction("Abrir .wiff")
+        self.act_open = bar.addAction("Open .wiff")
         bar.addSeparator()
-        self.act_select = QtGui.QAction("Selecionar faixa", self, checkable=True)
+        self.act_select = QtGui.QAction("Select range", self, checkable=True)
         self.act_select.setToolTip(
-            "Arrastar seleciona faixa em vez de dar zoom "
-            "(Shift + arrastar faz o mesmo a qualquer momento)"
+            "Dragging selects a range instead of zooming "
+            "(Shift + drag always does the same)"
         )
         bar.addAction(self.act_select)
-        self.act_autoscale = bar.addAction("Ajustar escala")
-        bar.addSeparator()
-        self.act_norm = QtGui.QAction("Normalizar", self, checkable=True)
-        bar.addAction(self.act_norm)
-        self.act_mirror = QtGui.QAction("Espelhar", self, checkable=True)
-        self.act_mirror.setToolTip(
-            "Inverte os traços pares — compara amostra e branco em espelho"
+        self.act_autoscale = bar.addAction("Fit")
+        self.act_marker = bar.addAction("Add marker")
+        self.act_marker.setToolTip(
+            "Reference marker on the spectrum; other peaks are then labelled "
+            "with their distance to it — neutral losses and isotope spacings"
         )
-        bar.addAction(self.act_mirror)
-        self.act_labels = QtGui.QAction("Rótulos m/z", self, checkable=True)
-        self.act_labels.setChecked(True)
-        bar.addAction(self.act_labels)
-        self.act_apex = QtGui.QAction("Rótulos de RT", self, checkable=True)
-        self.act_apex.setChecked(True)
-        bar.addAction(self.act_apex)
-        self.act_legend = QtGui.QAction("Legenda", self, checkable=True)
-        self.act_legend.setChecked(True)
-        bar.addAction(self.act_legend)
+        self.act_marker_clear = bar.addAction("Clear markers")
 
-        proc = self.addToolBar("Processamento")
+        view = self.addToolBar("View")
+        view.setObjectName("toolbar_view")
+        view.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.act_norm = QtGui.QAction("Normalise", self, checkable=True)
+        self.act_mirror = QtGui.QAction("Mirror", self, checkable=True)
+        self.act_mirror.setToolTip("Flip every other trace — sample against blank")
+        self.act_stack = QtGui.QAction("Stack", self, checkable=True)
+        self.act_stack.setToolTip(
+            "One pane per trace, with the time axes locked together"
+        )
+        self.act_overview = QtGui.QAction("Overview", self, checkable=True)
+        self.act_overview.setToolTip(
+            "Navigator showing the full range and the region currently in view"
+        )
+        self.act_labels = QtGui.QAction("m/z labels", self, checkable=True)
+        self.act_labels.setChecked(True)
+        self.act_apex = QtGui.QAction("RT labels", self, checkable=True)
+        self.act_apex.setChecked(True)
+        self.act_relative = QtGui.QAction("Relative labels", self, checkable=True)
+        self.act_relative.setChecked(True)
+        self.act_relative.setToolTip(
+            "With markers present, label peaks by their distance to the marker"
+        )
+        self.act_legend = QtGui.QAction("Legend", self, checkable=True)
+        self.act_legend.setChecked(True)
+        for action in (self.act_norm, self.act_mirror, self.act_stack,
+                       self.act_overview, self.act_labels, self.act_apex,
+                       self.act_relative, self.act_legend):
+            view.addAction(action)
+        view.addSeparator()
+        view.addWidget(QtWidgets.QLabel(" Cascade x (min): "))
+        self.offset_x_spin = QtWidgets.QDoubleSpinBox()
+        self.offset_x_spin.setRange(-10.0, 10.0)
+        self.offset_x_spin.setSingleStep(0.05)
+        self.offset_x_spin.setDecimals(2)
+        self.offset_x_spin.setToolTip("Shift each overlaid trace along time")
+        view.addWidget(self.offset_x_spin)
+        view.addWidget(QtWidgets.QLabel("  y (%): "))
+        self.offset_y_spin = QtWidgets.QDoubleSpinBox()
+        self.offset_y_spin.setRange(-500.0, 500.0)
+        self.offset_y_spin.setSingleStep(5.0)
+        self.offset_y_spin.setDecimals(0)
+        self.offset_y_spin.setToolTip("Stagger each overlaid trace vertically")
+        view.addWidget(self.offset_y_spin)
+
+        proc = self.addToolBar("Processing")
         proc.setObjectName("toolbar_proc")
         proc.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-
-        proc.addWidget(QtWidgets.QLabel(" Suavizar (σ, scans): "))
+        proc.addWidget(QtWidgets.QLabel(" Smooth (σ, scans): "))
         self.smooth_spin = QtWidgets.QDoubleSpinBox()
         self.smooth_spin.setRange(0.0, 25.0)
         self.smooth_spin.setSingleStep(0.5)
         self.smooth_spin.setDecimals(1)
-        self.smooth_spin.setToolTip("Suavização gaussiana; 0 desliga")
+        self.smooth_spin.setToolTip("Gaussian smoothing; 0 turns it off")
         proc.addWidget(self.smooth_spin)
-
-        proc.addWidget(QtWidgets.QLabel("  Linha de base (min): "))
+        proc.addWidget(QtWidgets.QLabel("  Baseline (min): "))
         self.baseline_spin = QtWidgets.QDoubleSpinBox()
         self.baseline_spin.setRange(0.0, 60.0)
         self.baseline_spin.setSingleStep(0.5)
         self.baseline_spin.setDecimals(1)
         self.baseline_spin.setToolTip(
-            "Largura da janela usada para estimar a linha de base; 0 desliga.\n"
-            "Deve ser maior que o pico mais largo que você quer preservar."
+            "Window width used to estimate the baseline; 0 turns it off.\n"
+            "It must be wider than the broadest peak you want to keep."
         )
         proc.addWidget(self.baseline_spin)
         proc.addSeparator()
-
-        self.act_set_bg = proc.addAction("Definir background")
-        self.act_set_bg.setToolTip(
-            "Usa a faixa selecionada no cromatograma como branco: todo espectro "
-            "gerado a partir daí sai com esse fundo subtraído"
-        )
-        self.act_clear_bg = proc.addAction("Limpar background")
+        self.act_centroid = QtGui.QAction("Centroid", self, checkable=True)
+        self.act_centroid.setToolTip("Show the spectrum as centroid sticks")
+        proc.addAction(self.act_centroid)
         proc.addSeparator()
-        self.act_detect = proc.addAction("Detectar picos")
+        self.act_set_bg = proc.addAction("Set background")
+        self.act_set_bg.setToolTip(
+            "Use the selected chromatogram range as the blank: every spectrum "
+            "generated from then on comes out with that background subtracted"
+        )
+        self.act_clear_bg = proc.addAction("Clear background")
+        proc.addSeparator()
+        self.act_detect = proc.addAction("Detect peaks")
         self.act_detect.setToolTip(
-            "Integra os picos de todos os traços do cromatograma e "
-            "preenche a aba Resultados"
+            "Integrate the peaks of every chromatogram trace and fill the Results tab"
         )
 
     def _build_menu(self) -> None:
-        file_menu = self.menuBar().addMenu("&Arquivo")
+        file_menu = self.menuBar().addMenu("&File")
         file_menu.addAction(self.act_open)
-        self.act_close = file_menu.addAction("Fechar todos")
+        self.act_close = file_menu.addAction("Close all")
         file_menu.addSeparator()
-        self.act_exp_chrom = file_menu.addAction("Exportar cromatogramas (CSV)…")
-        self.act_exp_spec = file_menu.addAction("Exportar espectro (CSV)…")
+        self.act_exp_chrom = file_menu.addAction("Export chromatograms (CSV)…")
+        self.act_exp_spec = file_menu.addAction("Export spectrum (CSV)…")
         file_menu.addSeparator()
-        quit_action = file_menu.addAction("Sair")
-        quit_action.triggered.connect(self.close)
+        file_menu.addAction("Quit").triggered.connect(self.close)
 
-        view_menu = self.menuBar().addMenu("&Exibir")
+        view_menu = self.menuBar().addMenu("&View")
         for action in (self.act_autoscale, self.act_norm, self.act_mirror,
-                       self.act_labels, self.act_apex, self.act_legend):
+                       self.act_stack, self.act_overview, self.act_labels,
+                       self.act_apex, self.act_relative, self.act_legend):
             view_menu.addAction(action)
 
-        proc_menu = self.menuBar().addMenu("&Processar")
-        for action in (self.act_set_bg, self.act_clear_bg, self.act_detect):
+        proc_menu = self.menuBar().addMenu("&Process")
+        for action in (self.act_centroid, self.act_marker, self.act_marker_clear,
+                       self.act_set_bg, self.act_clear_bg, self.act_detect):
             proc_menu.addAction(action)
 
-        help_menu = self.menuBar().addMenu("A&juda")
-        help_menu.addAction("Como usar…").triggered.connect(self._show_help)
+        help_menu = self.menuBar().addMenu("&Help")
+        help_menu.addAction("How to use…").triggered.connect(self._show_help)
 
-    # -------------------------------------------------------------- sinais -- #
+    # -------------------------------------------------------------- signals -- #
     def _connect(self) -> None:
         self.act_open.triggered.connect(self.open_files)
         self.act_close.triggered.connect(self.close_all)
@@ -363,19 +396,27 @@ class MainWindow(QtWidgets.QMainWindow):
         self.act_select.toggled.connect(self._set_select_mode)
         self.act_norm.toggled.connect(self._set_normalised)
         self.act_mirror.toggled.connect(self._set_mirror)
+        self.act_stack.toggled.connect(self.chrom.set_stacked)
+        self.act_overview.toggled.connect(self._set_overview)
         self.act_labels.toggled.connect(self.spectrum.set_labels_enabled)
         self.act_apex.toggled.connect(self.chrom.set_apex_labels)
+        self.act_relative.toggled.connect(self._set_relative_labels)
         self.act_legend.toggled.connect(self.chrom.set_legend_visible)
+        self.act_centroid.toggled.connect(self._set_centroid)
+        self.act_marker.triggered.connect(self._add_marker)
+        self.act_marker_clear.triggered.connect(self._clear_markers)
         self.act_exp_chrom.triggered.connect(
-            lambda: self._export(self.chrom, "cromatogramas"))
+            lambda: self._export(self.chrom, "chromatograms"))
         self.act_exp_spec.triggered.connect(
-            lambda: self._export(self.spectrum, "espectro"))
+            lambda: self._export(self.spectrum, "spectrum"))
         self.act_set_bg.triggered.connect(self._set_background)
         self.act_clear_bg.triggered.connect(self._clear_background)
         self.act_detect.triggered.connect(self._detect_peaks)
 
         self.smooth_spin.valueChanged.connect(self._set_smoothing)
         self.baseline_spin.valueChanged.connect(self.chrom.set_baseline)
+        self.offset_x_spin.valueChanged.connect(self._set_offsets)
+        self.offset_y_spin.valueChanged.connect(self._set_offsets)
 
         self.tree.itemChanged.connect(self._on_tree_changed)
         self.tree.currentItemChanged.connect(self._on_tree_selection)
@@ -392,6 +433,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.chrom.sigClicked.connect(self._on_chrom_click)
         self.chrom.sigRangeSelected.connect(self._on_chrom_range)
+        self.chrom.sigRangeDragging.connect(self._on_chrom_dragging)
         self.chrom.sigBackgroundChanged.connect(self._on_background_changed)
         self.spectrum.sigExtractRequested.connect(self._extract_from_range)
 
@@ -415,7 +457,7 @@ class MainWindow(QtWidgets.QMainWindow):
         QtGui.QShortcut(QtGui.QKeySequence("Delete"), self.xic_list,
                         activated=self._remove_selected_xic)
 
-    # ---------------------------------------------------------- preferencias - #
+    # ---------------------------------------------------------- preferences -- #
     def _restore_settings(self) -> None:
         s = self.settings
         geometry = s.value("window/geometry")
@@ -430,10 +472,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.act_norm.setChecked(flag("view/normalise", False))
         self.act_mirror.setChecked(flag("view/mirror", False))
+        self.act_stack.setChecked(flag("view/stacked", False))
+        self.act_overview.setChecked(flag("view/overview", False))
         self.act_labels.setChecked(flag("view/labels", True))
         self.act_apex.setChecked(flag("view/apex", True))
+        self.act_relative.setChecked(flag("view/relative_labels", True))
         self.act_legend.setChecked(flag("view/legend", True))
         self.act_select.setChecked(flag("view/select_mode", False))
+        self.act_centroid.setChecked(flag("view/centroid", False))
+        self.offset_x_spin.setValue(s.value("view/offset_x", 0.0, type=float))
+        self.offset_y_spin.setValue(s.value("view/offset_y", 0.0, type=float))
         self.smooth_spin.setValue(s.value("proc/smooth", 0.0, type=float))
         self.baseline_spin.setValue(s.value("proc/baseline", 0.0, type=float))
         self.xic_tol.setValue(s.value("xic/tolerance", 0.02, type=float))
@@ -450,13 +498,18 @@ class MainWindow(QtWidgets.QMainWindow):
             except (ValueError, TypeError):
                 pass
 
-        # aplica o que foi restaurado (os sinais ja estao conectados)
+        # push the restored state through (signals are already connected)
         self._set_select_mode(self.act_select.isChecked())
         self._set_normalised(self.act_norm.isChecked())
         self._set_mirror(self.act_mirror.isChecked())
+        self.chrom.set_stacked(self.act_stack.isChecked())
+        self._set_overview(self.act_overview.isChecked())
         self.spectrum.set_labels_enabled(self.act_labels.isChecked())
         self.chrom.set_apex_labels(self.act_apex.isChecked())
+        self._set_relative_labels(self.act_relative.isChecked())
         self.chrom.set_legend_visible(self.act_legend.isChecked())
+        self._set_centroid(self.act_centroid.isChecked())
+        self._set_offsets()
         self._set_smoothing(self.smooth_spin.value())
         self.chrom.set_baseline(self.baseline_spin.value())
 
@@ -466,10 +519,16 @@ class MainWindow(QtWidgets.QMainWindow):
         s.setValue("window/state", self.saveState())
         s.setValue("view/normalise", self.act_norm.isChecked())
         s.setValue("view/mirror", self.act_mirror.isChecked())
+        s.setValue("view/stacked", self.act_stack.isChecked())
+        s.setValue("view/overview", self.act_overview.isChecked())
         s.setValue("view/labels", self.act_labels.isChecked())
         s.setValue("view/apex", self.act_apex.isChecked())
+        s.setValue("view/relative_labels", self.act_relative.isChecked())
         s.setValue("view/legend", self.act_legend.isChecked())
         s.setValue("view/select_mode", self.act_select.isChecked())
+        s.setValue("view/centroid", self.act_centroid.isChecked())
+        s.setValue("view/offset_x", self.offset_x_spin.value())
+        s.setValue("view/offset_y", self.offset_y_spin.value())
         s.setValue("proc/smooth", self.smooth_spin.value())
         s.setValue("proc/baseline", self.baseline_spin.value())
         s.setValue("xic/tolerance", self.xic_tol.value())
@@ -487,11 +546,11 @@ class MainWindow(QtWidgets.QMainWindow):
     def _remember_dir(self, path: str) -> None:
         self.settings.setValue("io/last_dir", os.path.dirname(path))
 
-    # -------------------------------------------------------------- arquivos - #
+    # --------------------------------------------------------------- files --- #
     def open_files(self) -> None:
         paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
-            self, "Abrir arquivos SCIEX", self._last_dir(),
-            "Arquivos wiff (*.wiff);;Todos (*)"
+            self, "Open SCIEX files", self._last_dir(),
+            "wiff files (*.wiff);;All files (*)"
         )
         for path in paths:
             self.load_file(path)
@@ -504,9 +563,9 @@ class MainWindow(QtWidgets.QMainWindow):
             wiff = WiffFile(path)
             self.files.append(wiff)
             self._add_file_to_tree(wiff)
-        except Exception as exc:  # pragma: no cover - depende do arquivo
+        except Exception as exc:  # pragma: no cover - depends on the file
             QtWidgets.QMessageBox.critical(
-                self, "Falha ao abrir", f"{os.path.basename(path)}\n\n{exc}"
+                self, "Could not open", f"{os.path.basename(path)}\n\n{exc}"
             )
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
@@ -523,7 +582,7 @@ class MainWindow(QtWidgets.QMainWindow):
             sample_item = QtWidgets.QTreeWidgetItem(
                 file_item, [f"{sample.name}  ({sample.instrument})"]
             )
-            self._add_leaf(sample_item, "TIC da amostra (todos os canais)",
+            self._add_leaf(sample_item, "Sample TIC (all channels)",
                            ChannelRef(wiff, sample, None), checked=True)
             for channel in sample.channels:
                 self._add_leaf(sample_item, channel.info.label,
@@ -537,9 +596,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _recompute_aliases(self) -> None:
         """
-        Encurta os nomes usados na legenda removendo o prefixo comum a todos os
-        arquivos abertos: `..._demo_QC001` e `..._demo_S001` viram
-        `QC001` e `S001`.
+        Shorten the names used in the legend by dropping the prefix shared by
+        every open file: `..._demo_QC001` and `..._demo_S001` become
+        `QC001` and `S001`.
         """
         stems = [os.path.splitext(os.path.basename(w.path))[0] for w in self.files]
         prefix = os.path.commonprefix(stems) if len(stems) > 1 else ""
@@ -576,9 +635,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.peak_table.setRowCount(0)
         self.results_panel.clear()
         self.sample_info.clear()
-        self._update_status("Nenhum arquivo aberto.")
+        self._update_status("No files open.")
 
-    # ------------------------------------------------------------------ arvore #
+    # ----------------------------------------------------------------- tree -- #
     def _checked_refs(self) -> list[ChannelRef]:
         out = []
         it = QtWidgets.QTreeWidgetItemIterator(
@@ -592,7 +651,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return out
 
     def _checked_samples(self) -> list[ChannelRef]:
-        """Uma referencia por amostra marcada, preservando a ordem da arvore."""
+        """One reference per checked sample, in tree order."""
         seen, out = set(), []
         for ref in self._checked_refs():
             identity = (ref.wiff.path, ref.sample.index)
@@ -601,8 +660,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 out.append(ref)
         if out:
             return out
-        # nada marcado: usa todas as amostras abertas
-        for wiff in self.files:
+        for wiff in self.files:  # nothing checked: fall back to every sample
             for index in range(len(wiff.sample_names)):
                 out.append(ChannelRef(wiff, wiff.sample(index), None))
         return out
@@ -646,7 +704,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if index >= 0:
                 self.active_combo.setCurrentIndex(index)
 
-    # ------------------------------------------------------- canal ativo ----- #
+    # -------------------------------------------------------- active channel - #
     def _rebuild_active_combo(self) -> None:
         previous = self.active_combo.currentData()
         self.active_combo.blockSignals(True)
@@ -677,7 +735,15 @@ class MainWindow(QtWidgets.QMainWindow):
             self._show_scan(min(self.current_scan,
                                 self.active_ref.channel.info.n_scans - 1))
 
-    # ---------------------------------------------------------- cromatograma - #
+    def _activate_trace_key(self, key: str) -> None:
+        """When a stacked pane is clicked, make its channel the active one."""
+        if not key:
+            return
+        index = self.active_combo.findData(key)
+        if index >= 0 and index != self.active_combo.currentIndex():
+            self.active_combo.setCurrentIndex(index)
+
+    # ---------------------------------------------------------- chromatogram - #
     def refresh_chromatogram(self) -> None:
         refs = self._checked_refs()
         mode = self.mode_combo.currentText()
@@ -706,22 +772,34 @@ class MainWindow(QtWidgets.QMainWindow):
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
         self._update_status(
-            f"{len(traces)} traço(s) no cromatograma · modo {mode}"
-            + (f" · canal ativo: {self.active_ref.label}" if self.active_ref else "")
+            f"{len(traces)} trace(s) on the chromatogram · {mode} mode"
+            + (f" · active channel: {self.active_ref.label}" if self.active_ref else "")
         )
 
-    def _on_chrom_click(self, rt: float) -> None:
+    def _on_chrom_click(self, key: str, rt: float) -> None:
+        self._activate_trace_key(key)
         channel = self.active_ref.channel if self.active_ref else None
         if channel is None:
-            self._update_status("Escolha um canal ativo para ver o espectro.")
+            self._update_status("Pick an active channel to see the spectrum.")
             return
         self._show_scan(channel.scan_at_rt(rt))
 
-    def _on_chrom_range(self, rt0: float, rt1: float) -> None:
+    def _on_chrom_range(self, key: str, rt0: float, rt1: float) -> None:
+        self._activate_trace_key(key)
         if self.active_ref is None or self.active_ref.channel is None:
             return
         self._show_average(rt0, rt1)
         self._report_integration(rt0, rt1)
+
+    def _on_chrom_dragging(self, key: str, rt0: float, rt1: float) -> None:
+        """
+        Live preview while the selection is being dragged or resized: the
+        spectrum follows the highlight instead of waiting for the mouse to be
+        released.
+        """
+        if self.active_ref is None or self.active_ref.channel is None:
+            return
+        self._show_average(rt0, rt1, live=True)
 
     def _report_integration(self, rt0: float, rt1: float) -> None:
         traces = [t for t in self.chrom.traces if t.source is not None]
@@ -738,18 +816,18 @@ class MainWindow(QtWidgets.QMainWindow):
         snr = signal_to_noise(x, y, rt0, rt1)
         self._update_status(
             f"{target.label} · {rt0:.3f}–{rt1:.3f} min · "
-            f"área {stats['area']:,.0f} · altura {stats['height']:,.0f} · "
-            f"ápice {stats['apex_rt']:.3f} min · S/N ≈ {snr:.0f} · "
+            f"area {stats['area']:,.0f} · height {stats['height']:,.0f} · "
+            f"apex {stats['apex_rt']:.3f} min · S/N ≈ {snr:.0f} · "
             f"{stats['n_points']} scans"
         )
 
-    # ------------------------------------------------------------- background - #
+    # -------------------------------------------------------------- background #
     def _set_background(self) -> None:
         selection = self.chrom.selected_range()
         if selection is None:
             self._update_status(
-                "Selecione a faixa de branco no cromatograma (Shift + arrastar) "
-                "antes de definir o background."
+                "Select the blank range on the chromatogram (Shift + drag) "
+                "before setting the background."
             )
             return
         self.chrom.set_background_range(*selection)
@@ -762,14 +840,12 @@ class MainWindow(QtWidgets.QMainWindow):
         window = self.chrom.background_range()
         if window is None:
             self.bg_label.setText("")
-            self._update_status("Subtração de background desligada.")
+            self._update_status("Background subtraction off.")
         else:
-            self.bg_label.setText(
-                f"background {window[0]:.2f}–{window[1]:.2f} min"
-            )
+            self.bg_label.setText(f"background {window[0]:.2f}–{window[1]:.2f} min")
             self._update_status(
-                f"Background definido em {window[0]:.3f}–{window[1]:.3f} min; "
-                "novos espectros saem com esse fundo subtraído."
+                f"Background set at {window[0]:.3f}–{window[1]:.3f} min; "
+                "new spectra come out with it subtracted."
             )
 
     def _background_spectrum(self, channel: Channel):
@@ -784,9 +860,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def _apply_background(self, channel: Channel, mz: np.ndarray,
                           intensity: np.ndarray) -> tuple[np.ndarray, bool]:
         """
-        Subtrai o espectro medio do branco. As grades de m/z do espectro e do
-        branco nao coincidem em dados de perfil, entao o branco e interpolado
-        para a grade do espectro antes da subtracao.
+        Subtract the average blank spectrum. In profile data the m/z grids of
+        the spectrum and of the blank do not line up, so the blank is
+        interpolated onto the spectrum's grid before subtraction.
         """
         background = self._background_spectrum(channel)
         if background is None:
@@ -797,7 +873,7 @@ class MainWindow(QtWidgets.QMainWindow):
         interpolated = np.interp(mz, bmz, bi, left=0.0, right=0.0)
         return np.clip(intensity - interpolated, 0.0, None), True
 
-    # -------------------------------------------------------------- espectro - #
+    # ---------------------------------------------------------------- spectrum #
     def _show_scan(self, scan: int) -> None:
         channel = self.active_ref.channel if self.active_ref else None
         if channel is None:
@@ -807,13 +883,13 @@ class MainWindow(QtWidgets.QMainWindow):
         intensity, subtracted = self._apply_background(channel, mz, intensity)
         rt = channel.rt_at_scan(self.current_scan)
         self.spectrum.set_traces(
-            [Trace("spec", "espectro", mz, intensity, "#1f77b4", channel)]
+            [Trace("spec", "spectrum", mz, intensity, "#1f77b4", channel)]
         )
         self.spectrum.autoscale()
         self.spectrum.set_title(
             f"{self.active_ref.label} · scan {self.current_scan + 1}"
             f"/{channel.info.n_scans} · RT {rt:.3f} min"
-            + (" · background subtraído" if subtracted else "")
+            + (" · background subtracted" if subtracted else "")
         )
         self.scan_spin.blockSignals(True)
         self.scan_spin.setValue(self.current_scan + 1)
@@ -822,7 +898,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.chrom.mark(rt)
         self._fill_peak_table()
 
-    def _show_average(self, rt0: float, rt1: float) -> None:
+    def _show_average(self, rt0: float, rt1: float, live: bool = False) -> None:
         channel = self.active_ref.channel if self.active_ref else None
         if channel is None:
             return
@@ -830,23 +906,25 @@ class MainWindow(QtWidgets.QMainWindow):
         intensity, subtracted = self._apply_background(channel, mz, intensity)
         first, last = channel.scans_in_range(rt0, rt1)
         self.spectrum.set_traces(
-            [Trace("spec", "espectro médio", mz, intensity, "#d62728", channel)]
+            [Trace("spec", "average spectrum", mz, intensity, "#d62728", channel)]
         )
-        self.spectrum.autoscale()
+        if not live:
+            self.spectrum.autoscale()
         self.spectrum.set_title(
-            f"{self.active_ref.label} · média de {last - first + 1} scans "
+            f"{self.active_ref.label} · average of {last - first + 1} scans "
             f"({first + 1}–{last + 1}) · RT {min(rt0, rt1):.3f}–{max(rt0, rt1):.3f} min"
-            + (" · background subtraído" if subtracted else "")
+            + (" · background subtracted" if subtracted else "")
         )
         self.rt_label.setText(f"RT {min(rt0, rt1):.3f}–{max(rt0, rt1):.3f} min")
         self.chrom.mark(None)
-        self._fill_peak_table()
+        if not live:  # the peak table is too slow to rebuild on every mouse move
+            self._fill_peak_table()
 
     def _average_selection(self) -> None:
         selection = self.chrom.selected_range()
         if selection is None:
             self._update_status(
-                "Selecione antes uma faixa no cromatograma (Shift + arrastar)."
+                "Select a range on the chromatogram first (Shift + drag)."
             )
             return
         self._show_average(*selection)
@@ -896,7 +974,7 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 values.append(float(part))
             except ValueError:
-                QtWidgets.QMessageBox.warning(self, "m/z inválido", f"Não entendi: {part}")
+                QtWidgets.QMessageBox.warning(self, "Invalid m/z", f"Not a number: {part}")
                 return
         if not values:
             return
@@ -914,7 +992,7 @@ class MainWindow(QtWidgets.QMainWindow):
                  targets: list[ChannelRef] | None = None) -> None:
         targets = targets if targets is not None else self._xic_targets()
         if not targets:
-            self._update_status("Escolha um canal ativo antes de extrair o XIC.")
+            self._update_status("Pick an active channel before extracting an XIC.")
             return
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
         try:
@@ -946,10 +1024,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.xic_list.clear()
         self.refresh_chromatogram()
 
-    # ------------------------------------------------------------ compostos -- #
+    # ------------------------------------------------------------- compounds -- #
     @staticmethod
     def _covers_rt(channel: Channel, rt: float | None) -> bool:
-        """O canal foi adquirido no tempo pedido? Sem RT informado, aceita qualquer um."""
+        """Was the channel acquired at that time? With no RT given, accept any."""
         if rt is None:
             return True
         times = channel.rt
@@ -957,13 +1035,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _match_channel(self, sample: Sample, compound: Compound) -> Channel | None:
         """
-        Escolhe o canal do metodo correspondente ao composto.
+        Pick the method channel that corresponds to the compound.
 
-        Metodos escalonados repetem o mesmo precursor em periodos diferentes —
-        neste equipamento, por exemplo, 313.24 aparece em dois experimentos, um
-        cobrindo 0–13 min e outro 13–21,5 min. Por isso o tempo de retencao
-        esperado entra no criterio: escolher so pelo precursor pegaria o canal
-        errado, que nem sequer foi adquirido naquele instante.
+        Scheduled methods repeat the same precursor in different periods — on
+        this instrument, for instance, 313.24 shows up in two experiments, one
+        covering 0–13 min and another 13–21.5 min. That is why the expected
+        retention time is part of the criterion: matching on precursor alone
+        would pick the wrong channel, one that was not even acquired then.
         """
         target = compound.target_mz
 
@@ -1011,22 +1089,22 @@ class MainWindow(QtWidgets.QMainWindow):
 
         x, y = channel.xic_range(mz_lo, mz_hi)
         if x.size == 0:
-            return empty("sem dados")
+            return empty("no data")
 
         window = compound.rt_window()
         if window is None:
             mask = np.ones(x.size, dtype=bool)
         else:
             mask = (x >= window[0]) & (x <= window[1])
-            # Sem varredura da corrida inteira quando a janela nao é coberta:
-            # devolver um pico de outro tempo seria um resultado errado, nao um
-            # resultado aproximado.
+            # Do not fall back to scanning the whole run when the window is not
+            # covered: returning a peak from another time would be a wrong
+            # result, not an approximate one.
             if mask.sum() < 3:
-                return empty(f"canal não cobre {window[0]:.2f}–{window[1]:.2f} min")
+                return empty(f"channel does not cover {window[0]:.2f}–{window[1]:.2f} min")
 
         peaks = detect_peaks(x[mask], y[mask], min_relative=0.05, min_snr=3.0)
         if not peaks:
-            return empty("nenhum pico acima do ruído")
+            return empty("no peak above noise")
 
         peak = peaks[0]
         return Result(
@@ -1039,16 +1117,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _extract_compounds(self, compounds: list[Compound]) -> None:
         if not compounds:
-            self._update_status("Nenhum composto válido na lista.")
+            self._update_status("No valid compound in the list.")
             return
         samples = self._checked_samples()
         if not samples:
-            self._update_status("Abra pelo menos um arquivo antes de extrair.")
+            self._update_status("Open at least one file before extracting.")
             return
 
         total = len(compounds) * len(samples)
         progress = QtWidgets.QProgressDialog(
-            "Extraindo e integrando…", "Cancelar", 0, total, self
+            "Extracting and integrating…", "Cancel", 0, total, self
         )
         progress.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(300)
@@ -1065,7 +1143,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         compound=compound.name, sample=ref.alias, channel="—",
                         mz=f"{compound.target_mz:.4f}", rt=compound.rt or 0.0,
                         area=0.0, height=0.0, width=0.0, snr=0.0,
-                        note="nenhum canal compatível",
+                        note="no matching channel",
                     ))
                 else:
                     results.append(self._integrate_compound(ref, channel, compound))
@@ -1080,12 +1158,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tabs.setCurrentWidget(self.results_panel)
         found = sum(1 for r in results if r.area > 0)
         self._update_status(
-            f"{len(results)} extrações em {len(samples)} amostra(s); "
-            f"{found} com pico detectado."
+            f"{len(results)} extractions across {len(samples)} sample(s); "
+            f"{found} with a detected peak."
         )
 
     def _show_compound(self, compound: Compound) -> None:
-        """Plota o XIC de um composto em todas as amostras marcadas."""
+        """Plot one compound's XIC across every checked sample."""
         samples = self._checked_samples()
         targets = []
         for ref in samples:
@@ -1093,7 +1171,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if channel is not None:
                 targets.append(ChannelRef(ref.wiff, ref.sample, channel))
         if not targets:
-            self._update_status(f"Nenhum canal compatível com {compound.name}.")
+            self._update_status(f"No channel matches {compound.name}.")
             return
         for target in targets:
             target.alias = next(
@@ -1105,24 +1183,24 @@ class MainWindow(QtWidgets.QMainWindow):
                       f"{compound.name} {compound.target_mz:.4f}", targets)
         window = compound.rt_window()
         if window:
-            self.chrom.plot.setXRange(*window)
+            self.chrom.set_x_range(*window)
 
     def _go_to_result(self, result: Result) -> None:
-        """Leva o cromatograma ate o pico de uma linha da tabela de resultados."""
+        """Bring the chromatogram to the peak of a results row."""
         if result.end_rt > result.start_rt:
             span = max(result.end_rt - result.start_rt, 0.05)
-            self.chrom.plot.setXRange(result.start_rt - span, result.end_rt + span)
+            self.chrom.set_x_range(result.start_rt - span, result.end_rt + span)
             self.chrom.mark(result.rt)
         self._update_status(
             f"{result.compound} · {result.sample} · {result.channel} · "
-            f"RT {result.rt:.3f} min · área {result.area:,.0f}"
+            f"RT {result.rt:.3f} min · area {result.area:,.0f}"
         )
 
-    # ------------------------------------------------------- picos do cromat. #
+    # ------------------------------------------------------ chromatogram peaks #
     def _detect_peaks(self) -> None:
         traces = self.chrom.traces
         if not traces:
-            self._update_status("Nada no cromatograma para integrar.")
+            self._update_status("Nothing on the chromatogram to integrate.")
             return
         results: list[Result] = []
         markers = []
@@ -1139,7 +1217,7 @@ class MainWindow(QtWidgets.QMainWindow):
             for peak in peaks:
                 results.append(
                     Result(
-                        compound="(detectado)", sample=sample_name,
+                        compound="(detected)", sample=sample_name,
                         channel=channel_name, mz="—", rt=peak.apex_rt,
                         area=peak.area, height=peak.height, width=peak.width,
                         snr=peak.snr, trace_key=trace.key,
@@ -1150,10 +1228,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.results_panel.set_results(results)
         self.tabs.setCurrentWidget(self.results_panel)
         self._update_status(
-            f"{len(results)} pico(s) integrado(s) em {len(traces)} traço(s)."
+            f"{len(results)} peak(s) integrated across {len(traces)} trace(s)."
         )
 
-    # ------------------------------------------------------------- utilidades #
+    # ------------------------------------------------------------------ misc -- #
     def _set_select_mode(self, enabled: bool) -> None:
         self.chrom.set_select_mode(enabled)
         self.spectrum.set_select_mode(enabled)
@@ -1170,6 +1248,44 @@ class MainWindow(QtWidgets.QMainWindow):
         self.chrom.set_smoothing(sigma)
         self.spectrum.set_smoothing(sigma)
 
+    def _set_offsets(self, *_args) -> None:
+        dx, dy = self.offset_x_spin.value(), self.offset_y_spin.value()
+        self.chrom.set_offsets(dx, dy)
+        self.spectrum.set_offsets(0.0, dy)  # shifting a spectrum in m/z is misleading
+
+    def _set_overview(self, enabled: bool) -> None:
+        self.chrom.set_overview_visible(enabled)
+        self.spectrum.set_overview_visible(enabled)
+
+    def _set_relative_labels(self, enabled: bool) -> None:
+        self.chrom.set_relative_labels(enabled)
+        self.spectrum.set_relative_labels(enabled)
+
+    def _set_centroid(self, enabled: bool) -> None:
+        self.spectrum.set_centroid(enabled)
+        self._fill_peak_table()
+
+    def _add_marker(self) -> None:
+        """Drop a marker at the tallest peak of the current spectrum selection."""
+        selection = self.spectrum.selected_range()
+        traces = self.spectrum.traces
+        if not traces:
+            self._update_status("Show a spectrum before adding a marker.")
+            return
+        if selection is None:
+            x, y = self.spectrum.condition(traces[0])
+            position = float(x[int(np.argmax(y))]) if x.size else 0.0
+        else:
+            position = sum(selection) / 2.0
+        self.spectrum.add_marker(position)
+        self._update_status(
+            "Marker added; other peaks are now labelled by their distance to it."
+        )
+
+    def _clear_markers(self) -> None:
+        self.spectrum.clear_markers()
+        self.chrom.clear_markers()
+
     def _autoscale_both(self) -> None:
         self.chrom.autoscale()
         self.spectrum.autoscale()
@@ -1177,10 +1293,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def _export(self, view, what: str) -> None:
         traces = view.traces
         if not traces:
-            self._update_status(f"Nada para exportar em {what}.")
+            self._update_status(f"Nothing to export in {what}.")
             return
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, f"Exportar {what}", os.path.join(self._last_dir(), f"{what}.csv"),
+            self, f"Export {what}", os.path.join(self._last_dir(), f"{what}.csv"),
             "CSV (*.csv)"
         )
         if not path:
@@ -1195,7 +1311,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 writer.writerow(["x", "y"])
                 writer.writerows(zip(x.tolist(), y.tolist()))
                 writer.writerow([])
-        self._update_status(f"Exportado para {path}")
+        self._update_status(f"Exported to {path}")
 
     def _update_status(self, text: str) -> None:
         self.statusBar().showMessage(text)
@@ -1203,29 +1319,36 @@ class MainWindow(QtWidgets.QMainWindow):
     def _show_help(self) -> None:
         QtWidgets.QMessageBox.information(
             self,
-            "Como usar",
-            "<b>Cromatograma</b><br>"
-            "• arrastar = zoom por retângulo; duplo clique = ajustar escala<br>"
-            "• clique simples = espectro daquele scan<br>"
-            "• Shift + arrastar = seleciona faixa → espectro médio + integração<br>"
-            "• setas ← → percorrem os scans<br><br>"
-            "<b>Espectro</b><br>"
-            "• Shift + arrastar seleciona faixa de m/z<br>"
-            "• botão direito na faixa → extrair XIC<br>"
-            "• duplo clique na aba “Picos do espectro” extrai o XIC da massa<br><br>"
-            "<b>Compostos</b><br>"
-            "• monte ou importe a lista na aba “Compostos”<br>"
-            "• “Extrair e integrar todos” roda a lista em todas as amostras marcadas<br>"
-            "• duplo clique numa linha mostra o XIC daquele composto<br><br>"
-            "<b>Processamento</b><br>"
-            "• suavização e linha de base valem para o que está na tela e para a "
-            "integração<br>"
-            "• selecione uma faixa de branco e clique “Definir background” para "
-            "subtraí-la dos espectros<br>"
-            "• “Espelhar” inverte os traços pares, para comparar amostra e branco",
+            "How to use",
+            "<b>Chromatogram</b><br>"
+            "• drag = rubber-band zoom; double-click = fit<br>"
+            "• single click = spectrum of that scan<br>"
+            "• Shift + drag = select a range → average spectrum + integration<br>"
+            "• the spectrum follows the highlight while you drag or resize it<br>"
+            "• ← → step through the scans<br><br>"
+            "<b>Spectrum</b><br>"
+            "• Shift + drag selects an m/z range<br>"
+            "• right-click → extract an XIC, or drop a marker<br>"
+            "• with a marker present, other peaks are labelled by their distance "
+            "to it — that is how neutral losses and isotope spacings are read<br>"
+            "• double-click a row of the Spectrum peaks tab to extract its XIC<br><br>"
+            "<b>Compounds</b><br>"
+            "• build or import the list in the Compounds tab<br>"
+            "• “Extract and integrate all” runs it over every checked sample<br>"
+            "• double-click a row to show that compound's XIC<br><br>"
+            "<b>View</b><br>"
+            "• Stack gives each trace its own pane with the time axes locked<br>"
+            "• Overview adds a navigator showing where the current zoom sits<br>"
+            "• Mirror flips every other trace; Cascade offsets them in x and y<br><br>"
+            "<b>Processing</b><br>"
+            "• smoothing and baseline apply to the display, the integration and "
+            "the export alike<br>"
+            "• select a blank range and click “Set background” to subtract it "
+            "from the spectra<br>"
+            "• Centroid turns the profile spectrum into sticks",
         )
 
-    def closeEvent(self, event):  # noqa: N802 (API Qt)
+    def closeEvent(self, event):  # noqa: N802 (Qt API)
         self._save_settings()
         for wiff in self.files:
             wiff.close()

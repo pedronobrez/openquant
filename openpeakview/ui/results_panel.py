@@ -1,4 +1,4 @@
-"""Tabela de resultados de integracao (picos cromatograficos)."""
+"""Integration results table (chromatographic peaks)."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ from dataclasses import dataclass
 
 from PyQt6 import QtCore, QtWidgets
 
-COLUMNS = ["Composto", "Amostra", "Canal", "m/z", "RT", "Área", "Altura",
-           "Largura", "S/N", "Obs."]
+COLUMNS = ["Compound", "Sample", "Channel", "m/z", "RT", "Area", "Height",
+           "Width", "S/N", "Note"]
 
 
 @dataclass
 class Result:
-    """Uma linha da tabela: um pico integrado de um traço."""
+    """One table row: an integrated peak of one trace."""
 
     compound: str
     sample: str
@@ -45,7 +45,7 @@ class Result:
 
 
 class ResultsPanel(QtWidgets.QWidget):
-    """Resultados da integracao, com exportacao para CSV."""
+    """Integration results, exportable to CSV."""
 
     sigResultActivated = QtCore.pyqtSignal(object)  # Result
 
@@ -66,12 +66,12 @@ class ResultsPanel(QtWidgets.QWidget):
         )
         self.table.setSortingEnabled(True)
         self.table.verticalHeader().setDefaultSectionSize(22)
-        self.table.setToolTip("Duplo clique leva o cromatograma até o pico")
+        self.table.setToolTip("Double-click to bring the chromatogram to the peak")
         layout.addWidget(self.table, 1)
 
         buttons = QtWidgets.QHBoxLayout()
-        self.btn_export = QtWidgets.QPushButton("Exportar CSV…")
-        self.btn_clear = QtWidgets.QPushButton("Limpar")
+        self.btn_export = QtWidgets.QPushButton("Export CSV…")
+        self.btn_clear = QtWidgets.QPushButton("Clear")
         buttons.addWidget(self.btn_export)
         buttons.addWidget(self.btn_clear)
         layout.addLayout(buttons)
@@ -117,7 +117,7 @@ class ResultsPanel(QtWidgets.QWidget):
         if not self._results:
             return
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, "Exportar resultados", "resultados.csv", "CSV (*.csv)"
+            self, "Export results", "results.csv", "CSV (*.csv)"
         )
         if not path:
             return

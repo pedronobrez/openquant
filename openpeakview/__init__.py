@@ -1,4 +1,4 @@
-"""OpenPeakView - visualizador open source de dados LC-MS SCIEX (.wiff)."""
+"""OpenPeakView - an open source viewer for SCIEX LC-MS data (.wiff)."""
 
 __version__ = "0.1.0"
 

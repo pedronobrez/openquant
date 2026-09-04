@@ -1,4 +1,4 @@
-"""Gerenciador de compostos alvo — equivalente ao XIC Manager do PeakView."""
+"""Target compound manager — the equivalent of PeakView's XIC Manager."""
 
 from __future__ import annotations
 
@@ -6,14 +6,14 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 from ..compounds import Compound, load_compounds, save_compounds
 
-COLUMNS = ["Nome", "Precursor", "Fragmento", "RT", "± RT", "Tol.", "Un."]
+COLUMNS = ["Name", "Precursor", "Fragment", "RT", "± RT", "Tol.", "Unit"]
 _NUMERIC = {1: "precursor", 2: "fragment", 3: "rt", 4: "rt_halfwidth", 5: "tolerance"}
 
 
 class CompoundPanel(QtWidgets.QWidget):
     """
-    Tabela editavel de compostos, com importacao/exportacao em CSV e disparo da
-    extracao em lote sobre as amostras abertas.
+    Editable compound table, with CSV import/export and a button that runs the
+    batch extraction over the open samples.
     """
 
     sigExtractAll = QtCore.pyqtSignal(list)   # list[Compound]
@@ -34,33 +34,33 @@ class CompoundPanel(QtWidgets.QWidget):
         )
         self.table.verticalHeader().setDefaultSectionSize(22)
         self.table.setToolTip(
-            "Duplo clique numa linha mostra o XIC daquele composto.\n"
-            "Colunas em branco são opcionais: sem fragmento usa-se o precursor;\n"
-            "sem RT a busca cobre a corrida inteira."
+            "Double-click a row to show that compound's XIC.\n"
+            "Blank columns are optional: with no fragment the precursor is used;\n"
+            "with no RT the search covers the whole run."
         )
         layout.addWidget(self.table, 1)
 
         buttons = QtWidgets.QGridLayout()
-        self.btn_add = QtWidgets.QPushButton("Adicionar")
-        self.btn_remove = QtWidgets.QPushButton("Remover")
-        self.btn_load = QtWidgets.QPushButton("Importar CSV…")
-        self.btn_save = QtWidgets.QPushButton("Exportar CSV…")
+        self.btn_add = QtWidgets.QPushButton("Add")
+        self.btn_remove = QtWidgets.QPushButton("Remove")
+        self.btn_load = QtWidgets.QPushButton("Import CSV…")
+        self.btn_save = QtWidgets.QPushButton("Export CSV…")
         buttons.addWidget(self.btn_add, 0, 0)
         buttons.addWidget(self.btn_remove, 0, 1)
         buttons.addWidget(self.btn_load, 1, 0)
         buttons.addWidget(self.btn_save, 1, 1)
         layout.addLayout(buttons)
 
-        self.btn_extract = QtWidgets.QPushButton("Extrair e integrar todos")
+        self.btn_extract = QtWidgets.QPushButton("Extract and integrate all")
         self.btn_extract.setToolTip(
-            "Gera o XIC de cada composto em cada amostra marcada e integra o pico"
+            "Build the XIC of every compound in every checked sample and integrate it"
         )
         font = self.btn_extract.font()
         font.setBold(True)
         self.btn_extract.setFont(font)
         layout.addWidget(self.btn_extract)
 
-        self.btn_add.clicked.connect(lambda: self.add_compound(Compound("novo", 0.0)))
+        self.btn_add.clicked.connect(lambda: self.add_compound(Compound("new", 0.0)))
         self.btn_remove.clicked.connect(self._remove_selected)
         self.btn_load.clicked.connect(self._load)
         self.btn_save.clicked.connect(self._save)
@@ -71,7 +71,7 @@ class CompoundPanel(QtWidgets.QWidget):
         QtGui.QShortcut(QtGui.QKeySequence("Delete"), self.table,
                         activated=self._remove_selected)
 
-    # -- dados --------------------------------------------------------------- #
+    # -- data ----------------------------------------------------------------- #
     def add_compound(self, compound: Compound) -> None:
         row = self.table.rowCount()
         self.table.insertRow(row)
@@ -97,7 +97,7 @@ class CompoundPanel(QtWidgets.QWidget):
             self.add_compound(compound)
 
     def compounds(self) -> list[Compound]:
-        """Le a tabela; linhas invalidas (sem nome ou sem precursor) sao ignoradas."""
+        """Read the table; invalid rows (no name or no precursor) are skipped."""
         out: list[Compound] = []
         for row in range(self.table.rowCount()):
             compound = self._compound_at(row)
@@ -133,7 +133,7 @@ class CompoundPanel(QtWidgets.QWidget):
             unit="ppm" if unit.lower() == "ppm" else "Da",
         )
 
-    # -- acoes --------------------------------------------------------------- #
+    # -- actions -------------------------------------------------------------- #
     def _remove_selected(self) -> None:
         for index in sorted({i.row() for i in self.table.selectedIndexes()},
                             reverse=True):
@@ -146,18 +146,18 @@ class CompoundPanel(QtWidgets.QWidget):
 
     def _load(self) -> None:
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Importar lista de compostos", "", "CSV (*.csv *.txt);;Todos (*)"
+            self, "Import compound list", "", "CSV (*.csv *.txt);;All files (*)"
         )
         if not path:
             return
         try:
             compounds = load_compounds(path)
         except (OSError, ValueError) as exc:
-            QtWidgets.QMessageBox.warning(self, "Não consegui ler o CSV", str(exc))
+            QtWidgets.QMessageBox.warning(self, "Could not read the CSV", str(exc))
             return
         if not compounds:
             QtWidgets.QMessageBox.information(
-                self, "Lista vazia", "O arquivo não tinha nenhuma linha válida."
+                self, "Empty list", "The file had no valid rows."
             )
             return
         self.set_compounds(compounds)
@@ -167,7 +167,7 @@ class CompoundPanel(QtWidgets.QWidget):
         if not compounds:
             return
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, "Exportar lista de compostos", "compostos.csv", "CSV (*.csv)"
+            self, "Export compound list", "compounds.csv", "CSV (*.csv)"
         )
         if path:
             save_compounds(path, compounds)

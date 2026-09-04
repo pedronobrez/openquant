@@ -1,4 +1,4 @@
-"""Testes da lista de compostos (leitura/gravacao CSV)."""
+"""Tests for the compound list (CSV round-trip)."""
 
 import pytest
 
@@ -10,7 +10,7 @@ def test_roundtrip_csv(tmp_path):
         Compound("12,13-DiHOME", 313.2384, 183.1391, 14.7, 0.5, 0.02, "Da"),
         Compound("9,10-DiHOME", 313.2384, 201.1496, 14.2, 0.5, 20.0, "ppm"),
     ]
-    path = tmp_path / "compostos.csv"
+    path = tmp_path / "compounds.csv"
     save_compounds(path, compounds)
     back = load_compounds(path)
     assert back == compounds
@@ -18,7 +18,7 @@ def test_roundtrip_csv(tmp_path):
 
 def test_load_accepts_minimal_columns(tmp_path):
     path = tmp_path / "min.csv"
-    path.write_text("nome,precursor\nDiHOME,313.2384\n", encoding="utf-8")
+    path.write_text("name,precursor\nDiHOME,313.2384\n", encoding="utf-8")
     [compound] = load_compounds(path)
     assert compound.name == "DiHOME"
     assert compound.precursor == pytest.approx(313.2384)
@@ -28,7 +28,7 @@ def test_load_accepts_minimal_columns(tmp_path):
 def test_load_rejects_missing_name(tmp_path):
     path = tmp_path / "bad.csv"
     path.write_text("precursor\n313.2\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="nome"):
+    with pytest.raises(ValueError, match="name column"):
         load_compounds(path)
 
 

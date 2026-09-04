@@ -1,168 +1,181 @@
 # OpenPeakView
 
-Visualizador de dados LC-MS da SCIEX (`.wiff` + `.wiff.scan`) escrito em Python,
-com as funcionalidades de navegação do PeakView: TIC, BPC, canais individuais do
-método, XIC e espectros de massa scan a scan ou como média de uma região do pico.
+A Python viewer for SCIEX LC-MS data (`.wiff` + `.wiff.scan`) that follows
+PeakView's way of working: TIC, BPC, the individual channels of the acquisition
+method, extracted ion chromatograms, and mass spectra scan by scan or averaged
+over a selected region of a peak.
 
-Roda em **macOS (incluindo Apple Silicon)**, Linux e Windows.
+Runs on **macOS (Apple Silicon included)**, Linux and Windows.
 
-![tela](docs/screenshot.png)
+![screenshot](docs/screenshot.png)
 
-## O que dá para fazer
+## What it does
 
-### Navegação e visualização
+### Navigation and display
 
-| Recurso | Como |
+| Feature | How |
 |---|---|
-| Abrir vários `.wiff` e sobrepor | `Arquivo ▸ Abrir .wiff` (aceita seleção múltipla) |
-| TIC da amostra inteira | nó “TIC da amostra” na árvore |
-| TIC ou BPC por canal | marque os canais e escolha `TIC`/`BPC` no combo |
-| Canais individuais do método | cada experimento aparece na árvore com precursor, faixa de m/z e CE |
-| Filtrar canais | caixa de busca (ex.: digite `313.2`) |
-| Espectro de um scan | clique simples no cromatograma |
-| Percorrer scan a scan | setas ← → ou os botões ◀ ▶ |
-| Espectro médio de uma região | Shift + arrastar no cromatograma |
-| Integração da região | área, altura, ápice e S/N na barra de status |
-| Comparar em espelho | **Espelhar** inverte os traços pares (amostra × branco) |
-| Normalizar, rótulos de m/z e de RT, legenda | botões da barra de ferramentas |
-| Informações da amostra e do método | aba **Amostra** (vial, volume, método, lote, DP/CE do canal) |
-| Preferências | tudo é lembrado entre sessões (janela, docas, opções, lista de compostos) |
+| Open several `.wiff` files and overlay them | `File ▸ Open .wiff` (multi-select) |
+| TIC of the whole sample | the “Sample TIC” node in the tree |
+| TIC or BPC per channel | check the channels and pick `TIC`/`BPC` |
+| Individual method channels | every experiment is listed with precursor, mass range and CE |
+| Filter channels | search box (type `313.2`, for instance) |
+| Spectrum of one scan | single click on the chromatogram |
+| Step scan by scan | ← → or the ◀ ▶ buttons |
+| Average spectrum of a region | Shift + drag on the chromatogram |
+| Live preview | the spectrum follows the highlight while you drag or resize it |
+| Integration of the selection | area, height, apex and S/N in the status bar |
+| **Stack** | one pane per trace with the time axes locked together |
+| **Overview** | navigator showing the full range and where the current zoom sits |
+| **Mirror** | flips every other trace — sample against blank |
+| **Cascade** | offsets the overlaid traces in x (min) and y (%) |
+| Sample and method information | **Sample** tab (vial, volume, method, batch, DP/CE) |
+| Preferences | everything is remembered between sessions |
 
-### Extração e quantificação
+### Extraction and quantification
 
-| Recurso | Como |
+| Feature | How |
 |---|---|
-| Lista de compostos alvo | aba **Compostos**: nome, precursor, fragmento, RT, janela, tolerância |
-| Importar/exportar a lista | CSV, com cabeçalhos em português ou inglês |
-| Extração em lote | **Extrair e integrar todos** roda a lista em todas as amostras marcadas |
-| Ver um composto | duplo clique na linha mostra o XIC dele em todas as amostras |
-| Tabela de resultados | RT, área, altura, largura, S/N e observação, ordenável e exportável |
-| Detecção automática de picos | **Detectar picos** integra tudo que está no cromatograma |
-| XIC manual | aba **XIC manual**: lista de m/z + tolerância em Da ou ppm |
-| XIC a partir do espectro | Shift + arrastar no espectro → botão direito → *Extrair XIC* |
-| XIC a partir da lista de picos | duplo clique na aba **Picos do espectro** |
-| Exportar | `Arquivo ▸ Exportar cromatogramas / espectro (CSV)` |
+| Target compound list | **Compounds** tab: name, precursor, fragment, RT, window, tolerance |
+| Import/export the list | CSV, headers in English or Portuguese |
+| Batch extraction | **Extract and integrate all** runs the list over every checked sample |
+| Show one compound | double-click a row for its XIC across all samples |
+| Results table | RT, area, height, width, S/N and a note; sortable and exportable |
+| Automatic peak detection | **Detect peaks** integrates everything on the chromatogram |
+| Manual XIC | **Manual XIC** tab: list of m/z plus a tolerance in Da or ppm |
+| XIC from the spectrum | Shift + drag on the spectrum → right-click → *Extract XIC* |
+| XIC from the peak list | double-click a row of the **Spectrum peaks** tab |
+| Export | `File ▸ Export chromatograms / spectrum (CSV)` |
 
-### Processamento
+### Processing and interpretation
 
-| Recurso | Como |
+| Feature | How |
 |---|---|
-| Suavização gaussiana | campo **Suavizar (σ, scans)**; 0 desliga |
-| Subtração de linha de base | campo **Linha de base (min)**; use uma janela maior que o pico mais largo |
-| Subtração de background nos espectros | selecione a faixa de branco → **Definir background** |
+| Gaussian smoothing | **Smooth (σ, scans)**; 0 turns it off |
+| Baseline removal | **Baseline (min)**; use a window wider than the broadest peak |
+| Background subtraction | select a blank range → **Set background** |
+| **Centroid** | turns the profile spectrum into sticks |
+| **Markers** | drop a marker on a peak; the others are then labelled with their distance to it, which is how neutral losses and isotope spacings are read |
 
-O que a suavização e a linha de base fazem vale tanto para o desenho quanto para a
-integração e a exportação, então área e altura sempre correspondem ao que está na tela.
+Smoothing and baseline removal apply to the drawing, the integration and the
+export alike, so area and height always match what is on screen.
 
-Atalhos do mouse nos dois painéis: arrastar = zoom por retângulo, duplo clique =
-ajustar escala, botão direito = menu do pyqtgraph (exportar imagem, escalas etc.).
+Mouse conventions in both panes: drag = rubber-band zoom, double-click = fit,
+right-click = pyqtgraph menu (export image, axis options and so on).
 
-## Instalação
+## Installation
 
 ```bash
 python3 -m pip install -r requirements.txt
-python3 -m openpeakview.bootstrap --install   # baixa o runtime .NET (~30 MB) em ~/.dotnet
+python3 -m openpeakview.bootstrap --install   # fetches the .NET runtime (~30 MB) into ~/.dotnet
 ```
 
-O segundo comando só é necessário uma vez, e apenas se você ainda não tiver um
-runtime .NET 8 na máquina.
+The second command is needed once, and only if there is no .NET 8 runtime on
+the machine yet.
 
-## Uso
+## Usage
 
 ```bash
 python3 run.py
 ```
 
-ou já abrindo arquivos:
+or open files directly:
 
 ```bash
-python3 run.py 260903_Teste_Mix_EICs_DiHOME001.wiff 260903_Teste_Mix_EICs_S001.wiff
+python3 run.py demo_QC01.wiff demo_STD_L1.wiff
 ```
 
-## Como o `.wiff` é lido
+## Compound list
 
-O formato `.wiff`/`.wiff.scan` é proprietário e não tem especificação pública. As
-únicas bibliotecas capazes de decodificá-lo são as **Clearcore2, da própria
-SCIEX** — as mesmas usadas pelo ProteoWizard/msconvert. Elas são redistribuídas
-pelo pacote open source [`alpharaw`](https://github.com/MannLabs/alpharaw) (MIT)
-e são assemblies .NET gerenciados.
-
-Fora do Windows elas normalmente não funcionam, porque `Clearcore2.StructuredStorage`
-abre o arquivo pela API COM `StgOpenStorageEx`, exclusiva do Windows. O módulo
-[`openpeakview/bootstrap.py`](openpeakview/bootstrap.py) contorna isso:
-
-1. localiza (ou instala) um runtime .NET 8;
-2. baixa do NuGet os assemblies de compatibilidade que o .NET Core não traz
-   (`System.Configuration.ConfigurationManager` e dependências) e registra um
-   resolvedor para eles;
-3. troca, por reflexão, o campo estático `StgStorage.sWindows` para `False`,
-   fazendo a Clearcore2 usar sua implementação gerenciada (OpenMcdf) em vez do
-   caminho COM.
-
-Com isso o `.wiff` é lido nativamente em Apple Silicon, sem Docker, sem Wine e
-sem Analyst instalado.
-
-**Sobre licenças:** o código deste projeto é MIT. As bibliotecas Clearcore2 são
-da SCIEX e *não* são open source — são redistribuíveis, é o mesmo arranjo que o
-ProteoWizard usa. Hoje não existe leitor de `.wiff` totalmente livre de código do
-fabricante. Se isso for um problema no seu contexto, o caminho alternativo é
-converter os arquivos para mzML com o `msconvert` e ler o mzML com
-[`pyteomics`](https://github.com/levitsky/pyteomics).
-
-## Lista de compostos
-
-A aba **Compostos** aceita um CSV com estas colunas (só `nome` e `precursor` são
-obrigatórias):
+The **Compounds** tab reads a CSV with these columns (only `name` and
+`precursor` are required):
 
 ```csv
-nome,precursor,fragmento,rt,janela,tolerancia,unidade
+name,precursor,fragment,rt,window,tolerance,unit
 12,13-DiHOME,313.2384,183.1391,14.7,0.6,0.02,Da
 9,10-DiHOME,313.2384,201.1496,14.2,0.6,20,ppm
 ```
 
-Sem `fragmento`, o XIC usa o próprio precursor. Sem `rt`, a busca cobre a corrida
-inteira. O canal do método é escolhido pelo precursor **e** pelo tempo de
-retenção — necessário em métodos escalonados, onde o mesmo precursor aparece em
-mais de um período. Quando o canal encontrado não cobre a janela de tempo pedida,
-o resultado sai com área zero e uma observação, em vez de um pico de outro tempo.
+With no `fragment` the XIC uses the precursor itself. With no `rt` the search
+covers the whole run. The method channel is picked by precursor **and** by
+retention time — necessary in scheduled methods, where the same precursor
+appears in more than one period. When the matched channel does not cover the
+requested time window, the result comes back with zero area and a note, rather
+than a peak from some other time.
 
-## Estrutura
+## How the .wiff file is read
+
+The `.wiff`/`.wiff.scan` format is proprietary and has no public
+specification. The only libraries able to decode it are SCIEX's own
+**Clearcore2** assemblies — the same ones ProteoWizard/msconvert uses. They are
+redistributed by the open source package
+[`alpharaw`](https://github.com/MannLabs/alpharaw) (MIT) and are managed .NET
+assemblies.
+
+Off Windows they normally do not work, because `Clearcore2.StructuredStorage`
+opens the file through the Windows-only COM API `StgOpenStorageEx`. The module
+[`openpeakview/bootstrap.py`](openpeakview/bootstrap.py) works around that:
+
+1. it locates (or installs) a .NET 8 runtime;
+2. it downloads from NuGet the compatibility assemblies .NET Core does not ship
+   (`System.Configuration.ConfigurationManager` and its dependencies) and
+   registers a resolver for them;
+3. by reflection it flips the static field `StgStorage.sWindows` to `False`,
+   making Clearcore2 use its managed implementation (OpenMcdf) instead of the
+   COM path.
+
+With that, `.wiff` files are read natively on Apple Silicon, with no Docker, no
+Wine and no Analyst installed. Files are opened with
+`OpenFileMode.ReadOnlyShared`, so a second window — or Analyst itself — can
+still open the same file.
+
+**On licensing:** the code in this project is MIT. The Clearcore2 libraries
+belong to SCIEX and are *not* open source — they are redistributable, the same
+arrangement ProteoWizard relies on. There is no fully vendor-free `.wiff`
+reader today. If that matters in your context, the alternative is to convert
+the files to mzML with `msconvert` and read the mzML with
+[`pyteomics`](https://github.com/levitsky/pyteomics).
+
+## Layout
 
 ```
 openpeakview/
-  bootstrap.py           inicialização do runtime .NET + patch da Clearcore2
-  wiff.py                WiffFile / Sample / Channel → arrays numpy
-  compounds.py           lista de compostos alvo (CSV)
-  processing.py          suavização, linha de base, detecção de picos, integração, S/N
-  ui/plots.py            painéis de cromatograma e espectro (pyqtgraph)
-  ui/compound_panel.py   gerenciador de compostos
-  ui/results_panel.py    tabela de resultados
-  ui/sample_info.py      informações da amostra
-  ui/main_window.py      janela principal
-  app.py                 ponto de entrada
-tests/                   pytest (numérica e lista de compostos)
+  bootstrap.py           .NET runtime setup and the Clearcore2 patch
+  wiff.py                WiffFile / Sample / Channel → numpy arrays
+  compounds.py           target compound list (CSV)
+  processing.py          smoothing, baseline, centroiding, peak detection, S/N
+  ui/plots.py            chromatogram and spectrum panes (pyqtgraph)
+  ui/chrom_area.py       stacked panes with linked time axes
+  ui/compound_panel.py   compound manager
+  ui/results_panel.py    results table
+  ui/sample_info.py      sample information
+  ui/main_window.py      main window
+  app.py                 entry point
+tests/                   pytest suite
 ```
 
-Rode os testes com `python3 -m pytest tests`.
+Run the tests with `python3 -m pytest tests`, and check the reader against your
+own files with `python3 selftest.py`.
 
-A camada de dados funciona sozinha, sem interface:
+The data layer works on its own, without any UI:
 
 ```python
 from openpeakview import WiffFile
 
-sample = WiffFile("260903_Teste_Mix_EICs_DiHOME001.wiff").sample(0)
-canal = sample.channels[80]                 # TOF PI, precursor 313.24
-rt, tic = canal.tic()
-rt, xic = canal.xic(183.1391, tolerance=0.02)        # fragmento do 12,13-DiHOME
-mz, i = canal.spectrum(canal.scan_at_rt(14.66))      # espectro de um scan
-mz, i = canal.spectrum_rt_range(14.5, 14.8)          # espectro médio da região
+sample = WiffFile("demo_QC01.wiff").sample(0)
+channel = sample.channels[65]                        # TOF PI, precursor 325.20
+rt, tic = channel.tic()
+rt, xic = channel.xic(183.0137, tolerance=0.02)      # fragment
+mz, i = channel.spectrum(channel.scan_at_rt(13.14))  # one scan
+mz, i = channel.spectrum_rt_range(13.0, 13.3)        # average over a region
 ```
 
-## Dados
+## Data
 
-Os arquivos `.wiff`/`.wiff.scan` não são versionados (veja `.gitignore`): são
-binários grandes e mudam a cada corrida. Deixe-os onde preferir e abra pelo menu.
+The `.wiff`/`.wiff.scan` files are not tracked (see `.gitignore`): they are
+large binaries that change with every run. Keep them wherever you like and open
+them from the menu.
 
-Os arquivos usados no desenvolvimento vêm de um TripleTOF 5600 em modo negativo,
-método targeted MRM-HR com 81 experimentos em 2 períodos: `TOF MS` (100–2000)
-mais 80 canais `TOF PI`, um por precursor.
+The files used during development come from a TripleTOF 5600 in negative mode,
+a targeted MRM-HR method with 81 experiments across 2 periods: `TOF MS`
+(100–2000) plus 80 `TOF PI` channels, one per precursor.

@@ -1,9 +1,9 @@
 """
-Lista de compostos alvo — equivalente ao XIC Manager do PeakView.
+Target compound list — the equivalent of PeakView's XIC Manager.
 
-Um composto descreve o que extrair (precursor, fragmento, tolerancia) e onde
-esperar o pico (tempo de retencao e meia-janela). A lista e lida e gravada em
-CSV para poder ser mantida fora do programa.
+A compound says what to extract (precursor, fragment, tolerance) and where the
+peak is expected (retention time and half window). The list is read from and
+written to CSV so it can be maintained outside the program.
 """
 
 from __future__ import annotations
@@ -12,17 +12,18 @@ import csv
 import os
 from dataclasses import dataclass, fields
 
-# Aceita cabecalhos em portugues e ingles; a chave e o nome do campo.
+# Header aliases, English and Portuguese, keyed by dataclass field name. Lists
+# written by earlier versions used Portuguese headers, so both keep working.
 _ALIASES = {
-    "name": {"nome", "name", "composto", "compound", "analito", "analyte"},
+    "name": {"name", "compound", "analyte", "nome", "composto", "analito"},
     "precursor": {"precursor", "q1", "precursor_mz", "parent", "precursormz"},
-    "fragment": {"fragmento", "fragment", "q3", "produto", "product",
-                 "fragment_mz", "productmz"},
-    "rt": {"rt", "tr", "tempo", "retention_time", "rt_min"},
-    "rt_halfwidth": {"janela", "window", "rt_halfwidth", "rt_window",
-                     "meia_janela", "tolerancia_rt"},
-    "tolerance": {"tolerancia", "tolerance", "tol", "mz_tolerance"},
-    "unit": {"unidade", "unit", "tol_unit"},
+    "fragment": {"fragment", "q3", "product", "fragment_mz", "productmz",
+                 "fragmento", "produto"},
+    "rt": {"rt", "retention_time", "rt_min", "tr", "tempo"},
+    "rt_halfwidth": {"window", "rt_window", "rt_halfwidth", "half_window",
+                     "janela", "meia_janela", "tolerancia_rt"},
+    "tolerance": {"tolerance", "tol", "mz_tolerance", "tolerancia"},
+    "unit": {"unit", "tol_unit", "unidade"},
 }
 
 DEFAULT_TOLERANCE = 0.02
@@ -31,7 +32,7 @@ DEFAULT_UNIT = "Da"
 
 @dataclass
 class Compound:
-    """Um alvo da lista de extracao."""
+    """One target of the extraction list."""
 
     name: str
     precursor: float
@@ -43,33 +44,30 @@ class Compound:
 
     @property
     def target_mz(self) -> float:
-        """Massa efetivamente extraida: o fragmento, ou o precursor se nao houver."""
+        """The mass actually extracted: the fragment, or the precursor if none."""
         return self.fragment if self.fragment is not None else self.precursor
 
     def mass_window(self) -> tuple[float, float]:
-        """Faixa de m/z do XIC, resolvendo a tolerancia em Da ou ppm."""
+        """XIC m/z range, resolving the tolerance in Da or ppm."""
         mz = self.target_mz
         half = mz * self.tolerance * 1e-6 if self.unit.lower() == "ppm" else self.tolerance
         return mz - half, mz + half
 
     def rt_window(self) -> tuple[float, float] | None:
-        """Faixa de tempo esperada, ou None quando o RT nao foi informado."""
+        """Expected time range, or None when no retention time was given."""
         if self.rt is None:
             return None
         return self.rt - self.rt_halfwidth, self.rt + self.rt_halfwidth
 
     @property
     def label(self) -> str:
-        parts = [self.name]
         if self.fragment is not None:
-            parts.append(f"{self.precursor:.4f} → {self.fragment:.4f}")
-        else:
-            parts.append(f"{self.precursor:.4f}")
-        return "  ".join(parts)
+            return f"{self.name}  {self.precursor:.4f} → {self.fragment:.4f}"
+        return f"{self.name}  {self.precursor:.4f}"
 
 
 def _normalise_header(row: dict) -> dict:
-    """Mapeia os cabecalhos do CSV para os nomes de campo do dataclass."""
+    """Map CSV headers onto the dataclass field names."""
     out = {}
     for raw_key, value in row.items():
         if raw_key is None:
@@ -93,11 +91,11 @@ def _to_float(value, default=None):
 
 def load_compounds(path: str | os.PathLike) -> list[Compound]:
     """
-    Le uma lista de compostos de um CSV.
+    Read a compound list from CSV.
 
-    Obrigatorias: uma coluna de nome e uma de precursor. As demais colunas
-    (fragmento, rt, janela, tolerancia, unidade) sao opcionais. O delimitador e
-    detectado automaticamente entre virgula, ponto e virgula e tabulacao.
+    Required: a name column and a precursor column. Everything else (fragment,
+    rt, window, tolerance, unit) is optional. The delimiter is detected
+    automatically among comma, semicolon and tab.
     """
     with open(path, newline="", encoding="utf-8-sig") as handle:
         sample = handle.read(4096)
@@ -111,9 +109,9 @@ def load_compounds(path: str | os.PathLike) -> list[Compound]:
     if not rows:
         return []
     if "name" not in rows[0]:
-        raise ValueError("CSV sem coluna de nome (use 'nome' ou 'name').")
+        raise ValueError("CSV has no name column (use 'name' or 'compound').")
     if "precursor" not in rows[0]:
-        raise ValueError("CSV sem coluna de precursor (use 'precursor' ou 'Q1').")
+        raise ValueError("CSV has no precursor column (use 'precursor' or 'Q1').")
 
     compounds: list[Compound] = []
     for number, row in enumerate(rows, start=2):
@@ -135,34 +133,29 @@ def load_compounds(path: str | os.PathLike) -> list[Compound]:
                 )
             )
         except ValueError as exc:
-            raise ValueError(f"linha {number} do CSV: {exc}") from exc
+            raise ValueError(f"CSV line {number}: {exc}") from exc
     return compounds
 
 
 def _fmt(value: float | None) -> str:
     """
-    Formata sem perder precisao de massa exata: 12 digitos significativos.
-    Com menos que isso um m/z como 313.2384 seria gravado como 313.238, um erro
-    de mais de 1 ppm — o bastante para deslocar a janela de um XIC estreito.
+    Format without losing exact-mass precision: 12 significant digits. With
+    fewer, an m/z such as 313.2384 would be written as 313.238 — an error of
+    more than 1 ppm, enough to shift a narrow XIC window.
     """
     return "" if value is None else f"{value:.12g}"
 
 
 def save_compounds(path: str | os.PathLike, compounds: list[Compound]) -> None:
-    """Grava a lista em CSV, com cabecalhos que `load_compounds` reconhece."""
-    header = ["nome", "precursor", "fragmento", "rt", "janela", "tolerancia", "unidade"]
+    """Write the list to CSV with headers that `load_compounds` accepts."""
+    header = ["name", "precursor", "fragment", "rt", "window", "tolerance", "unit"]
     with open(path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(header)
         for c in compounds:
             writer.writerow([
-                c.name,
-                _fmt(c.precursor),
-                _fmt(c.fragment),
-                _fmt(c.rt),
-                _fmt(c.rt_halfwidth),
-                _fmt(c.tolerance),
-                c.unit,
+                c.name, _fmt(c.precursor), _fmt(c.fragment), _fmt(c.rt),
+                _fmt(c.rt_halfwidth), _fmt(c.tolerance), c.unit,
             ])
 
 

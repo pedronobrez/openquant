@@ -1,8 +1,8 @@
 """
-Camada de dados: acesso a arquivos SCIEX WIFF como arrays numpy.
+Data layer: SCIEX WIFF files as numpy arrays.
 
-Hierarquia: WiffFile -> Sample -> Channel (um "experimento" do metodo).
-Cada Channel entrega TIC, BPC, XIC e espectros (scan unico ou media de faixa).
+Hierarchy: WiffFile -> Sample -> Channel (one "experiment" of the method).
+Each Channel yields TIC, BPC, XIC and spectra (single scan or range average).
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ _API = None
 
 
 def _api():
-    """Importa os tipos .NET uma unica vez, apos o bootstrap."""
+    """Import the .NET types once, after the bootstrap."""
     global _API
     if _API is None:
         bootstrap.ensure()
@@ -63,7 +63,7 @@ def _double_array(values) -> "object":
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True)
 class ChannelInfo:
-    """Metadados de um experimento (canal) do metodo de aquisicao."""
+    """Metadata of one experiment (channel) of the acquisition method."""
 
     index: int
     name: str
@@ -93,7 +93,7 @@ class ChannelInfo:
 
 # --------------------------------------------------------------------------- #
 class Channel:
-    """Um experimento do metodo: TOF MS, TOF PI (MRM-HR), MRM, etc."""
+    """One experiment of the method: TOF MS, TOF PI (MRM-HR), MRM, and so on."""
 
     def __init__(self, sample: "Sample", index: int):
         self._sample = sample
@@ -101,7 +101,7 @@ class Channel:
         self.index = index
         self.info = self._read_info()
 
-    # -- metadados ---------------------------------------------------------- #
+    # -- metadata ------------------------------------------------------------ #
     def _read_info(self) -> ChannelInfo:
         d = self._exp.Details
         ranges = list(d.MassRangeInfo) if d.MassRangeInfo else []
@@ -134,7 +134,7 @@ class Channel:
             collision_energy=ce,
         )
 
-    # -- cromatogramas ------------------------------------------------------ #
+    # -- chromatograms -------------------------------------------------------- #
     @lru_cache(maxsize=1)
     def tic(self) -> tuple[np.ndarray, np.ndarray]:
         c = self._exp.GetTotalIonChromatogram()
@@ -155,7 +155,7 @@ class Channel:
 
     def xic(self, mz: float, tolerance: float = 0.02,
             unit: str = "Da") -> tuple[np.ndarray, np.ndarray]:
-        """Cromatograma de ions extraidos para uma janela em torno de `mz`."""
+        """Extracted ion chromatogram over a window around `mz`."""
         half = mz * tolerance * 1e-6 if unit.lower() == "ppm" else tolerance
         return self.xic_range(mz - half, mz + half)
 
@@ -166,22 +166,22 @@ class Channel:
         )
         return _to_numpy(c.GetActualXValues()), _to_numpy(c.GetActualYValues())
 
-    # -- espectros ---------------------------------------------------------- #
+    # -- spectra -------------------------------------------------------------- #
     def spectrum(self, scan: int) -> tuple[np.ndarray, np.ndarray]:
-        """Espectro de um unico scan (indice de ciclo, base 0)."""
+        """Spectrum of a single scan (0-based cycle index)."""
         scan = int(np.clip(scan, 0, max(self.info.n_scans - 1, 0)))
         s = self._exp.GetMassSpectrum(scan)
         return _to_numpy(s.GetActualXValues()), _to_numpy(s.GetActualYValues())
 
     def spectrum_rt_range(self, rt_start: float,
                           rt_end: float) -> tuple[np.ndarray, np.ndarray]:
-        """Espectro medio dos scans contidos na faixa de tempo indicada."""
+        """Average spectrum of the scans inside the given time range."""
         lo, hi = sorted((float(rt_start), float(rt_end)))
         s = self._exp.GetMassSpectrum(lo, hi)
         return _to_numpy(s.GetActualXValues()), _to_numpy(s.GetActualYValues())
 
     def parameters(self) -> dict[str, str]:
-        """Parametros do experimento no metodo (DP, CE, CES, ...)."""
+        """Experiment parameters from the method (DP, CE, CES, ...)."""
         out: dict[str, str] = {}
         try:
             table = self._exp.Details.Parameters
@@ -194,7 +194,7 @@ class Channel:
             except Exception:
                 out[str(key)] = str(parameter)
                 continue
-            # Start != Stop indica rampa (p.ex. spread de energia de colisao)
+            # Start != Stop means a ramp (e.g. collision energy spread)
             out[str(key)] = f"{start:g}" if start == stop else f"{start:g} – {stop:g}"
         return out
 
@@ -225,7 +225,7 @@ class Channel:
 
 # --------------------------------------------------------------------------- #
 class Sample:
-    """Uma injecao dentro do arquivo wiff."""
+    """One injection inside the wiff file."""
 
     def __init__(self, wiff: "WiffFile", index: int):
         self._wiff = wiff
@@ -240,7 +240,7 @@ class Sample:
 
     @lru_cache(maxsize=1)
     def tic(self) -> tuple[np.ndarray, np.ndarray]:
-        """TIC da amostra inteira (soma de todos os experimentos)."""
+        """TIC of the whole sample (sum over all experiments)."""
         c = self._ms.GetTotalIonChromatogram()
         return _to_numpy(c.GetActualXValues()), _to_numpy(c.GetActualYValues())
 
@@ -252,25 +252,25 @@ class Sample:
             return ""
 
     def metadata(self) -> dict[str, str]:
-        """Informacoes da amostra e da aquisicao, para o painel de detalhes."""
+        """Sample and acquisition information, for the details panel."""
         details = self._sample.Details
         wanted = [
-            ("Amostra", "SampleName"),
+            ("Sample", "SampleName"),
             ("ID", "SampleID"),
-            ("Tipo", "SampleType"),
-            ("Aquisicao", None),
-            ("Instrumento", "InstrumentName"),
-            ("Numero de serie", "InstrumentSerialNumber"),
-            ("Metodo", "AcquisitionMethodName"),
-            ("Lote", "BatchName"),
+            ("Type", "SampleType"),
+            ("Acquired", None),
+            ("Instrument", "InstrumentName"),
+            ("Serial number", "InstrumentSerialNumber"),
+            ("Method", "AcquisitionMethodName"),
+            ("Batch", "BatchName"),
             ("Rack", "Rack"),
-            ("Placa", "Plate"),
+            ("Plate", "Plate"),
             ("Vial", "Vial"),
-            ("Volume de injecao", "InjectionVolume"),
-            ("Fator de diluicao", "DilutionFactor"),
-            ("Operador", "UserName"),
+            ("Injection volume", "InjectionVolume"),
+            ("Dilution factor", "DilutionFactor"),
+            ("Operator", "UserName"),
             ("Software", "SoftwareVersion"),
-            ("Comentario", "SampleComment"),
+            ("Comment", "SampleComment"),
         ]
         out: dict[str, str] = {}
         for label, attr in wanted:
@@ -284,28 +284,28 @@ class Sample:
             text = "" if value is None else str(value)
             if text:
                 out[label] = text
-        out["Canais"] = str(len(self.channels))
+        out["Channels"] = str(len(self.channels))
         rt = self.tic()[0]
         if rt.size:
-            out["Faixa de tempo"] = f"{rt[0]:.2f} – {rt[-1]:.2f} min"
+            out["Time range"] = f"{rt[0]:.2f} – {rt[-1]:.2f} min"
         return out
 
     def __repr__(self) -> str:
-        return f"<Sample {self.name}: {len(self.channels)} canais>"
+        return f"<Sample {self.name}: {len(self.channels)} channels>"
 
 
 # --------------------------------------------------------------------------- #
 class WiffFile:
-    """Arquivo .wiff (com o .wiff.scan correspondente ao lado)."""
+    """A .wiff file (with its matching .wiff.scan alongside)."""
 
     def __init__(self, path: str | os.PathLike):
         api = _api()
         self.path = os.path.realpath(str(path))
         if not os.path.exists(self.path):
             raise FileNotFoundError(self.path)
-        # ReadOnlyShared e essencial: no caminho gerenciado (OpenMcdf) o modo
-        # padrao abre o arquivo com trava exclusiva, o que impede uma segunda
-        # janela — ou o proprio Analyst — de abrir o mesmo .wiff.
+        # ReadOnlyShared is essential: on the managed path (OpenMcdf) the
+        # default mode takes an exclusive lock, which stops a second window —
+        # or Analyst itself — from opening the same .wiff.
         self._provider = api["Provider"](api["OpenFileMode"].ReadOnlyShared)
         self._batch = api["Factory"].CreateBatch(self.path, self._provider)
         self.sample_names = [str(n) for n in self._batch.GetSampleNames()]

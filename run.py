@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Atalho: python run.py [arquivo.wiff ...]"""
+"""Shortcut: python run.py [file.wiff ...]"""
 import sys
 
 from openpeakview.app import main

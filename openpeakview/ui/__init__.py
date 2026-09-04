@@ -1,1 +1,1 @@
-"""Componentes de interface do OpenPeakView."""
+"""OpenPeakView user interface components."""

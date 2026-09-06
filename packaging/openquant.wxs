@@ -44,8 +44,12 @@
       <ComponentGroupRef Id="Shortcuts" />
     </Feature>
 
+    <!-- BundleDir is passed in as an absolute path. A relative one resolves
+         against this file's own directory, not against the bind path, so
+         "OpenQuant\**" quietly matched nothing and produced a 36 KB installer
+         that WiX reported as a success. -->
     <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
-      <Files Include="OpenQuant\**" />
+      <Files Include="$(BundleDir)\**" />
     </ComponentGroup>
 
     <ComponentGroup Id="Shortcuts" Directory="ShortcutFolder">

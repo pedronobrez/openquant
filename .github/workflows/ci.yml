@@ -206,7 +206,8 @@ jobs:
           dotnet tool install --global wix --version 5.0.2
           $version = (Select-String -Path openquant/__init__.py `
             -Pattern '__version__ = "([^"]+)"').Matches.Groups[1].Value
-          wix build packaging/openquant.wxs -d Version=$version -b dist `
+          wix build packaging/openquant.wxs -d Version=$version `
+            -d BundleDir="$PWD\dist\OpenQuant" `
             -o "dist/OpenQuant-$version-windows-x64.msi"
 
       - name: Tarball
@@ -214,6 +215,23 @@ jobs:
         run: |
           version=$(python -c "import openquant; print(openquant.__version__)")
           tar -C dist -czf "dist/OpenQuant-$version-linux-x86_64.tar.gz" OpenQuant
+
+      # WiX built a 36 KB installer once and called it a success, because a
+      # glob that matches nothing is not an error. Every installer here holds
+      # a Python interpreter, Qt and numpy; anything under 20 MB is empty.
+      - name: The installer is not empty
+        shell: bash
+        run: |
+          shopt -s nullglob
+          built=(dist/*.dmg dist/*.msi dist/*.tar.gz)
+          [ ${#built[@]} -gt 0 ] || { echo "nothing was built" >&2; exit 1; }
+          status=0
+          for file in "${built[@]}"; do
+            size=$(wc -c < "$file")
+            printf '%s %s bytes\n' "$file" "$size"
+            [ "$size" -ge 20000000 ] || { echo "  too small to hold an app" >&2; status=1; }
+          done
+          exit $status
 
       - uses: actions/upload-artifact@v4
         with:

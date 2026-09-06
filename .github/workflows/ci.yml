@@ -203,7 +203,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          dotnet tool install --global wix
+          dotnet tool install --global wix --version 5.0.2
           $version = (Select-String -Path openquant/__init__.py `
             -Pattern '__version__ = "([^"]+)"').Matches.Groups[1].Value
           wix build packaging/openquant.wxs -d Version=$version -b dist `
@@ -232,7 +232,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          # each runner has only its own installer, and whichever of the three
+          # arrives first is the one that creates the release
+          shopt -s nullglob
+          built=(dist/*.dmg dist/*.msi dist/*.tar.gz)
+          [ ${#built[@]} -gt 0 ] || { echo "nothing was built" >&2; exit 1; }
           gh release create "${GITHUB_REF_NAME}" --generate-notes --verify-tag \
-            --title "OpenQuant ${GITHUB_REF_NAME}" || true
-          gh release upload "${GITHUB_REF_NAME}" \
-            dist/*.dmg dist/*.msi dist/*.tar.gz --clobber
+            --title "OpenQuant ${GITHUB_REF_NAME}" 2>/dev/null || true
+          gh release upload "${GITHUB_REF_NAME}" "${built[@]}" --clobber

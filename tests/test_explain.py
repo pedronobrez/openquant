@@ -136,3 +136,64 @@ def test_one_structure_per_species_is_scored(database):
                              unit="Da")
     species = [e.record.species for e in ranked]
     assert len(species) == len(set(species))
+
+
+# -- letting the spectrum choose between routes ------------------------------- #
+def test_a_route_implies_its_own_intermediates(cholic):
+    from openquant.explain import companion_masses
+    from openquant.structure import predict
+
+    ions = predict(cholic.molecule(), max_cuts=1, max_losses=2)
+    two_waters = next(i for i in ions if i.losses == ("H2O", "H2O"))
+    companions = companion_masses(cholic.molecule(), two_waters)
+    # losing two waters means the one-water ion existed on the way
+    assert len(companions) == 2
+    assert companions[0] == pytest.approx(two_waters.mz + 18.0106, abs=1e-3)
+    assert companions[1] == pytest.approx(two_waters.mz + 36.0211, abs=1e-3)
+
+
+def test_a_route_with_no_losses_implies_nothing(cholic):
+    from openquant.explain import companion_masses
+    from openquant.structure import predict
+
+    ions = predict(cholic.molecule(), max_cuts=1, max_losses=0)
+    assert companion_masses(cholic.molecule(), ions[0]) == []
+
+
+def test_the_route_whose_ladder_is_present_wins(cholic):
+    """Two routes reach one mass; only the companions separate them."""
+    from openquant.explain import routes_for
+    from openquant.structure import predict
+
+    molecule = cholic.molecule()
+    ions = predict(molecule, max_cuts=1, max_losses=2)
+    target = next(i for i in ions if i.losses == ("H2O", "H2O"))
+    from openquant.explain import companion_masses
+
+    with_ladder = [(target.mz, 100.0)] + [
+        (m, 50.0) for m in companion_masses(molecule, target)]
+    routes = routes_for(molecule, target, with_ladder)
+    assert routes[0].support == pytest.approx(1.0)
+
+    alone = routes_for(molecule, target, [(target.mz, 100.0)])
+    assert alone[0].support == 0.0
+
+
+def test_the_match_carries_the_route_the_spectrum_supports(cholic):
+    peaks = [(391.2843, 1000.0), (373.2737, 500.0), (409.2948, 200.0)]
+    result = explain(cholic, peaks)
+    assert result.matches
+    assert all(m.route is not None for m in result.matches)
+    assert all(m.best_route for m in result.matches)
+
+
+def test_a_spectrum_that_cannot_tell_them_apart_says_so(cholic):
+    """No ladder present is an honest answer, not a reason to pick one."""
+    from openquant.explain import routes_for
+    from openquant.structure import predict
+
+    molecule = cholic.molecule()
+    target = next(i for i in predict(molecule, max_cuts=1, max_losses=2)
+                  if i.losses == ("H2O", "H2O"))
+    routes = routes_for(molecule, target, [(target.mz, 100.0)])
+    assert all(r.support == 0.0 for r in routes)

@@ -223,8 +223,12 @@ class LipidPanel(QtWidgets.QWidget):
         explain_layout.addWidget(self.explain_tree, 2)
 
         self.match_tree = QtWidgets.QTreeWidget()
-        self.match_tree.setHeaderLabels(["Measured", "ppm", "Route"])
+        self.match_tree.setHeaderLabels(["Measured", "ppm", "Route", "Ladder"])
         self.match_tree.setColumnWidth(0, 95)
+        self.match_tree.setToolTip(
+            "Ladder: how much of a route's own intermediate ions this spectrum "
+            "shows. Where two routes reach the same mass, that is what tells "
+            "them apart.")
         self.match_tree.setAlternatingRowColors(True)
         explain_layout.addWidget(self.match_tree, 2)
 
@@ -650,10 +654,18 @@ class LipidPanel(QtWidgets.QWidget):
             self.sigMatches.emit([])
             return
         for match in sorted(explanation.matches, key=lambda m: -m.intensity):
+            route = match.route
+            support = (f"{len(route.seen)}/{len(route.companions)}"
+                       if route and route.companions else "—")
             row = QtWidgets.QTreeWidgetItem(self.match_tree, [
                 f"{match.mz:.4f}", f"{match.error_ppm:+.1f}",
-                match.ion.description,
+                match.best_route, support,
             ])
+            if route and route.companions:
+                row.setToolTip(3, "Implies " + ", ".join(
+                    f"{m:.4f}" for m in route.companions)
+                    + ("\nPresent: " + ", ".join(f"{m:.4f}" for m in route.seen)
+                       if route.seen else "\nNone of them are in this spectrum"))
             for column in (0, 1):
                 row.setTextAlignment(column,
                                      QtCore.Qt.AlignmentFlag.AlignRight

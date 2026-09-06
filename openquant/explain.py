@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .lipidmaps import LipidDatabase, LipidRecord
-from .structure import PredictedIon, predict
+from .structure import NEUTRAL_LOSSES, PredictedIon, Structure, predict
 
 #: how close a predicted mass has to be to a measured one, in ppm. A TripleTOF
 #: holds a few ppm on a strong product ion and rather less on a weak one.
@@ -42,6 +42,12 @@ class PeakMatch:
     mz: float
     intensity: float
     ion: PredictedIon
+    #: the route the spectrum supports best, when it can tell them apart
+    route: "Route | None" = None
+
+    @property
+    def best_route(self) -> str:
+        return self.route.description if self.route else self.ion.description
 
     @property
     def error_ppm(self) -> float:
@@ -82,6 +88,85 @@ class Explanation:
         taken = {round(m.mz, 4) for m in self.matches}
         return [(mz, height) for mz, height in peaks
                 if round(mz, 4) not in taken]
+
+
+@dataclass(frozen=True)
+class Route:
+    """One way of reaching a mass, and how the spectrum treats it."""
+
+    description: str
+    companions: tuple[float, ...] = ()      # masses it also predicts
+    seen: tuple[float, ...] = ()            # of those, the ones measured
+
+    @property
+    def support(self) -> float:
+        """The share of a route's companion ions that the spectrum shows."""
+        return len(self.seen) / len(self.companions) if self.companions else 0.0
+
+
+def companion_masses(structure: Structure, ion: PredictedIon,
+                     description: str | None = None) -> list[float]:
+    """
+    The ions a route implies besides the one it explains.
+
+    Losing two waters means the single-water ion exists too; losing carbon
+    dioxide means something carrying that carboxyl should show up. A route
+    that leaves no trace of its own intermediates is a worse explanation than
+    one whose whole ladder is in the spectrum, and the spectrum is the only
+    thing that can tell them apart.
+    """
+    losses = _losses_of(description) if description is not None else ion.losses
+    if not losses:
+        return []
+    charge = ion.charge or 1
+    masses = []
+    running = ion.mz
+    for loss in reversed(losses):
+        running += _loss_mass(loss) / abs(charge)
+        masses.append(running)
+    return masses
+
+
+def routes_for(structure: Structure, ion: PredictedIon, peaks,
+               tolerance_ppm: float = TOLERANCE_PPM) -> list[Route]:
+    """
+    Every route to one mass, ranked by how much of its ladder is present.
+
+    This is what the enumerator alone could not settle: two routes reach the
+    same number, and only the companion ions separate them.
+    """
+    measured = np.array(sorted(mz for mz, _height in peaks), dtype=float)
+    found = []
+    for description in (ion.description, *ion.alternatives):
+        companions = companion_masses(structure, ion, description)
+        seen = tuple(m for m in companions if _is_present(m, measured,
+                                                          tolerance_ppm))
+        found.append(Route(description=description,
+                           companions=tuple(companions), seen=seen))
+    found.sort(key=lambda r: (-r.support, len(r.companions)))
+    return found
+
+
+def _losses_of(description: str) -> tuple[str, ...]:
+    return tuple(part[1:] for part in description.split()
+                 if part.startswith("-") and part[1:] in NEUTRAL_LOSSES)
+
+
+def _loss_mass(loss: str) -> float:
+    from .chemistry import monoisotopic_mass, parse_formula
+
+    return monoisotopic_mass(parse_formula(NEUTRAL_LOSSES[loss]))
+
+
+def _is_present(mass: float, measured, tolerance_ppm: float) -> bool:
+    if not len(measured):
+        return False
+    window = mass * tolerance_ppm * 1e-6
+    index = int(np.searchsorted(measured, mass))
+    for candidate in measured[max(index - 1, 0):index + 2]:
+        if abs(candidate - mass) <= window:
+            return True
+    return False
 
 
 def match_peaks(peaks, ions: list[PredictedIon],
@@ -127,6 +212,13 @@ def explain(record: LipidRecord, peaks, charge: int = 1,
     ions = predict(molecule, charge=charge, max_cuts=max_cuts,
                    max_losses=max_losses)
     matches = match_peaks(peaks, ions, tolerance_ppm)
+    # where a mass has rival routes, let the spectrum pick between them: the
+    # route whose own intermediates are present is the better explanation
+    matches = [
+        PeakMatch(mz=m.mz, intensity=m.intensity, ion=m.ion,
+                  route=routes_for(molecule, m.ion, peaks, tolerance_ppm)[0])
+        for m in matches
+    ]
     total = sum(height for _mz, height in peaks)
     explained = sum(m.intensity for m in matches)
     return Explanation(record=record, matches=matches, explained=explained,

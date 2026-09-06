@@ -35,6 +35,10 @@ class SampleEntry:
     actual_concentration: float | None = None
     dilution_factor: float = 1.0
     comment: str = ""
+    #: the study group this injection belongs to — control, treated, day 7.
+    #: Free text, because no vocabulary fits every study. Last in the field
+    #: order so positional construction keeps working.
+    sample_group: str = ""
     #: live wiff Sample; set when the file is open, never serialised
     sample: object | None = field(default=None, repr=False, compare=False)
 
@@ -56,6 +60,7 @@ class SampleEntry:
             "sample_index": self.sample_index,
             "name": self.name,
             "sample_type": self.sample_type,
+            "sample_group": self.sample_group,
             "actual_concentration": self.actual_concentration,
             "dilution_factor": self.dilution_factor,
             "comment": self.comment,
@@ -69,6 +74,7 @@ class SampleEntry:
             sample_index=int(data.get("sample_index", 0)),
             name=str(data.get("name", "")),
             sample_type=sample_type if sample_type in SAMPLE_TYPES else UNKNOWN,
+            sample_group=str(data.get("sample_group", "") or ""),
             actual_concentration=(
                 None if data.get("actual_concentration") in (None, "")
                 else float(data["actual_concentration"])

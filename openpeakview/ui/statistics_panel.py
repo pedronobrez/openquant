@@ -6,7 +6,8 @@ import csv
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from ..statistics import GROUPINGS, QUANTITIES, summarise
+from ..statistics import (GROUP_BY_SAMPLE_GROUP, GROUPINGS, QUANTITIES,
+                          summarise)
 from ..session import Session
 
 FIXED = ["Component", "Group", "n", "Mean", "SD", "%CV", "Accuracy %"]
@@ -96,9 +97,16 @@ class StatisticsPanel(QtWidgets.QWidget):
                 self.table.setItem(index, len(FIXED) + offset, item)
 
         self.table.resizeColumnsToContents()
+        grouping = self.grouping.currentText()
+        if not rows and grouping == GROUP_BY_SAMPLE_GROUP:
+            # an empty table here means the field is blank, not that the
+            # batch has nothing to say
+            self.status.setText(
+                "No sample carries a group yet — set one in the Samples "
+                "workspace, in the Group column.")
+            return
         self.status.setText(
-            f"{len(rows)} group(s) · {self.quantity.currentText()} "
-            f"by {self.grouping.currentText()}")
+            f"{len(rows)} group(s) · {self.quantity.currentText()} by {grouping}")
 
     def _export(self) -> None:
         if not self._rows:

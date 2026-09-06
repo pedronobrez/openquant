@@ -153,3 +153,14 @@ def test_the_fit_is_skipped_when_the_batch_has_not_changed(qapp, table):
     table.view.setColumnWidth(COMPONENT_COLUMN, 77)
     table.reload()   # same shape: the numbers may have changed, the rows have not
     assert table.view.columnWidth(COMPONENT_COLUMN) == 77
+
+
+def test_the_results_carry_the_sample_group(qapp, table):
+    from openpeakview.samples import SampleEntry
+    entry = SampleEntry("/d/1.wiff", 0, "Injection 1", sample_group="treated")
+    table.session.entries = [entry]
+    for result in table.session.results:
+        result.sample_key = entry.key
+    index = table.model.index(row_of(table, "C16:0-Ceramide"),
+                              FIELD_INDEX["sample_group"])
+    assert table.model.data(index, QtCore.Qt.ItemDataRole.DisplayRole) == "treated"

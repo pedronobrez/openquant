@@ -13,7 +13,9 @@ from .samples import SampleEntry
 GROUP_BY_CONCENTRATION = "concentration"
 GROUP_BY_SAMPLE_NAME = "sample name"
 GROUP_BY_SAMPLE_TYPE = "sample type"
-GROUPINGS = (GROUP_BY_CONCENTRATION, GROUP_BY_SAMPLE_NAME, GROUP_BY_SAMPLE_TYPE)
+GROUP_BY_SAMPLE_GROUP = "sample group"
+GROUPINGS = (GROUP_BY_CONCENTRATION, GROUP_BY_SAMPLE_NAME, GROUP_BY_SAMPLE_TYPE,
+             GROUP_BY_SAMPLE_GROUP)
 
 QUANTITIES = ("response", "area", "height", "calculated concentration",
               "retention time", "area ratio")
@@ -59,6 +61,10 @@ def _group_key(entry: SampleEntry | None, grouping: str) -> str | None:
         return f"{entry.actual_concentration:g}"
     if grouping == GROUP_BY_SAMPLE_TYPE:
         return entry.sample_type
+    if grouping == GROUP_BY_SAMPLE_GROUP:
+        # a sample with no group is not in one: it drops out of the summary
+        # rather than pooling every unlabelled injection into a phantom group
+        return entry.sample_group or None
     return entry.name
 
 
@@ -75,7 +81,8 @@ def summarise(results: ResultsSet, entries: list[SampleEntry],
     """
     by_key = {e.key: e for e in entries}
     buckets: dict[tuple[str, str], list[PeakResult]] = {}
-    order: list[tuple[str, str]] = []
+    component_order: dict[str, int] = {}
+    group_order: dict[str, int] = {}
 
     for result in results:
         key = _group_key(by_key.get(result.sample_key), grouping)
@@ -84,8 +91,14 @@ def summarise(results: ResultsSet, entries: list[SampleEntry],
         bucket = (result.component, key)
         if bucket not in buckets:
             buckets[bucket] = []
-            order.append(bucket)
+        component_order.setdefault(result.component, len(component_order))
+        group_order.setdefault(key, len(group_order))
         buckets[bucket].append(result)
+
+    # a component's groups sit together, so control, treated and day 7 can be
+    # read off one another; results arrive sample by sample, which would
+    # otherwise put every group of every component in its own distant block
+    order = sorted(buckets, key=lambda b: (component_order[b[0]], group_order[b[1]]))
 
     rows: list[StatisticsRow] = []
     for component_name, key in order:

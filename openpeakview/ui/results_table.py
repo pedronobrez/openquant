@@ -45,6 +45,7 @@ class Column:
 COLUMNS: list[Column] = [
     Column("Sample", "sample_name", None, 110),
     Column("Type", "sample_type", None, 110),
+    Column("Sample group", "sample_group", None, 110),
     Column("Component", "component", None, 150),
     Column("Group", "group", None, 90),
     Column("Channel", "channel", None, 120),
@@ -128,9 +129,9 @@ class ResultsModel(QtCore.QAbstractTableModel):
         return self._decimals.get(field)
 
     def _value(self, result: PeakResult, column: Column):
-        if column.field == "sample_type":
+        if column.field in ("sample_type", "sample_group"):
             entry = self.session.entry_by_key(result.sample_key)
-            return entry.sample_type if entry else ""
+            return getattr(entry, column.field) if entry else ""
         if column.field == "rt_delta":
             return result.rt_delta
         if column.field == "flags_text":

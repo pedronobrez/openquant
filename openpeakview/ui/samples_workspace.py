@@ -7,8 +7,8 @@ from PyQt6 import QtCore, QtWidgets
 from ..samples import SAMPLE_TYPES
 from ..session import Session
 
-COLUMNS = ["File", "Sample", "Type", "Actual conc.", "Dilution", "Vial",
-           "Acquired", "Comment"]
+COLUMNS = ["File", "Sample", "Type", "Group", "Actual conc.", "Dilution",
+           "Vial", "Acquired", "Comment"]
 COL = {name: i for i, name in enumerate(COLUMNS)}
 EDITABLE = (COL["Sample"], COL["Actual conc."], COL["Dilution"], COL["Comment"])
 
@@ -43,6 +43,17 @@ class SamplesWorkspace(QtWidgets.QWidget):
         self.btn_apply_type = QtWidgets.QPushButton("Apply")
         bar.addWidget(self.btn_apply_type)
         bar.addSpacing(20)
+        bar.addWidget(QtWidgets.QLabel("Set group:"))
+        self.group_edit = QtWidgets.QComboBox()
+        self.group_edit.setEditable(True)
+        self.group_edit.setMinimumWidth(140)
+        self.group_edit.setToolTip(
+            "The study group an injection belongs to — control, treated, day 7. "
+            "Statistics can summarise by this instead of by sample type.")
+        bar.addWidget(self.group_edit)
+        self.btn_apply_group = QtWidgets.QPushButton("Apply")
+        bar.addWidget(self.btn_apply_group)
+        bar.addSpacing(20)
         self.btn_apply_conc = QtWidgets.QPushButton("Apply concentration to selection")
         bar.addWidget(self.btn_apply_conc)
         bar.addStretch(1)
@@ -65,6 +76,7 @@ class SamplesWorkspace(QtWidgets.QWidget):
 
         self.btn_close.clicked.connect(self._close_all)
         self.btn_apply_type.clicked.connect(self._apply_type)
+        self.btn_apply_group.clicked.connect(self._apply_group)
         self.btn_apply_conc.clicked.connect(self._apply_concentration)
         self.table.itemChanged.connect(self._on_edit)
         session.sigSamplesChanged.connect(self.reload)
@@ -74,6 +86,7 @@ class SamplesWorkspace(QtWidgets.QWidget):
     def reload(self) -> None:
         self._loading = True
         entries = self.session.entries
+        known_groups = self._known_groups()
         self.table.setRowCount(len(entries))
         for row, entry in enumerate(entries):
             meta = entry.sample.metadata() if entry.is_loaded else {}
@@ -101,14 +114,91 @@ class SamplesWorkspace(QtWidgets.QWidget):
                 lambda text, r=row: self._set_type(r, text))
             self.table.setCellWidget(row, COL["Type"], combo)
 
+            # editable: the first injection of a group types it, the rest pick
+            # it off the list, which is what keeps one study group from
+            # becoming three through a stray capital letter
+            group = QtWidgets.QComboBox()
+            group.setEditable(True)
+            group.addItem("")
+            group.addItems(known_groups)
+            group.setCurrentText(entry.sample_group)
+            # committed when the analyst picks from the list or leaves the
+            # field, never per keystroke — currentTextChanged would rewrite the
+            # entry and rebuild the list in the middle of a word
+            group.activated.connect(lambda _i, r=row: self._commit_group(r))
+            group.lineEdit().editingFinished.connect(
+                lambda r=row: self._commit_group(r))
+            self.table.setCellWidget(row, COL["Group"], group)
+
             if not entry.is_loaded:
                 for column in range(len(COLUMNS)):
                     item = self.table.item(row, column)
                     if item:
                         item.setBackground(QtCore.Qt.GlobalColor.lightGray)
         self.table.resizeColumnsToContents()
+        self._refresh_group_choices()
         self._loading = False
         self._update_status()
+
+    def _known_groups(self) -> list[str]:
+        """Every group already in use, in the order the batch introduces them."""
+        seen: list[str] = []
+        for entry in self.session.entries:
+            if entry.sample_group and entry.sample_group not in seen:
+                seen.append(entry.sample_group)
+        return seen
+
+    def _refresh_group_choices(self) -> None:
+        """Put a newly typed group on offer to every other row."""
+        known = self._known_groups()
+        options = [""] + known
+        for row in range(self.table.rowCount()):
+            combo = self.table.cellWidget(row, COL["Group"])
+            if not isinstance(combo, QtWidgets.QComboBox):
+                continue
+            if combo.lineEdit() is not None and combo.lineEdit().hasFocus():
+                continue
+            current = combo.currentText()
+            blocked = combo.blockSignals(True)
+            combo.clear()
+            combo.addItems(options)
+            combo.setCurrentText(current)
+            combo.blockSignals(blocked)
+        current = self.group_edit.currentText()
+        blocked = self.group_edit.blockSignals(True)
+        self.group_edit.clear()
+        self.group_edit.addItems(known)
+        self.group_edit.setCurrentText(current)
+        self.group_edit.blockSignals(blocked)
+
+    def _commit_group(self, row: int) -> None:
+        combo = self.table.cellWidget(row, COL["Group"])
+        if self._loading or combo is None or row >= len(self.session.entries):
+            return
+        group = combo.currentText().strip()
+        if group == self.session.entries[row].sample_group:
+            return
+        self.session.entries[row].sample_group = group
+        self._refresh_group_choices()
+        self._update_status()
+
+    def _apply_group(self) -> None:
+        group = self.group_edit.currentText().strip()
+        rows = self._selected_rows()
+        if not rows:
+            self._report("Select the rows to put in the group first.")
+            return
+        self._loading = True
+        for row in rows:
+            self.session.entries[row].sample_group = group
+            widget = self.table.cellWidget(row, COL["Group"])
+            if widget is not None:
+                widget.setCurrentText(group)
+        self._loading = False
+        self._refresh_group_choices()
+        self._update_status()
+        self._report(f"{len(rows)} sample(s) put in "
+                     + (f"group {group}." if group else "no group."))
 
     def _on_edit(self, item) -> None:
         if self._loading:
@@ -181,7 +271,14 @@ class SamplesWorkspace(QtWidgets.QWidget):
         for entry in entries:
             by_type[entry.sample_type] = by_type.get(entry.sample_type, 0) + 1
         summary = ", ".join(f"{n} {name}" for name, n in by_type.items())
-        self.status.setText(f"{len(entries)} sample(s)" + (f" — {summary}" if summary else ""))
+        text = f"{len(entries)} sample(s)" + (f" — {summary}" if summary else "")
+        groups = self._known_groups()
+        if groups:
+            ungrouped = sum(1 for e in entries if not e.sample_group)
+            text += f" · {len(groups)} group(s): " + ", ".join(groups)
+            if ungrouped:
+                text += f" ({ungrouped} ungrouped)"
+        self.status.setText(text)
 
     def _report(self, text: str) -> None:
         self.status.setText(text)

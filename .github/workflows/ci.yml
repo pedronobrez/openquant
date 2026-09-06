@@ -63,8 +63,10 @@ jobs:
       - name: The app starts
         env:
           QT_QPA_PLATFORM: offscreen
+        # -X faulthandler so a crash in Qt names the Python line that caused
+        # it. Without it a segfault here is just an exit code.
         run: |
-          python -c "
+          python -X faulthandler -c "
           import openquant
           from PyQt6 import QtWidgets
           from openquant.ui import style
@@ -73,8 +75,11 @@ jobs:
           style.apply(app)
           apply_defaults()
           from openquant.ui.shell import MainShell
+          print('modules imported', flush=True)
           window = MainShell()
+          print('shell built', flush=True)
           window.show()
+          print('shown', flush=True)
           app.processEvents()
           print('OpenQuant', openquant.__version__, 'started on', __import__('platform').system())
           "

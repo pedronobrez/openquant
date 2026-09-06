@@ -16,6 +16,10 @@ from . import theme
 from ..quantify import PeakResult
 
 FOUND_PEN = "#1f77b4"
+#: the integrated area. Blue, not green: green now marks a predicted fragment
+#: found in a spectrum, and one colour cannot mean two things.
+AREA_FILL = QtGui.QColor(35, 90, 175, 120)
+AREA_EDGE = "#3b6ec8"
 MISSING_PEN = "#b0b0b0"
 IS_PEN = "#d62728"
 
@@ -72,15 +76,15 @@ class PeakPanel(pg.PlotWidget):
         self._area_top = pg.PlotDataItem([], [])
         self._area_base = pg.PlotDataItem([], [])
         self._area = pg.FillBetweenItem(self._area_top, self._area_base,
-                                        brush=pg.mkBrush(44, 160, 44, 110))
+                                        brush=pg.mkBrush(AREA_FILL))
         self._area.setZValue(-8)
         self.addItem(self._area)
         self._baseline = self.plot(
-            [], [], pen=pg.mkPen("#2ca02c", width=1,
+            [], [], pen=pg.mkPen(AREA_EDGE, width=1,
                                  style=QtCore.Qt.PenStyle.DashLine))
         self._baseline.setZValue(-7)
-        self._band = pg.LinearRegionItem(brush=pg.mkBrush(44, 160, 44, 16),
-                                         pen=pg.mkPen("#2ca02c", width=1),
+        self._band = pg.LinearRegionItem(brush=pg.mkBrush(0, 0, 0, 0),
+                                         pen=pg.mkPen(AREA_EDGE, width=1),
                                          movable=False)
         self._band.setZValue(-10)
         self._band.hide()

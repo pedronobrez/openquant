@@ -322,6 +322,33 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python tools/linux_probe.py getattr 200
 
+      # The crash lands while a fresh widget is being built, which means the
+      # damage was done earlier. If no file crashes on its own, the tests are
+      # contaminating each other and the bug is in what they leave behind.
+      - name: Each test file on its own
+        continue-on-error: true
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          fail=0
+          for file in tests/test_*.py; do
+            if python -m pytest -q -p no:cacheprovider "$file" >/tmp/out 2>&1; then
+              printf 'ok    %s\n' "$file"
+            else
+              printf 'CRASH %s (exit %s)  %s\n' "$file" "$?" "$(tail -1 /tmp/out)"
+              fail=1
+            fi
+          done
+          echo "any file failed alone: $fail"
+
+      - name: The whole suite, each test in its own process
+        continue-on-error: true
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -m pip install pytest-forked 2>&1 | tail -1
+          python -m pytest -q -p no:cacheprovider --forked 2>&1 | tail -8
+
       - name: The suite on the previous PyQt
         continue-on-error: true
         env:
@@ -330,4 +357,4 @@ jobs:
           python -m pip install "PyQt6==6.9.1" "PyQt6-Qt6==6.9.1" 2>&1 | tail -2
           python -c "import PyQt6.QtCore as c; print('now Qt', c.QT_VERSION_STR, \
             'PyQt', c.PYQT_VERSION_STR)"
-          python -m pytest -q -p no:cacheprovider 2>&1 | tail -15
+          python -m pytest -q -p no:cacheprovider 2>&1 | tail -40

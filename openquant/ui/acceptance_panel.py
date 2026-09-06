@@ -5,9 +5,10 @@ from __future__ import annotations
 from PyQt6 import QtCore, QtWidgets
 
 from ..components import AcceptanceLimits
+from .collapsible import CollapsibleGroup
 
 
-class AcceptancePanel(QtWidgets.QGroupBox):
+class AcceptancePanel(CollapsibleGroup):
     """
     The limits a row has to satisfy to pass.
 
@@ -20,7 +21,7 @@ class AcceptancePanel(QtWidgets.QGroupBox):
 
     def __init__(self, parent=None):
         super().__init__("Acceptance", parent)
-        form = QtWidgets.QFormLayout(self)
+        form = QtWidgets.QFormLayout(self.body)
         form.setContentsMargins(8, 6, 8, 6)
         form.setVerticalSpacing(4)
 

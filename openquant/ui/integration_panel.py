@@ -6,9 +6,10 @@ from PyQt6 import QtCore, QtWidgets
 
 from ..components import IntegrationParams
 from ..processing import SNR_MODES
+from .collapsible import CollapsibleGroup
 
 
-class IntegrationPanel(QtWidgets.QGroupBox):
+class IntegrationPanel(CollapsibleGroup):
     """
     Edits the settings of the selected component and pushes them where the
     operator wants: this component, its whole group, or back to the defaults.
@@ -23,7 +24,7 @@ class IntegrationPanel(QtWidgets.QGroupBox):
         super().__init__("Integration", parent)
         self._loading = False
 
-        form = QtWidgets.QFormLayout(self)
+        form = QtWidgets.QFormLayout(self.body)
         form.setContentsMargins(8, 6, 8, 6)
         form.setVerticalSpacing(4)
 

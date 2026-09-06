@@ -61,11 +61,55 @@ DARK = {
 
 
 def is_dark() -> bool:
+    """
+    Is the system asking for a dark interface?
+
+    Read from the style hints rather than from the palette: applying our own
+    palette makes it explicit, and Qt then stops updating it when the system
+    theme changes — so a palette-based answer would be our own last answer.
+    """
     app = QtWidgets.QApplication.instance()
     if app is None:
         return False
+    scheme = app.styleHints().colorScheme()
+    if scheme == QtCore.Qt.ColorScheme.Dark:
+        return True
+    if scheme == QtCore.Qt.ColorScheme.Light:
+        return False
     window = app.palette().color(QtGui.QPalette.ColorRole.Window)
     return window.lightness() < 128
+
+
+class ThemeWatcher(QtCore.QObject):
+    """
+    Announces a change of system theme, once per change.
+
+    Qt emits colorSchemeChanged and, separately, delivers a palette change
+    event; both can arrive for one switch, so the last applied theme is
+    remembered and an announcement only goes out when it actually differs.
+    """
+
+    sigThemeChanged = QtCore.pyqtSignal()
+
+    def __init__(self, app: QtWidgets.QApplication, parent=None):
+        super().__init__(parent)
+        self._app = app
+        self._dark = is_dark()
+        app.styleHints().colorSchemeChanged.connect(self._check)
+        app.installEventFilter(self)
+
+    def eventFilter(self, obj, event):  # noqa: N802 (Qt API)
+        if event.type() == QtCore.QEvent.Type.ApplicationPaletteChange:
+            self._check()
+        return super().eventFilter(obj, event)
+
+    def _check(self, *_args) -> None:
+        dark = is_dark()
+        if dark == self._dark:
+            return
+        self._dark = dark
+        apply(self._app)
+        self.sigThemeChanged.emit()
 
 
 def tokens() -> dict[str, str]:
@@ -193,6 +237,15 @@ def _dot(name: str, colour: str) -> str:
     return _render(name, 14, draw)
 
 
+def _chevron_right(name: str, colour: str) -> str:
+    def draw(painter: QtGui.QPainter) -> None:
+        painter.setPen(_stroke(colour, 1.5))
+        painter.drawPolyline(QtCore.QPointF(5.0, 3.0),
+                             QtCore.QPointF(9.0, 7.0),
+                             QtCore.QPointF(5.0, 11.0))
+    return _render(name, 14, draw)
+
+
 def _double_chevron(name: str, colour: str) -> str:
     def draw(painter: QtGui.QPainter) -> None:
         painter.setPen(_stroke(colour, 1.5))
@@ -214,6 +267,7 @@ def indicators() -> dict[str, str]:
         "tick": _tick(f"tick-{suffix}", t["accent_ink"]),
         "dot": _dot(f"dot-{suffix}", t["accent_ink"]),
         "more": _double_chevron(f"more-{suffix}", t["accent"]),
+        "chevron_right": _chevron_right(f"chevron-right-{suffix}", t["ink_muted"]),
     }
 
 
@@ -591,13 +645,27 @@ QGroupBox {{
     margin-top: 16px;
     padding-top: 10px;
 }}
+/* a section that folds: the chevron says which way it goes */
+QGroupBox::indicator {{
+    width: 14px;
+    height: 14px;
+}}
+QGroupBox::indicator:checked {{
+    image: url({icon['chevron']});
+}}
+QGroupBox::indicator:unchecked {{
+    image: url({icon['chevron_right']});
+}}
 QGroupBox::title {{
     subcontrol-origin: margin;
     subcontrol-position: top left;
     color: {t['ink_muted']};
     font-size: 11px;
     font-weight: 600;
-    padding: 0 0 4px 0;
+    padding: 0 0 4px 2px;
+}}
+QGroupBox::title:hover {{
+    color: {t['accent']};
 }}
 QSplitter::handle {{
     background: {t['line']};

@@ -13,11 +13,13 @@ import os
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from ..session import LEGACY_PROJECT_SUFFIX, PROJECT_SUFFIX, Session
+from . import style, theme
 from .analytics import AnalyticsWorkspace
 from .explorer import ExplorerWorkspace
 from .method_workspace import MethodWorkspace
 from .new_project import (METHOD, METHOD_EMPTY, NewProjectWizard,
                           StartDialog)
+from .plots import BasePlot
 from .samples_workspace import SamplesWorkspace
 
 
@@ -53,6 +55,9 @@ class MainShell(QtWidgets.QMainWindow):
             lambda: self.tabs.setCurrentWidget(self.method))
         self.session.sigSamplesChanged.connect(self._samples_changed)
         self.session.sigProjectChanged.connect(self._update_title)
+        self.theme_watcher = style.ThemeWatcher(
+            QtWidgets.QApplication.instance(), self)
+        self.theme_watcher.sigThemeChanged.connect(self.retheme)
         self.tabs.currentChanged.connect(self._tab_changed)
         self._update_title()
 
@@ -73,6 +78,27 @@ class MainShell(QtWidgets.QMainWindow):
             self.new_project()
         elif dialog.choice == StartDialog.OPEN:
             self.open_project()
+
+    # -- theme --------------------------------------------------------------- #
+    def retheme(self) -> None:
+        """
+        Follow the system into or out of dark mode.
+
+        The widgets are restyled by the sheet the watcher has already applied.
+        The plots are not: pyqtgraph is told its colours once, so every plot
+        has to be handed them again, and the traces have to be rebuilt because
+        the first series colour is the accent, which has changed.
+        """
+        theme.apply_defaults()
+        for plot in self.findChildren(BasePlot):
+            plot.retheme()
+        self.explorer.refresh_chromatogram()
+        self.analytics.refresh_grid()
+        self.analytics.refresh_calibration()
+        self.analytics.metrics.reload()
+        self.method.reload()
+        self.statusBar().showMessage(
+            "Dark theme" if style.is_dark() else "Light theme")
 
     # -- menus --------------------------------------------------------------- #
     def _build_menu(self) -> None:

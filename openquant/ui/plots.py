@@ -248,6 +248,27 @@ class BasePlot(QtWidgets.QWidget):
         return self._mirror
 
     # -- traces -------------------------------------------------------------- #
+    def retheme(self) -> None:
+        """
+        Take the colours again after the system theme changed.
+
+        pyqtgraph is told its colours once, at construction, so nothing here
+        follows a stylesheet — every item that was given one has to be handed
+        the new one.
+        """
+        self.plot.setBackground(theme.background())
+        theme.style_axes(self.plot)
+        self.legend.setLabelTextColor(theme.foreground())
+        self.legend.setBrush(theme.legend_brush())
+        self.legend.setPen(theme.legend_pen())
+        self.vline.setPen(pg.mkPen(theme.faint_axis(),
+                                   style=QtCore.Qt.PenStyle.DashLine))
+        self.readout.setColor(theme.foreground())
+        self.overview.setBackground(theme.background())
+        self.overview.getAxis("bottom").setPen(pg.mkPen(theme.faint_axis()))
+        self.overview.getAxis("bottom").setTextPen(pg.mkPen(theme.muted()))
+        self.redraw()
+
     def set_traces(self, traces: list[Trace]) -> None:
         self._traces = list(traces)
         self.redraw()

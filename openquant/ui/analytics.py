@@ -95,6 +95,13 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         left_layout.addWidget(self.integration)
         self.acceptance = AcceptancePanel()
         left_layout.addWidget(self.acceptance)
+        # folded to start with: expanded they leave the component list a few
+        # rows tall, and they are only wanted while a setting is being changed
+        self.settings = QtCore.QSettings("OpenQuant", "OpenQuant")
+        self.integration.restore(self.settings, "analytics/integration_open")
+        self.acceptance.restore(self.settings, "analytics/acceptance_open")
+        self.integration.toggled.connect(self._save_sections)
+        self.acceptance.toggled.connect(self._save_sections)
         splitter.addWidget(left)
 
         right = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
@@ -148,6 +155,10 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         session.sigResultsChanged.connect(self.refresh_grid)
         session.sigResultsChanged.connect(self.refresh_calibration)
         self.reload_components()
+
+    def _save_sections(self, *_args) -> None:
+        self.integration.save(self.settings, "analytics/integration_open")
+        self.acceptance.save(self.settings, "analytics/acceptance_open")
 
     # -- components ---------------------------------------------------------------- #
     def reload_components(self) -> None:

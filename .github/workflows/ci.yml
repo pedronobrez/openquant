@@ -68,30 +68,18 @@ jobs:
             QT_QPA_PLATFORM=offscreen python -m pytest -q
           fi
 
+      # its own process, and its own step per system: Windows is steady
+      # under offscreen and Linux is not, and forcing one shell on both was
+      # itself enough to change the answer once.
       - name: The app starts
-        shell: bash
-        # -X faulthandler so a crash in Qt names the Python line that caused
-        # it. Without it a segfault here is just an exit code.
-        run: |
-          run() { if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a "$@";
-                  else QT_QPA_PLATFORM=offscreen "$@"; fi; }
-          run python -X faulthandler -c "
-          import openquant
-          from PyQt6 import QtWidgets
-          from openquant.ui import style
-          from openquant.ui.theme import apply_defaults
-          app = QtWidgets.QApplication([])
-          style.apply(app)
-          apply_defaults()
-          from openquant.ui.shell import MainShell
-          print('modules imported', flush=True)
-          window = MainShell()
-          print('shell built', flush=True)
-          window.show()
-          print('shown', flush=True)
-          app.processEvents()
-          print('OpenQuant', openquant.__version__, 'started on', __import__('platform').system())
-          "
+        if: runner.os != 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -X faulthandler tests/smoke_start.py
+
+      - name: The app starts
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python -X faulthandler tests/smoke_start.py
 
   wiff:
     # Reading a .wiff is the one platform-specific path: it loads SCIEX's

@@ -8,12 +8,17 @@ from .. import lipidmaps, precursor
 from ..chemistry import ADDUCTS
 from ..components import RESPONSES, Component, load_components, save_components
 from ..session import Session
+from . import theme
 from .annotate_dialog import AnnotateDialog, _looks_unnamed, propose
 
 COLUMNS = ["Name", "Group", "Precursor", "Fragment", "RT", "± RT", "Tol.",
            "Unit", "Formula", "Adduct", "IS", "Internal standard", "Response",
            "Conc. unit", "Qualifier of", "Ion ratio %", "± ratio %"]
 COL = {name: i for i, name in enumerate(COLUMNS)}
+
+#: widest a column is made when fitted to its contents; past this the
+#: analyst widens it themselves rather than losing the rest of the table
+MAX_AUTO_WIDTH = 320
 
 #: columns parsed as numbers, mapped to the dataclass field they fill
 _NUMERIC = {
@@ -41,6 +46,8 @@ class MethodWorkspace(QtWidgets.QWidget):
         super().__init__(parent)
         self.session = session
         self._loading = False
+        #: columns the analyst has dragged; those keep the width they were given
+        self._manual_widths: set[int] = set()
 
         layout = QtWidgets.QVBoxLayout(self)
 
@@ -66,9 +73,12 @@ class MethodWorkspace(QtWidgets.QWidget):
 
         self.table = QtWidgets.QTableWidget(0, len(COLUMNS))
         self.table.setHorizontalHeaderLabels(COLUMNS)
-        self.table.horizontalHeader().setSectionResizeMode(
-            COL["Name"], QtWidgets.QHeaderView.ResizeMode.Stretch
-        )
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
+        header.setMinimumSectionSize(60)
+        header.setTextElideMode(QtCore.Qt.TextElideMode.ElideRight)
+        header.sectionResized.connect(self._section_resized)
         self.table.setSelectionBehavior(
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
         )
@@ -136,6 +146,8 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.table.setRowCount(len(components))
         for row, component in enumerate(components):
             self._write_row(row, component)
+        self._refresh_is_choices()
+        self._fit_columns()
         self._loading = False
         self._update_status()
 
@@ -149,7 +161,6 @@ class MethodWorkspace(QtWidgets.QWidget):
             COL["± RT"]: f"{c.rt_halfwidth:g}",
             COL["Tol."]: f"{c.tolerance:g}",
             COL["Formula"]: c.formula,
-            COL["Internal standard"]: c.internal_standard,
             COL["Conc. unit"]: c.concentration_unit,
             COL["Qualifier of"]: c.qualifier_of,
             COL["Ion ratio %"]: "" if c.ion_ratio is None else f"{c.ion_ratio:g}",
@@ -159,10 +170,13 @@ class MethodWorkspace(QtWidgets.QWidget):
         for column, text in values.items():
             item = QtWidgets.QTableWidgetItem(text)
             if column not in (COL["Name"], COL["Group"], COL["Formula"],
-                              COL["Internal standard"], COL["Conc. unit"],
-                              COL["Qualifier of"]):
+                              COL["Conc. unit"], COL["Qualifier of"]):
                 item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight
                                       | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            elif text:
+                # names outrun any sensible column width; keep the full one
+                # readable without making the analyst widen the column
+                item.setToolTip(text)
             self.table.setItem(row, column, item)
 
         check = QtWidgets.QTableWidgetItem()
@@ -172,9 +186,76 @@ class MethodWorkspace(QtWidgets.QWidget):
                             else QtCore.Qt.CheckState.Unchecked)
         self.table.setItem(row, COL["IS"], check)
 
+        self._set_is_combo(row, c.internal_standard)
         self._set_combo(row, COL["Unit"], ["Da", "ppm"], c.unit)
         self._set_combo(row, COL["Adduct"], [""] + [a.name for a in ADDUCTS], c.adduct)
         self._set_combo(row, COL["Response"], list(RESPONSES), c.response)
+
+    def _set_is_combo(self, row: int, value: str) -> None:
+        """The internal standard is picked from a list, never typed."""
+        combo = QtWidgets.QComboBox()
+        combo.addItem("")
+        if value:
+            combo.addItem(value)
+            combo.setCurrentText(value)
+        combo.currentTextChanged.connect(lambda _t: self._commit())
+        self.table.setCellWidget(row, COL["Internal standard"], combo)
+
+    def _refresh_is_choices(self) -> None:
+        """
+        Offer every row ticked IS as a choice, and nothing else.
+
+        A method can still arrive naming a standard that has no row of its own —
+        converting someone's spreadsheet usually produces a few. That name stays
+        in the list and is marked, because dropping it silently would lose the
+        one clue that the reference is broken.
+        """
+        pool = []
+        for row in range(self.table.rowCount()):
+            check = self.table.item(row, COL["IS"])
+            name = self.table.item(row, COL["Name"])
+            if (check is not None and name is not None
+                    and check.checkState() == QtCore.Qt.CheckState.Checked
+                    and name.text().strip()):
+                pool.append(name.text().strip())
+        pool.sort(key=str.lower)
+
+        for row in range(self.table.rowCount()):
+            combo = self.table.cellWidget(row, COL["Internal standard"])
+            if not isinstance(combo, QtWidgets.QComboBox):
+                continue
+            own = self.table.item(row, COL["Name"])
+            own_name = own.text().strip() if own else ""
+            options = [""] + [n for n in pool if n != own_name]
+            current = combo.currentText()
+            unknown = bool(current) and current not in options
+            if unknown:
+                options.insert(1, current)
+            blocked = combo.blockSignals(True)
+            combo.clear()
+            combo.addItems(options)
+            combo.setCurrentIndex(options.index(current) if current in options else 0)
+            combo.blockSignals(blocked)
+            combo.setStyleSheet(f"color:{theme.warning()};" if unknown else "")
+            combo.setToolTip(
+                f"nothing is ticked IS under the name \u201c{current}\u201d"
+                if unknown else current or "Rows ticked IS appear here")
+
+    def _section_resized(self, index: int, _old: int, _new: int) -> None:
+        """A column the analyst sized by hand keeps that width from then on."""
+        if not self._loading:
+            self._manual_widths.add(index)
+
+    def _fit_columns(self) -> None:
+        """Size the columns to what they hold, leaving dragged ones alone."""
+        kept = {c: self.table.columnWidth(c) for c in self._manual_widths}
+        self.table.resizeColumnsToContents()
+        for column in range(self.table.columnCount()):
+            if column in kept:
+                self.table.setColumnWidth(column, kept[column])
+            else:
+                self.table.setColumnWidth(
+                    column, min(self.table.columnWidth(column), MAX_AUTO_WIDTH))
 
     def _set_combo(self, row: int, column: int, options: list[str], value: str) -> None:
         combo = QtWidgets.QComboBox()
@@ -252,6 +333,9 @@ class MethodWorkspace(QtWidgets.QWidget):
                     self._loading = True
                     self.table.item(row, COL["Precursor"]).setText(f"{computed:.4f}")
                     self._loading = False
+        # renaming a row, or ticking it IS, changes what the other rows may point at
+        if item.column() in (COL["Name"], COL["IS"]):
+            self._refresh_is_choices()
         self._commit()
 
     # -- actions ------------------------------------------------------------------ #
@@ -260,12 +344,14 @@ class MethodWorkspace(QtWidgets.QWidget):
         self._loading = True
         self.table.insertRow(row)
         self._write_row(row, Component(name="new", precursor=0.0))
+        self._refresh_is_choices()
         self._loading = False
         self.table.editItem(self.table.item(row, COL["Name"]))
 
     def _remove_rows(self) -> None:
         for row in sorted({i.row() for i in self.table.selectedIndexes()}, reverse=True):
             self.table.removeRow(row)
+        self._refresh_is_choices()
         self._commit()
 
     def _generate(self) -> None:

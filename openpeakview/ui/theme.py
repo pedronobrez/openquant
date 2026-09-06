@@ -69,3 +69,8 @@ def style_axes(plot, faint: bool = False, tick_points: int | None = None) -> Non
             font = QtGui.QFont()
             font.setPointSize(tick_points)
             item.setStyle(tickFont=font)
+
+
+def warning() -> str:
+    """Colour for a value that is set but does not resolve to anything."""
+    return "#e0a844" if is_dark() else "#a86a00"

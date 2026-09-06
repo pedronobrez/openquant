@@ -349,6 +349,22 @@ jobs:
           python -m pip install pytest-forked 2>&1 | tail -1
           python -m pytest -q -p no:cacheprovider --forked 2>&1 | tail -8
 
+      # the suite is clean now; what is left is the real window, which dies
+      # while it paints for the first time
+      - name: Native backtrace from the window
+        continue-on-error: true
+        run: |
+          xvfb-run -a gdb --batch -ex run -ex "bt 25" \
+            --args python -X faulthandler tests/smoke_start.py 2>&1 | tail -40
+
+      - name: The window under the offscreen platform
+        continue-on-error: true
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          gdb --batch -ex run -ex "bt 25" \
+            --args python -X faulthandler tests/smoke_start.py 2>&1 | tail -40
+
       - name: The suite on the previous PyQt
         continue-on-error: true
         env:

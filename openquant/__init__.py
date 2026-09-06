@@ -1,6 +1,6 @@
 """OpenQuant - open source quantitation for SCIEX LC-MS data (.wiff)."""
 
-__version__ = "0.5.2"
+__version__ = "0.5.3"
 
 from .components import Component  # noqa: F401
 from .method import ProcessingMethod  # noqa: F401

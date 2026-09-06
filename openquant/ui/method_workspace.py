@@ -8,7 +8,7 @@ from .. import lipidmaps, precursor
 from ..chemistry import ADDUCTS
 from ..components import RESPONSES, Component, load_components, save_components
 from ..session import Session
-from . import theme
+from . import style, theme
 from .annotate_dialog import AnnotateDialog, _looks_unnamed, propose
 
 COLUMNS = ["Name", "Group", "Precursor", "Fragment", "RT", "± RT", "Tol.",
@@ -82,7 +82,7 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.table.setSelectionBehavior(
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
         )
-        self.table.verticalHeader().setDefaultSectionSize(24)
+        self.table.verticalHeader().setDefaultSectionSize(30)
         layout.addWidget(self.table, 1)
 
         defaults = QtWidgets.QHBoxLayout()
@@ -117,7 +117,7 @@ class MethodWorkspace(QtWidgets.QWidget):
         defaults.addWidget(self.marginal_spin)
         defaults.addStretch(1)
         self.status = QtWidgets.QLabel("")
-        self.status.setStyleSheet("color:#666;")
+        self.status.setProperty("role", "caption")
         defaults.addWidget(self.status)
         layout.addLayout(defaults)
 
@@ -256,6 +256,9 @@ class MethodWorkspace(QtWidgets.QWidget):
             else:
                 self.table.setColumnWidth(
                     column, min(self.table.columnWidth(column), MAX_AUTO_WIDTH))
+        style.fit_cell_widgets(self.table)
+        for column in kept:
+            self.table.setColumnWidth(column, kept[column])
 
     def _set_combo(self, row: int, column: int, options: list[str], value: str) -> None:
         combo = QtWidgets.QComboBox()

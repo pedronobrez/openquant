@@ -135,7 +135,7 @@ class FormulaPanel(QtWidgets.QWidget):
 
         self.status = QtWidgets.QLabel("")
         self.status.setWordWrap(True)
-        self.status.setStyleSheet("color:#666; font-size:11px;")
+        self.status.setProperty("role", "hint")
         layout.addWidget(self.status)
 
         self.btn_search.clicked.connect(self._emit_search)

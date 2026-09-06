@@ -224,9 +224,9 @@ class ResultsModel(QtCore.QAbstractTableModel):
             if index.column() == IS_COLUMN and self._standard_problem(result):
                 return QtGui.QBrush(QtGui.QColor(theme.warning()))
             if not result.found:
-                return QtGui.QBrush(QtGui.QColor("#b03030"))
+                return QtGui.QBrush(QtGui.QColor(theme.danger()))
             if not result.used:
-                return QtGui.QBrush(QtGui.QColor("#999999"))
+                return QtGui.QBrush(QtGui.QColor(theme.ink_faint()))
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:
             if index.column() == IS_COLUMN:
                 problem = self._standard_problem(result)
@@ -427,7 +427,7 @@ class ResultsTable(QtWidgets.QWidget):
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.view.setSelectionMode(
             QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
-        self.view.verticalHeader().setDefaultSectionSize(22)
+        self.view.verticalHeader().setDefaultSectionSize(24)
         self.view.setAlternatingRowColors(True)
         self.view.setItemDelegateForColumn(
             IS_COLUMN, InternalStandardDelegate(session, self))
@@ -450,7 +450,7 @@ class ResultsTable(QtWidgets.QWidget):
         layout.addWidget(self.view, 1)
 
         self.summary = QtWidgets.QLabel("")
-        self.summary.setStyleSheet("color:#666;")
+        self.summary.setProperty("role", "caption")
         layout.addWidget(self.summary)
 
         self.filter_edit.textChanged.connect(self.proxy.setFilterFixedString)

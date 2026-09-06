@@ -153,7 +153,7 @@ class AnnotateDialog(QtWidgets.QDialog):
         self.table.setHorizontalHeaderLabels(self.COLUMNS)
         self.table.horizontalHeader().setSectionResizeMode(
             len(self.COLUMNS) - 1, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        self.table.verticalHeader().setDefaultSectionSize(22)
+        self.table.verticalHeader().setDefaultSectionSize(24)
         self.table.setEditTriggers(
             QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
 

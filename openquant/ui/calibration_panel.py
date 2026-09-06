@@ -80,7 +80,7 @@ class CalibrationPanel(QtWidgets.QWidget):
         layout.addWidget(body, 1)
 
         self.status = QtWidgets.QLabel("No curve yet.")
-        self.status.setStyleSheet("color:#444;")
+        self.status.setProperty("role", "caption")
         layout.addWidget(self.status)
 
         self.regression.currentTextChanged.connect(self._emit_settings)
@@ -140,7 +140,7 @@ class CalibrationPanel(QtWidgets.QWidget):
                     item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight
                                           | QtCore.Qt.AlignmentFlag.AlignVCenter)
                 if not point.used:
-                    item.setForeground(QtGui.QBrush(QtGui.QColor("#999")))
+                    item.setForeground(QtGui.QBrush(QtGui.QColor(theme.ink_faint())))
                     font = item.font()
                     font.setStrikeOut(True)
                     item.setFont(font)

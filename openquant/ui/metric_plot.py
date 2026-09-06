@@ -82,7 +82,7 @@ class MetricPlotPanel(QtWidgets.QWidget):
         layout.addWidget(self.plot, 1)
 
         self.status = QtWidgets.QLabel("")
-        self.status.setStyleSheet("color:#666;")
+        self.status.setProperty("role", "caption")
         layout.addWidget(self.status)
 
         for widget in (self.x_combo, self.y_combo, self.component_combo,

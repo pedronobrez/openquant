@@ -1,52 +1,55 @@
 """
-Plot colours taken from the application palette.
+Plot colours, taken from the same tokens as the rest of the interface.
 
-The widgets follow the system light or dark setting on their own; the plots do
-not, because pyqtgraph is told its colours explicitly. Deriving them from the
-palette keeps a white chromatogram from being pasted into a dark window.
+The widgets are styled by a sheet; the plots are not, because pyqtgraph is told
+its colours explicitly. Reading both from `style.py` keeps a white chromatogram
+from being pasted into a dark window, and keeps the accent one colour.
 """
 
 from __future__ import annotations
 
 import pyqtgraph as pg
-from PyQt6 import QtGui, QtWidgets
+from PyQt6 import QtGui
 
-
-def is_dark() -> bool:
-    app = QtWidgets.QApplication.instance()
-    if app is None:
-        return False
-    window = app.palette().color(QtGui.QPalette.ColorRole.Window)
-    return window.lightness() < 128
+from .style import is_dark, token  # noqa: F401  (is_dark is part of this API)
 
 
 def background() -> str:
-    return "#1e1e1e" if is_dark() else "w"
+    return token("surface")
 
 
 def foreground() -> str:
-    return "#dddddd" if is_dark() else "#222222"
+    return token("ink")
 
 
 def axis() -> str:
-    return "#777777" if is_dark() else "#444444"
+    return token("ink_muted")
 
 
 def faint_axis() -> str:
-    return "#555555" if is_dark() else "#bbbbbb"
+    return token("line_strong")
 
 
 def muted() -> str:
-    return "#999999" if is_dark() else "#666666"
+    return token("ink_muted")
+
+
+def accent() -> str:
+    return token("accent")
+
+
+def line() -> str:
+    return token("line")
 
 
 def legend_brush():
-    return (pg.mkBrush(30, 30, 30, 205) if is_dark()
-            else pg.mkBrush(255, 255, 255, 205))
+    colour = QtGui.QColor(token("surface"))
+    colour.setAlpha(212)
+    return pg.mkBrush(colour)
 
 
 def legend_pen():
-    return pg.mkPen("#555" if is_dark() else "#ccc")
+    return pg.mkPen(token("line_strong"))
 
 
 def apply_defaults() -> None:
@@ -73,4 +76,13 @@ def style_axes(plot, faint: bool = False, tick_points: int | None = None) -> Non
 
 def warning() -> str:
     """Colour for a value that is set but does not resolve to anything."""
-    return "#e0a844" if is_dark() else "#a86a00"
+    return token("warning")
+
+
+def ink_faint() -> str:
+    """For a value that is present but deliberately set aside."""
+    return token("ink_faint")
+
+
+def danger() -> str:
+    return token("danger")

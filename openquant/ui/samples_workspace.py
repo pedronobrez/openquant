@@ -6,6 +6,7 @@ from PyQt6 import QtCore, QtWidgets
 
 from ..samples import SAMPLE_TYPES
 from ..session import Session
+from . import style
 
 COLUMNS = ["File", "Sample", "Type", "Group", "Actual conc.", "Dilution",
            "Vial", "Acquired", "Comment"]
@@ -67,11 +68,11 @@ class SamplesWorkspace(QtWidgets.QWidget):
         self.table.setSelectionBehavior(
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
         )
-        self.table.verticalHeader().setDefaultSectionSize(24)
+        self.table.verticalHeader().setDefaultSectionSize(30)
         layout.addWidget(self.table, 1)
 
         self.status = QtWidgets.QLabel("")
-        self.status.setStyleSheet("color:#666;")
+        self.status.setProperty("role", "caption")
         layout.addWidget(self.status)
 
         self.btn_close.clicked.connect(self._close_all)
@@ -136,6 +137,7 @@ class SamplesWorkspace(QtWidgets.QWidget):
                     if item:
                         item.setBackground(QtCore.Qt.GlobalColor.lightGray)
         self.table.resizeColumnsToContents()
+        style.fit_cell_widgets(self.table)
         self._refresh_group_choices()
         self._loading = False
         self._update_status()

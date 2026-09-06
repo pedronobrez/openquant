@@ -66,7 +66,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         bar.addWidget(self.btn_magnify)
         bar.addStretch(1)
         self.status = QtWidgets.QLabel("")
-        self.status.setStyleSheet("color:#666;")
+        self.status.setProperty("role", "caption")
         bar.addWidget(self.status)
         layout.addLayout(bar)
 

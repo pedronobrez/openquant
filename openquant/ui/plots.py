@@ -122,7 +122,7 @@ class BasePlot(QtWidgets.QWidget):
 
         self.vline = pg.InfiniteLine(
             angle=90, movable=False,
-            pen=pg.mkPen("#999", style=QtCore.Qt.PenStyle.DashLine),
+            pen=pg.mkPen(theme.faint_axis(), style=QtCore.Qt.PenStyle.DashLine),
         )
         self.vline.hide()
         self.plot.addItem(self.vline, ignoreBounds=True)

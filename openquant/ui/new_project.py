@@ -18,6 +18,7 @@ from ..components import load_components
 from ..method import ProcessingMethod
 from ..samples import SAMPLE_TYPES
 from ..session import PROJECT_SUFFIX, Session
+from . import style
 
 #: how the method is filled in
 METHOD_IMPORT = "import"
@@ -87,7 +88,7 @@ class ProjectPage(QtWidgets.QWizardPage):
         folder_row.addWidget(browse)
 
         self.preview = QtWidgets.QLabel("")
-        self.preview.setStyleSheet("color:#666;")
+        self.preview.setProperty("role", "caption")
         self.preview.setWordWrap(True)
 
         form = QtWidgets.QFormLayout(self)
@@ -172,11 +173,11 @@ class SamplesPage(QtWidgets.QWizardPage):
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(
             QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.verticalHeader().setDefaultSectionSize(24)
+        self.table.verticalHeader().setDefaultSectionSize(30)
         layout.addWidget(self.table, 1)
 
         self.status = QtWidgets.QLabel("No files yet.")
-        self.status.setStyleSheet("color:#666;")
+        self.status.setProperty("role", "caption")
         layout.addWidget(self.status)
 
         self.btn_add.clicked.connect(self.add_files)
@@ -312,6 +313,7 @@ class SamplesPage(QtWidgets.QWizardPage):
         # the first group is typed after the columns were first sized, so the
         # Group column has to be given room again once it holds something
         self.table.resizeColumnsToContents()
+        style.fit_cell_widgets(self.table)
         self.completeChanged.emit()
 
     def _set_group(self, entry, combo) -> None:
@@ -344,7 +346,7 @@ class MethodPage(QtWidgets.QWizardPage):
         self.radio_import = QtWidgets.QRadioButton("Import a component list (CSV)")
         self.btn_browse = QtWidgets.QPushButton("Choose file…")
         self.import_label = QtWidgets.QLabel("")
-        self.import_label.setStyleSheet("color:#666;")
+        self.import_label.setProperty("role", "caption")
         self.import_label.setWordWrap(True)
 
         import_row = QtWidgets.QHBoxLayout()
@@ -355,7 +357,7 @@ class MethodPage(QtWidgets.QWizardPage):
         self.radio_acquisition = QtWidgets.QRadioButton(
             "Generate one component per product-ion channel of the samples")
         self.acquisition_label = QtWidgets.QLabel("")
-        self.acquisition_label.setStyleSheet("color:#666;")
+        self.acquisition_label.setProperty("role", "caption")
         acquisition_row = QtWidgets.QHBoxLayout()
         acquisition_row.addSpacing(24)
         acquisition_row.addWidget(self.acquisition_label, 1)
@@ -471,7 +473,7 @@ class SummaryPage(QtWidgets.QWizardPage):
         layout.addSpacing(8)
         self.warnings = QtWidgets.QLabel("")
         self.warnings.setWordWrap(True)
-        self.warnings.setStyleSheet("color:#a86a00;")
+        self.warnings.setProperty("role", "warning")
         layout.addWidget(self.warnings)
         layout.addStretch(1)
         self.check_process = QtWidgets.QCheckBox(
@@ -534,16 +536,25 @@ class StartDialog(QtWidgets.QDialog):
         self.choice = self.EXPLORE
 
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setSpacing(10)
-        title = QtWidgets.QLabel("<h2>OpenQuant</h2>")
+        layout.setContentsMargins(30, 26, 30, 22)
+        layout.setSpacing(9)
+        title = QtWidgets.QLabel("OpenQuant")
+        title.setFont(style.wordmark_font(29))
         layout.addWidget(title)
+        rule = QtWidgets.QFrame()
+        rule.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        rule.setFixedHeight(1)
+        rule.setStyleSheet(f"background:{style.token('accent')}; border:none;")
+        rule.setMaximumWidth(46)
+        layout.addWidget(rule)
+        layout.addSpacing(4)
         blurb = QtWidgets.QLabel(
             "A project keeps the batch, the method and the results together in "
             "one file, so a run can be reopened and repeated.")
         blurb.setWordWrap(True)
-        blurb.setStyleSheet("color:#666;")
+        blurb.setProperty("role", "caption")
         layout.addWidget(blurb)
-        layout.addSpacing(6)
+        layout.addSpacing(10)
 
         for label, hint, choice in (
             ("New project…", "Set up the samples and the method step by step",
@@ -553,17 +564,15 @@ class StartDialog(QtWidgets.QDialog):
              "Open a .wiff and look at it; nothing is saved", self.EXPLORE),
         ):
             button = QtWidgets.QPushButton(label)
-            button.setMinimumHeight(34)
+            button.setMinimumHeight(36)
             button.setToolTip(hint)
             button.clicked.connect(
                 lambda _c, value=choice: self._chose(value))
-            layout.addWidget(button)
             if choice == self.NEW:
-                font = button.font()
-                font.setBold(True)
-                button.setFont(font)
+                button.setProperty("primary", True)
+            layout.addWidget(button)
 
-        layout.addSpacing(6)
+        layout.addSpacing(10)
         self.check_skip = QtWidgets.QCheckBox("Do not show this again")
         layout.addWidget(self.check_skip)
 

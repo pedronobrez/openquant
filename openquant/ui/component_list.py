@@ -54,7 +54,7 @@ class ComponentListPanel(QtWidgets.QWidget):
             "import a CSV, or generate it from the acquisition method."
         )
         self.empty.setWordWrap(True)
-        self.empty.setStyleSheet("color:#666; font-size:11px;")
+        self.empty.setProperty("role", "hint")
         layout.addWidget(self.empty)
 
         self.btn_extract.clicked.connect(

@@ -18,7 +18,6 @@ from ..quantify import PeakResult
 FOUND_PEN = "#1f77b4"
 MISSING_PEN = "#b0b0b0"
 IS_PEN = "#d62728"
-SELECTED_BORDER = "#3b6ec8"
 
 
 class _PanelViewBox(pg.ViewBox):
@@ -78,7 +77,7 @@ class PeakPanel(pg.PlotWidget):
         self._expected.hide()
         self.addItem(self._expected, ignoreBounds=True)
         self._noise = pg.LinearRegionItem(brush=pg.mkBrush(150, 150, 150, 45),
-                                          pen=pg.mkPen("#999", width=1,
+                                          pen=pg.mkPen(theme.faint_axis(), width=1,
                                                        style=QtCore.Qt.PenStyle.DotLine),
                                           movable=False)
         self._noise.setZValue(-25)
@@ -172,10 +171,9 @@ class PeakPanel(pg.PlotWidget):
         return float(lo), float(hi)
 
     def set_selected(self, selected: bool) -> None:
-        edge = "#444" if theme.is_dark() else "#ddd"
         self.setStyleSheet(
-            f"border: 2px solid {SELECTED_BORDER};" if selected
-            else f"border: 1px solid {edge};"
+            f"border: 2px solid {theme.accent()}; border-radius: 6px;" if selected
+            else f"border: 1px solid {theme.line()}; border-radius: 6px;"
         )
 
     # -- interaction -------------------------------------------------------------- #

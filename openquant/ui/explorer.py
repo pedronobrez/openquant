@@ -164,7 +164,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         bar.addWidget(self.rt_label)
         bar.addStretch(1)
         self.bg_label = QtWidgets.QLabel("")
-        self.bg_label.setStyleSheet("color:#b07800;")
+        self.bg_label.setProperty("role", "warning")
         bar.addWidget(self.bg_label)
         self.btn_avg = QtWidgets.QPushButton("Average selected range")
         self.btn_avg.setToolTip(
@@ -280,7 +280,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             "to extract its XIC."
         )
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:#666; font-size:11px;")
+        hint.setProperty("role", "hint")
         layout.addWidget(hint)
         return page
 

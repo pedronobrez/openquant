@@ -66,7 +66,7 @@ class LipidPanel(QtWidgets.QWidget):
 
         self.status = QtWidgets.QLabel("")
         self.status.setWordWrap(True)
-        self.status.setStyleSheet("color:#666; font-size:11px;")
+        self.status.setProperty("role", "hint")
         layout.addWidget(self.status)
 
         self.install_box = QtWidgets.QWidget()

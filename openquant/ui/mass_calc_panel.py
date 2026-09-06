@@ -72,7 +72,7 @@ class MassCalcPanel(QtWidgets.QWidget):
         self.measured_edit.setPlaceholderText("measured m/z")
         accuracy.addRow("Measured:", self.measured_edit)
         self.error_label = QtWidgets.QLabel("—")
-        self.error_label.setStyleSheet("font-weight:600;")
+        self.error_label.setProperty("role", "strong")
         accuracy.addRow("Error:", self.error_label)
         layout.addLayout(accuracy)
 
@@ -98,7 +98,7 @@ class MassCalcPanel(QtWidgets.QWidget):
 
         self.status = QtWidgets.QLabel("")
         self.status.setWordWrap(True)
-        self.status.setStyleSheet("color:#b03030; font-size:11px;")
+        self.status.setProperty("role", "danger")
         layout.addWidget(self.status)
 
         self.formula_edit.textChanged.connect(self.recompute)

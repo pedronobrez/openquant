@@ -42,12 +42,12 @@ class StatisticsPanel(QtWidgets.QWidget):
         self.table.setHorizontalHeaderLabels(FIXED)
         self.table.setEditTriggers(
             QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.table.verticalHeader().setDefaultSectionSize(20)
+        self.table.verticalHeader().setDefaultSectionSize(23)
         self.table.setAlternatingRowColors(True)
         layout.addWidget(self.table, 1)
 
         self.status = QtWidgets.QLabel("")
-        self.status.setStyleSheet("color:#666;")
+        self.status.setProperty("role", "caption")
         layout.addWidget(self.status)
 
         self.grouping.currentTextChanged.connect(self.reload)
@@ -93,7 +93,7 @@ class StatisticsPanel(QtWidgets.QWidget):
                     font = item.font()
                     font.setStrikeOut(True)
                     item.setFont(font)
-                    item.setForeground(QtGui.QBrush(QtGui.QColor("#999")))
+                    item.setForeground(QtGui.QBrush(QtGui.QColor(theme.ink_faint())))
                 self.table.setItem(index, len(FIXED) + offset, item)
 
         self.table.resizeColumnsToContents()

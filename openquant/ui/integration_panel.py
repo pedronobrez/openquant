@@ -63,7 +63,7 @@ class IntegrationPanel(QtWidgets.QGroupBox):
 
         noise_row = QtWidgets.QHBoxLayout()
         self.noise_label = QtWidgets.QLabel("—")
-        self.noise_label.setStyleSheet("color:#666;")
+        self.noise_label.setProperty("role", "caption")
         self.btn_clear_noise = QtWidgets.QToolButton()
         self.btn_clear_noise.setText("✕")
         self.btn_clear_noise.setToolTip("Forget the noise region")
@@ -89,7 +89,7 @@ class IntegrationPanel(QtWidgets.QGroupBox):
 
         self.status = QtWidgets.QLabel("")
         self.status.setWordWrap(True)
-        self.status.setStyleSheet("color:#666; font-size:11px;")
+        self.status.setProperty("role", "hint")
         form.addRow(self.status)
 
         self._clipboard: IntegrationParams | None = None

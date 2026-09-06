@@ -19,8 +19,10 @@ def main(argv: list[str] | None = None) -> int:
     app = QtWidgets.QApplication(sys.argv[:1])
     app.setApplicationName("OpenQuant")
 
+    from .ui import style
     from .ui.theme import apply_defaults
 
+    style.apply(app)
     apply_defaults()
 
     from .ui.shell import MainShell

@@ -1,0 +1,116 @@
+name: CI
+
+# The application is developed on macOS and has never been executed on Linux or
+# Windows. Everything except reading a .wiff is platform-neutral Python, so the
+# whole suite runs on all three here — which is what stops the two untried
+# platforms from drifting further out of reach.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.13"]
+        include:
+          # the floor declared in pyproject, so it stays true
+          - os: ubuntu-latest
+            python: "3.10"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      # PyQt6 needs these even under the offscreen platform: they are linked at
+      # import, not at window creation, so without them the import itself fails
+      - name: Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 \
+            libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-shape0 libxcb-xinerama0 libdbus-1-3 libglib2.0-0
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest
+
+      - name: Test
+        env:
+          # no display on any runner, and the suite never opens a window
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q
+
+      - name: The app starts
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -c "
+          import openquant
+          from PyQt6 import QtWidgets
+          from openquant.ui import style
+          from openquant.ui.theme import apply_defaults
+          app = QtWidgets.QApplication([])
+          style.apply(app)
+          apply_defaults()
+          from openquant.ui.shell import MainShell
+          window = MainShell()
+          window.show()
+          app.processEvents()
+          print('OpenQuant', openquant.__version__, 'started on', __import__('platform').system())
+          "
+
+  wiff:
+    # Reading a .wiff is the one platform-specific path: it loads SCIEX's
+    # managed assemblies through a .NET runtime, by a different route on
+    # Windows than on macOS and Linux. This reports whether the runtime and the
+    # assemblies come up at all, which is as far as CI can go without a raw
+    # file — those are not in the repository.
+    name: .NET bootstrap · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Load the SCIEX libraries
+        run: |
+          python -c "
+          import platform
+          from openquant import bootstrap
+          print('system:', platform.system())
+          print('dotnet root:', bootstrap.find_dotnet_root())
+          bootstrap.ensure()
+          print('Clearcore2 loaded')
+          "

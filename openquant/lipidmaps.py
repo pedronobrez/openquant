@@ -42,6 +42,7 @@ import numpy as np
 
 from .bootstrap import CACHE_DIR, urlopen as safe_urlopen
 from .chemistry import ADDUCTS, ADDUCTS_BY_NAME, NEUTRAL, Adduct
+from .structure import Structure, parse_molblock
 
 #: elements a lipid from a biological sample is built from. LMSD also holds
 #: organoarsenic and fluorinated structures, which are valid entries and absurd
@@ -57,7 +58,7 @@ INDEX_PATH = CACHE_DIR / "lipidmaps" / "lmsd-index.json.gz"
 #: where it lived before the software was renamed. A 21 MB download should not
 #: have to happen twice because the cache directory changed name.
 LEGACY_INDEX_PATH = Path.home() / ".openpeakview" / "lipidmaps" / "lmsd-index.json.gz"
-INDEX_VERSION = 1
+INDEX_VERSION = 2
 
 #: SDF tags kept in the index, mapped to the field they fill
 _TAGS = {
@@ -86,6 +87,15 @@ class LipidRecord:
     main_class: str = ""
     sub_class: str = ""
     systematic_name: str = ""
+    #: the connection table in its compact form, or None for a record whose
+    #: structure the file did not carry
+    structure: dict | None = None
+
+    def molecule(self) -> Structure | None:
+        """The structure, rebuilt from the index."""
+        if not self.structure:
+            return None
+        return Structure.from_compact(self.structure)
 
     @property
     def species(self) -> str:
@@ -192,15 +202,16 @@ class SpeciesMatch:
 # --------------------------------------------------------------------------- #
 def parse_sdf(stream) -> list[LipidRecord]:
     """
-    Read the annotation tags out of an SDF, ignoring the structures.
+    Read the annotation tags and the connection table out of an SDF.
 
     Works line by line over a text stream so the 280 MB file never has to be
-    held in memory or written to disk.
+    held in memory or written to disk; only one record is in hand at a time.
     """
     records: list[LipidRecord] = []
     fields: dict[str, str] = {}
     tag: str | None = None
     value: list[str] = []
+    block: list[str] | None = []
 
     def close_tag():
         nonlocal tag, value
@@ -212,6 +223,12 @@ def parse_sdf(stream) -> list[LipidRecord]:
 
     for raw in stream:
         line = raw.rstrip("\n").rstrip("\r")
+        if block is not None:
+            block.append(line)
+            if line.startswith("M  END"):
+                fields["molblock"] = "\n".join(block)
+                block = None
+            continue
         if line.startswith("> <"):
             close_tag()
             name = line[3:].split(">", 1)[0]
@@ -223,6 +240,7 @@ def parse_sdf(stream) -> list[LipidRecord]:
             if record is not None:
                 records.append(record)
             fields = {}
+            block = []
             continue
         if tag is not None:
             if line == "":
@@ -254,7 +272,17 @@ def _record_from(fields: dict) -> LipidRecord | None:
         main_class=fields.get("main_class", ""),
         sub_class=fields.get("sub_class", ""),
         systematic_name=fields.get("systematic_name", ""),
+        structure=_compact_structure(fields),
     )
+
+
+def _compact_structure(fields: dict) -> dict | None:
+    """The connection table, small enough to keep for every record."""
+    block = fields.get("molblock")
+    if not block:
+        return None
+    molecule = parse_molblock(block, fields.get("formula", ""))
+    return molecule.to_compact() if molecule is not None else None
 
 
 # --------------------------------------------------------------------------- #

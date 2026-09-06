@@ -8,11 +8,23 @@ from PyQt6 import QtCore, QtWidgets
 
 from . import theme
 from ..session import Session
+from .plots import colour
 from .results_table import COLUMNS
 
 #: only numeric columns can be plotted
 NUMERIC = [c for c in COLUMNS if c.decimals is not None]
 ROW_ORDER = "row order"
+
+NO_COLOUR = "nothing"
+BY_SAMPLE_GROUP = "sample group"
+BY_SAMPLE_TYPE = "sample type"
+COLOURINGS = (BY_SAMPLE_GROUP, BY_SAMPLE_TYPE, NO_COLOUR)
+
+#: what a sample with no group is called in the legend
+UNGROUPED = "no group"
+#: the colour it is drawn in, kept out of the palette so a real group never
+#: shares it
+UNGROUPED_COLOUR = "#9a9a9a"
 
 
 class MetricPlotPanel(QtWidgets.QWidget):
@@ -48,22 +60,33 @@ class MetricPlotPanel(QtWidgets.QWidget):
         bar.addWidget(QtWidgets.QLabel("Component"))
         self.component_combo = QtWidgets.QComboBox()
         bar.addWidget(self.component_combo, 1)
+        bar.addWidget(QtWidgets.QLabel("Colour by"))
+        self.colour_combo = QtWidgets.QComboBox()
+        self.colour_combo.addItems(list(COLOURINGS))
+        self.colour_combo.setToolTip(
+            "Draw each study group in its own colour, so a treated batch "
+            "separating from its controls is visible rather than inferred")
+        bar.addWidget(self.colour_combo)
         layout.addLayout(bar)
 
         self.plot = pg.PlotWidget(background=theme.background())
         self.plot.showGrid(x=True, y=True, alpha=0.15)
         theme.style_axes(self.plot)
-        self.scatter = pg.ScatterPlotItem(size=9, pen=pg.mkPen(theme.axis()),
-                                          brush=pg.mkBrush("#1f77b4"))
-        self.scatter.sigClicked.connect(self._on_clicked)
-        self.plot.addItem(self.scatter)
+        self.legend = self.plot.addLegend(
+            offset=(-10, 10), labelTextColor=theme.foreground(),
+            brush=theme.legend_brush(), pen=theme.legend_pen(), verSpacing=-4)
+        self.legend.setLabelTextSize("8pt")
+        #: one scatter per colour group; a single item with per-spot brushes
+        #: would draw the same picture but could not be put in a legend
+        self._scatters: list[pg.ScatterPlotItem] = []
         layout.addWidget(self.plot, 1)
 
         self.status = QtWidgets.QLabel("")
         self.status.setStyleSheet("color:#666;")
         layout.addWidget(self.status)
 
-        for widget in (self.x_combo, self.y_combo, self.component_combo):
+        for widget in (self.x_combo, self.y_combo, self.component_combo,
+                       self.colour_combo):
             widget.currentTextChanged.connect(self.reload)
         session.sigResultsChanged.connect(self.reload)
         session.sigMethodChanged.connect(self._reload_components)
@@ -90,21 +113,73 @@ class MetricPlotPanel(QtWidgets.QWidget):
         x_title = self.x_combo.currentText()
         x_column = next((c for c in NUMERIC if c.title == x_title), None)
 
-        spots, self._points = [], []
+        # entry_by_key scans the batch, and this runs once per point
+        entries = {e.key: e for e in self.session.entries}
+        by_group: dict[str, list[dict]] = {}
+        order: list[str] = []
+        self._points = []
         for index, result in enumerate(rows):
             y = self._value(result, y_column)
             x = float(index + 1) if x_column is None else self._value(result, x_column)
             if x is None or y is None:
                 continue
-            spots.append({"pos": (x, y), "data": len(self._points)})
+            key = self._colour_key(result, entries)
+            if key not in by_group:
+                by_group[key] = []
+                order.append(key)
+            by_group[key].append({"pos": (x, y), "data": len(self._points)})
             self._points.append((result.sample_key, result.component))
 
-        self.scatter.setData(spots)
+        self._draw(by_group, order)
         self.plot.setLabel("bottom", x_title)
         self.plot.setLabel("left", self.y_combo.currentText())
         self.plot.enableAutoRange()
         self.plot.autoRange()
-        self.status.setText(f"{len(spots)} point(s)")
+        total = sum(len(spots) for spots in by_group.values())
+        self.status.setText(
+            f"{total} point(s)"
+            + (f" · {len(order)} group(s)" if self._colouring() else ""))
+
+    def _colouring(self) -> str:
+        choice = self.colour_combo.currentText()
+        return "" if choice == NO_COLOUR else choice
+
+    def _colour_key(self, result, entries: dict) -> str:
+        """Which colour bucket a point belongs to, by the current choice."""
+        choice = self._colouring()
+        if not choice:
+            return ""
+        entry = entries.get(result.sample_key)
+        if entry is None:
+            return UNGROUPED
+        if choice == BY_SAMPLE_TYPE:
+            return entry.sample_type
+        return entry.sample_group or UNGROUPED
+
+    def _draw(self, by_group: dict[str, list[dict]], order: list[str]) -> None:
+        for scatter in self._scatters:
+            self.plot.removeItem(scatter)
+        self._scatters.clear()
+        self.legend.clear()
+
+        # the palette index skips the ungrouped bucket so adding one unlabelled
+        # sample does not recolour every real group
+        palette_index = 0
+        for key in order:
+            if key == UNGROUPED or not key:
+                pen_colour = UNGROUPED_COLOUR
+            else:
+                pen_colour = colour(palette_index)
+                palette_index += 1
+            scatter = pg.ScatterPlotItem(size=9, pen=pg.mkPen(theme.axis()),
+                                         brush=pg.mkBrush(pen_colour))
+            scatter.setData(by_group[key])
+            scatter.sigClicked.connect(self._on_clicked)
+            self.plot.addItem(scatter)
+            self._scatters.append(scatter)
+            if self._colouring():
+                self.legend.addItem(scatter, key)
+        self.legend.setVisible(bool(self._colouring()) and len(order) > 1)
 
     @staticmethod
     def _value(result, column) -> float | None:

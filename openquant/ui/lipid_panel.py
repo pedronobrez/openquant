@@ -6,6 +6,8 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 from .. import lipidmaps
 from ..chemistry import ADDUCTS
+from ..explain import rank_candidates, significant_peaks
+from ..matching import PRECURSOR_MATCH_DA
 from ..structure import predict
 from .structure_view import StructureView
 
@@ -13,6 +15,7 @@ ROLE_RECORD = QtCore.Qt.ItemDataRole.UserRole
 ROLE_MZ = QtCore.Qt.ItemDataRole.UserRole + 1
 ROLE_ADDUCT = QtCore.Qt.ItemDataRole.UserRole + 2
 ROLE_ION = QtCore.Qt.ItemDataRole.UserRole + 3
+ROLE_EXPLANATION = QtCore.Qt.ItemDataRole.UserRole + 4
 
 
 class LipidPanel(QtWidgets.QWidget):
@@ -29,6 +32,8 @@ class LipidPanel(QtWidgets.QWidget):
     sigPrecursor = QtCore.pyqtSignal(str, str, str, str, float)
     #: name, lm_id, description, m/z — a predicted fragment sent onward
     sigFragment = QtCore.pyqtSignal(str, str, str, float)
+    #: (m/z, label) pairs the spectrum should mark as accounted for
+    sigMatches = QtCore.pyqtSignal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -179,6 +184,58 @@ class LipidPanel(QtWidgets.QWidget):
         self.frag_note.setProperty("role", "warning")
         frag_layout.addWidget(self.frag_note)
 
+        explain_tab = QtWidgets.QWidget()
+        explain_layout = QtWidgets.QVBoxLayout(explain_tab)
+        explain_layout.setContentsMargins(0, 6, 0, 0)
+        self.modes.addTab(explain_tab, "Explain")
+
+        self.explain_header = QtWidgets.QLabel(
+            "Take the spectrum on screen, look its precursor up in LIPID MAPS, "
+            "and score each candidate by how much of the spectrum its "
+            "structure accounts for.")
+        self.explain_header.setWordWrap(True)
+        self.explain_header.setProperty("role", "hint")
+        explain_layout.addWidget(self.explain_header)
+
+        explain_form = QtWidgets.QFormLayout()
+        self.explain_precursor = QtWidgets.QLineEdit()
+        self.explain_precursor.setPlaceholderText("703.5749")
+        explain_form.addRow("Precursor:", self.explain_precursor)
+        self.explain_adduct = QtWidgets.QComboBox()
+        self.explain_adduct.addItems([a.name for a in ADDUCTS])
+        self.explain_adduct.setCurrentText("[M+H]+")
+        explain_form.addRow("Adduct:", self.explain_adduct)
+        explain_layout.addLayout(explain_form)
+
+        self.btn_explain = QtWidgets.QPushButton("Explain this spectrum")
+        self.btn_explain.setProperty("primary", True)
+        explain_layout.addWidget(self.btn_explain)
+
+        self.explain_tree = QtWidgets.QTreeWidget()
+        self.explain_tree.setHeaderLabels(["Candidate", "Explains", "Peaks",
+                                           "Formula"])
+        self.explain_tree.setColumnWidth(0, 190)
+        self.explain_tree.setAlternatingRowColors(True)
+        self.explain_tree.setToolTip(
+            "Select a candidate to mark the peaks it accounts for on the "
+            "spectrum")
+        explain_layout.addWidget(self.explain_tree, 2)
+
+        self.match_tree = QtWidgets.QTreeWidget()
+        self.match_tree.setHeaderLabels(["Measured", "ppm", "Route"])
+        self.match_tree.setColumnWidth(0, 95)
+        self.match_tree.setAlternatingRowColors(True)
+        explain_layout.addWidget(self.match_tree, 2)
+
+        self.explain_note = QtWidgets.QLabel(
+            "A share is evidence, not proof. Isomers fragment alike, and a long "
+            "enough list of possible masses covers a spectrum by accident — so "
+            "read the peaks a candidate leaves unexplained as carefully as the "
+            "ones it claims.")
+        self.explain_note.setWordWrap(True)
+        self.explain_note.setProperty("role", "warning")
+        explain_layout.addWidget(self.explain_note)
+
         self.tree = QtWidgets.QTreeWidget()
         self.tree.setHeaderLabels(["Species / structure", "Formula", "mDa",
                                    "ppm", "n"])
@@ -220,6 +277,9 @@ class LipidPanel(QtWidgets.QWidget):
         self.frag_target.returnPressed.connect(self.predict_fragments)
         self.frag_tree.currentItemChanged.connect(self._show_cleavage)
         self.frag_tree.itemDoubleClicked.connect(self._fragment_activated)
+        self.btn_explain.clicked.connect(self.explain_spectrum)
+        self.explain_precursor.returnPressed.connect(self.explain_spectrum)
+        self.explain_tree.currentItemChanged.connect(self._show_explanation)
         self.refresh_availability()
 
     # -- availability -------------------------------------------------------- #
@@ -229,7 +289,8 @@ class LipidPanel(QtWidgets.QWidget):
         for widget in (self.btn_search, self.mz_edit, self.adduct_combo,
                        self.tol_spin, self.unit_combo,
                        self.btn_lookup, self.name_edit,
-                       self.btn_fragments, self.frag_name):
+                       self.btn_fragments, self.frag_name,
+                       self.btn_explain, self.explain_precursor):
             widget.setEnabled(installed)
         if installed:
             database = lipidmaps.database()
@@ -505,6 +566,89 @@ class LipidPanel(QtWidgets.QWidget):
                               ion.description, float(ion.mz))
         self._report(f"{ion.mz:.4f} ({ion.description}) sent on. The route is "
                      "the simplest arithmetic, not a mechanism.")
+
+    # -- explaining a measured spectrum --------------------------------------- #
+    def set_spectrum(self, mz, intensity, precursor: float | None = None) -> None:
+        """Hand the panel the spectrum on screen, ready to be explained."""
+        self._peaks = significant_peaks(mz, intensity)
+        if precursor:
+            self.explain_precursor.setText(f"{precursor:.4f}")
+        self.modes.setCurrentIndex(3)
+        self.explain_header.setText(
+            f"{len(self._peaks)} peak(s) above 1% of the base peak are on "
+            "screen. Give the precursor and score the candidates against them.")
+
+    def explain_spectrum(self) -> None:
+        database = lipidmaps.database()
+        if database is None:
+            self._report("Install the database first.")
+            return
+        peaks = getattr(self, "_peaks", None)
+        if not peaks:
+            self._report("Show a spectrum first — Process ▸ Explain spectrum "
+                         "takes the one on screen.")
+            return
+        text = self.explain_precursor.text().strip().replace(",", ".")
+        try:
+            precursor = float(text)
+        except ValueError:
+            self._report("Type the precursor m/z of this spectrum.")
+            return
+
+        adduct = self.explain_adduct.currentText()
+        charge = 1 if "+" in adduct else -1
+        # the quadrupole passed a window, not a mass, and the method's own
+        # figure is rounded besides — 538.6 for a ceramide whose precursor is
+        # 538.52. Anything the isolation let through is a candidate.
+        ranked = rank_candidates(database, precursor, peaks, adduct=adduct,
+                                 tolerance=PRECURSOR_MATCH_DA, unit="Da",
+                                 charge=charge)
+        self.explain_tree.clear()
+        self.match_tree.clear()
+        for explanation in ranked:
+            row = QtWidgets.QTreeWidgetItem(self.explain_tree, [
+                explanation.name,
+                f"{explanation.share * 100:.1f}%",
+                str(explanation.matched),
+                explanation.record.formula,
+            ])
+            row.setData(0, ROLE_EXPLANATION, explanation)
+            row.setTextAlignment(1, QtCore.Qt.AlignmentFlag.AlignRight
+                                 | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            row.setTextAlignment(2, QtCore.Qt.AlignmentFlag.AlignRight
+                                 | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        if ranked:
+            self.explain_tree.setCurrentItem(self.explain_tree.topLevelItem(0))
+            top = ranked[0]
+            close = [e for e in ranked[1:] if top.share - e.share < 0.05]
+            tie = (f" {len(close)} other(s) explain it about as well."
+                   if close else "")
+            self._report(f"{len(ranked)} candidate(s) at that precursor."
+                         + tie)
+        else:
+            self.sigMatches.emit([])
+            self._report(
+                f"No structure in the curated database sits within "
+                f"±{PRECURSOR_MATCH_DA:g} Da of {precursor:.4f} as {adduct}. "
+                "A theoretical species may still exist in the computed set.")
+
+    def _show_explanation(self, item, _previous=None) -> None:
+        explanation = item.data(0, ROLE_EXPLANATION) if item is not None else None
+        self.match_tree.clear()
+        if explanation is None:
+            self.sigMatches.emit([])
+            return
+        for match in sorted(explanation.matches, key=lambda m: -m.intensity):
+            row = QtWidgets.QTreeWidgetItem(self.match_tree, [
+                f"{match.mz:.4f}", f"{match.error_ppm:+.1f}",
+                match.ion.description,
+            ])
+            for column in (0, 1):
+                row.setTextAlignment(column,
+                                     QtCore.Qt.AlignmentFlag.AlignRight
+                                     | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self.sigMatches.emit(
+            [(m.mz, m.ion.formula) for m in explanation.matches])
 
     def _report(self, text: str) -> None:
         self.status.setText(text)

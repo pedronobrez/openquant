@@ -17,7 +17,8 @@ from ..chemistry import (
 )
 from ..components import Component
 from ..matching import match_channel
-from ..processing import detect_peaks, integrate, signal_to_noise
+from ..processing import (centroid_spectrum, detect_peaks, integrate,
+                          signal_to_noise)
 from ..samples import SampleEntry
 from ..session import Session
 from ..wiff import Channel
@@ -202,8 +203,13 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         buttons = QtWidgets.QHBoxLayout()
         self.btn_none = QtWidgets.QPushButton("Uncheck all")
         self.btn_ms1 = QtWidgets.QPushButton("TOF MS only")
+        self.btn_collapse = QtWidgets.QPushButton("Collapse all")
+        self.btn_collapse.setToolTip(
+            "Fold every sample shut. A TripleTOF method is eighty channels per "
+            "injection, and a dozen injections buries the list.")
         buttons.addWidget(self.btn_none)
         buttons.addWidget(self.btn_ms1)
+        buttons.addWidget(self.btn_collapse)
         layout.addLayout(buttons)
 
         dock.setWidget(panel)
@@ -413,6 +419,10 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         )
         self.act_clear_bg = proc.addAction("Clear background")
         proc.addSeparator()
+        self.act_explain = proc.addAction("Explain spectrum")
+        self.act_explain.setToolTip(
+            "Score every LIPID MAPS candidate for this precursor by how much "
+            "of the spectrum on screen its structure accounts for")
         self.act_detect = proc.addAction("Detect peaks")
         self.act_exp_chrom = QtGui.QAction("Export chromatograms (CSV)…", self)
         self.act_exp_spec = QtGui.QAction("Export spectrum (CSV)…", self)
@@ -455,7 +465,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                      self.act_apex, self.act_relative, self.act_legend],
             "Panels": list(self.panel_actions),
             "Process": [self.act_centroid, self.act_marker, self.act_marker_clear,
-                        self.act_set_bg, self.act_clear_bg, self.act_detect],
+                        self.act_set_bg, self.act_clear_bg, self.act_explain,
+                        self.act_detect],
         }
 
     # -------------------------------------------------------------- signals -- #
@@ -479,6 +490,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             lambda: self._export(self.spectrum, "spectrum"))
         self.act_set_bg.triggered.connect(self._set_background)
         self.act_clear_bg.triggered.connect(self._clear_background)
+        self.act_explain.triggered.connect(self.explain_spectrum)
         self.act_detect.triggered.connect(self._detect_peaks)
 
         self.smooth_spin.valueChanged.connect(self._set_smoothing)
@@ -489,6 +501,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.tree.itemChanged.connect(self._on_tree_changed)
         self.tree.currentItemChanged.connect(self._on_tree_selection)
         self.filter_edit.textChanged.connect(self._apply_filter)
+        self.btn_collapse.clicked.connect(self.collapse_samples)
         self.btn_none.clicked.connect(lambda: self._bulk_check(lambda ref: False))
         self.btn_ms1.clicked.connect(
             lambda: self._bulk_check(
@@ -529,6 +542,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.lipid_panel.sigAnnotate.connect(self._lipid_annotation)
         self.lipid_panel.sigPrecursor.connect(self._lipid_precursor)
         self.lipid_panel.sigFragment.connect(self._lipid_fragment)
+        self.lipid_panel.sigMatches.connect(self.spectrum.set_matches)
 
         QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Left), self,
                         activated=lambda: self._step_scan(-1))
@@ -751,6 +765,13 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             return out
         # nothing checked: fall back to every loaded sample
         return [ChannelRef(e, None) for e in self.session.loaded_entries]
+
+    def collapse_samples(self) -> None:
+        """Fold every sample shut, leaving the file names visible."""
+        self.tree.collapseAll()
+        for index in range(self.tree.topLevelItemCount()):
+            self.tree.topLevelItem(index).setExpanded(True)
+        self._update_status("Samples collapsed.")
 
     def _bulk_check(self, predicate) -> None:
         self.tree.blockSignals(True)
@@ -1305,6 +1326,24 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self._update_status(
             f"{name} {adduct} — m/z {mz:.4f} added to the method "
             f"({len(method.components)} component(s)).")
+
+    def explain_spectrum(self) -> None:
+        """Send the spectrum on screen to be scored against LIPID MAPS."""
+        current = self._current_spectrum()
+        if current is None:
+            self._update_status("Show a spectrum first.")
+            return
+        mz, intensity = current
+        if not self.act_centroid.isChecked():
+            # centroiding what is already sticks merges neighbours and moves
+            # the masses, which is worse than not centroiding at all
+            mz, intensity = centroid_spectrum(mz, intensity)
+        precursor = None
+        if self.active_ref is not None and self.active_ref.channel is not None:
+            precursor = self.active_ref.channel.info.precursor
+        self.lipid_panel.set_spectrum(mz, intensity, precursor)
+        self.show_panel_named("LIPID MAPS")
+        self.lipid_panel.explain_spectrum()
 
     def _lipid_fragment(self, name: str, lm_id: str, route: str,
                         mz: float) -> None:

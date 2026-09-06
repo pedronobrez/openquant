@@ -29,15 +29,17 @@ def qapp():
 
 @pytest.fixture
 def database():
-    def record(lm_id, name, formula, fixture):
+    def record(lm_id, name, formula, fixture, mass):
         molecule = parse_molblock((FIXTURES / f"{fixture}.mol").read_text(),
                                   formula)
         return LipidRecord(lm_id=lm_id, name=name, abbrev="", formula=formula,
-                           exact_mass=0.0, structure=molecule.to_compact())
+                           exact_mass=mass, structure=molecule.to_compact())
 
     return LipidDatabase([
-        record("LMST04010001", "Cholic acid", "C24H40O5", "LMST04010001"),
-        record("LMSP03010002", "SM(d18:1/12:0)", "C35H71N2O6P", "LMSP03010002"),
+        record("LMST04010001", "Cholic acid", "C24H40O5", "LMST04010001",
+               408.287574),
+        record("LMSP03010002", "SM(d18:1/12:0)", "C35H71N2O6P", "LMSP03010002",
+               646.504974),
         LipidRecord(lm_id="LMX", name="No structure", abbrev="",
                     formula="C2H6O", exact_mass=46.0),
     ])
@@ -162,3 +164,70 @@ def test_the_drawing_puts_something_on_the_canvas(qapp, panel):
                   for y in range(0, image.height(), 3)
                   if image.pixel(x, y) != background)
     assert painted > 50, "the molecule did not reach the canvas"
+
+
+# -- explaining a spectrum ---------------------------------------------------- #
+def test_the_precursor_window_is_the_isolation_width_not_a_few_ppm(qapp, panel):
+    """
+    A method's own precursor is rounded — 538.6 for a ceramide whose precursor
+    is 538.52 — and the quadrupole passed a window rather than a mass.
+    """
+    import numpy as np
+
+    from openquant.matching import PRECURSOR_MATCH_DA
+
+    mz = np.array([391.2843, 373.2737, 355.2632])
+    intensity = np.array([1000.0, 500.0, 200.0])
+    panel.set_spectrum(mz, intensity, 409.6)      # rounded, 0.3 Da out
+    panel.explain_spectrum()
+    assert PRECURSOR_MATCH_DA >= 0.5
+    assert panel.explain_tree.topLevelItemCount() >= 1
+
+
+def test_the_candidates_are_listed_with_what_they_explain(qapp, panel):
+    import numpy as np
+
+    panel.set_spectrum(np.array([391.2843, 373.2737]),
+                       np.array([1000.0, 500.0]), 409.2948)
+    panel.explain_spectrum()
+    top = panel.explain_tree.topLevelItem(0)
+    assert top.text(0) == "Cholic acid"
+    assert top.text(1).endswith("%")
+    assert int(top.text(2)) >= 1
+
+
+def test_selecting_a_candidate_marks_its_peaks_on_the_spectrum(qapp, panel):
+    import numpy as np
+
+    marked = []
+    panel.sigMatches.connect(lambda pairs: marked.append(pairs))
+    panel.set_spectrum(np.array([391.2843, 373.2737]),
+                       np.array([1000.0, 500.0]), 409.2948)
+    panel.explain_spectrum()
+    assert marked and marked[-1]
+    assert all(len(pair) == 2 for pair in marked[-1])
+
+
+def test_a_near_tie_between_candidates_is_said_out_loud(qapp, panel):
+    """Isomers fragment alike; presenting the top one alone would overclaim."""
+    import numpy as np
+
+    panel.set_spectrum(np.array([391.2843]), np.array([1000.0]), 409.2948)
+    panel.explain_spectrum()
+    if panel.explain_tree.topLevelItemCount() > 1:
+        assert "about as well" in panel.status.text()
+
+
+def test_a_precursor_nothing_matches_says_what_window_it_looked_in(qapp, panel):
+    import numpy as np
+
+    panel.set_spectrum(np.array([100.0]), np.array([1.0]), 12345.0)
+    panel.explain_spectrum()
+    assert not panel.explain_tree.topLevelItemCount()
+    assert "±" in panel.status.text()
+
+
+def test_the_share_is_called_evidence_and_not_proof(qapp, panel):
+    note = panel.explain_note.text()
+    assert "not proof" in note
+    assert "unexplained" in note

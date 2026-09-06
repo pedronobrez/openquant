@@ -186,3 +186,23 @@ def test_unstacking_gives_the_height_back(qapp, area):
     assert len(area.views) == 1
     assert area.views[0].height() == pytest.approx(area.height(), abs=2)
     assert not area.scroll.verticalScrollBar().maximum()
+
+
+# -- the channel tree -------------------------------------------------------- #
+def test_collapse_all_folds_the_samples_but_keeps_the_files(qapp):
+    from openquant.session import Session
+    from openquant.ui.explorer import ExplorerWorkspace
+
+    workspace = ExplorerWorkspace(Session())
+    tree = workspace.tree
+    wiff = QtWidgets.QTreeWidgetItem(tree, ["a.wiff"])
+    sample = QtWidgets.QTreeWidgetItem(wiff, ["01"])
+    QtWidgets.QTreeWidgetItem(sample, ["TOF MS"])
+    tree.expandAll()
+    assert sample.isExpanded()
+
+    workspace.collapse_samples()
+    # eighty channels per injection buries the list; the file names stay
+    assert not sample.isExpanded()
+    assert wiff.isExpanded()
+    workspace.close()

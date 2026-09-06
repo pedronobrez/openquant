@@ -304,3 +304,70 @@ def test_no_traces_leaves_the_view_unfenced(qapp):
     view.autoscale()          # would raise if the empty case were not handled
     qapp.processEvents()
     view.close()
+
+
+# -- what the review panel shows was integrated ------------------------------- #
+def test_the_shaded_area_is_the_peak_over_its_baseline(qapp):
+    """
+    The band said where the limits were, which a reader takes for the area —
+    and on a peak a couple of points wide the two look nothing alike.
+    """
+    from openquant.quantify import PeakResult
+    from openquant.ui.peak_review import PeakPanel
+
+    x = np.linspace(0.0, 10.0, 400)
+    y = 1000.0 * np.exp(-((x - 5.0) ** 2) / (2 * 0.1 ** 2)) + 50.0
+    result = PeakResult(sample_key="s", sample_name="S", component="c",
+                        area=100.0, height=1000.0, rt=5.0,
+                        start_rt=4.6, end_rt=5.4)
+
+    panel = PeakPanel()
+    panel.resize(300, 200)
+    panel.set_data(result, x, y, expected=(4.0, 6.0))
+    qapp.processEvents()
+
+    top_x, top_y = panel._area_top.getData()
+    base_x, base_y = panel._area_base.getData()
+    assert len(top_x) > 2
+    assert top_x.min() >= 4.6 and top_x.max() <= 5.4
+    # the same straight baseline the integration draws between the limits
+    assert base_y[0] == pytest.approx(top_y[0], abs=1.0)
+    assert base_y[-1] == pytest.approx(top_y[-1], abs=1.0)
+    assert top_y.max() > base_y.max()
+    panel.close()
+
+
+def test_a_panel_with_no_peak_shades_nothing(qapp):
+    from openquant.quantify import PeakResult
+    from openquant.ui.peak_review import PeakPanel
+
+    x = np.linspace(0.0, 10.0, 100)
+    y = np.zeros_like(x)
+    panel = PeakPanel()
+    panel.resize(300, 200)
+    panel.set_data(PeakResult(sample_key="s", sample_name="S", component="c"),
+                   x, y, expected=None)
+    qapp.processEvents()
+    assert len(panel._area_top.getData()[0] or []) == 0
+    panel.close()
+
+
+def test_a_review_panel_cannot_be_zoomed_off_its_trace(qapp):
+    from openquant.quantify import PeakResult
+    from openquant.ui.peak_review import PeakPanel
+
+    x = np.linspace(2.0, 8.0, 200)
+    y = 500.0 * np.exp(-((x - 5.0) ** 2) / (2 * 0.1 ** 2))
+    panel = PeakPanel()
+    panel.resize(300, 200)
+    panel.set_data(PeakResult(sample_key="s", sample_name="S", component="c",
+                              rt=5.0, start_rt=4.7, end_rt=5.3, height=500.0,
+                              area=1.0),
+                   x, y, expected=None)
+    qapp.processEvents()
+    box = panel.getViewBox()
+    box.setRange(xRange=(-100.0, 100.0), padding=0)
+    qapp.processEvents()
+    lo, hi = box.viewRange()[0]
+    assert lo >= 2.0 - 1e-6 and hi <= 8.0 + 1e-6
+    panel.close()

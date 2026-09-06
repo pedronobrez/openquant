@@ -65,7 +65,21 @@ class PeakPanel(pg.PlotWidget):
             [], [], pen=pg.mkPen(IS_PEN, width=1.0,
                                  style=QtCore.Qt.PenStyle.DashLine))
         self._is_curve.setZValue(-5)
-        self._band = pg.LinearRegionItem(brush=pg.mkBrush(44, 160, 44, 45),
+        # the area actually integrated: the trace above the baseline drawn
+        # between the limits. The band alone said where the limits were, which
+        # a reader takes for the area — and on a peak a couple of points wide
+        # the two look nothing alike.
+        self._area_top = pg.PlotDataItem([], [])
+        self._area_base = pg.PlotDataItem([], [])
+        self._area = pg.FillBetweenItem(self._area_top, self._area_base,
+                                        brush=pg.mkBrush(44, 160, 44, 110))
+        self._area.setZValue(-8)
+        self.addItem(self._area)
+        self._baseline = self.plot(
+            [], [], pen=pg.mkPen("#2ca02c", width=1,
+                                 style=QtCore.Qt.PenStyle.DashLine))
+        self._baseline.setZValue(-7)
+        self._band = pg.LinearRegionItem(brush=pg.mkBrush(44, 160, 44, 16),
                                          pen=pg.mkPen("#2ca02c", width=1),
                                          movable=False)
         self._band.setZValue(-10)
@@ -85,6 +99,52 @@ class PeakPanel(pg.PlotWidget):
         self.addItem(self._noise, ignoreBounds=True)
         self.viewbox.sigRangeDrag.connect(self._on_drag)
         self.set_selected(False)
+
+    def _show_area(self, x: np.ndarray, y: np.ndarray,
+                   start: float, end: float) -> None:
+        """Shade what was integrated: the trace over its straight baseline."""
+        inside = (x >= start) & (x <= end)
+        if inside.sum() < 2:
+            self._clear_area()
+            return
+        xs, ys = x[inside], y[inside]
+        # the same baseline the integration used, so the picture and the
+        # number cannot disagree
+        base = np.linspace(ys[0], ys[-1], xs.size)
+        self._area_top.setData(xs, np.maximum(ys, base))
+        self._area_base.setData(xs, base)
+        self._baseline.setData(xs, base)
+
+    def fence(self, x: np.ndarray, y: np.ndarray) -> None:
+        """
+        Keep the panel inside its own data, as the Explorer's plots are.
+
+        Nothing lies outside a peak's trace, and a panel this small is easy to
+        lose your place in.
+        """
+        box = self.getViewBox()
+        if not len(x) or not len(y):
+            box.setLimits(xMin=None, xMax=None, yMin=None, yMax=None,
+                          maxXRange=None, maxYRange=None)
+            return
+        finite = np.isfinite(x) & np.isfinite(y)
+        if not finite.any():
+            return
+        x_low, x_high = float(np.min(x[finite])), float(np.max(x[finite]))
+        y_low = min(0.0, float(np.min(y[finite])))
+        y_high = float(np.max(y[finite]))
+        if x_high <= x_low or y_high <= y_low:
+            return
+        head_room = (y_high - y_low) * 0.08
+        box.setLimits(xMin=x_low, xMax=x_high,
+                      yMin=y_low, yMax=y_high + head_room,
+                      maxXRange=x_high - x_low,
+                      maxYRange=y_high - y_low + head_room)
+
+    def _clear_area(self) -> None:
+        self._area_top.setData([], [])
+        self._area_base.setData([], [])
+        self._baseline.setData([], [])
 
     def set_manual_mode(self, enabled: bool) -> None:
         self.viewbox.manual_mode = enabled
@@ -113,6 +173,7 @@ class PeakPanel(pg.PlotWidget):
         self._is_curve.setData([], [])
         self._band.hide()
         self._expected.hide()
+        self._clear_area()
         self.setTitle("")
 
     def set_data(self, result: PeakResult, x: np.ndarray, y: np.ndarray,
@@ -126,8 +187,11 @@ class PeakPanel(pg.PlotWidget):
         if found:
             self._band.setRegion((result.start_rt, result.end_rt))
             self._band.show()
+            self._show_area(x, y, result.start_rt, result.end_rt)
         else:
             self._band.hide()
+            self._clear_area()
+        self.fence(x, y)
         if expected is not None:
             self._expected.setRegion(expected)
             self._expected.show()
@@ -364,6 +428,52 @@ class PeakReviewGrid(QtWidgets.QWidget):
     def _set_show_is(self, enabled: bool) -> None:
         self._show_is = enabled
         self._fill()
+
+    def _show_area(self, x: np.ndarray, y: np.ndarray,
+                   start: float, end: float) -> None:
+        """Shade what was integrated: the trace over its straight baseline."""
+        inside = (x >= start) & (x <= end)
+        if inside.sum() < 2:
+            self._clear_area()
+            return
+        xs, ys = x[inside], y[inside]
+        # the same baseline the integration used, so the picture and the
+        # number cannot disagree
+        base = np.linspace(ys[0], ys[-1], xs.size)
+        self._area_top.setData(xs, np.maximum(ys, base))
+        self._area_base.setData(xs, base)
+        self._baseline.setData(xs, base)
+
+    def fence(self, x: np.ndarray, y: np.ndarray) -> None:
+        """
+        Keep the panel inside its own data, as the Explorer's plots are.
+
+        Nothing lies outside a peak's trace, and a panel this small is easy to
+        lose your place in.
+        """
+        box = self.getViewBox()
+        if not len(x) or not len(y):
+            box.setLimits(xMin=None, xMax=None, yMin=None, yMax=None,
+                          maxXRange=None, maxYRange=None)
+            return
+        finite = np.isfinite(x) & np.isfinite(y)
+        if not finite.any():
+            return
+        x_low, x_high = float(np.min(x[finite])), float(np.max(x[finite]))
+        y_low = min(0.0, float(np.min(y[finite])))
+        y_high = float(np.max(y[finite]))
+        if x_high <= x_low or y_high <= y_low:
+            return
+        head_room = (y_high - y_low) * 0.08
+        box.setLimits(xMin=x_low, xMax=x_high,
+                      yMin=y_low, yMax=y_high + head_room,
+                      maxXRange=x_high - x_low,
+                      maxYRange=y_high - y_low + head_room)
+
+    def _clear_area(self) -> None:
+        self._area_top.setData([], [])
+        self._area_base.setData([], [])
+        self._baseline.setData([], [])
 
     def set_manual_mode(self, enabled: bool) -> None:
         """Dragging inside a panel marks the integration range instead of panning."""

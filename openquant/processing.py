@@ -12,6 +12,11 @@ import numpy as np
 # that is physically meaningful in that data.
 NOISE_FLOOR = 1.0
 
+#: where a peak is taken to have ended, as a fraction of its height above the
+#: baseline it sits on. Below this it is the baseline, and walking further only
+#: widens the boundary without changing the area.
+EDGE_FRACTION = 0.05
+
 
 def moving_average(y: np.ndarray, window: int) -> np.ndarray:
     """Centred moving average; a `window` of 1 or less returns the input."""
@@ -286,6 +291,30 @@ def integrate_window(x: np.ndarray, y: np.ndarray, start: float, end: float,
     )
 
 
+def _walk_to_edge(smoothed: np.ndarray, apex: int, step: int,
+                  floor: float, noise: float) -> int:
+    """
+    Where a peak ends on one side of its apex.
+
+    Walking out "while not going up" treats a flat stretch as still descending,
+    and an XIC is mostly flat baseline — a peak was being given boundaries
+    minutes wide, taking the baseline into its area with it. The walk stops at
+    a genuine valley, meaning the signal has climbed back by more than the
+    noise, or once it has come down to the baseline, whichever comes first.
+    """
+    index = apex
+    lowest = float(smoothed[apex])
+    while 0 <= index + step < smoothed.size:
+        value = float(smoothed[index + step])
+        if value > lowest + noise:
+            break
+        index += step
+        lowest = min(lowest, value)
+        if value <= floor:
+            break
+    return index
+
+
 def detect_peaks(x: np.ndarray, y: np.ndarray, min_relative: float = 0.02,
                  min_snr: float = 3.0, smooth_sigma: float = 1.0,
                  max_peaks: int = 50,
@@ -319,12 +348,13 @@ def detect_peaks(x: np.ndarray, y: np.ndarray, min_relative: float = 0.02,
     peaks: list[ChromPeak] = []
     for apex in apexes:
         apex = int(apex)
-        left = apex
-        while left > 0 and smoothed[left - 1] <= smoothed[left]:
-            left -= 1
-        right = apex
-        while right < smoothed.size - 1 and smoothed[right + 1] <= smoothed[right]:
-            right += 1
+        # measured from the baseline the peak sits on, not from zero: two per
+        # cent of a tall apex can still be under the trace's own background,
+        # and then nothing stops the walk
+        base = float(np.median(smoothed))
+        floor = base + max(noise, (float(smoothed[apex]) - base) * EDGE_FRACTION)
+        left = _walk_to_edge(smoothed, apex, -1, floor, noise)
+        right = _walk_to_edge(smoothed, apex, +1, floor, noise)
         if right - left < 2:
             continue
         xs, ys = x[left:right + 1], y[left:right + 1]

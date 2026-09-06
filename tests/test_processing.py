@@ -202,3 +202,56 @@ def test_detect_peaks_accepts_an_external_noise_value():
     y = gaussian(x, 10.0, 0.1, 100.0)
     assert pr.detect_peaks(x, y, min_snr=3.0, noise=1.0)
     assert pr.detect_peaks(x, y, min_snr=3.0, noise=1000.0) == []
+
+
+# -- where a peak ends -------------------------------------------------------- #
+def gaussian_on_flat(height=1000.0, centre=5.0, width=0.05, span=(0.0, 15.0),
+                     points=600, baseline=0.0):
+    x = np.linspace(*span, points)
+    y = height * np.exp(-((x - centre) ** 2) / (2 * width ** 2)) + baseline
+    return x, y
+
+
+def test_a_peak_on_a_flat_baseline_keeps_its_own_boundaries():
+    """
+    Walking out "while not going up" reads a flat stretch as still descending.
+    An XIC is mostly flat baseline, so the boundaries ran to the ends of the
+    trace and a peak seconds wide was reported minutes wide.
+    """
+    x, y = gaussian_on_flat()
+    peaks = pr.detect_peaks(x, y)
+    assert peaks
+    peak = peaks[0]
+    assert peak.start_rt > 4.0 and peak.end_rt < 6.0
+    assert (peak.end_rt - peak.start_rt) < 1.0
+
+
+def test_the_boundaries_do_not_run_to_the_ends_of_the_trace():
+    x, y = gaussian_on_flat(span=(0.0, 30.0), points=1200)
+    peak = pr.detect_peaks(x, y)[0]
+    assert peak.start_rt > float(x[0]) + 1.0
+    assert peak.end_rt < float(x[-1]) - 1.0
+
+
+def test_a_peak_on_a_raised_baseline_stops_at_the_baseline():
+    """Two per cent of a tall apex can sit under the trace's own background."""
+    x, y = gaussian_on_flat(height=2000.0, baseline=200.0)
+    peak = pr.detect_peaks(x, y)[0]
+    assert (peak.end_rt - peak.start_rt) < 1.0
+
+
+def test_two_peaks_are_split_at_the_valley_between_them():
+    x = np.linspace(0.0, 10.0, 800)
+    y = (1000.0 * np.exp(-((x - 4.0) ** 2) / (2 * 0.08 ** 2))
+         + 800.0 * np.exp(-((x - 5.0) ** 2) / (2 * 0.08 ** 2)))
+    peaks = sorted(pr.detect_peaks(x, y), key=lambda p: p.apex_rt)
+    assert len(peaks) >= 2
+    assert peaks[0].end_rt <= peaks[1].start_rt + 0.05
+
+
+def test_the_area_still_measures_the_peak():
+    x, y = gaussian_on_flat(height=1000.0, width=0.05)
+    peak = pr.detect_peaks(x, y)[0]
+    # a gaussian's area is height * sigma * sqrt(2 pi)
+    expected = 1000.0 * 0.05 * np.sqrt(2 * np.pi)
+    assert peak.area == pytest.approx(expected, rel=0.05)

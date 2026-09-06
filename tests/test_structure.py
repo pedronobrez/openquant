@@ -15,7 +15,7 @@ from openquant.structure import (
     ring_bonds,
 )
 
-DATA = Path(__file__).parent / "data"
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def molblock(atoms, bonds, tail=()) -> str:
@@ -101,7 +101,7 @@ def test_something_that_is_not_a_connection_table(text):
 
 def test_the_compact_form_survives_a_round_trip():
     original = parse_molblock(
-        (DATA / "LMSP03010002.mol").read_text(), "C35H71N2O6P")
+        (FIXTURES / "LMSP03010002.mol").read_text(), "C35H71N2O6P")
     back = Structure.from_compact(original.to_compact())
     assert back.formula == original.formula
     assert len(back.bonds) == len(original.bonds)
@@ -145,7 +145,7 @@ def test_the_same_piece_is_listed_once_by_its_simplest_route():
 
 # -- predicting ------------------------------------------------------------- #
 def real(name: str, formula: str) -> Structure:
-    return parse_molblock((DATA / f"{name}.mol").read_text(), formula)
+    return parse_molblock((FIXTURES / f"{name}.mol").read_text(), formula)
 
 
 def nearest(ions, target):
@@ -224,11 +224,11 @@ def test_the_connection_table_is_kept_when_the_sdf_is_read():
     # and it survives being written to the index and read back
     saved = LipidDatabase(records)
     reloaded = LipidDatabase.load(
-        saved.save(Path(__file__).parent / "data" / "_tmp-index.json.gz"))
+        saved.save(Path(__file__).parent / "fixtures" / "_tmp-index.json.gz"))
     try:
         assert reloaded.records[0].molecule().formula == "C2H6O"
     finally:
-        (Path(__file__).parent / "data" / "_tmp-index.json.gz").unlink()
+        (Path(__file__).parent / "fixtures" / "_tmp-index.json.gz").unlink()
 
 
 def test_a_record_with_no_structure_says_so_rather_than_failing():

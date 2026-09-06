@@ -21,6 +21,7 @@ venv/
 exports/
 *.csv
 !tests/fixtures/*.csv
+!tests/fixtures/*.mol
 
 # Sistema
 .DS_Store

@@ -7,10 +7,11 @@ and mass spectra scan by scan or averaged over a selected region of a peak —
 and batch quantitation the way MultiQuant does: a component table, peak review
 across every sample at once, calibration curves and grouped statistics.
 
-Developed and used on **macOS (Apple Silicon included)**. Everything but
-reading a `.wiff` is platform-neutral Python and the whole test suite runs
-on Linux and Windows in CI, but no one has yet opened a raw file on either,
-so treat those two as untried rather than supported.
+Developed and used on **macOS (Apple Silicon included)**. The suite and the
+application both start on Linux and Windows in CI, and installers are built
+for all three. Reading a `.wiff` has only ever been done on macOS, though:
+that path loads SCIEX's .NET assemblies, and CI can only report that the
+runtime and the assemblies come up, not that a real acquisition opens.
 
 *Formerly OpenPeakView. Projects saved as `.opvproj` still open; new ones are
 written as `.oqproj`.*

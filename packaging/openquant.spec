@@ -9,8 +9,10 @@
 #   * pythonnet needs its own runtime shim (clr_loader) and the clr module,
 #     neither of which is reachable by static analysis.
 #
-# Everything alpharaw drags in for file formats we never touch is excluded:
-# measured on the import path this app actually uses, only numba comes along.
+# Everything alpharaw drags in for file formats we never touch is excluded.
+# numba and llvmlite are named among them: nothing reaches them any more (see
+# bootstrap._load_clearcore), and they were 123 MB of a 247 MB bundle, so the
+# exclusion is here to make sure an import cannot creep back in unnoticed.
 #
 # Build:  pyinstaller packaging/openquant.spec --noconfirm
 
@@ -50,6 +52,7 @@ hidden = [
 # alpharaw declares these for readers this app does not use. Confirmed by
 # importing the SCIEX reader and watching what actually loads.
 excluded = [
+    "numba", "llvmlite",
     "pandas", "h5py", "alphabase", "pyteomics", "lxml", "pyzstd",
     "matplotlib", "IPython", "jupyter", "notebook", "pytest", "tkinter",
     "PyQt6.QtWebEngineCore", "PyQt6.QtWebEngineWidgets", "PyQt6.Qt3DCore",

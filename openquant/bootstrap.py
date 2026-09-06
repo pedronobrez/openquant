@@ -172,14 +172,58 @@ def ensure(auto_install_dotnet: bool = False) -> None:
         _register_shim_resolver(System, Assembly, shim_dir)
         _use_managed_structured_storage(Assembly, BindingFlags, clr_utils.ext_dir)
 
-    from alpharaw.raw_access import pysciexwifffilereader as reader
+    _load_clearcore(clr_utils.ext_dir)
+    _READY = True
 
-    if not reader.HAS_DOTNET:
+
+def _load_clearcore(ext_dir: str) -> None:
+    """
+    Make the Clearcore2 namespaces importable, and prove that they are.
+
+    This used to be `alpharaw.raw_access.pysciexwifffilereader.HAS_DOTNET`.
+    Importing that module for a boolean cost 123 MB in a packaged build: it
+    pulls in a numba-compiled centroiding routine this application never
+    calls, and numba brings llvmlite with it. Nothing else in the reader was
+    ever used — wiff.py talks to Clearcore2 directly.
+
+    Two of the things that module did on import do matter, and are done here
+    instead: the assemblies are registered, and the thread culture is pinned.
+
+    The third difference is an improvement. alpharaw reduces every failure to
+    HAS_DOTNET = False and discards the exception, so a missing assembly, a
+    runtime that will not start and a corrupt DLL all looked identical. The
+    original error is kept as the cause here.
+    """
+    import clr
+
+    try:
+        clr.AddReference("System")
+
+        # Clearcore2 parses numbers with the thread's culture. On a machine
+        # set to a locale that writes decimals with a comma — pt-BR, fr-FR —
+        # masses and retention times come back wrong or not at all. alpharaw
+        # pinned the thread to en-US on import; that has to keep happening.
+        from System.Globalization import CultureInfo
+        from System.Threading import Thread
+
+        invariant = CultureInfo("en-US")
+        Thread.CurrentThread.CurrentCulture = invariant
+        Thread.CurrentThread.CurrentUICulture = invariant
+
+        sciex = Path(ext_dir) / "sciex"
+        for assembly in ("Clearcore2.Data.AnalystDataProvider.dll",
+                         "Clearcore2.Data.dll",
+                         "WiffOps4Python.dll"):
+            clr.AddReference(str(sciex / assembly))
+
+        from Clearcore2.Data.AnalystDataProvider import (  # noqa: F401
+            AnalystDataProviderFactory,
+        )
+    except Exception as exc:
         raise BootstrapError(
             "Could not load the SCIEX Clearcore2 libraries. "
             "Check the .NET and pythonnet installation."
-        )
-    _READY = True
+        ) from exc
 
 
 def _register_shim_resolver(System, Assembly, shim_dir: Path) -> None:

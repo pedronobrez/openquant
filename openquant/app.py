@@ -17,8 +17,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--selftest", action="store_true",
         help="open the files, report what was read, and exit without a window")
+    parser.add_argument(
+        "--digest", action="store_true",
+        help="print a numeric fingerprint of each file, for comparing one "
+             "build against another; implies --selftest's silence")
     args = parser.parse_args(argv)
 
+    if args.digest:
+        return _digest(args.files)
     if args.selftest:
         return _selftest(args.files)
 
@@ -67,6 +73,92 @@ def _shut_down(app, window) -> None:
     app.processEvents()
     del window
     gc.collect()
+
+
+def _digest(files: list[str]) -> int:
+    """
+    A numeric fingerprint of what this build reads, line by line.
+
+    --selftest answers whether a build can open a file at all. This answers
+    the harder question: whether two builds, on two systems, get the same
+    numbers out of it. The output is plain text, one fact per line, meant to
+    be diffed — so it carries every channel's totals at full precision and a
+    hash of each array, rather than a summary that could hide a difference in
+    the middle of a trace.
+
+    The integrated areas are here too. Those are the numbers a result is made
+    of, and a build that reads the same raw points but integrates them
+    differently is not the same build.
+    """
+    import hashlib
+    import os
+
+    import numpy as np
+
+    from . import __version__
+    from .bootstrap import ensure
+    from .processing import detect_peaks
+    from .wiff import WiffFile
+
+    def line(*parts) -> None:
+        print("\t".join(str(p) for p in parts), flush=True)
+
+    def fingerprint(values) -> str:
+        """A hash of the array, to six decimals — the precision anyone reads."""
+        rounded = np.round(np.asarray(values, dtype=float), 6)
+        return hashlib.sha256(rounded.tobytes()).hexdigest()[:16]
+
+    print(f"# openquant {__version__} digest")
+    try:
+        ensure()
+    except Exception as exc:
+        print(f"# cannot read: {exc}")
+        return 1
+
+    for path in files:
+        name = os.path.basename(str(path).replace("\\", "/"))
+        wiff = WiffFile(path)
+        try:
+            sample = wiff.sample(0)
+            channels = sample.channels
+            line("file", name, "channels", len(channels))
+
+            time, total = sample.tic()
+            line("sample.tic", name, len(time),
+                 f"{float(np.sum(total)):.6f}", f"{float(np.max(total)):.6f}",
+                 fingerprint(time), fingerprint(total))
+
+            for index, channel in enumerate(channels):
+                x, y = channel.tic()
+                line("channel", index, channel.info.label, len(x),
+                     f"{float(np.sum(y)):.6f}", f"{float(np.max(y)):.6f}",
+                     fingerprint(x), fingerprint(y))
+
+            # a few channels in full: spectra, extracted traces, and the
+            # integration that a quantitative result is actually made of
+            for index in [i for i in (0, 1, 20, 40, 80) if i < len(channels)]:
+                channel = channels[index]
+                x, y = channel.tic()
+                if not len(x):
+                    continue
+                apex = int(np.argmax(y))
+                scan = channel.scan_at_rt(float(x[apex]))
+                mz, intensity = channel.spectrum(scan)
+                line("spectrum", index, scan, len(mz),
+                     f"{float(np.sum(mz)):.6f}", f"{float(np.sum(intensity)):.6f}",
+                     fingerprint(mz), fingerprint(intensity))
+
+                xic_x, xic_y = channel.xic(264.2686, 0.02)
+                line("xic", index, len(xic_x), f"{float(np.sum(xic_y)):.6f}",
+                     fingerprint(xic_y))
+
+                for peak in detect_peaks(x, y)[:5]:
+                    line("peak", index, f"{peak.apex_rt:.9f}",
+                         f"{peak.start_rt:.9f}", f"{peak.end_rt:.9f}",
+                         f"{peak.area:.9f}", f"{peak.height:.9f}")
+        finally:
+            wiff.close()
+    return 0
 
 
 def _selftest(files: list[str]) -> int:

@@ -474,3 +474,100 @@ def test_the_view_still_cannot_go_negative(qapp):
     (x_lo, _x_hi), (y_lo, _y_hi) = view.viewbox.viewRange()
     assert x_lo >= 0
     assert y_lo >= 0
+
+
+def test_a_dying_pane_is_left_alone(qapp):
+    """
+    The stacked layout rebuilds by detaching every pane and deleting it later,
+    and setParent(None) resizes the pane on its way out. Reaching into the
+    view box of a pane that is being taken apart crashed Windows outright —
+    an access violation, not an exception — because working out the range
+    walks items that are already going. Nothing may run for a hidden pane.
+    """
+    import pyqtgraph as pg
+
+    from openquant.ui.chrom_area import ChromatogramArea
+    from openquant.ui.plots import BasePlot, colour
+
+    host = QtWidgets.QWidget()
+    layout = QtWidgets.QVBoxLayout(host)
+    area = ChromatogramArea()
+    layout.addWidget(area)
+    host.resize(900, 600)
+    host.show()
+
+    x = np.linspace(0, 22, 400)
+    area.set_traces([Trace(f"t{i}", f"{i:02d}", x,
+                           np.exp(-((x - 11) ** 2)) * 1e6, colour(i))
+                     for i in range(3)])
+    qapp.processEvents()
+
+    hidden_panes = []
+    walks = []
+    inside = {"resize": 0}
+    original = BasePlot._resized
+    real_auto_range = pg.ViewBox.autoRange
+
+    def watch(self, *args):
+        if not self.isVisible():
+            hidden_panes.append(self)
+        inside["resize"] += 1
+        try:
+            return original(self, *args)
+        finally:
+            inside["resize"] -= 1
+
+    def count_walk(self, *args, **kwargs):
+        # only the walks a resize is responsible for; the rebuild ends with a
+        # deliberate autoscale of the live panes, which is not the hazard
+        if inside["resize"]:
+            walks.append(self)
+        return real_auto_range(self, *args, **kwargs)
+
+    BasePlot._resized = watch
+    pg.ViewBox.autoRange = count_walk
+    try:
+        area.set_stacked(True)
+        qapp.processEvents()
+        area.set_stacked(False)
+        qapp.processEvents()
+    finally:
+        BasePlot._resized = original
+        pg.ViewBox.autoRange = real_auto_range
+
+    # the rebuild does resize panes on their way out — that is the hazard
+    assert hidden_panes, "expected the rebuild to resize panes while hidden"
+    # and no resize of any pane may ask the box to walk its items
+    assert not walks, "a resize asked pyqtgraph to walk the items of a pane"
+    host.close()
+
+
+def test_refitting_on_resize_does_not_recurse(qapp):
+    view = SpectrumView()
+    view.resize(900, 600)
+    view.set_traces([_spectrum_trace()])
+    view.show()
+    qapp.processEvents()
+    view.autoscale()
+
+    depth = {"max": 0, "now": 0}
+    original = SpectrumView._resized
+
+    def watch(self, *args):
+        depth["now"] += 1
+        depth["max"] = max(depth["max"], depth["now"])
+        try:
+            return original(self, *args)
+        finally:
+            depth["now"] -= 1
+
+    SpectrumView._resized = watch
+    try:
+        for height in (240, 700, 210, 500):
+            view.resize(900, height)
+            qapp.processEvents()
+    finally:
+        SpectrumView._resized = original
+
+    assert depth["max"] <= 1, f"re-entered the resize handler {depth['max']} deep"
+    assert _clearance(view, view._labels) >= 0

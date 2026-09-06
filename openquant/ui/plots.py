@@ -150,6 +150,7 @@ class BasePlot(QtWidgets.QWidget):
         self._relative_labels = True
         self._syncing_overview = False
         self._bounds: tuple[float, float, float, float] | None = None
+        self._resizing = False
 
         self.viewbox = _DragViewBox()
         self.viewbox.sigResized.connect(self._resized)
@@ -420,19 +421,57 @@ class BasePlot(QtWidgets.QWidget):
         same clipping, arriving one drag of the window later. The cached bounds
         are used rather than recomputed: conditioning every trace on each of
         the many resize events is work the answer does not need.
+
+        A hidden pane is skipped, which is what keeps this away from a pane
+        that is being destroyed. The stacked layout rebuilds by calling
+        setParent(None) and deleteLater on every pane, and setParent(None)
+        hides the widget as it makes it briefly a window of its own — which
+        resizes it, and so lands here. Measured on a rebuild: the dying panes
+        arrive hidden, and a legitimate top-level plot arrives visible, so
+        visibility separates them where having a parent does not. A pane no
+        one can see needs no room for its labels in any case.
+        """
+        if self._bounds is None or self._resizing or not self.isVisible():
+            return
+        self._resizing = True
+        try:
+            self._apply_limits_to(self._bounds)
+            # A fitted view should stay fitted when the pane changes size: the
+            # pane just changed how many pixels a share of the range is worth,
+            # and pyqtgraph switches auto-range off as soon as a range has been
+            # settled on, so nothing else will put the room back. A view the
+            # reader has zoomed into is left where they put it — pulling it
+            # back to the full extent on a window drag would be far worse than
+            # a tight label.
+            if self._is_fitted():
+                self._fit_from_bounds()
+        finally:
+            self._resizing = False
+
+    def _fit_from_bounds(self) -> None:
+        """
+        Re-fit from the extent already known, rather than asking for autoRange.
+
+        autoRange walks every item in the box to work out where the data is.
+        During a stacked rebuild that walk can reach an item belonging to a
+        pane that is being destroyed, and Windows turns that into an access
+        violation — a hard crash, not an exception. The bounds were computed
+        when the traces were set and are cached; padding them is the same
+        answer without the walk.
         """
         if self._bounds is None:
             return
-        self._apply_limits_to(self._bounds)
-        # A fitted view should stay fitted when the pane changes size, because
-        # the pane just changed how many pixels a share of the range is worth.
-        # Re-fitting is the only way to get the room back: pyqtgraph switches
-        # auto-range off as soon as a range has been settled on, so nothing
-        # else will. A view the reader has zoomed into is left where they put
-        # it — silently pulling it back to the full extent on a window drag
-        # would be far worse than a tight label.
-        if self._is_fitted():
-            self.plot.getViewBox().autoRange()
+        box = self.plot.getViewBox()
+        x_low, x_high, y_low, y_high = self._bounds
+        if x_high <= x_low or y_high <= y_low:
+            return
+        pad_x = box.suggestPadding(0) * (x_high - x_low)
+        pad_y = box.suggestPadding(1) * (y_high - y_low)
+        # the fence set just above clamps these back to the data where it
+        # should — no negative time, mass or intensity
+        box.setRange(xRange=(x_low - pad_x, x_high + pad_x),
+                     yRange=(y_low - pad_y, y_high + pad_y),
+                     padding=0)
 
     def _is_fitted(self) -> bool:
         """Whether the view is showing the whole of the data, rather than a zoom."""

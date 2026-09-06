@@ -605,3 +605,16 @@ def test_automatic_outlier_removal_runs_on_request():
                                  tolerance=15.0)["Oxy"]
     assert len(cleaned.used_points) < len(plain.used_points)
     assert cleaned.r2 > plain.r2
+
+
+def test_dropping_the_standard_clears_the_ratios_it_produced():
+    from openpeakview.quantify import link_internal_standards
+    method, results = _method_with_is(), _results()
+    link_internal_standards(results, method)
+    method.by_name("Analyte").internal_standard = "a standard that has no row"
+    link_internal_standards(results, method)
+    analyte = results.get("s1", "Analyte")
+    assert analyte.internal_standard == ""
+    assert analyte.is_area is None
+    assert analyte.area_ratio is None
+    assert analyte.height_ratio is None

@@ -9,6 +9,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 from ..quantify import FAIL, MARGINAL, PASS, PeakResult, ResultsSet
 from ..session import Session
+from . import theme
 
 #: colours of the confidence traffic light
 CONFIDENCE_COLOURS = {PASS: "#2ca02c", MARGINAL: "#e8a33d", FAIL: "#d62728"}
@@ -73,6 +74,10 @@ COLUMNS: list[Column] = [
 ]
 FIELD_INDEX = {c.field: i for i, c in enumerate(COLUMNS)}
 USED_COLUMN = FIELD_INDEX["used"]
+IS_COLUMN = FIELD_INDEX["internal_standard"]
+
+#: widest a column is made when fitted to its contents
+MAX_AUTO_WIDTH = 320
 
 
 class ResultsModel(QtCore.QAbstractTableModel):
@@ -83,6 +88,8 @@ class ResultsModel(QtCore.QAbstractTableModel):
     """
 
     sigUsedChanged = QtCore.pyqtSignal()
+    #: (component, internal standard) chosen in the table
+    sigInternalStandardChanged = QtCore.pyqtSignal(str, str)
 
     def __init__(self, session: Session, parent=None):
         super().__init__(parent)
@@ -95,6 +102,12 @@ class ResultsModel(QtCore.QAbstractTableModel):
         self.beginResetModel()
         self._rows = list(results)
         self.endResetModel()
+
+    def shape(self) -> tuple[int, int, int]:
+        """What the table holds, ignoring the values — see _fit_columns."""
+        return (len(self._rows),
+                len({r.component for r in self._rows}),
+                len({r.sample_key for r in self._rows}))
 
     def result_at(self, row: int) -> PeakResult | None:
         return self._rows[row] if 0 <= row < len(self._rows) else None
@@ -122,10 +135,38 @@ class ResultsModel(QtCore.QAbstractTableModel):
             return result.rt_delta
         if column.field == "flags_text":
             return ", ".join(result.flags)
+        if column.field == "internal_standard":
+            # link_internal_standards leaves this empty when the name does not
+            # resolve; showing the method's own text is what makes a mistyped
+            # standard visible instead of looking like "no standard set"
+            return result.internal_standard or self._named_standard(result)
         if column.field == "response_value":
             component = self.session.method.by_name(result.component)
             return result.response(component.response if component else "area")
         return getattr(result, column.field, "")
+
+    def _named_standard(self, result: PeakResult) -> str:
+        """What the method says, even when no row of that name exists."""
+        component = self.session.method.by_name(result.component)
+        return component.internal_standard if component else ""
+
+    def _standard_problem(self, result: PeakResult) -> str:
+        """
+        Why the named standard is not one, or "" when it is.
+
+        internal_standard_for only asks that a component of that name exists,
+        so an analyte can end up normalised against a row nobody ever ticked
+        IS — which is what an imported spreadsheet usually produces.
+        """
+        named = self._named_standard(result)
+        if not named:
+            return ""
+        component = self.session.method.by_name(named)
+        if component is None:
+            return f"no component is named \u201c{named}\u201d"
+        if not component.is_internal_standard:
+            return f"\u201c{named}\u201d is not ticked IS in the method"
+        return ""
 
     # -- Qt interface -------------------------------------------------------------- #
     def rowCount(self, parent=QtCore.QModelIndex()) -> int:  # noqa: N802
@@ -179,12 +220,21 @@ class ResultsModel(QtCore.QAbstractTableModel):
             return int(QtCore.Qt.AlignmentFlag.AlignLeft
                        | QtCore.Qt.AlignmentFlag.AlignVCenter)
         if role == QtCore.Qt.ItemDataRole.ForegroundRole:
+            if index.column() == IS_COLUMN and self._standard_problem(result):
+                return QtGui.QBrush(QtGui.QColor(theme.warning()))
             if not result.found:
                 return QtGui.QBrush(QtGui.QColor("#b03030"))
             if not result.used:
                 return QtGui.QBrush(QtGui.QColor("#999999"))
-        if role == QtCore.Qt.ItemDataRole.ToolTipRole and result.note:
-            return result.note
+        if role == QtCore.Qt.ItemDataRole.ToolTipRole:
+            if index.column() == IS_COLUMN:
+                problem = self._standard_problem(result)
+                if problem:
+                    return problem
+            if column.decimals is None and value:
+                return str(value)
+            if result.note:
+                return result.note
         return None
 
     def flags(self, index):
@@ -192,7 +242,14 @@ class ResultsModel(QtCore.QAbstractTableModel):
                 | QtCore.Qt.ItemFlag.ItemIsSelectable)
         if index.column() == USED_COLUMN:
             return base | QtCore.Qt.ItemFlag.ItemIsUserCheckable
+        if index.column() == IS_COLUMN and self._is_editable(index.row()):
+            return base | QtCore.Qt.ItemFlag.ItemIsEditable
         return base
+
+    def _is_editable(self, row: int) -> bool:
+        """A standard is not quantified against another one."""
+        component = self.session.method.by_name(self._rows[row].component)
+        return component is not None and not component.is_internal_standard
 
     def setData(self, index, value, role=QtCore.Qt.ItemDataRole.EditRole):  # noqa: N802
         if (role == QtCore.Qt.ItemDataRole.CheckStateRole
@@ -202,7 +259,40 @@ class ResultsModel(QtCore.QAbstractTableModel):
             self.dataChanged.emit(index, index)
             self.sigUsedChanged.emit()
             return True
+        if role == QtCore.Qt.ItemDataRole.EditRole and index.column() == IS_COLUMN:
+            result = self._rows[index.row()]
+            if str(value) == self._value(result, COLUMNS[IS_COLUMN]):
+                return False
+            self.sigInternalStandardChanged.emit(result.component, str(value))
+            return True
         return False
+
+
+class InternalStandardDelegate(QtWidgets.QStyledItemDelegate):
+    """Picks the internal standard from the components ticked IS."""
+
+    def __init__(self, session: Session, parent=None):
+        super().__init__(parent)
+        self.session = session
+
+    def createEditor(self, parent, _option, index):  # noqa: N802 (Qt API)
+        combo = QtWidgets.QComboBox(parent)
+        combo.addItem("")
+        combo.addItems(sorted((c.name for c in self.session.method.internal_standards),
+                              key=str.lower))
+        current = index.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
+        # a name the method carries but no component answers to stays on offer,
+        # so opening the editor cannot quietly discard it
+        if current and combo.findText(current) < 0:
+            combo.insertItem(1, current)
+        return combo
+
+    def setEditorData(self, editor, index):  # noqa: N802 (Qt API)
+        editor.setCurrentText(index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")
+
+    def setModelData(self, editor, model, index):  # noqa: N802 (Qt API)
+        model.setData(index, editor.currentText(),
+                      QtCore.Qt.ItemDataRole.EditRole)
 
 
 class StatusFilterProxy(QtCore.QSortFilterProxyModel):
@@ -291,6 +381,8 @@ class ResultsTable(QtWidgets.QWidget):
     """The table plus its filter, view modes and export."""
 
     sigSelected = QtCore.pyqtSignal(str, str)   # sample key, component
+    #: (component, internal standard) picked in the IS column
+    sigInternalStandardChanged = QtCore.pyqtSignal(str, str)
 
     def __init__(self, session: Session, parent=None):
         super().__init__(parent)
@@ -336,9 +428,24 @@ class ResultsTable(QtWidgets.QWidget):
             QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.view.verticalHeader().setDefaultSectionSize(22)
         self.view.setAlternatingRowColors(True)
+        self.view.setItemDelegateForColumn(
+            IS_COLUMN, InternalStandardDelegate(session, self))
+        self.view.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.DoubleClicked
+            | QtWidgets.QAbstractItemView.EditTrigger.SelectedClicked)
+        header = self.view.horizontalHeader()
+        header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
+        header.setMinimumSectionSize(46)
+        header.sectionResized.connect(self._section_resized)
+        #: columns the analyst has dragged; those keep the width they were given
+        self._manual_widths: set[int] = set()
+        self._fitted_shape: tuple[int, int, int] | None = None
+        self._sizing = True
         for index, column in enumerate(COLUMNS):
             if column.width:
                 self.view.setColumnWidth(index, column.width)
+        self._sizing = False
         layout.addWidget(self.view, 1)
 
         self.summary = QtWidgets.QLabel("")
@@ -352,6 +459,7 @@ class ResultsTable(QtWidgets.QWidget):
         self.btn_export.clicked.connect(self._export)
         self.view.selectionModel().selectionChanged.connect(self._on_selection)
         self.model.sigUsedChanged.connect(self._update_summary)
+        self.model.sigInternalStandardChanged.connect(self.sigInternalStandardChanged)
         session.sigResultsChanged.connect(self.reload)
         self.reload()
 
@@ -359,7 +467,38 @@ class ResultsTable(QtWidgets.QWidget):
     def reload(self) -> None:
         self.model.set_results(self.session.results)
         self._apply_view_mode()
+        self._fit_columns()
         self._update_summary()
+
+    def _section_resized(self, index: int, _old: int, _new: int) -> None:
+        """A column the analyst sized by hand keeps that width from then on."""
+        if not self._sizing:
+            self._manual_widths.add(index)
+
+    def _fit_columns(self) -> None:
+        """
+        Widen the columns to what they actually hold.
+
+        The fixed widths were guesses; a component called
+        LacCER(d18:1/24:1(15Z)) does not fit any of them.
+
+        Measuring every cell of a twenty-sample batch costs a third of a
+        second, and results reload after each manual integration, so this only
+        runs when the batch itself changed — not when its numbers did.
+        """
+        shape = self.model.shape()
+        if shape == self._fitted_shape:
+            return
+        self._fitted_shape = shape
+        self._sizing = True
+        for index, column in enumerate(COLUMNS):
+            if index in self._manual_widths or self.view.isColumnHidden(index):
+                continue
+            self.view.resizeColumnToContents(index)
+            self.view.setColumnWidth(
+                index, min(max(self.view.columnWidth(index), column.width),
+                           MAX_AUTO_WIDTH))
+        self._sizing = False
 
     def _apply_view_mode(self, *_args) -> None:
         primary = (FIELD_INDEX["sample_name"] if self.view_combo.currentIndex() == 0

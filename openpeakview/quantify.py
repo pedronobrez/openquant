@@ -344,6 +344,14 @@ def link_internal_standards(results: ResultsSet, method: ProcessingMethod) -> No
             continue
         standard = method.internal_standard_for(component)
         if standard is None:
+            # the component was pointed at another standard, at none, or at a
+            # name nothing answers to: the old ratios describe a link that is
+            # gone, so they go with it rather than quietly standing
+            result.internal_standard = ""
+            result.is_area = None
+            result.is_height = None
+            result.area_ratio = None
+            result.height_ratio = None
             continue
         result.internal_standard = standard.name
         reference = results.get(result.sample_key, standard.name)

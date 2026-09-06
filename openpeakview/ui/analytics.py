@@ -82,6 +82,14 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.component_tree = QtWidgets.QTreeWidget()
         self.component_tree.setHeaderHidden(True)
         self.component_tree.setAlternatingRowColors(True)
+        # a name wider than the pane scrolls into view rather than being cut;
+        # dragging the splitter is the other way to read it
+        self.component_tree.setTextElideMode(QtCore.Qt.TextElideMode.ElideNone)
+        self.component_tree.header().setSectionResizeMode(
+            QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        self.component_tree.header().setStretchLastSection(False)
+        self.component_tree.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         left_layout.addWidget(self.component_tree, 1)
         self.integration = IntegrationPanel()
         left_layout.addWidget(self.integration)
@@ -116,6 +124,10 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.btn_calibrate.clicked.connect(lambda: self._recalibrate())
         self.component_filter.textChanged.connect(self._filter_components)
         self.component_tree.currentItemChanged.connect(self._on_component_changed)
+        # queued: the recalculation resets the results model, which must not
+        # happen while the table's editor is still closing over the cell
+        self.results.sigInternalStandardChanged.connect(
+            self._set_internal_standard, QtCore.Qt.ConnectionType.QueuedConnection)
         self.grid.sigSelected.connect(self._on_panel_selected)
         self.grid.sigMagnified.connect(self._on_panel_magnified)
         self.grid.sigManualRange.connect(self._on_manual_range)
@@ -160,6 +172,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             label = component.name + (" (IS)" if component.is_internal_standard else "")
             item = QtWidgets.QTreeWidgetItem(parent, [label])
             item.setData(0, ROLE_NAME, component.name)
+            item.setToolTip(0, label)
             if component.name == current:
                 selected_item = item
         self.component_tree.blockSignals(False)
@@ -408,6 +421,24 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self._report(
             f"{entry.name}: integrated {min(start, end):.3f}–{max(start, end):.3f} min "
             f"by hand — area {result.area:,.0f}")
+
+    def _set_internal_standard(self, component_name: str, standard: str) -> None:
+        """
+        Point a component at another internal standard from the results table.
+
+        Every ratio, response and calculated concentration that came off the old
+        standard is wrong the moment this changes, so they are recomputed here
+        rather than left for the analyst to remember to refresh.
+        """
+        component = self.session.method.by_name(component_name)
+        if component is None:
+            return
+        component.internal_standard = standard
+        self.session.notify_method_changed()
+        self._relink()
+        self._recalibrate()
+        self._report(f"{component_name} is now quantified against "
+                     + (f"{standard}." if standard else "its own area."))
 
     def _relink(self) -> None:
         from ..quantify import compute_ion_ratios, link_internal_standards

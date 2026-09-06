@@ -34,3 +34,28 @@ def test_the_spec_and_the_package_agree_on_the_version():
     spec = (ROOT / "packaging" / "openquant.spec").read_text()
     assert "__version__" in spec, "the spec should read the version, not repeat it"
     assert openquant.__version__ not in spec, "the spec has a version written into it"
+
+
+def test_the_wine_shim_stays_out_of_the_installer():
+    """
+    It must never be packaged.
+
+    On real Windows an application-local icuuc.dll is found before the one in
+    System32, so shipping the stub would replace working ICU with a stub for
+    every user who has the real thing. It exists to be copied into a Wine
+    prefix by hand.
+    """
+    stub = ROOT / "packaging" / "wine" / "icuuc_stub.c"
+    assert stub.exists(), "the shim's source is gone but its guard is still here"
+
+    spec = (ROOT / "packaging" / "openquant.spec").read_text()
+    wxs = WXS.read_text()
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    for name, text in (("spec", spec), ("wxs", wxs), ("workflow", workflow)):
+        assert "icuuc" not in text.lower(), f"the {name} references the ICU shim"
+
+    # and nothing built by PyInstaller may carry one either
+    built = ROOT / "dist"
+    if built.is_dir():
+        found = [p for p in built.rglob("icuuc*") if p.is_file()]
+        assert not found, f"an ICU shim reached the build: {found}"

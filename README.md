@@ -19,9 +19,15 @@ symbols from `icuuc.dll` and the wheel ships no ICU of its own, because
 Windows has provided one in System32 since that release — `icuuc.dll` and
 `icuin.dll` forwarding to a 2.7 MB `icu.dll`. Wine implements neither, so the
 loader stops at `Qt6Core.dll` with *"DLL load failed while importing QtCore:
-Module not found"*, having mapped the file successfully. Copying those three
-files from a real Windows into the bottle's `system32` is what it would take;
-nothing in this repository can fix it.
+Module not found"*, having mapped the file successfully.
+
+There is a way round it: `packaging/wine/` holds an 8 KB stub `icuuc.dll`
+exporting exactly those eighteen symbols, which is enough for Qt to load and
+fall back to the codecs it implements itself. With it in place, CrossOver
+26.3 on macOS ran the Windows build and read a real acquisition, returning
+the same numbers as the macOS build. It is deliberately not in the installer:
+on a real Windows machine an application-local `icuuc.dll` would be found
+before the genuine one. See that directory for why and how.
 
 *Formerly OpenPeakView. Projects saved as `.opvproj` still open; new ones are
 written as `.oqproj`.*

@@ -8,6 +8,10 @@ name: CI
 on:
   push:
     branches: [main]
+    # tagging is the release action: it is what builds the three installers.
+    # Without this the package job below could never fire, because its own
+    # condition asks for a ref the workflow was never started for.
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -128,6 +132,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     needs: test
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    # needed to create the release and hang the installers off it
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -203,3 +210,16 @@ jobs:
             dist/*.msi
             dist/*.tar.gz
           if-no-files-found: error
+
+      # a build artefact expires; a release does not, and it is the only copy
+      # anyone else can be pointed at
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "${GITHUB_REF_NAME}" --generate-notes --verify-tag \
+            --title "OpenQuant ${GITHUB_REF_NAME}" || true
+          gh release upload "${GITHUB_REF_NAME}" \
+            dist/*.dmg dist/*.msi dist/*.tar.gz --clobber

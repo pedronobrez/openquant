@@ -302,14 +302,28 @@ class StatusFilterProxy(QtCore.QSortFilterProxyModel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._status = "All"
+        self._component = ""
 
     def set_status(self, status: str) -> None:
         self._status = status
         self.invalidateFilter()
 
+    def set_component(self, component: str) -> None:
+        """Narrow to one component; "" is every one of them."""
+        self._component = component
+        self.invalidateFilter()
+
+    @property
+    def component(self) -> str:
+        return self._component
+
     def filterAcceptsRow(self, row, parent):  # noqa: N802 (Qt API)
         if not super().filterAcceptsRow(row, parent):
             return False
+        if self._component:
+            result = self.sourceModel().result_at(row)
+            if result is not None and result.component != self._component:
+                return False
         if self._status == "All":
             return True
         model = self.sourceModel()
@@ -507,18 +521,27 @@ class ResultsTable(QtWidgets.QWidget):
         self.proxy.sort(primary, QtCore.Qt.SortOrder.AscendingOrder)
 
     def _update_summary(self) -> None:
-        rows = list(self.session.results)
+        component = self.proxy.component
+        rows = [r for r in self.session.results
+                if not component or r.component == component]
         found = sum(1 for r in rows if r.found)
         unused = sum(1 for r in rows if not r.used)
         failed = sum(1 for r in rows if r.status == FAIL)
         marginal = sum(1 for r in rows if r.status == MARGINAL)
         passed = sum(1 for r in rows if r.status == PASS)
         text = f"{len(rows)} row(s), {found} integrated"
+        if component:
+            text = f"{component} · " + text
         if unused:
             text += f", {unused} excluded"
         if passed or failed or marginal:
             text += f" · {passed} pass, {marginal} marginal, {failed} fail"
         self.summary.setText(text)
+
+    def set_component_filter(self, component: str) -> None:
+        """Show only one component's rows; "" shows the whole batch."""
+        self.proxy.set_component(component)
+        self._update_summary()
 
     # -- selection ------------------------------------------------------------------ #
     def _on_selection(self, *_args) -> None:

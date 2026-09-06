@@ -27,6 +27,10 @@ from .results_table import ResultsTable
 
 ROLE_NAME = QtCore.Qt.ItemDataRole.UserRole
 
+#: the tree entry that means "do not narrow anything down". Not a component
+#: name, and picked so no real one can collide with it.
+ALL_COMPONENTS = "\u0000all-components"
+
 
 class AnalyticsWorkspace(QtWidgets.QWidget):
     """
@@ -40,6 +44,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         super().__init__(parent)
         self.session = session
         self._component: Component | None = None
+        self._all_components = False
         self._magnified = False
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -162,12 +167,21 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
 
     # -- components ---------------------------------------------------------------- #
     def reload_components(self) -> None:
-        current = self._component.name if self._component else None
+        current = (ALL_COMPONENTS if self._all_components
+                   else self._component.name if self._component else None)
         self.component_tree.blockSignals(True)
         self.component_tree.clear()
 
         groups: dict[str, QtWidgets.QTreeWidgetItem] = {}
-        selected_item = None
+        all_item = QtWidgets.QTreeWidgetItem(self.component_tree,
+                                             ["All components"])
+        all_item.setData(0, ROLE_NAME, ALL_COMPONENTS)
+        all_item.setToolTip(0, "Every peak of every component, and the whole "
+                               "results table")
+        font = all_item.font(0)
+        font.setBold(True)
+        all_item.setFont(0, font)
+        selected_item = all_item if current == ALL_COMPONENTS else None
         for component in self.session.method.components:
             parent = self.component_tree
             if component.group:
@@ -215,7 +229,14 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
 
     def _on_component_changed(self, current, _previous) -> None:
         name = current.data(0, ROLE_NAME) if current is not None else None
-        self._component = self.session.method.by_name(name) if name else None
+        self._all_components = name == ALL_COMPONENTS
+        self._component = (None if self._all_components
+                           else self.session.method.by_name(name) if name else None)
+        # the results table follows the tree: reviewing one component against a
+        # table of every other one is what made the table hard to read
+        self.results.set_component_filter(
+            "" if self._all_components or self._component is None
+            else self._component.name)
         self._show_integration_params()
         self.refresh_grid()
         self.refresh_calibration()
@@ -232,6 +253,9 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
 
     # -- grid ------------------------------------------------------------------------ #
     def refresh_grid(self) -> None:
+        if self._all_components:
+            self._refresh_grid_all()
+            return
         component = self._component
         if component is None:
             self.grid.clear()
@@ -269,6 +293,43 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             message += f" · qualifier of {quantifier.name}"
         self._report(message)
 
+    def _refresh_grid_all(self) -> None:
+        """
+        Every peak of every component, built a page at a time.
+
+        Extracting all of them on a real batch — 141 components across 26
+        samples — is around a hundred seconds of work to put nine on screen.
+        """
+        loaded = [e for e in self.session.entries if e.is_loaded]
+        components = [c for c in self.session.method.components if c.is_valid]
+        pairs = [(c, e) for c in components for e in loaded]
+
+        def fetch(start: int, stop: int) -> list[tuple]:
+            return [self._grid_item(c, e) for c, e in pairs[start:stop]]
+
+        self.grid.set_lazy("All components", len(pairs), fetch)
+        self._report(f"{len(components)} component(s) across {len(loaded)} "
+                     f"sample(s) — {len(pairs)} peak(s)")
+
+    def _grid_item(self, component: Component, entry) -> tuple:
+        """One panel's worth: the result, its trace, and the standard's."""
+        method = self.session.method
+        result = self.session.results.get(entry.key, component.name)
+        if result is None:
+            result = PeakResult(
+                sample_key=entry.key, sample_name=entry.name,
+                component=component.name, group=component.group,
+                expected_rt=component.rt, note="not processed",
+            )
+        x, y, _channel = extract_xic(entry, component, method, self.session.cache)
+        standard = method.internal_standard_for(component)
+        is_trace = None
+        if standard is not None:
+            sx, sy, _ = extract_xic(entry, standard, method, self.session.cache)
+            if sx.size:
+                is_trace = (sx, sy)
+        return (result, x, y, component.rt_window(), is_trace)
+
     # -- acceptance ------------------------------------------------------------------ #
     def _apply_acceptance_component(self, limits) -> None:
         component = self._component
@@ -297,6 +358,9 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
     # -- calibration ---------------------------------------------------------------- #
     def refresh_calibration(self) -> None:
         component = self._component
+        if component is None:
+            self.calibration.show_curve(None)
+            return
         curve = (self.session.calibrations.get(component.name)
                  if component is not None else None)
         self.calibration.show_curve(

@@ -207,6 +207,9 @@ class PeakReviewGrid(QtWidgets.QWidget):
         super().__init__(parent)
         self._panels: list[PeakPanel] = []
         self._items: list[tuple] = []   # (result, x, y, expected, is_trace)
+        #: when set, items are fetched a page at a time instead of held here
+        self._fetch = None
+        self._total = 0
         self._page = 0
         self._selected = ""
         self._shared_y = False
@@ -307,10 +310,14 @@ class PeakReviewGrid(QtWidgets.QWidget):
         return self.col_spin.value() * self.row_spin.value()
 
     @property
+    def item_count(self) -> int:
+        return self._total if self._fetch is not None else len(self._items)
+
+    @property
     def page_count(self) -> int:
-        if not self._items:
+        if not self.item_count:
             return 0
-        return (len(self._items) + self.page_size - 1) // self.page_size
+        return (self.item_count + self.page_size - 1) // self.page_size
 
     def _relayout(self) -> None:
         """Rebuild the panel widgets for the current rows x columns."""
@@ -377,6 +384,23 @@ class PeakReviewGrid(QtWidgets.QWidget):
         """
         self.title.setText(title)
         self._items = list(items)
+        self._fetch = None
+        self._total = 0
+        self._page = 0
+        self._fill()
+
+    def set_lazy(self, title: str, total: int, fetch) -> None:
+        """
+        Show `total` peaks, asking `fetch(start, stop)` for a page at a time.
+
+        Every peak of every component is 141 x 26 extractions on a real batch,
+        about a hundred seconds of work to show nine of them. Only the page in
+        view is built.
+        """
+        self.title.setText(title)
+        self._items = []
+        self._fetch = fetch
+        self._total = int(total)
         self._page = 0
         self._fill()
 
@@ -389,11 +413,16 @@ class PeakReviewGrid(QtWidgets.QWidget):
 
     def _fill(self) -> None:
         start = self._page * self.page_size
-        page_items = self._items[start:start + self.page_size]
+        if self._fetch is not None:
+            page_items = self._fetch(start, start + self.page_size)
+        else:
+            page_items = self._items[start:start + self.page_size]
 
         ceiling = 0.0
         if self._shared_y:
-            for item in self._items:
+            # a shared ceiling over a lazy source would mean building every
+            # page, so it spans the page in view
+            for item in (self._items or page_items):
                 y = item[2]
                 if y.size:
                     ceiling = max(ceiling, float(np.max(y)))

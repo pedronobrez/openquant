@@ -16,6 +16,13 @@ from ..processing import ChromPeak
 from .plots import ChromatogramView, Trace
 
 
+#: the least a stacked pane can be and still be a chromatogram. Twenty-six
+#: samples in the height of one plot gives each about thirty pixels — one tick
+#: label, no axis, the trace a smear — so past that many the area scrolls
+#: instead of dividing further.
+MIN_STACKED_PANE = 110
+
+
 class ChromatogramArea(QtWidgets.QWidget):
     """Holds the chromatogram panes and keeps their display options in sync."""
 
@@ -44,9 +51,15 @@ class ChromatogramArea(QtWidgets.QWidget):
         }
 
         self.splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+        self.scroll = QtWidgets.QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.setWidget(self.splitter)
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.splitter)
+        layout.addWidget(self.scroll)
 
         self._views: list[ChromatogramView] = []
         self._keys: list[str] = []
@@ -93,7 +106,13 @@ class ChromatogramArea(QtWidgets.QWidget):
                 view.background.blockSignals(True)
                 view.set_background_range(*background)
                 view.background.blockSignals(False)
+        self._keep_panes_readable()
         self.autoscale()
+
+    def _keep_panes_readable(self) -> None:
+        """Scroll rather than shrink once the panes would stop being legible."""
+        wanted = len(self._views) * MIN_STACKED_PANE if self._stacked else 0
+        self.splitter.setMinimumHeight(wanted if wanted > self.scroll.height() else 0)
 
     def set_stacked(self, enabled: bool) -> None:
         if enabled == self._stacked:

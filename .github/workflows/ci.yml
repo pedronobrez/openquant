@@ -258,3 +258,57 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" --generate-notes --verify-tag \
             --title "OpenQuant ${GITHUB_REF_NAME}" 2>/dev/null || true
           gh release upload "${GITHUB_REF_NAME}" "${built[@]}" --clobber
+
+  linux-crash:
+    # A temporary investigation, not part of the gate. Answers two questions
+    # about the Linux segfault in one run: whether it is accumulation, and
+    # what the native stack looks like when it happens.
+    name: Linux crash probe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Qt runtime libraries and gdb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 \
+            libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-shape0 libxcb-xinerama0 libdbus-1-3 libglib2.0-0 xvfb gdb
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest
+          python -c "import PyQt6.QtCore as c, pyqtgraph as pg; \
+            print('Qt', c.QT_VERSION_STR, 'PyQt', c.PYQT_VERSION_STR, \
+                  'pyqtgraph', pg.__version__)"
+
+      - name: Widgets kept alive
+        continue-on-error: true
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/linux_probe.py grow 400
+
+      - name: Widgets created and destroyed
+        continue-on-error: true
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/linux_probe.py churn 400
+
+      - name: Widgets kept alive, under a real display
+        continue-on-error: true
+        run: xvfb-run -a python tools/linux_probe.py grow 400
+
+      # the question the Python traceback cannot answer: what Qt was doing
+      - name: Native backtrace from the suite
+        continue-on-error: true
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          gdb --batch -ex run -ex "bt 40" -ex "info threads" \
+            --args python -m pytest -q -p no:cacheprovider 2>&1 | tail -80

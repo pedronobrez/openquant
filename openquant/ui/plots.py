@@ -104,6 +104,8 @@ class BasePlot(QtWidgets.QWidget):
         self._offset_y = 0.0
         self._stick_mode = False
         self._arrows: list[pg.InfiniteLine] = []
+        self._match_marks = None
+        self._match_labels: list = []
         self._relative_labels = True
         self._syncing_overview = False
 
@@ -274,6 +276,7 @@ class BasePlot(QtWidgets.QWidget):
         self.redraw()
 
     def redraw(self) -> None:
+        self.clear_matches()
         for curve in self._curves.values():
             self.plot.removeItem(curve)
         self._curves.clear()
@@ -389,6 +392,51 @@ class BasePlot(QtWidgets.QWidget):
     def _marker_moved(self, line) -> None:
         line.label.setText(f"{float(line.value()):.4f}")
         self._after_traces_changed()
+
+    def set_matches(self, matched: list[tuple[float, str]],
+                    colour: str = "#2ca02c") -> None:
+        """
+        Mark the peaks a prediction accounts for.
+
+        Drawn as its own scatter above the trace rather than by recolouring it:
+        a measured spectrum should keep looking like what was measured, with
+        the interpretation laid over the top and removable.
+        """
+        self.clear_matches()
+        if not matched:
+            return
+        x = np.array([mz for mz, _ in matched], dtype=float)
+        y = np.array([self._height_at(mz) for mz in x], dtype=float)
+        self._match_marks = pg.ScatterPlotItem(
+            x=x, y=y, symbol="t1", size=11,
+            pen=pg.mkPen(colour, width=1.2), brush=pg.mkBrush(colour))
+        self._match_marks.setZValue(60)
+        self.plot.addItem(self._match_marks, ignoreBounds=True)
+        for mz, label in matched:
+            text = pg.TextItem(label, color=colour, anchor=(0.5, 1.6))
+            text.setPos(mz, self._height_at(mz))
+            text.setZValue(60)
+            self.plot.addItem(text, ignoreBounds=True)
+            self._match_labels.append(text)
+
+    def clear_matches(self) -> None:
+        if self._match_marks is not None:
+            self.plot.removeItem(self._match_marks)
+            self._match_marks = None
+        for text in self._match_labels:
+            self.plot.removeItem(text)
+        self._match_labels.clear()
+
+    def _height_at(self, mz: float) -> float:
+        """The trace height at a mass, for placing a mark on top of the peak."""
+        for trace in self._traces:
+            x, y = self._display(trace, 0)
+            if not len(x):
+                continue
+            index = int(np.argmin(np.abs(x - mz)))
+            if abs(float(x[index]) - mz) < 0.5:
+                return float(y[index])
+        return 0.0
 
     def clear_markers(self) -> None:
         for line in self._arrows:
@@ -658,8 +706,11 @@ class SpectrumView(BasePlot):
         if not traces:
             return []
         x, y = self.condition(traces[0])
+        # centroid mode has already reduced the profile to sticks; centroiding
+        # again averages a stick with its neighbours and moves the mass — a
+        # ceramide's 264.2668 was being reported as 264.1181
         return pick_peaks(x, y, max_peaks=max_peaks, min_relative=0.005,
-                          min_distance=0.03)
+                          min_distance=0.03, centroid=not self._centroid)
 
     # -- theoretical overlay ---------------------------------------------------- #
     def set_overlay(self, peaks: list[tuple[float, float]], label: str = "",

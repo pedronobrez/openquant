@@ -206,3 +206,28 @@ def test_peak_grid_zoom_without_an_expected_window(qapp):
     assert grid._x_range(missing, None) is None
     found = PeakResult("s", "QC", "Oxy", area=1.0, start_rt=5.0, end_rt=6.0)
     assert grid._x_range(found, None) == pytest.approx((4.0, 7.0))
+
+
+def test_a_centroided_spectrum_is_not_centroided_a_second_time(qapp):
+    """
+    pick_peaks centroids around each maximum. Run over sticks that are already
+    centroids it averages a stick with its neighbours, and the mass moves — a
+    ceramide's 264.2668 was reported as 264.1181, 149 mDa out.
+    """
+    from openquant.ui.plots import SpectrumView, Trace
+
+    # one clean gaussian peak in profile, the way a TOF records it
+    centre, width = 264.2668, 0.006
+    x = np.linspace(centre - 0.05, centre + 0.05, 201)
+    y = 100.0 * np.exp(-((x - centre) ** 2) / (2 * width ** 2))
+
+    view = SpectrumView()
+    view.resize(700, 300)
+    view.set_traces([Trace("s", "peak", x, y, "#1f77b4")])
+    for centroid in (False, True):
+        view.set_centroid(centroid)
+        qapp.processEvents()
+        found = view.peaks_of_current(max_peaks=5)
+        assert found, centroid
+        assert found[0][0] == pytest.approx(centre, abs=2e-3), centroid
+    view.close()

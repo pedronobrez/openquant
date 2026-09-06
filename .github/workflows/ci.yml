@@ -114,3 +114,92 @@ jobs:
           bootstrap.ensure()
           print('Clearcore2 loaded')
           "
+
+  package:
+    # One artefact per system, each built on its own runner: there is no cross
+    # compilation for this, and a bundle is the interpreter plus every compiled
+    # extension for that machine.
+    #
+    # Nothing is signed. On macOS that costs nothing until the file travels —
+    # Gatekeeper reacts to the quarantine attribute a download attaches, not to
+    # the absence of a signature. On Windows SmartScreen will warn until there
+    # is a certificate.
+    name: Package · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    needs: test
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0"
+
+      - name: Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 \
+            libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-shape0 libxcb-xinerama0 libdbus-1-3 libglib2.0-0
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pyinstaller
+
+      - name: Build
+        run: python -m PyInstaller packaging/openquant.spec --noconfirm
+
+      # the bundle either reads a .wiff or it does not, and this is the only
+      # way to find out without a person and a mouse
+      - name: The bundle works
+        env:
+          QT_QPA_PLATFORM: offscreen
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            dist/OpenQuant.app/Contents/MacOS/OpenQuant --selftest
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            ./dist/OpenQuant/OpenQuant.exe --selftest
+          else
+            ./dist/OpenQuant/OpenQuant --selftest
+          fi
+
+      - name: Disk image
+        if: runner.os == 'macOS'
+        run: bash packaging/make_dmg.sh "$PWD/dist"
+
+      - name: Installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix
+          $version = (Select-String -Path openquant/__init__.py `
+            -Pattern '__version__ = "([^"]+)"').Matches.Groups[1].Value
+          wix build packaging/openquant.wxs -d Version=$version -b dist `
+            -o "dist/OpenQuant-$version-windows-x64.msi"
+
+      - name: Tarball
+        if: runner.os == 'Linux'
+        run: |
+          version=$(python -c "import openquant; print(openquant.__version__)")
+          tar -C dist -czf "dist/OpenQuant-$version-linux-x86_64.tar.gz" OpenQuant
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openquant-${{ runner.os }}
+          path: |
+            dist/*.dmg
+            dist/*.msi
+            dist/*.tar.gz
+          if-no-files-found: error

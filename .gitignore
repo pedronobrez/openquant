@@ -17,6 +17,12 @@ venv/
 .pytest_cache/
 .ruff_cache/
 
+# Empacotamento (PyInstaller)
+dist/
+build/
+*.dmg
+*.msi
+
 # Exportacoes e resultados locais
 exports/
 *.csv

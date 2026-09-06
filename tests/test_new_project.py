@@ -240,3 +240,27 @@ def test_editing_a_row_does_not_stack_a_second_widget_on_it(qapp, wizard):
     combos = page.table.viewport().findChildren(QtWidgets.QComboBox)
     assert len(combos) == page.table.rowCount() * 2
     assert page.table.cellWidget(0, 2).currentText() == STANDARD
+
+
+def test_the_selftest_reports_without_opening_a_window(qapp, capsys):
+    """
+    A packaged application either reads a .wiff or it does not, and the build
+    machine has no one to click. This is how CI finds out.
+    """
+    from openquant.app import _selftest
+
+    code = _selftest([])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "OpenQuant" in out
+    assert "LIPID MAPS index:" in out
+    assert "SCIEX libraries:" in out
+
+
+def test_a_file_it_cannot_read_is_a_failure_not_a_silence(qapp, tmp_path):
+    """A build that packages the wrong assemblies must not exit zero."""
+    from openquant import app as app_module
+
+    broken = tmp_path / "not-really.wiff"
+    broken.write_text("nonsense")
+    assert app_module._selftest([str(broken)]) == 1

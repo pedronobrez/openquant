@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Windows installer, built from the PyInstaller output.
+
+  Unsigned. That does not stop it installing, but SmartScreen will show
+  "Windows protected your PC" and the reader has to choose More info → Run
+  anyway. A code signing certificate removes that; nothing else does.
+
+  The whole application directory is taken as it stands, rather than each file
+  being listed: a PyInstaller bundle is a few thousand files and no hand-kept
+  list survives a dependency change.
+
+  Build (WiX 5, installed as a dotnet tool):
+      dotnet tool install --global wix
+      wix build packaging/openquant.wxs -d Version=0.5.0 -b dist -o OpenQuant.msi
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="OpenQuant"
+           Manufacturer="OpenQuant"
+           Version="$(Version)"
+           UpgradeCode="9f2a5c41-3d7e-4a19-bf62-0c8d1e4a7b53"
+           Scope="perUser"
+           Compressed="yes">
+
+    <!-- an upgrade replaces the previous version rather than sitting beside it -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of OpenQuant is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="OpenQuant" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ShortcutFolder" Name="OpenQuant" />
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="OpenQuant" Level="1">
+      <ComponentGroupRef Id="ApplicationFiles" />
+      <ComponentGroupRef Id="Shortcuts" />
+    </Feature>
+
+    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
+      <Files Include="OpenQuant\**" />
+    </ComponentGroup>
+
+    <ComponentGroup Id="Shortcuts" Directory="ShortcutFolder">
+      <Component Id="StartMenuShortcut" Guid="*">
+        <Shortcut Id="OpenQuantShortcut"
+                  Name="OpenQuant"
+                  Target="[INSTALLFOLDER]OpenQuant.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveShortcutFolder" Directory="ShortcutFolder"
+                      On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\OpenQuant"
+                       Name="installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Package>
+</Wix>

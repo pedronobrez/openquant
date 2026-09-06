@@ -46,7 +46,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 \
             libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
-            libxcb-shape0 libxcb-xinerama0 libdbus-1-3 libglib2.0-0
+            libxcb-shape0 libxcb-xinerama0 libdbus-1-3 libglib2.0-0 xvfb
 
       - name: Install
         run: |
@@ -54,19 +54,28 @@ jobs:
           python -m pip install -e .
           python -m pip install pytest
 
+      # Linux gets a real X server rather than Qt's offscreen platform.
+      # offscreen crashed inside pg.PlotWidget's own constructor — a segfault
+      # with no Python frame under it, in different tests from run to run —
+      # and the same construction is fine under xvfb and on the other two
+      # systems. macOS and Windows stay offscreen, where they are steady.
       - name: Test
-        env:
-          # no display on any runner, and the suite never opens a window
-          QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a python -m pytest -q
+          else
+            QT_QPA_PLATFORM=offscreen python -m pytest -q
+          fi
 
       - name: The app starts
-        env:
-          QT_QPA_PLATFORM: offscreen
+        shell: bash
         # -X faulthandler so a crash in Qt names the Python line that caused
         # it. Without it a segfault here is just an exit code.
         run: |
-          python -X faulthandler -c "
+          run() { if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a "$@";
+                  else QT_QPA_PLATFORM=offscreen "$@"; fi; }
+          run python -X faulthandler -c "
           import openquant
           from PyQt6 import QtWidgets
           from openquant.ui import style
@@ -162,7 +171,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 \
             libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
-            libxcb-shape0 libxcb-xinerama0 libdbus-1-3 libglib2.0-0
+            libxcb-shape0 libxcb-xinerama0 libdbus-1-3 libglib2.0-0 xvfb
 
       - name: Install
         run: |
@@ -175,16 +184,14 @@ jobs:
       # the bundle either reads a .wiff or it does not, and this is the only
       # way to find out without a person and a mouse
       - name: The bundle works
-        env:
-          QT_QPA_PLATFORM: offscreen
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then
-            dist/OpenQuant.app/Contents/MacOS/OpenQuant --selftest
+            QT_QPA_PLATFORM=offscreen dist/OpenQuant.app/Contents/MacOS/OpenQuant --selftest
           elif [ "$RUNNER_OS" = "Windows" ]; then
-            ./dist/OpenQuant/OpenQuant.exe --selftest
+            QT_QPA_PLATFORM=offscreen ./dist/OpenQuant/OpenQuant.exe --selftest
           else
-            ./dist/OpenQuant/OpenQuant --selftest
+            xvfb-run -a ./dist/OpenQuant/OpenQuant --selftest
           fi
 
       - name: Disk image

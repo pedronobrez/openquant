@@ -13,6 +13,16 @@ for all three. Reading a `.wiff` has only ever been done on macOS, though:
 that path loads SCIEX's .NET assemblies, and CI can only report that the
 runtime and the assemblies come up, not that a real acquisition opens.
 
+The Windows installer needs **Windows 10 1703 or newer**, and does not run
+under Wine or CrossOver. Qt6Core in the PyQt6 wheel imports eighteen `ucnv_*`
+symbols from `icuuc.dll` and the wheel ships no ICU of its own, because
+Windows has provided one in System32 since that release — `icuuc.dll` and
+`icuin.dll` forwarding to a 2.7 MB `icu.dll`. Wine implements neither, so the
+loader stops at `Qt6Core.dll` with *"DLL load failed while importing QtCore:
+Module not found"*, having mapped the file successfully. Copying those three
+files from a real Windows into the bottle's `system32` is what it would take;
+nothing in this repository can fix it.
+
 *Formerly OpenPeakView. Projects saved as `.opvproj` still open; new ones are
 written as `.oqproj`.*
 

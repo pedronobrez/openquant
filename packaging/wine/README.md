@@ -51,13 +51,21 @@ the same file and the output compared:
     Windows MSI under CrossOver   same
 
 Identical, to the byte, once the CRLF the Windows build writes is normalised.
-That is 81 channel chromatograms compared by sum, maximum and a SHA-256 of the
-whole array, one sample TIC, five complete spectra, five extracted traces, and
-twenty-five integrated peaks with their retention times and areas at nine
-decimal places — the numbers a quantitative result is made of.
 
-What that does and does not establish: the reader, the maths and the
-integration give the same answers on both systems, from the same file, in one
-bottle on one machine. It is not a statement about Wine in general, about
-other acquisitions, or about anything the interface does after the numbers
+Repeated over the whole batch of five acquisitions — samples, a QC and a
+standard — the three digests are again the same file, sha256
+`ebdeebc210177a8d7ab2681a56ae2b0e346e4b69`: 591 lines each, covering 405
+channel chromatograms compared by sum, maximum and a SHA-256 of the whole
+array, 5 sample TICs, 25 complete spectra, 25 extracted traces and 125
+integrated peaks with retention times and areas at nine decimal places — the
+numbers a quantitative result is made of.
+
+The comparison is not vacuous: all 405 channel hashes are distinct from one
+another, so five genuinely different acquisitions were read, not one read five
+times.
+
+What that does and does not establish: the reader, the arithmetic and the
+integration give the same answers on both systems, for these files, in one
+bottle on one machine. It says nothing about Wine in general, about other
+instruments or methods, or about anything the interface does after the numbers
 are read.

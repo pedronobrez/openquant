@@ -237,3 +237,50 @@ def test_a_record_with_no_structure_says_so_rather_than_failing():
     record = LipidRecord(lm_id="LMX", name="x", abbrev="", formula="C2H6O",
                          exact_mass=46.0)
     assert record.molecule() is None
+
+
+# -- a loss needs its functional group ---------------------------------------- #
+def test_the_groups_a_piece_carries_are_read_off_the_bonds():
+    structure = parse_molblock(ETHANOL)
+    groups = structure.functional_groups(range(len(structure.atoms)))
+    assert groups["hydroxyl"] == 1
+    assert groups["carboxyl"] == 0 and groups["carbonyl"] == 0
+
+
+def test_a_carboxyl_is_seen_as_both_carboxyl_and_carbonyl():
+    acetic = molblock([("C", 0, 0), ("C", 1, 0), ("O", 2, 0), ("O", 1, 1)],
+                      [(0, 1, 1), (1, 2, 1), (1, 3, 2)])
+    groups = parse_molblock(acetic).functional_groups(range(4))
+    assert groups["carboxyl"] == 1 and groups["carbonyl"] == 1
+    assert groups["hydroxyl"] == 1          # the -OH of the acid
+
+
+def test_a_ceramide_is_not_offered_the_carbon_dioxide_loss_it_cannot_make():
+    """
+    Counting elements said yes — three oxygens, plenty of carbon — and the
+    sphingoid base at 264.2686 came out as a CO2 loss. There is no carboxyl
+    anywhere in a ceramide.
+    """
+    structure = real("LMSP03010002", "C35H71N2O6P")
+    ions = predict(structure, max_cuts=1, max_losses=2)
+    for ion in ions:
+        groups = structure.functional_groups(ion.fragment.atoms)
+        if "CO2" in ion.losses:
+            assert groups["carboxyl"] >= ion.losses.count("CO2")
+        if "H2O" in ion.losses:
+            assert groups["hydroxyl"] >= ion.losses.count("H2O")
+
+
+def test_two_water_losses_need_two_hydroxyls():
+    one_alcohol = parse_molblock(ETHANOL)
+    ions = predict(one_alcohol, max_losses=2, min_mz=0.0)
+    assert all(ion.losses.count("H2O") <= 1 for ion in ions)
+
+
+def test_a_rival_route_to_the_same_mass_is_kept_not_dropped():
+    """Collapsing to the simplest route is what hid the right one."""
+    ions = predict(real("LMST04010001", "C24H40O5"), max_cuts=1, max_losses=2)
+    assert any(ion.alternatives for ion in ions)
+    for ion in ions:
+        assert ion.description not in ion.alternatives
+        assert len(set(ion.alternatives)) == len(ion.alternatives)

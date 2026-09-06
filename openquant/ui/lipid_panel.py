@@ -163,7 +163,7 @@ class LipidPanel(QtWidgets.QWidget):
         frag_layout.addWidget(self.btn_fragments)
 
         self.frag_tree = QtWidgets.QTreeWidget()
-        self.frag_tree.setHeaderLabels(["m/z", "Piece", "Route", "Cuts"])
+        self.frag_tree.setHeaderLabels(["m/z", "Piece", "Route", "Cuts", "Rivals"])
         self.frag_tree.setColumnWidth(0, 90)
         self.frag_tree.setColumnWidth(1, 120)
         self.frag_tree.setAlternatingRowColors(True)
@@ -176,10 +176,11 @@ class LipidPanel(QtWidgets.QWidget):
         frag_layout.addWidget(self.structure_view, 2)
 
         self.frag_note = QtWidgets.QLabel(
-            "The mass is arithmetic and exact. The route beside it is only the "
-            "simplest one that reaches that mass — not evidence of how the "
-            "molecule actually breaks. Confirm against a measured product "
-            "spectrum before trusting a fragment.")
+            "A loss is only offered where the piece carries the group it needs "
+            "— water from an alcohol, CO2 from a carboxyl. The mass is exact; "
+            "the route is still the simplest one that reaches it, and where "
+            "another route reaches the same mass the Rivals column says so. "
+            "Confirm against a measured product spectrum.")
         self.frag_note.setWordWrap(True)
         self.frag_note.setProperty("role", "warning")
         frag_layout.addWidget(self.frag_note)
@@ -506,12 +507,22 @@ class LipidPanel(QtWidgets.QWidget):
                 ion.description.split(" ", 1)[1] if " " in ion.description
                 else "as drawn",
                 str(ion.fragment.cut_count),
+                str(len(ion.alternatives)) if ion.alternatives else "",
             ])
             row.setData(0, ROLE_ION, ion)
+            if ion.alternatives:
+                # two routes to one mass is a question for the spectrum, and
+                # showing only the winner hides that there was a question
+                row.setToolTip(2, "Also reachable as:\n  "
+                               + "\n  ".join(ion.alternatives))
+                row.setToolTip(4, f"{len(ion.alternatives)} other route(s) "
+                                  "reach this mass")
             row.setTextAlignment(0, QtCore.Qt.AlignmentFlag.AlignRight
                                  | QtCore.Qt.AlignmentFlag.AlignVCenter)
-            row.setTextAlignment(3, QtCore.Qt.AlignmentFlag.AlignRight
-                                 | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            for column in (3, 4):
+                row.setTextAlignment(column,
+                                     QtCore.Qt.AlignmentFlag.AlignRight
+                                     | QtCore.Qt.AlignmentFlag.AlignVCenter)
         if ions:
             self.frag_tree.setCurrentItem(self.frag_tree.topLevelItem(0))
 

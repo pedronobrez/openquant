@@ -120,7 +120,8 @@ def test_a_lipid_with_no_structure_says_so_rather_than_showing_nothing(qapp,
 # -- what it refuses to claim ------------------------------------------------ #
 def test_the_route_is_labelled_as_arithmetic_not_mechanism(qapp, panel):
     note = panel.frag_note.text()
-    assert "not evidence of how the molecule actually breaks" in note
+    assert "the simplest one that reaches it" in note
+    assert "Rivals" in note
     assert "measured product spectrum" in note
 
 

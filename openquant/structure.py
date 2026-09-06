@@ -50,6 +50,18 @@ NEUTRAL_LOSSES: dict[str, str] = {
     "HCOOH": "CH2O2",
 }
 
+#: the group a piece must actually carry for the loss to be possible, and how
+#: many of them a repeated loss needs. Counting elements is not enough: a
+#: ceramide has three oxygens and no carboxyl anywhere, and was being offered a
+#: carbon dioxide loss it has no way to make.
+LOSS_REQUIRES: dict[str, str] = {
+    "H2O": "hydroxyl",
+    "NH3": "amine",
+    "CO": "carbonyl",
+    "CO2": "carboxyl",
+    "HCOOH": "carboxyl",
+}
+
 
 @dataclass(frozen=True)
 class Atom:
@@ -99,6 +111,36 @@ class Structure:
 
     def neighbours(self, atom: int) -> list[int]:
         return [b.other(atom) for b in self.bonds if atom in (b.a, b.b)]
+
+    def bonded(self, atom: int) -> list[tuple[int, int]]:
+        """(neighbour, bond order) pairs, for reading a functional group off."""
+        return [(b.other(atom), b.order) for b in self.bonds
+                if atom in (b.a, b.b)]
+
+    def functional_groups(self, atoms) -> dict[str, int]:
+        """
+        How many of each group a set of atoms carries.
+
+        Only what a neutral loss needs to be possible: an alcohol to lose
+        water, an amine to lose ammonia, a carbonyl to lose carbon monoxide,
+        a carboxyl for carbon dioxide or formic acid.
+        """
+        inside = set(atoms)
+        counts = {"hydroxyl": 0, "amine": 0, "carbonyl": 0, "carboxyl": 0}
+        for index in inside:
+            atom = self.atoms[index]
+            if atom.element == "O" and atom.hydrogens:
+                counts["hydroxyl"] += 1
+            elif atom.element == "N" and atom.hydrogens:
+                counts["amine"] += 1
+            elif atom.element == "C":
+                oxygens = [(n, order) for n, order in self.bonded(index)
+                           if n in inside and self.atoms[n].element == "O"]
+                if len(oxygens) >= 2:
+                    counts["carboxyl"] += 1
+                if any(order >= 2 for _n, order in oxygens):
+                    counts["carbonyl"] += 1
+        return counts
 
     # -- storage ---------------------------------------------------------------- #
     def to_compact(self) -> dict:
@@ -374,6 +416,8 @@ class PredictedIon:
     charge: int
     hydrogens: int
     losses: tuple[str, ...] = ()
+    #: other routes that reach the same mass, described the same way
+    alternatives: tuple[str, ...] = ()
 
     @property
     def formula(self) -> str:
@@ -408,11 +452,17 @@ def predict(structure: Structure, charge: int = 1, max_cuts: int = MAX_CUTS,
     # the composition each combination takes away, worked out once: doing it
     # per candidate meant parsing "H2O" a hundred thousand times
     taken = {combination: _combined_loss(combination) for combination in losses}
-    best: dict[int, PredictedIon] = {}
+    needs = {combination: _required_groups(combination)
+             for combination in losses}
+    routes: dict[int, list[PredictedIon]] = {}
     for fragment in fragments(structure, max_cuts):
         counts = parse_formula(fragment.formula)
-        for shift in hydrogen_shifts:
-            for combination in losses:
+        groups = structure.functional_groups(fragment.atoms)
+        for combination in losses:
+            if any(groups.get(group, 0) < number
+                   for group, number in needs[combination].items()):
+                continue
+            for shift in hydrogen_shifts:
                 remainder = _after_losses(counts, shift, taken[combination])
                 if remainder is None:
                     continue
@@ -420,13 +470,34 @@ def predict(structure: Structure, charge: int = 1, max_cuts: int = MAX_CUTS,
                 mz = (mass - charge * ELECTRON_MASS) / abs(charge or 1)
                 if mz < min_mz:
                     continue
-                ion = PredictedIon(fragment=fragment, mz=mz, charge=charge,
-                                   hydrogens=shift, losses=combination)
-                key = round(mz, 4)
-                previous = best.get(key)
-                if previous is None or ion.simplicity < previous.simplicity:
-                    best[key] = ion
-    return sorted(best.values(), key=lambda i: i.mz)
+                routes.setdefault(round(mz, 4), []).append(
+                    PredictedIon(fragment=fragment, mz=mz, charge=charge,
+                                 hydrogens=shift, losses=combination))
+
+    out: list[PredictedIon] = []
+    for candidates in routes.values():
+        candidates.sort(key=lambda i: i.simplicity)
+        head = candidates[0]
+        # the runners-up are kept rather than dropped: two routes to one mass
+        # are a question for the spectrum, and collapsing them hides it
+        # the same route reached by symmetric cuts is one route, not two
+        others = tuple(name for name in
+                       dict.fromkeys(i.description for i in candidates[1:])
+                       if name != head.description)
+        out.append(PredictedIon(
+            fragment=head.fragment, mz=head.mz, charge=head.charge,
+            hydrogens=head.hydrogens, losses=head.losses, alternatives=others))
+    return sorted(out, key=lambda i: i.mz)
+
+
+def _required_groups(losses: tuple[str, ...]) -> dict[str, int]:
+    """How many of each functional group a combination of losses needs."""
+    needed: dict[str, int] = {}
+    for loss in losses:
+        group = LOSS_REQUIRES.get(loss)
+        if group:
+            needed[group] = needed.get(group, 0) + 1
+    return needed
 
 
 def _loss_combinations(most: int) -> list[tuple[str, ...]]:

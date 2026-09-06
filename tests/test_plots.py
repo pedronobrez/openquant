@@ -371,3 +371,106 @@ def test_a_review_panel_cannot_be_zoomed_off_its_trace(qapp):
     lo, hi = box.viewRange()[0]
     assert lo >= 2.0 - 1e-6 and hi <= 8.0 + 1e-6
     panel.close()
+
+
+# -- room above the tallest peak for its label ------------------------------- #
+#
+# The complaint that started these: on a short pane the m/z of the base peak
+# was sliced in half by the top of the window. pyqtgraph pads an auto-ranged
+# view by a share of the data range, and a share that clears a 21-pixel label
+# in a tall pane does not clear it in a short one.
+
+
+def _spectrum_trace():
+    mz = np.linspace(200, 700, 4000)
+    y = np.zeros_like(mz)
+    for centre, height in [(264.2686, 1_000_000), (282.2791, 420_000),
+                           (520.5087, 260_000)]:
+        y += height * np.exp(-0.5 * ((mz - centre) / 0.02) ** 2)
+    return Trace("s", "MS2", mz, y, "#234b8c")
+
+
+def _clearance(view, labels) -> float:
+    """Pixels between the top of the highest label and the top of the pane."""
+    top = view.viewbox.sceneBoundingRect().top()
+    return min(item.sceneBoundingRect().top() - top for item in labels)
+
+
+@pytest.mark.parametrize("height", [220, 300, 400, 700])
+def test_peak_labels_stay_inside_the_window(qapp, height):
+    view = SpectrumView()
+    view.resize(900, height)
+    view.set_traces([_spectrum_trace()])
+    view.show()
+    qapp.processEvents()
+    view.autoscale()
+    qapp.processEvents()
+    assert view._labels
+    assert _clearance(view, view._labels) >= 0
+
+
+def test_the_headroom_is_what_keeps_them_in(qapp):
+    """Without it the same pane clips the label, so the room is doing the work."""
+    view = SpectrumView()
+    view.resize(900, 260)
+    view.set_traces([_spectrum_trace()])
+    view.show()
+    view._headroom_px = lambda: 0.0          # the behaviour before the fix
+    qapp.processEvents()
+    view.autoscale()
+    qapp.processEvents()
+    assert _clearance(view, view._labels) < 0
+
+
+def test_headroom_survives_being_made_shorter(qapp):
+    """The room is measured in pixels, so shrinking the pane has to re-fence."""
+    view = SpectrumView()
+    view.resize(900, 700)
+    view.set_traces([_spectrum_trace()])
+    view.show()
+    qapp.processEvents()
+    view.autoscale()
+    qapp.processEvents()
+    view.resize(900, 230)
+    qapp.processEvents()
+    assert _clearance(view, view._labels) >= 0
+
+
+def test_apex_labels_stay_inside_the_window(qapp, two_traces):
+    """Chromatogram labels stack two rows high, and need room for both."""
+    view = ChromatogramView()
+    view.resize(900, 240)
+    view.set_traces(two_traces)
+    view.show()
+    qapp.processEvents()
+    view.autoscale()
+    qapp.processEvents()
+    assert view._apex_labels
+    assert _clearance(view, view._apex_labels) >= 0
+
+
+def test_match_labels_stay_inside_the_window(qapp):
+    """A match label sits higher above the peak than an m/z label does."""
+    view = SpectrumView()
+    view.resize(900, 240)
+    view.set_traces([_spectrum_trace()])
+    view.show()
+    qapp.processEvents()
+    view.set_matches([(264.2686, "C16 base")], "#2ca02c")
+    view.autoscale()
+    qapp.processEvents()
+    assert _clearance(view, view._match_labels) >= 0
+
+
+def test_the_view_still_cannot_go_negative(qapp):
+    """The extra room is on top; the floor stays where it was."""
+    view = SpectrumView()
+    view.resize(900, 300)
+    view.set_traces([_spectrum_trace()])
+    view.show()
+    qapp.processEvents()
+    view.autoscale()
+    qapp.processEvents()
+    (x_lo, _x_hi), (y_lo, _y_hi) = view.viewbox.viewRange()
+    assert x_lo >= 0
+    assert y_lo >= 0

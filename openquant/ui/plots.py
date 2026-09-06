@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 import numpy as np
 import pyqtgraph as pg
@@ -61,6 +62,23 @@ def _sticks(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return xs, ys
 
 
+@lru_cache(maxsize=4)
+def _label_height(points: int = 8) -> float:
+    """
+    The drawn height of one label, measured rather than derived from the font.
+
+    A text item is taller than its font metrics say: the document it wraps
+    carries margins of its own, eight pixels of them at this size. Guessing
+    that difference is how a label ends up a few pixels outside the window,
+    which is the whole of the complaint.
+    """
+    font = QtGui.QFont()
+    font.setPointSize(points)
+    probe = pg.TextItem("0123456789")
+    probe.setFont(font)
+    return float(abs(probe.boundingRect().height()))
+
+
 class _DragViewBox(pg.ViewBox):
     """ViewBox that turns a horizontal drag into a range selection."""
 
@@ -69,6 +87,29 @@ class _DragViewBox(pg.ViewBox):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.select_mode = False
+        #: clear space to keep above the data, in pixels. Set by the plot that
+        #: owns the box — see BasePlot._headroom_px.
+        self.headroom_px = 0.0
+
+    def suggestPadding(self, axis):  # noqa: N802 (pyqtgraph API)
+        """
+        Room for the labels that sit on top of the tallest peak.
+
+        pyqtgraph pads an auto-ranged view by a share of the data range. A
+        label is a fixed number of pixels tall whatever the view holds, so a
+        share that clears it in a tall pane still cuts it off in a short one —
+        which is how the m/z of the base peak came to be sliced by the top of
+        the window. The room is asked for in pixels and converted here.
+        """
+        padding = super().suggestPadding(axis)
+        if axis != 1 or self.headroom_px <= 0:
+            return padding
+        height = float(self.height())
+        if height <= 2 * self.headroom_px:
+            return padding
+        # padding p is added at both ends, so the top of a padded view is
+        # height * p / (1 + 2p) pixels clear of the data. Solve that for p.
+        return max(padding, self.headroom_px / (height - 2 * self.headroom_px))
 
     def mouseDragEvent(self, ev, axis=None):
         shift = bool(ev.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier)
@@ -108,8 +149,10 @@ class BasePlot(QtWidgets.QWidget):
         self._match_labels: list = []
         self._relative_labels = True
         self._syncing_overview = False
+        self._bounds: tuple[float, float, float, float] | None = None
 
         self.viewbox = _DragViewBox()
+        self.viewbox.sigResized.connect(self._resized)
         self.plot = pg.PlotWidget(viewBox=self.viewbox,
                                   background=theme.background())
         self.plot.showGrid(x=True, y=True, alpha=0.15)
@@ -308,6 +351,19 @@ class BasePlot(QtWidgets.QWidget):
     def _after_traces_changed(self) -> None:
         pass
 
+    # -- room for the labels above the data ----------------------------------- #
+    def _headroom_px(self) -> float:
+        """Pixels of clear space the topmost label needs. Nothing by default."""
+        return 0.0
+
+    @staticmethod
+    def _label_height_px(points: int = 8) -> float:
+        return _label_height(points)
+
+    def _refresh_headroom(self) -> None:
+        """Called when a label setting changes: the room needed changed with it."""
+        self._apply_limits()
+
     def autoscale(self) -> None:
         self._apply_limits()
         self.plot.enableAutoRange()
@@ -323,8 +379,13 @@ class BasePlot(QtWidgets.QWidget):
         and never useful — there is nothing out there. The widest view is the
         whole of the data, which is also what Fit gives.
         """
+        self._bounds = self._data_bounds()
+        self._apply_limits_to(self._bounds)
+
+    def _apply_limits_to(self, bounds) -> None:
         box = self.plot.getViewBox()
-        bounds = self._data_bounds()
+        pixels = self._headroom_px()
+        self.viewbox.headroom_px = pixels
         if bounds is None:
             box.setLimits(xMin=None, xMax=None, yMin=None, yMax=None,
                           maxXRange=None, maxYRange=None)
@@ -338,11 +399,53 @@ class BasePlot(QtWidgets.QWidget):
             box.setLimits(xMin=None, xMax=None, yMin=None, yMax=None,
                           maxXRange=None, maxYRange=None)
             return
-        head_room = (y_high - y_low) * 0.05
+        # the fence has to allow whatever room the labels ask for, or the
+        # padded auto-range gets clamped straight back onto the peak
+        span = y_high - y_low
+        head_room = span * 0.05
+        height = float(box.height())
+        if pixels > 0 and height > 2 * pixels:
+            head_room = max(head_room, span * pixels / (height - 2 * pixels))
         box.setLimits(xMin=x_low, xMax=x_high,
                       yMin=y_low, yMax=y_high + head_room,
                       maxXRange=x_high - x_low,
-                      maxYRange=y_high - y_low + head_room)
+                      maxYRange=span + 2 * head_room)
+
+    def _resized(self, *_args) -> None:
+        """
+        Re-fence after a resize, because the headroom is measured in pixels.
+
+        Shrinking the pane raises the share of the range a label occupies, and
+        a fence computed for the old height would clamp the padding away — the
+        same clipping, arriving one drag of the window later. The cached bounds
+        are used rather than recomputed: conditioning every trace on each of
+        the many resize events is work the answer does not need.
+        """
+        if self._bounds is None:
+            return
+        self._apply_limits_to(self._bounds)
+        # A fitted view should stay fitted when the pane changes size, because
+        # the pane just changed how many pixels a share of the range is worth.
+        # Re-fitting is the only way to get the room back: pyqtgraph switches
+        # auto-range off as soon as a range has been settled on, so nothing
+        # else will. A view the reader has zoomed into is left where they put
+        # it — silently pulling it back to the full extent on a window drag
+        # would be far worse than a tight label.
+        if self._is_fitted():
+            self.plot.getViewBox().autoRange()
+
+    def _is_fitted(self) -> bool:
+        """Whether the view is showing the whole of the data, rather than a zoom."""
+        if self._bounds is None:
+            return False
+        x_low, x_high, _y_low, _y_high = self._bounds
+        span = x_high - x_low
+        if span <= 0:
+            return False
+        lo, hi = self.plot.getViewBox().viewRange()[0]
+        # a fitted view is the data extent plus padding, so it is never
+        # narrower than the data; anything appreciably narrower is a zoom
+        return (hi - lo) >= span * 0.98
 
     def _data_bounds(self) -> tuple[float, float, float, float] | None:
         """The extent of everything on screen, after conditioning."""
@@ -469,6 +572,7 @@ class BasePlot(QtWidgets.QWidget):
             text.setZValue(60)
             self.plot.addItem(text, ignoreBounds=True)
             self._match_labels.append(text)
+        self._refresh_headroom()
 
     def clear_matches(self) -> None:
         if self._match_marks is not None:
@@ -477,6 +581,7 @@ class BasePlot(QtWidgets.QWidget):
         for text in self._match_labels:
             self.plot.removeItem(text)
         self._match_labels.clear()
+        self._refresh_headroom()
 
     def _height_at(self, mz: float) -> float:
         """The trace height at a mass, for placing a mark on top of the peak."""
@@ -669,9 +774,18 @@ class ChromatogramView(BasePlot):
         self.set_peak_markers([])
 
     # -- apex labels ----------------------------------------------------------- #
+    def _headroom_px(self) -> float:
+        if not self._show_apex or not self._traces:
+            return 0.0
+        # labels alternate between one and two text heights above the apex so
+        # that neighbouring traces do not overprint; the upper row sets the room
+        stacked = 2.15 if len(self._traces) > 1 else 1.1
+        return self._label_height_px() * stacked + 4.0
+
     def set_apex_labels(self, enabled: bool) -> None:
         self._show_apex = enabled
         self._after_traces_changed()
+        self._refresh_headroom()
 
     def _after_traces_changed(self) -> None:
         for item in self._apex_labels:
@@ -744,13 +858,26 @@ class SpectrumView(BasePlot):
         return self._centroid
 
     # -- labels ---------------------------------------------------------------- #
+    def _headroom_px(self) -> float:
+        # a peak label is anchored one text height above the apex, and a match
+        # label 1.6 of them; the base peak carries whichever is on
+        if self._show_labels and self._n_labels:
+            factor = 1.6 if self._match_labels else 1.0
+        elif self._match_labels:
+            factor = 1.6
+        else:
+            return 0.0
+        return self._label_height_px() * factor + 4.0
+
     def set_labels_enabled(self, enabled: bool) -> None:
         self._show_labels = enabled
         self._after_traces_changed()
+        self._refresh_headroom()
 
     def set_label_count(self, n: int) -> None:
         self._n_labels = max(0, int(n))
         self._after_traces_changed()
+        self._refresh_headroom()
 
     def peaks_of_current(self, max_peaks: int = 50) -> list[tuple[float, float]]:
         traces = self.traces

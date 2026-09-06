@@ -118,3 +118,64 @@ def test_a_cell_widget_is_given_the_padding_it_loses(light, qapp):
     style.fit_cell_widgets(table)
     assert (table.columnWidth(0)
             >= combo.sizeHint().width() + style.CELL_WIDGET_INSET)
+
+
+def test_the_first_series_is_the_project_blue(light):
+    from openquant.ui.plots import colour
+    assert colour(0) == style.LIGHT["accent"]
+    assert colour(1) != colour(0)
+
+
+def test_the_series_colour_follows_the_theme(dark):
+    from openquant.ui.plots import colour
+    assert colour(0) == style.DARK["accent"]
+
+
+def test_every_series_after_the_first_stays_distinct(light):
+    from openquant.ui.plots import PALETTE, colour
+    seen = [colour(i) for i in range(len(PALETTE) + 1)]
+    assert len(set(seen)) == len(seen)
+
+
+def test_the_overflow_button_is_given_an_icon(light):
+    # styling QToolButton alone leaves this one with no arrow, which hides
+    # whatever did not fit behind a button nobody can see
+    sheet = style.stylesheet()
+    assert "qt_toolbar_ext_button" in sheet
+    assert style.indicators()["more"] in sheet
+
+
+def test_a_layout_saved_before_the_toolbars_moved_is_discarded(light, qapp):
+    """
+    The Processing toolbar sits on its own row now.
+
+    Qt restores a saved arrangement in preference to the one the code builds,
+    so without a version bump an old saved state puts all three toolbars back
+    on one row — where Processing collapses to a fifth of the width it needs.
+    """
+    from openquant.ui.explorer import LAYOUT_VERSION
+
+    window = QtWidgets.QMainWindow()
+    bar = window.addToolBar("Only")
+    bar.setObjectName("only")
+    stale = window.saveState(LAYOUT_VERSION - 1)
+    assert not window.restoreState(stale, LAYOUT_VERSION)
+    assert window.restoreState(window.saveState(LAYOUT_VERSION), LAYOUT_VERSION)
+
+
+def test_the_processing_toolbar_gets_a_row_of_its_own(light, qapp):
+    from openquant.session import Session
+    from openquant.ui.explorer import ExplorerWorkspace
+
+    workspace = ExplorerWorkspace(Session())
+    workspace.resize(1500, 700)
+    workspace.show()
+    qapp.processEvents()
+    rows = {}
+    for name in ("toolbar_main", "toolbar_view", "toolbar_proc"):
+        bar = workspace.findChild(QtWidgets.QToolBar, name)
+        rows.setdefault(bar.y(), []).append(name)
+    assert len(rows) == 2, rows
+    proc_row = next(r for r, names in rows.items() if "toolbar_proc" in names)
+    assert rows[proc_row] == ["toolbar_proc"]
+    workspace.close()

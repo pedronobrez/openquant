@@ -32,6 +32,10 @@ from .sample_info import SampleInfoPanel
 
 ROLE_REF = QtCore.Qt.ItemDataRole.UserRole
 
+#: bumped whenever the toolbars are rearranged, so Qt throws away a layout
+#: saved by a version that had them somewhere else
+LAYOUT_VERSION = 2
+
 
 class ChannelRef:
     """A tree node: either the sample TIC or one specific channel."""
@@ -360,6 +364,9 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.offset_y_spin.setToolTip("Stagger each overlaid trace vertically")
         view.addWidget(self.offset_y_spin)
 
+        # Main and View fill a row on their own; without a break the whole
+        # Processing toolbar collapses behind an overflow button
+        self.addToolBarBreak()
         proc = self.addToolBar("Processing")
         proc.setObjectName("toolbar_proc")
         proc.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -492,7 +499,9 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         s = self.settings
         state = s.value("explorer/state")
         if state is not None:
-            self.restoreState(state)
+            # a saved arrangement from a version with a different toolbar
+            # layout is discarded rather than pinning the old one back
+            self.restoreState(state, LAYOUT_VERSION)
 
         def flag(key: str, default: bool) -> bool:
             return s.value(key, default, type=bool)
@@ -550,7 +559,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
 
     def save_settings(self) -> None:
         s = self.settings
-        s.setValue("explorer/state", self.saveState())
+        s.setValue("explorer/state", self.saveState(LAYOUT_VERSION))
         s.setValue("view/normalise", self.act_norm.isChecked())
         s.setValue("view/mirror", self.act_mirror.isChecked())
         s.setValue("view/stacked", self.act_stack.isChecked())

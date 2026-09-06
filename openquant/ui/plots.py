@@ -17,15 +17,26 @@ from ..processing import (
     subtract_baseline,
 )
 
+#: the categorical colours after the first. They are chosen to be told apart
+#: from one another, which is a different job from carrying the brand, so they
+#: are left as they are.
 PALETTE = [
-    "#1f77b4", "#d62728", "#2ca02c", "#ff7f0e", "#9467bd",
+    "#d62728", "#2ca02c", "#ff7f0e", "#9467bd",
     "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f",
 ]
 ARROW_COLOUR = "#7a3fbf"
 
 
 def colour(i: int) -> str:
-    return PALETTE[i % len(PALETTE)]
+    """
+    The nth series colour. The first is the project's blue.
+
+    Most plots here show one trace, or one trace that matters and some
+    context — so the colour seen most often is the accent, and it follows the
+    light or dark theme rather than being a literal.
+    """
+    index = i % (len(PALETTE) + 1)
+    return theme.accent() if index == 0 else PALETTE[index - 1]
 
 
 @dataclass

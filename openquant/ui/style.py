@@ -193,6 +193,16 @@ def _dot(name: str, colour: str) -> str:
     return _render(name, 14, draw)
 
 
+def _double_chevron(name: str, colour: str) -> str:
+    def draw(painter: QtGui.QPainter) -> None:
+        painter.setPen(_stroke(colour, 1.5))
+        for x in (3.0, 7.5):
+            painter.drawPolyline(QtCore.QPointF(x, 3.5),
+                                 QtCore.QPointF(x + 3.5, 7.0),
+                                 QtCore.QPointF(x, 10.5))
+    return _render(name, 14, draw)
+
+
 def indicators() -> dict[str, str]:
     """The glyph paths for the current theme, drawn on demand."""
     t = tokens()
@@ -203,6 +213,7 @@ def indicators() -> dict[str, str]:
         "chevron_accent": _chevron(f"chevron-accent-{suffix}", t["accent"]),
         "tick": _tick(f"tick-{suffix}", t["accent_ink"]),
         "dot": _dot(f"dot-{suffix}", t["accent_ink"]),
+        "more": _double_chevron(f"more-{suffix}", t["accent"]),
     }
 
 
@@ -497,6 +508,80 @@ QTableCornerButton::section {{
     background: {t['surface_alt']};
     border: none;
     border-bottom: 1px solid {t['line_strong']};
+}}
+
+/* -- toolbars: a band of type, not a chrome strip ------------------------ */
+QToolBar {{
+    background: {t['canvas']};
+    border: none;
+    border-bottom: 1px solid {t['line']};
+    spacing: 1px;
+    padding: 5px 8px;
+}}
+QToolBar::separator {{
+    background: {t['line']};
+    width: 1px;
+    height: 1px;
+    margin: 5px 7px;
+}}
+QToolBar::handle {{
+    image: none;
+    width: 10px;
+    height: 10px;
+}}
+QToolBar QLabel {{
+    color: {t['ink_muted']};
+    padding-left: 4px;
+}}
+QToolButton {{
+    background: transparent;
+    color: {t['ink_muted']};
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 4px 8px;
+}}
+QToolButton:hover {{
+    background: {t['surface']};
+    border-color: {t['line']};
+    color: {t['ink']};
+}}
+QToolButton:pressed {{
+    background: {t['accent_soft']};
+    border-color: {t['accent_soft']};
+    color: {t['accent']};
+}}
+QToolButton:checked {{
+    background: {t['accent_soft']};
+    border-color: {t['accent_soft']};
+    color: {t['accent']};
+    font-weight: 600;
+}}
+QToolButton:checked:hover {{
+    border-color: {t['accent']};
+}}
+QToolButton:disabled {{
+    color: {t['ink_faint']};
+}}
+/* what is left over when a toolbar does not fit. Styling QToolButton alone
+   leaves this one with no arrow at all, which hides the controls behind an
+   invisible button */
+QToolButton#qt_toolbar_ext_button {{
+    qproperty-icon: url({icon['more']});
+    background: {t['surface']};
+    border: 1px solid {t['line_strong']};
+    border-radius: 6px;
+    padding: 3px 4px;
+    margin-left: 4px;
+}}
+QToolButton#qt_toolbar_ext_button:hover {{
+    border-color: {t['accent']};
+    background: {t['accent_soft']};
+}}
+QToolButton::menu-indicator {{
+    image: url({icon['chevron']});
+    subcontrol-position: right center;
+    width: 12px;
+    height: 12px;
 }}
 
 /* -- grouping ------------------------------------------------------------ */

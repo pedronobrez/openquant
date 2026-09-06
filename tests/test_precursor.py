@@ -8,9 +8,9 @@ synthetic spectrum, and a product-ion channel carrying the surviving precursor.
 import numpy as np
 import pytest
 
-from openpeakview import precursor
-from openpeakview.components import Component
-from openpeakview.samples import SampleEntry
+from openquant import precursor
+from openquant.components import Component
+from openquant.samples import SampleEntry
 from tests.test_matching import Channel, Sample
 
 
@@ -199,7 +199,7 @@ def test_a_measured_mass_narrows_the_search_window(monkeypatch):
     The point of the whole exercise: a written mass is searched loose, a
     measured one at the instrument's accuracy.
     """
-    from openpeakview.ui import annotate_dialog as ad
+    from openquant.ui import annotate_dialog as ad
 
     class FakeDatabase:
         def __init__(self):
@@ -227,7 +227,7 @@ def test_a_measured_mass_narrows_the_search_window(monkeypatch):
 
 
 def test_an_unreliable_measurement_falls_back_to_the_written_mass(monkeypatch):
-    from openpeakview.ui import annotate_dialog as ad
+    from openquant.ui import annotate_dialog as ad
 
     seen = []
 

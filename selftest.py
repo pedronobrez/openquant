@@ -12,7 +12,7 @@ import glob
 import sys
 import time
 
-from openpeakview import WiffFile
+from openquant import WiffFile
 
 
 def report(path: str) -> None:

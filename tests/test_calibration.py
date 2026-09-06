@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from openpeakview import calibration as cal
+from openquant import calibration as cal
 
 
 def points(concentrations, responses, names=None):

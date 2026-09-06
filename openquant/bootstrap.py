@@ -27,7 +27,7 @@ import zipfile
 from pathlib import Path
 from urllib.request import urlopen as _urlopen
 
-CACHE_DIR = Path(os.environ.get("OPENPEAKVIEW_HOME", Path.home() / ".openpeakview"))
+CACHE_DIR = Path(os.environ.get("OPENPEAKVIEW_HOME", Path.home() / ".openquant"))
 SHIM_DIR = CACHE_DIR / "shim"
 DOTNET_CHANNEL = "8.0"
 
@@ -88,7 +88,7 @@ def find_dotnet_root() -> Path | None:
 def install_dotnet(channel: str = DOTNET_CHANNEL) -> Path:
     """Install the .NET runtime into ~/.dotnet (no sudo, about 30 MB)."""
     target = Path.home() / ".dotnet"
-    print(f"[openpeakview] installing .NET runtime {channel} into {target} ...")
+    print(f"[openquant] installing .NET runtime {channel} into {target} ...")
     if _IS_WINDOWS:
         raise BootstrapError(
             "Install the .NET Desktop Runtime from Microsoft: "
@@ -122,7 +122,7 @@ def ensure_shims() -> Path:
         pkg = tmp / f"{name}.{version}.nupkg"
         if not pkg.exists():
             url = f"https://www.nuget.org/api/v2/package/{name}/{version}"
-            print(f"[openpeakview] downloading {name} {version} ...")
+            print(f"[openquant] downloading {name} {version} ...")
             with urlopen(url) as r:
                 pkg.write_bytes(r.read())
         with zipfile.ZipFile(pkg) as z:
@@ -148,7 +148,7 @@ def ensure(auto_install_dotnet: bool = False) -> None:
             if not auto_install_dotnet:
                 raise BootstrapError(
                     "No .NET runtime found. Run:\n"
-                    "    python -m openpeakview.bootstrap --install\n"
+                    "    python -m openquant.bootstrap --install\n"
                     "or install .NET 8 and point DOTNET_ROOT at it."
                 )
             root = install_dotnet()
@@ -236,7 +236,7 @@ def _main(argv: list[str]) -> int:
             install_dotnet()
         ensure_shims()
     ensure(auto_install_dotnet=True)
-    print("[openpeakview] .NET runtime and SCIEX libraries ready.")
+    print("[openquant] .NET runtime and SCIEX libraries ready.")
     return 0
 
 

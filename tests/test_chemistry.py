@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from openpeakview import chemistry as ch
+from openquant import chemistry as ch
 
 
 # --- parsing --------------------------------------------------------------- #

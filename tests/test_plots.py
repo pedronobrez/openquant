@@ -12,7 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6 import QtWidgets  # noqa: E402
 
-from openpeakview.ui.plots import ChromatogramView, SpectrumView, Trace  # noqa: E402
+from openquant.ui.plots import ChromatogramView, SpectrumView, Trace  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -122,8 +122,8 @@ def test_peak_panels_survive_repainting(qapp):
     Regression: axis tick fonts built from an empty family name segfaulted Qt
     the moment a panel measured its tick labels.
     """
-    from openpeakview.quantify import PeakResult
-    from openpeakview.ui.peak_review import PeakReviewGrid
+    from openquant.quantify import PeakResult
+    from openquant.ui.peak_review import PeakReviewGrid
 
     grid = PeakReviewGrid()
     grid.resize(900, 500)
@@ -143,8 +143,8 @@ def test_peak_panels_survive_repainting(qapp):
 
 
 def test_peak_grid_pages_and_selection(qapp):
-    from openpeakview.quantify import PeakResult
-    from openpeakview.ui.peak_review import PeakReviewGrid
+    from openquant.quantify import PeakResult
+    from openquant.ui.peak_review import PeakReviewGrid
 
     grid = PeakReviewGrid()
     grid.col_spin.setValue(2)
@@ -165,8 +165,8 @@ def test_peak_grid_pages_and_selection(qapp):
 
 
 def test_peak_panel_reports_a_missing_peak(qapp):
-    from openpeakview.quantify import PeakResult
-    from openpeakview.ui.peak_review import PeakPanel
+    from openquant.quantify import PeakResult
+    from openquant.ui.peak_review import PeakPanel
 
     panel = PeakPanel()
     result = PeakResult("s1", "QC", "Oxy", note="no peak above noise")
@@ -176,8 +176,8 @@ def test_peak_panel_reports_a_missing_peak(qapp):
 
 
 def test_peak_grid_zoom_modes(qapp):
-    from openpeakview.quantify import PeakResult
-    from openpeakview.ui.peak_review import PeakReviewGrid
+    from openquant.quantify import PeakResult
+    from openquant.ui.peak_review import PeakReviewGrid
 
     grid = PeakReviewGrid()
     result = PeakResult("s", "QC", "Oxy", area=10.0, rt=13.1,
@@ -197,8 +197,8 @@ def test_peak_grid_zoom_modes(qapp):
 
 
 def test_peak_grid_zoom_without_an_expected_window(qapp):
-    from openpeakview.quantify import PeakResult
-    from openpeakview.ui.peak_review import PeakReviewGrid
+    from openquant.quantify import PeakResult
+    from openquant.ui.peak_review import PeakReviewGrid
 
     grid = PeakReviewGrid()
     grid.zoom_combo.setCurrentIndex(0)

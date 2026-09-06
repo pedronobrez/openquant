@@ -12,10 +12,12 @@ import os
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from ..session import PROJECT_SUFFIX, Session
+from ..session import LEGACY_PROJECT_SUFFIX, PROJECT_SUFFIX, Session
 from .analytics import AnalyticsWorkspace
 from .explorer import ExplorerWorkspace
 from .method_workspace import MethodWorkspace
+from .new_project import (METHOD, METHOD_EMPTY, NewProjectWizard,
+                          StartDialog)
 from .samples_workspace import SamplesWorkspace
 
 
@@ -24,9 +26,9 @@ class MainShell(QtWidgets.QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("OpenPeakView")
+        self.setWindowTitle("OpenQuant")
         self.resize(1650, 1000)
-        self.settings = QtCore.QSettings("OpenPeakView", "OpenPeakView")
+        self.settings = QtCore.QSettings("OpenQuant", "OpenQuant")
 
         self.session = Session(self)
 
@@ -50,22 +52,43 @@ class MainShell(QtWidgets.QMainWindow):
         self.explorer.component_list.sigEditRequested.connect(
             lambda: self.tabs.setCurrentWidget(self.method))
         self.session.sigSamplesChanged.connect(self._samples_changed)
+        self.session.sigProjectChanged.connect(self._update_title)
         self.tabs.currentChanged.connect(self._tab_changed)
+        self._update_title()
 
         geometry = self.settings.value("shell/geometry")
         if geometry is not None:
             self.restoreGeometry(geometry)
 
+    # -- start ----------------------------------------------------------------- #
+    def offer_start(self) -> None:
+        """Ask how to begin, unless the analyst has said not to."""
+        if self.settings.value("shell/skip_start", False, type=bool):
+            return
+        dialog = StartDialog(self)
+        dialog.exec()
+        if dialog.check_skip.isChecked():
+            self.settings.setValue("shell/skip_start", True)
+        if dialog.choice == StartDialog.NEW:
+            self.new_project()
+        elif dialog.choice == StartDialog.OPEN:
+            self.open_project()
+
     # -- menus --------------------------------------------------------------- #
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
-        self.act_open = file_menu.addAction("Open .wiff…")
+        self.act_new_project = file_menu.addAction("New project…")
+        self.act_new_project.setShortcut(QtGui.QKeySequence.StandardKey.New)
+        self.act_open_project = file_menu.addAction("Open project…")
+        self.act_save_project = file_menu.addAction("Save project")
+        self.act_save_project.setShortcut(QtGui.QKeySequence.StandardKey.Save)
+        self.act_save_project_as = file_menu.addAction("Save project as…")
+        self.act_save_project_as.setShortcut(
+            QtGui.QKeySequence.StandardKey.SaveAs)
+        file_menu.addSeparator()
+        self.act_open = file_menu.addAction("Add .wiff…")
         self.act_open.setShortcut(QtGui.QKeySequence.StandardKey.Open)
         self.act_close = file_menu.addAction("Close all")
-        file_menu.addSeparator()
-        self.act_open_project = file_menu.addAction("Open project…")
-        self.act_save_project = file_menu.addAction("Save project…")
-        self.act_save_project.setShortcut(QtGui.QKeySequence.StandardKey.Save)
         file_menu.addSeparator()
         for action in self.explorer.build_actions()["File"]:
             file_menu.addAction(action)
@@ -88,10 +111,12 @@ class MainShell(QtWidgets.QMainWindow):
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction("How to use…").triggered.connect(self.explorer._show_help)
 
+        self.act_new_project.triggered.connect(self.new_project)
         self.act_open.triggered.connect(self.open_files)
         self.act_close.triggered.connect(self.close_all)
         self.act_open_project.triggered.connect(self.open_project)
         self.act_save_project.triggered.connect(self.save_project)
+        self.act_save_project_as.triggered.connect(self.save_project_as)
         self.samples.btn_open.clicked.connect(self.open_files)
 
     # -- files --------------------------------------------------------------- #
@@ -118,6 +143,10 @@ class MainShell(QtWidgets.QMainWindow):
             QtWidgets.QApplication.restoreOverrideCursor()
 
     def close_all(self) -> None:
+        # close_all drops the batch and the project link, so unsaved work would
+        # go with it without this
+        if not self.confirm_discard("Close everything anyway?"):
+            return
         self.explorer.clear_views()
         self.session.close_all()
 
@@ -133,10 +162,69 @@ class MainShell(QtWidgets.QMainWindow):
                 "acquisition method.")
 
     # -- project -------------------------------------------------------------- #
+    def _update_title(self) -> None:
+        name = (os.path.basename(self.session.project_path)
+                if self.session.project_path else "")
+        marker = " •" if self.session.dirty else ""
+        self.setWindowTitle(f"OpenQuant — {name}{marker}" if name
+                            else f"OpenQuant{marker}")
+
+    def confirm_discard(self, action: str) -> bool:
+        """
+        Ask before throwing away unsaved work. True means carry on.
+
+        Offered on anything that replaces the session, which is the whole point
+        of tracking the unsaved state: forgetting to save should cost a click,
+        not a batch.
+        """
+        if not (self.session.dirty and self.session.has_content):
+            return True
+        answer = QtWidgets.QMessageBox.question(
+            self, "Save this project first?",
+            f"This project has changes that are not saved. {action}",
+            QtWidgets.QMessageBox.StandardButton.Save
+            | QtWidgets.QMessageBox.StandardButton.Discard
+            | QtWidgets.QMessageBox.StandardButton.Cancel,
+            QtWidgets.QMessageBox.StandardButton.Save)
+        if answer == QtWidgets.QMessageBox.StandardButton.Cancel:
+            return False
+        if answer == QtWidgets.QMessageBox.StandardButton.Save:
+            return self.save_project()
+        return True
+
+    def new_project(self) -> bool:
+        if not self.confirm_discard("Start a new project anyway?"):
+            return False
+        self.explorer.clear_views()
+        self.session.close_all()
+        wizard = NewProjectWizard(self.session, self._last_dir(), self)
+        if not wizard.exec():
+            return False
+
+        page = wizard.page(METHOD)
+        page.apply_to(self.session.method)
+        self.session.set_components(page.components())
+        self.session.save_project(wizard.project_path)
+        self.settings.setValue(
+            "io/last_dir", os.path.dirname(wizard.project_path))
+        self.statusBar().showMessage(
+            f"Project created at {self.session.project_path}")
+        if wizard.process_now:
+            self.tabs.setCurrentWidget(self.analytics)
+            self.analytics.process_batch()
+        elif page.choice() == METHOD_EMPTY:
+            self.tabs.setCurrentWidget(self.method)
+        else:
+            self.tabs.setCurrentWidget(self.samples)
+        return True
+
     def open_project(self) -> None:
+        if not self.confirm_discard("Open another project anyway?"):
+            return
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, "Open project", self._last_dir(),
-            f"OpenPeakView project (*{PROJECT_SUFFIX});;All files (*)")
+            f"OpenQuant project (*{PROJECT_SUFFIX} *{LEGACY_PROJECT_SUFFIX});;"
+            "All files (*)")
         if not path:
             return
         self.explorer.clear_views()
@@ -152,20 +240,32 @@ class MainShell(QtWidgets.QMainWindow):
                 "be opened:\n\n" + "\n".join(sorted(set(missing))))
         self.statusBar().showMessage(f"Project loaded from {path}")
 
-    def save_project(self) -> None:
+    def save_project(self) -> bool:
+        """Save without asking once the project has a file of its own."""
+        if not self.session.project_path:
+            return self.save_project_as()
+        self.session.save_project(self.session.project_path)
+        self.statusBar().showMessage(f"Project saved to {self.session.project_path}")
+        return True
+
+    def save_project_as(self) -> bool:
         suggestion = self.session.project_path or os.path.join(
             self._last_dir(), f"project{PROJECT_SUFFIX}")
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self, "Save project", suggestion,
-            f"OpenPeakView project (*{PROJECT_SUFFIX})")
+            f"OpenQuant project (*{PROJECT_SUFFIX})")
         if not path:
-            return
+            return False
         self.session.save_project(path)
         self.settings.setValue("io/last_dir", os.path.dirname(path))
         self.statusBar().showMessage(f"Project saved to {self.session.project_path}")
+        return True
 
     # -- lifecycle ------------------------------------------------------------- #
     def closeEvent(self, event):  # noqa: N802 (Qt API)
+        if not self.confirm_discard("Quit anyway?"):
+            event.ignore()
+            return
         self.settings.setValue("shell/geometry", self.saveGeometry())
         self.explorer.save_settings()
         self.session.close_all()

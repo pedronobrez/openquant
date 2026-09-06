@@ -8,10 +8,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6 import QtCore, QtWidgets  # noqa: E402
 
-from openpeakview.components import Component  # noqa: E402
-from openpeakview.quantify import PeakResult, ResultsSet  # noqa: E402
-from openpeakview.session import Session  # noqa: E402
-from openpeakview.ui.analytics import AnalyticsWorkspace  # noqa: E402
+from openquant.components import Component  # noqa: E402
+from openquant.quantify import PeakResult, ResultsSet  # noqa: E402
+from openquant.session import Session  # noqa: E402
+from openquant.ui.analytics import AnalyticsWorkspace  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -66,7 +66,7 @@ def test_clearing_the_standard_falls_back_to_the_raw_area(qapp, workspace):
 
 
 def test_the_table_hands_the_choice_to_the_workspace(qapp, workspace):
-    from openpeakview.ui.results_table import IS_COLUMN
+    from openquant.ui.results_table import IS_COLUMN
     model = workspace.results.model
     row = next(r for r in range(model.rowCount())
                if model.result_at(r).component == "C16:0-Ceramide")

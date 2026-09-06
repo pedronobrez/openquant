@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openpeakview"
-version = "0.1.0"
-description = "Visualizador open source de dados LC-MS SCIEX (.wiff), no estilo do PeakView"
+name = "openquant"
+version = "0.5.0"
+description = "Open source quantitation and review for SCIEX LC-MS data (.wiff)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-openpeakview = "openpeakview.app:main"
+openquant = "openquant.app:main"
 
 [tool.setuptools.packages.find]
-include = ["openpeakview*"]
+include = ["openquant*"]

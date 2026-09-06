@@ -86,7 +86,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.setWindowFlags(QtCore.Qt.WindowType.Widget)
 
         self.session = session
-        self.settings = QtCore.QSettings("OpenPeakView", "OpenPeakView")
+        self.settings = QtCore.QSettings("OpenQuant", "OpenQuant")
         self.refs: dict[str, ChannelRef] = {}
         self.xic_defs: list[dict] = []
         self.active_ref: ChannelRef | None = None

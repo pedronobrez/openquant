@@ -10,14 +10,14 @@ from PyQt6 import QtWidgets
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="openpeakview",
-        description="Open source viewer for SCIEX LC-MS data (.wiff).",
+        prog="openquant",
+        description="Open source quantitation for SCIEX LC-MS data (.wiff).",
     )
     parser.add_argument("files", nargs="*", help=".wiff files to open")
     args = parser.parse_args(argv)
 
     app = QtWidgets.QApplication(sys.argv[:1])
-    app.setApplicationName("OpenPeakView")
+    app.setApplicationName("OpenQuant")
 
     from .ui.theme import apply_defaults
 
@@ -29,6 +29,8 @@ def main(argv: list[str] | None = None) -> int:
     window.show()
     for path in args.files:
         window.load_file(path)
+    if not args.files:
+        window.offer_start()
     return app.exec()
 
 

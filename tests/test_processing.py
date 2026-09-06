@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from openpeakview import processing as pr
+from openquant import processing as pr
 
 
 def gaussian(x, centre, sigma, height):

@@ -8,15 +8,15 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6 import QtWidgets  # noqa: E402
 
-from openpeakview.components import Component  # noqa: E402
-from openpeakview.quantify import PeakResult, ResultsSet  # noqa: E402
-from openpeakview.samples import QC, SampleEntry, UNKNOWN  # noqa: E402
-from openpeakview.session import Session  # noqa: E402
-from openpeakview.ui.metric_plot import (  # noqa: E402
+from openquant.components import Component  # noqa: E402
+from openquant.quantify import PeakResult, ResultsSet  # noqa: E402
+from openquant.samples import QC, SampleEntry, UNKNOWN  # noqa: E402
+from openquant.session import Session  # noqa: E402
+from openquant.ui.metric_plot import (  # noqa: E402
     BY_SAMPLE_GROUP, BY_SAMPLE_TYPE, NO_COLOUR, UNGROUPED, UNGROUPED_COLOUR,
     MetricPlotPanel,
 )
-from openpeakview.ui.plots import colour  # noqa: E402
+from openquant.ui.plots import colour  # noqa: E402
 
 
 @pytest.fixture(scope="module")

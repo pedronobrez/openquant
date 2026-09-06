@@ -8,11 +8,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
-from openpeakview.components import Component  # noqa: E402
-from openpeakview.quantify import PeakResult, ResultsSet  # noqa: E402
-from openpeakview.session import Session  # noqa: E402
-from openpeakview.ui import theme  # noqa: E402
-from openpeakview.ui.results_table import (  # noqa: E402
+from openquant.components import Component  # noqa: E402
+from openquant.quantify import PeakResult, ResultsSet  # noqa: E402
+from openquant.session import Session  # noqa: E402
+from openquant.ui import theme  # noqa: E402
+from openquant.ui.results_table import (  # noqa: E402
     FIELD_INDEX, IS_COLUMN, MAX_AUTO_WIDTH, ResultsTable,
 )
 
@@ -96,7 +96,7 @@ def test_choosing_the_same_one_changes_nothing(qapp, table):
 
 def break_the_reference(table):
     """Point a component at a standard nothing answers to, as an import can."""
-    from openpeakview.quantify import link_internal_standards
+    from openquant.quantify import link_internal_standards
     table.session.method.by_name("C16:0-Ceramide").internal_standard = "never typed"
     link_internal_standards(table.session.results, table.session.method)
 
@@ -115,7 +115,7 @@ def test_a_standard_that_no_component_answers_to_is_shown_and_marked(qapp, table
 def test_a_standard_that_was_never_ticked_is_is_marked_too(qapp, table):
     # by_name resolves it, so the ratio is real — but nobody declared it a
     # standard, which is what an imported spreadsheet keeps producing
-    from openpeakview.quantify import link_internal_standards
+    from openquant.quantify import link_internal_standards
     table.session.method.by_name("C17:0 standard").is_internal_standard = False
     link_internal_standards(table.session.results, table.session.method)
     index = cell(table, "C16:0-Ceramide")
@@ -156,7 +156,7 @@ def test_the_fit_is_skipped_when_the_batch_has_not_changed(qapp, table):
 
 
 def test_the_results_carry_the_sample_group(qapp, table):
-    from openpeakview.samples import SampleEntry
+    from openquant.samples import SampleEntry
     entry = SampleEntry("/d/1.wiff", 0, "Injection 1", sample_group="treated")
     table.session.entries = [entry]
     for result in table.session.results:

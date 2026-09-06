@@ -2,11 +2,11 @@
 
 import pytest
 
-from openpeakview.components import AcceptanceLimits, Component
-from openpeakview.method import ProcessingMethod
-from openpeakview.quantify import PeakResult, ResultsSet, evaluate_acceptance
-from openpeakview.samples import QC, STANDARD, UNKNOWN, SampleEntry
-from openpeakview.statistics import (
+from openquant.components import AcceptanceLimits, Component
+from openquant.method import ProcessingMethod
+from openquant.quantify import PeakResult, ResultsSet, evaluate_acceptance
+from openquant.samples import QC, STANDARD, UNKNOWN, SampleEntry
+from openquant.statistics import (
     GROUP_BY_CONCENTRATION,
     GROUP_BY_SAMPLE_TYPE,
     summarise,

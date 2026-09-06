@@ -1,1 +1,0 @@
-"""OpenPeakView user interface components."""

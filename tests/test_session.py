@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from openpeakview.components import Component
-from openpeakview.method import ProcessingMethod
-from openpeakview.samples import SampleEntry, shorten_names
+from openquant.components import Component
+from openquant.method import ProcessingMethod
+from openquant.samples import SampleEntry, shorten_names
 
 
 # --- components -------------------------------------------------------------- #

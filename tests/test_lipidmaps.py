@@ -7,7 +7,7 @@ import zipfile
 
 import pytest
 
-from openpeakview import lipidmaps as lm
+from openquant import lipidmaps as lm
 
 SDF = """\
 
@@ -253,8 +253,8 @@ def test_proposals_refuse_to_guess_at_nominal_precision(database, monkeypatch):
     A precursor written to one decimal is known to ±50 mDa. Several species fit
     a window that wide, so nothing is offered for automatic naming.
     """
-    from openpeakview.components import Component
-    from openpeakview.ui.annotate_dialog import propose
+    from openquant.components import Component
+    from openquant.ui.annotate_dialog import propose
 
     monkeypatch.setattr(lm, "database", lambda *a, **k: database)
     [proposal] = propose([Component("313.2", 313.2)])
@@ -265,8 +265,8 @@ def test_proposals_refuse_to_guess_at_nominal_precision(database, monkeypatch):
 
 
 def test_an_accurate_mass_gives_an_unambiguous_species(database, monkeypatch):
-    from openpeakview.components import Component
-    from openpeakview.ui.annotate_dialog import propose
+    from openquant.components import Component
+    from openquant.ui.annotate_dialog import propose
 
     monkeypatch.setattr(lm, "database", lambda *a, **k: database)
     [proposal] = propose([Component("313.2384", 313.2384)])
@@ -277,8 +277,8 @@ def test_an_accurate_mass_gives_an_unambiguous_species(database, monkeypatch):
 
 
 def test_named_components_are_left_alone(database, monkeypatch):
-    from openpeakview.components import Component
-    from openpeakview.ui.annotate_dialog import propose
+    from openquant.components import Component
+    from openquant.ui.annotate_dialog import propose
 
     monkeypatch.setattr(lm, "database", lambda *a, **k: database)
     named = Component("12,13-DiHOME", 313.2384)
@@ -287,8 +287,8 @@ def test_named_components_are_left_alone(database, monkeypatch):
 
 
 def test_no_database_gives_no_proposals(monkeypatch):
-    from openpeakview.components import Component
-    from openpeakview.ui.annotate_dialog import propose
+    from openquant.components import Component
+    from openquant.ui.annotate_dialog import propose
 
     monkeypatch.setattr(lm, "database", lambda *a, **k: None)
     assert propose([Component("313.2", 313.2)]) == []

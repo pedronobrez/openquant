@@ -1,13 +1,28 @@
-# OpenPeakView
+# OpenQuant
 
-A Python viewer for SCIEX LC-MS data (`.wiff` + `.wiff.scan`) that follows
-PeakView's way of working: TIC, BPC, the individual channels of the acquisition
-method, extracted ion chromatograms, and mass spectra scan by scan or averaged
-over a selected region of a peak.
+Open source quantitation and review for SCIEX LC-MS data (`.wiff` +
+`.wiff.scan`). Qualitative review the way PeakView works — TIC, BPC, the
+individual channels of the acquisition method, extracted ion chromatograms,
+and mass spectra scan by scan or averaged over a selected region of a peak —
+and batch quantitation the way MultiQuant does: a component table, peak review
+across every sample at once, calibration curves and grouped statistics.
 
 Runs on **macOS (Apple Silicon included)**, Linux and Windows.
 
+*Formerly OpenPeakView. Projects saved as `.opvproj` still open; new ones are
+written as `.oqproj`.*
+
 ![screenshot](docs/screenshot.png)
+
+## Starting a project
+
+`File ▸ New project…` walks through the batch in the order the work needs it:
+where the project file goes, which raw files are in it and what each injection
+is, and where the processing method comes from. The project file is written
+when the wizard finishes, so there is a file to save into from the first
+change rather than one to remember to create at the end. The title bar carries
+a `•` while anything is unsaved, and nothing that would discard the session —
+quitting, closing, opening another project — does so without offering to save.
 
 ## Workspaces
 
@@ -20,12 +35,12 @@ once rather than once per view.
 | **Explorer** | qualitative review of the raw data: chromatograms, spectra, XICs, chemistry |
 | **Analytics** | the batch, quantitatively: one chromatogram per sample for each component, and the results table |
 | **Method** | the component table — what to extract, where, and how the result is reported |
-| **Samples** | the batch: sample type, expected concentration, dilution |
+| **Samples** | the batch: sample type, study group, expected concentration, dilution |
 
-`Ctrl+1/2/3/4` switch between them. `File ▸ Save project` writes a `.opvproj`
-holding the method and the batch, so the annotation survives closing the
-program — none of it is recorded in the raw file, where every injection comes
-back as `kUnknown`.
+`Ctrl+1/2/3/4` switch between them. `File ▸ Save project` writes a `.oqproj`
+holding the method, the batch and the results, so the annotation survives
+closing the program — none of it is recorded in the raw file, where every
+injection comes back as `kUnknown`.
 
 ![analytics workspace](docs/screenshot-analytics.png)
 
@@ -207,7 +222,7 @@ right-click = pyqtgraph menu (export image, axis options and so on).
 
 ```bash
 python3 -m pip install -r requirements.txt
-python3 -m openpeakview.bootstrap --install   # fetches the .NET runtime (~30 MB) into ~/.dotnet
+python3 -m openquant.bootstrap --install   # fetches the .NET runtime (~30 MB) into ~/.dotnet
 ```
 
 The second command is needed once, and only if there is no .NET 8 runtime on
@@ -259,7 +274,7 @@ assemblies.
 
 Off Windows they normally do not work, because `Clearcore2.StructuredStorage`
 opens the file through the Windows-only COM API `StgOpenStorageEx`. The module
-[`openpeakview/bootstrap.py`](openpeakview/bootstrap.py) works around that:
+[`openquant/bootstrap.py`](openquant/bootstrap.py) works around that:
 
 1. it locates (or installs) a .NET 8 runtime;
 2. it downloads from NuGet the compatibility assemblies .NET Core does not ship
@@ -287,7 +302,7 @@ the files to mzML with `msconvert` and read the mzML with
 ## Layout
 
 ```
-openpeakview/
+openquant/
   bootstrap.py           .NET runtime setup and the Clearcore2 patch
   wiff.py                WiffFile / Sample / Channel → numpy arrays
   components.py          the component table (CSV)
@@ -333,7 +348,7 @@ own files with `python3 selftest.py`.
 The data layer works on its own, without any UI:
 
 ```python
-from openpeakview import WiffFile
+from openquant import WiffFile
 
 sample = WiffFile("demo_QC01.wiff").sample(0)
 channel = sample.channels[65]                        # TOF PI, precursor 325.20
@@ -351,7 +366,7 @@ gaps look like signal.
 The chemistry layer is independent of both the UI and the vendor libraries:
 
 ```python
-from openpeakview import chemistry as ch
+from openquant import chemistry as ch
 
 counts = ch.parse_formula("C18H34O4")                # 12,13-DiHOME
 ch.monoisotopic_mass(counts)                         # 314.245709

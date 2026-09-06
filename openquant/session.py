@@ -21,7 +21,10 @@ from .quantify import ResultsSet, XicCache
 from .samples import SampleEntry, shorten_names
 from .wiff import WiffFile
 
-PROJECT_SUFFIX = ".opvproj"
+PROJECT_SUFFIX = ".oqproj"
+#: the suffix used before the software was renamed; still opened, never written
+LEGACY_PROJECT_SUFFIX = ".opvproj"
+PROJECT_SUFFIXES = (PROJECT_SUFFIX, LEGACY_PROJECT_SUFFIX)
 
 
 class Session(QtCore.QObject):
@@ -30,6 +33,8 @@ class Session(QtCore.QObject):
     sigSamplesChanged = QtCore.pyqtSignal()
     sigMethodChanged = QtCore.pyqtSignal()
     sigResultsChanged = QtCore.pyqtSignal()
+    #: the project path or the unsaved state changed
+    sigProjectChanged = QtCore.pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -40,6 +45,28 @@ class Session(QtCore.QObject):
         self.calibrations: dict[str, Calibration] = {}
         self.cache = XicCache()
         self.project_path: str | None = None
+        #: something changed since the last save. Tracked here rather than in
+        #: the window, because every workspace can change the session and none
+        #: of them should have to remember to say so.
+        self.dirty = False
+        for signal in (self.sigSamplesChanged, self.sigMethodChanged,
+                       self.sigResultsChanged):
+            signal.connect(self._mark_dirty)
+
+    # -- unsaved state ------------------------------------------------------------ #
+    def _mark_dirty(self) -> None:
+        if not self.dirty:
+            self.dirty = True
+            self.sigProjectChanged.emit()
+
+    def _mark_clean(self) -> None:
+        self.dirty = False
+        self.sigProjectChanged.emit()
+
+    @property
+    def has_content(self) -> bool:
+        """Is there anything here that would be lost?"""
+        return bool(self.entries or self.method.components or len(self.results))
 
     # -- files ------------------------------------------------------------------ #
     def open_file(self, path: str) -> WiffFile:
@@ -67,6 +94,7 @@ class Session(QtCore.QObject):
         self.project_path = None
         self.sigSamplesChanged.emit()
         self.sigResultsChanged.emit()
+        self._mark_clean()
 
     @property
     def loaded_entries(self) -> list[SampleEntry]:
@@ -129,11 +157,12 @@ class Session(QtCore.QObject):
         }
 
     def save_project(self, path: str) -> None:
-        if not path.endswith(PROJECT_SUFFIX):
+        if not path.endswith(PROJECT_SUFFIXES):
             path += PROJECT_SUFFIX
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(self.to_dict(), handle, indent=2, ensure_ascii=False)
         self.project_path = path
+        self._mark_clean()
 
     def load_project(self, path: str) -> list[str]:
         """
@@ -175,4 +204,5 @@ class Session(QtCore.QObject):
         self.sigMethodChanged.emit()
         self.sigSamplesChanged.emit()
         self.sigResultsChanged.emit()
+        self._mark_clean()
         return missing

@@ -231,3 +231,76 @@ def test_a_centroided_spectrum_is_not_centroided_a_second_time(qapp):
         assert found, centroid
         assert found[0][0] == pytest.approx(centre, abs=2e-3), centroid
     view.close()
+
+
+# -- how far the view may go -------------------------------------------------- #
+@pytest.fixture
+def fenced(qapp):
+    from openquant.ui.plots import ChromatogramView, Trace
+
+    x = np.linspace(0, 21.5, 400)
+    y = 1e6 * np.exp(-((x - 12) ** 2) / 2) + 5e4
+    view = ChromatogramView()
+    view.resize(800, 400)
+    view.set_traces([Trace("a", "TIC", x, y, "#1f77b4")])
+    view.autoscale()
+    qapp.processEvents()
+    yield view
+    view.close()
+
+
+def test_fit_lands_on_the_data_and_not_beside_it(qapp, fenced):
+    lo, hi = fenced.plot.getViewBox().viewRange()[0]
+    # it used to pad to -0.74 .. 22.17 around a run of 0 .. 21.5
+    assert lo == pytest.approx(0.0, abs=1e-6)
+    assert hi == pytest.approx(21.5, abs=0.01)
+
+
+def test_panning_into_negative_time_is_refused(qapp, fenced):
+    box = fenced.plot.getViewBox()
+    box.setRange(xRange=(-50.0, -10.0), padding=0)
+    qapp.processEvents()
+    assert box.viewRange()[0][0] >= 0.0
+
+
+def test_panning_below_zero_intensity_is_refused(qapp, fenced):
+    box = fenced.plot.getViewBox()
+    box.setRange(yRange=(-1e6, -1e5), padding=0)
+    qapp.processEvents()
+    assert box.viewRange()[1][0] >= 0.0
+
+
+def test_zooming_out_past_the_data_is_refused(qapp, fenced):
+    box = fenced.plot.getViewBox()
+    box.setRange(xRange=(-500.0, 500.0), padding=0)
+    qapp.processEvents()
+    lo, hi = box.viewRange()[0]
+    assert lo >= 0.0 and hi <= 21.6
+
+
+def test_a_mirrored_trace_keeps_the_room_it_actually_uses(qapp):
+    """The fence is against empty space, not against data that goes negative."""
+    from openquant.ui.plots import ChromatogramView, Trace
+
+    x = np.linspace(0, 20, 200)
+    view = ChromatogramView()
+    view.resize(800, 400)
+    view.set_traces([
+        Trace("a", "sample", x, 1e6 * np.exp(-((x - 10) ** 2)), "#1f77b4"),
+        Trace("b", "blank", x, 6e5 * np.exp(-((x - 11) ** 2)), "#d62728"),
+    ])
+    view.set_mirror(True)
+    view.autoscale()
+    qapp.processEvents()
+    assert view.plot.getViewBox().viewRange()[1][0] < -1e5
+    view.close()
+
+
+def test_no_traces_leaves_the_view_unfenced(qapp):
+    from openquant.ui.plots import ChromatogramView
+
+    view = ChromatogramView()
+    view.resize(400, 300)
+    view.autoscale()          # would raise if the empty case were not handled
+    qapp.processEvents()
+    view.close()

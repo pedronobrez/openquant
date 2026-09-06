@@ -292,6 +292,7 @@ class BasePlot(QtWidgets.QWidget):
                                       name=trace.label, antialias=True)
             self._curves[trace.key] = item
         self._refresh_overview()
+        self._apply_limits()
         self._after_traces_changed()
 
     def clear_traces(self) -> None:
@@ -308,8 +309,58 @@ class BasePlot(QtWidgets.QWidget):
         pass
 
     def autoscale(self) -> None:
+        self._apply_limits()
         self.plot.enableAutoRange()
         self.plot.autoRange()
+
+    # -- how far the view may go --------------------------------------------- #
+    def _apply_limits(self) -> None:
+        """
+        Fence the view to the data: no negative time, mass or intensity, and
+        no zooming out past what was measured.
+
+        Panning into empty space either side of a chromatogram is disorienting
+        and never useful — there is nothing out there. The widest view is the
+        whole of the data, which is also what Fit gives.
+        """
+        box = self.plot.getViewBox()
+        bounds = self._data_bounds()
+        if bounds is None:
+            box.setLimits(xMin=None, xMax=None, yMin=None, yMax=None,
+                          maxXRange=None, maxYRange=None)
+            return
+        x_low, x_high, y_low, y_high = bounds
+        # zero stays reachable so a baseline is visible, and a mirrored or
+        # baseline-subtracted trace keeps the negative room it actually uses
+        x_low = min(0.0, x_low)
+        y_low = min(0.0, y_low)
+        if x_high <= x_low or y_high <= y_low:
+            box.setLimits(xMin=None, xMax=None, yMin=None, yMax=None,
+                          maxXRange=None, maxYRange=None)
+            return
+        head_room = (y_high - y_low) * 0.05
+        box.setLimits(xMin=x_low, xMax=x_high,
+                      yMin=y_low, yMax=y_high + head_room,
+                      maxXRange=x_high - x_low,
+                      maxYRange=y_high - y_low + head_room)
+
+    def _data_bounds(self) -> tuple[float, float, float, float] | None:
+        """The extent of everything on screen, after conditioning."""
+        lows_x, highs_x, lows_y, highs_y = [], [], [], []
+        for index, trace in enumerate(self._traces):
+            x, y = self._display(trace, index)
+            if not len(x) or not len(y):
+                continue
+            finite = np.isfinite(x) & np.isfinite(y)
+            if not finite.any():
+                continue
+            lows_x.append(float(np.min(x[finite])))
+            highs_x.append(float(np.max(x[finite])))
+            lows_y.append(float(np.min(y[finite])))
+            highs_y.append(float(np.max(y[finite])))
+        if not lows_x:
+            return None
+        return (min(lows_x), max(highs_x), min(lows_y), max(highs_y))
 
     # -- overview navigator -------------------------------------------------- #
     def set_overview_visible(self, visible: bool) -> None:

@@ -33,9 +33,15 @@ def main() -> int:
     print("shown", flush=True)
     app.processEvents()
     print("events processed", flush=True)
-    window.close()
     print(f"OpenQuant {openquant.__version__} started on {platform.system()}",
           flush=True)
+
+    # the same shutdown the real application does; without it PyQt's atexit
+    # hook walks wrappers whose Qt objects are gone and the process dies with
+    # signal 11 after a completely successful run
+    from openquant.app import _shut_down
+
+    _shut_down(app, window)
     return 0
 
 

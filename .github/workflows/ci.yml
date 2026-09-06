@@ -17,15 +17,8 @@ on:
 
 jobs:
   test:
-    name: ${{ matrix.os }} · Python ${{ matrix.python }}${{ matrix.unstable && ' (known unstable)' || '' }}
+    name: ${{ matrix.os }} · Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
-    # Linux reports without blocking. It segfaults inside pyqtgraph's own
-    # PlotWidget constructor, in a different test on each run, under both the
-    # offscreen platform and xvfb, on 3.10 and on 3.13. That is an open bug,
-    # not a passing platform, and the README says as much — but holding the
-    # macOS and Windows installers hostage to it helps nobody. This must not
-    # be extended to either of those two.
-    continue-on-error: ${{ matrix.unstable || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -36,11 +29,9 @@ jobs:
             python: "3.13"
           - os: ubuntu-latest
             python: "3.13"
-            unstable: true
           # the floor declared in pyproject, so it stays true
           - os: ubuntu-latest
             python: "3.10"
-            unstable: true
 
     steps:
       - uses: actions/checkout@v4
@@ -258,3 +249,4 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" --generate-notes --verify-tag \
             --title "OpenQuant ${GITHUB_REF_NAME}" 2>/dev/null || true
           gh release upload "${GITHUB_REF_NAME}" "${built[@]}" --clobber
+

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from PyQt6 import QtWidgets
+from PyQt6 import QtCore, QtWidgets
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -39,7 +39,34 @@ def main(argv: list[str] | None = None) -> int:
         window.load_file(path)
     if not args.files:
         window.offer_start()
-    return app.exec()
+    status = app.exec()
+    _shut_down(app, window)
+    return status
+
+
+def _shut_down(app, window) -> None:
+    """
+    Take the window down before the interpreter does.
+
+    PyQt registers an atexit hook that walks every Python wrapper it still
+    holds and cleans up the Qt object behind it. If Qt has already destroyed
+    that object — which it does for every child of a window as the window
+    goes — the hook dereferences freed memory. On Linux that segfaults on
+    quit: the application has done its work and printed its output, and the
+    process still dies with signal 11, which is what a user sees and what a
+    script reads.
+
+    Deleting the window here, and letting Qt finish, leaves the hook nothing
+    to trip over.
+    """
+    import gc
+
+    window.close()
+    window.deleteLater()
+    app.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+    app.processEvents()
+    del window
+    gc.collect()
 
 
 def _selftest(files: list[str]) -> int:

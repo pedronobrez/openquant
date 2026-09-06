@@ -238,6 +238,20 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.tabs.tabBar().setElideMode(QtCore.Qt.TextElideMode.ElideNone)
         self.tabs.addTab(self.sample_info, "Sample")
 
+        # the eight tabs need twice the width the dock has, so five of them sit
+        # behind two small arrows and are found by accident or not at all. This
+        # lists every panel by name, at the tabs, where you look for them.
+        self.panel_menu = QtWidgets.QMenu(self)
+        self.btn_panels = QtWidgets.QToolButton()
+        self.btn_panels.setText("Panels")
+        self.btn_panels.setToolTip("Go to a panel by name")
+        self.btn_panels.setPopupMode(
+            QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.btn_panels.setMenu(self.panel_menu)
+        self.tabs.setCornerWidget(self.btn_panels,
+                                  QtCore.Qt.Corner.TopRightCorner)
+        self._build_panel_actions()
+
         dock.setWidget(self.tabs)
         self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, dock)
         dock.setMinimumWidth(360)
@@ -406,6 +420,32 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             "Integrate the peaks of every chromatogram trace and fill the Results tab"
         )
 
+    def _build_panel_actions(self) -> None:
+        """One action per panel, for the corner menu and the menu bar."""
+        self.panel_actions = []
+        for index in range(self.tabs.count()):
+            action = QtGui.QAction(self.tabs.tabText(index), self)
+            action.setShortcut(QtGui.QKeySequence(f"Ctrl+Shift+{index + 1}"))
+            action.triggered.connect(
+                lambda _checked, i=index: self.show_panel(i))
+            self.panel_menu.addAction(action)
+            self.panel_actions.append(action)
+            self.addAction(action)
+
+    def show_panel(self, index: int) -> None:
+        """Bring a panel to the front, opening the dock if it was closed."""
+        self.dock_side.show()
+        self.dock_side.raise_()
+        self.tabs.setCurrentIndex(index)
+        self.tabs.tabBar().setCurrentIndex(index)
+
+    def show_panel_named(self, title: str) -> bool:
+        for index in range(self.tabs.count()):
+            if self.tabs.tabText(index) == title:
+                self.show_panel(index)
+                return True
+        return False
+
     def build_actions(self) -> dict:
         """Actions the shell adds to its own menus for this workspace."""
         return {
@@ -413,6 +453,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             "View": [self.act_autoscale, self.act_norm, self.act_mirror,
                      self.act_stack, self.act_overview, self.act_labels,
                      self.act_apex, self.act_relative, self.act_legend],
+            "Panels": list(self.panel_actions),
             "Process": [self.act_centroid, self.act_marker, self.act_marker_clear,
                         self.act_set_bg, self.act_clear_bg, self.act_detect],
         }

@@ -122,7 +122,7 @@ class MainShell(QtWidgets.QMainWindow):
         file_menu.addAction("Quit").triggered.connect(self.close)
 
         actions = self.explorer.build_actions()
-        for name in ("View", "Process"):
+        for name in ("View", "Panels", "Process"):
             menu = self.menuBar().addMenu(f"&{name}")
             for action in actions[name]:
                 menu.addAction(action)

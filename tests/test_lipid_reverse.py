@@ -6,6 +6,8 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PyQt6 import QtCore  # noqa: E402
+
 from openquant import lipidmaps  # noqa: E402
 from openquant.chemistry import ADDUCTS_BY_NAME  # noqa: E402
 from openquant.lipidmaps import LipidDatabase, LipidRecord  # noqa: E402
@@ -204,3 +206,46 @@ def test_the_neutral_entry_is_not_offered_as_an_ion(database):
     # and it is still searchable as before
     assert lipidmaps.ion_form(record, NEUTRAL).mz == pytest.approx(537.5121,
                                                                    abs=1e-3)
+
+
+# -- reaching the panel ----------------------------------------------------------- #
+def test_every_panel_can_be_reached_by_name(qapp):
+    """
+    Eight tabs need twice the width the dock has.
+
+    Five of them sit behind two small arrows, which is how a panel ends up
+    findable by accident or not at all.
+    """
+    from PyQt6 import QtWidgets
+
+    from openquant.session import Session
+    from openquant.ui.explorer import ExplorerWorkspace
+
+    workspace = ExplorerWorkspace(Session())
+    workspace.resize(1500, 800)
+    workspace.show()
+    qapp.processEvents()
+
+    titles = [workspace.tabs.tabText(i) for i in range(workspace.tabs.count())]
+    assert [a.text() for a in workspace.panel_actions] == titles
+    assert "LIPID MAPS" in titles
+
+    bar = workspace.tabs.tabBar()
+    hidden = [t for i, t in enumerate(titles)
+              if bar.tabRect(i).right() > bar.width()]
+    assert hidden, "the tab bar used to fit everything; the menu may be moot"
+
+    assert workspace.show_panel_named("LIPID MAPS")
+    qapp.processEvents()
+    assert workspace.tabs.currentWidget() is workspace.lipid_panel
+    assert workspace.tabs.cornerWidget(QtCore.Qt.Corner.TopRightCorner) is not None
+    workspace.close()
+
+
+def test_an_unknown_panel_name_reports_rather_than_switching(qapp):
+    from openquant.session import Session
+    from openquant.ui.explorer import ExplorerWorkspace
+
+    workspace = ExplorerWorkspace(Session())
+    assert not workspace.show_panel_named("Nothing")
+    workspace.close()

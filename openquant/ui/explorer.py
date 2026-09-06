@@ -528,6 +528,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             self.mass_calc.formula_edit.setText)
         self.lipid_panel.sigAnnotate.connect(self._lipid_annotation)
         self.lipid_panel.sigPrecursor.connect(self._lipid_precursor)
+        self.lipid_panel.sigFragment.connect(self._lipid_fragment)
 
         QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Left), self,
                         activated=lambda: self._step_scan(-1))
@@ -1304,6 +1305,21 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self._update_status(
             f"{name} {adduct} — m/z {mz:.4f} added to the method "
             f"({len(method.components)} component(s)).")
+
+    def _lipid_fragment(self, name: str, lm_id: str, route: str,
+                        mz: float) -> None:
+        """
+        A predicted fragment goes to the manual XIC, not into the method.
+
+        A precursor from the database is arithmetic on a known formula; a
+        fragment is a candidate. Extracting it against a real sample is how it
+        earns a place in a method, so that is what this offers.
+        """
+        self.xic_mz.setText(f"{mz:.4f}")
+        self.show_panel_named("Manual XIC")
+        self._update_status(
+            f"{name}: candidate fragment {mz:.4f} ({route}) — extract it to "
+            "see whether the sample agrees.")
 
     def _send_to_finder(self, mz: float, adduct: str) -> None:
         self.formula_panel.set_target(mz, adduct)

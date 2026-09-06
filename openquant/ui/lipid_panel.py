@@ -6,10 +6,13 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 from .. import lipidmaps
 from ..chemistry import ADDUCTS
+from ..structure import predict
+from .structure_view import StructureView
 
 ROLE_RECORD = QtCore.Qt.ItemDataRole.UserRole
 ROLE_MZ = QtCore.Qt.ItemDataRole.UserRole + 1
 ROLE_ADDUCT = QtCore.Qt.ItemDataRole.UserRole + 2
+ROLE_ION = QtCore.Qt.ItemDataRole.UserRole + 3
 
 
 class LipidPanel(QtWidgets.QWidget):
@@ -24,6 +27,8 @@ class LipidPanel(QtWidgets.QWidget):
     sigAnnotate = QtCore.pyqtSignal(str, str, str)   # name, formula, lm_id
     #: name, formula, lm_id, adduct, m/z — a lipid resolved to a channel
     sigPrecursor = QtCore.pyqtSignal(str, str, str, str, float)
+    #: name, lm_id, description, m/z — a predicted fragment sent onward
+    sigFragment = QtCore.pyqtSignal(str, str, str, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -99,6 +104,81 @@ class LipidPanel(QtWidgets.QWidget):
             "Double-click an ion to use its m/z as the precursor")
         name_layout.addWidget(self.ion_tree, 1)
 
+        by_fragment = QtWidgets.QWidget()
+        frag_layout = QtWidgets.QVBoxLayout(by_fragment)
+        frag_layout.setContentsMargins(0, 6, 0, 0)
+        self.modes.addTab(by_fragment, "Fragments")
+
+        frag_form = QtWidgets.QFormLayout()
+        self.frag_name = QtWidgets.QLineEdit()
+        self.frag_name.setPlaceholderText("Cer(d18:1/16:0), Cholic acid…")
+        frag_form.addRow("Lipid:", self.frag_name)
+
+        limits = QtWidgets.QHBoxLayout()
+        self.frag_polarity = QtWidgets.QComboBox()
+        self.frag_polarity.addItems(["positive", "negative"])
+        limits.addWidget(self.frag_polarity)
+        self.frag_cuts = QtWidgets.QSpinBox()
+        self.frag_cuts.setRange(1, 2)
+        self.frag_cuts.setValue(1)
+        self.frag_cuts.setPrefix("cuts ≤ ")
+        self.frag_cuts.setToolTip(
+            "Two are needed to open a ring, or to free a piece held at both "
+            "ends — and produce a great many more candidates")
+        limits.addWidget(self.frag_cuts)
+        self.frag_losses = QtWidgets.QSpinBox()
+        self.frag_losses.setRange(0, 2)
+        self.frag_losses.setValue(1)
+        self.frag_losses.setPrefix("losses ≤ ")
+        self.frag_losses.setToolTip(
+            "Small neutrals shed after the bond breaks — water, ammonia, CO, "
+            "CO2, formic acid")
+        limits.addWidget(self.frag_losses)
+        frag_form.addRow("Limits:", limits)
+
+        window = QtWidgets.QHBoxLayout()
+        self.frag_target = QtWidgets.QLineEdit()
+        self.frag_target.setPlaceholderText("264.2686")
+        self.frag_target.setToolTip(
+            "Show only ions near this mass — for checking whether a fragment "
+            "you already use can be accounted for")
+        window.addWidget(self.frag_target, 1)
+        self.frag_tolerance = QtWidgets.QDoubleSpinBox()
+        self.frag_tolerance.setRange(0.001, 5.0)
+        self.frag_tolerance.setDecimals(3)
+        self.frag_tolerance.setValue(0.01)
+        self.frag_tolerance.setPrefix("± ")
+        self.frag_tolerance.setSuffix(" Da")
+        window.addWidget(self.frag_tolerance)
+        frag_form.addRow("Near m/z:", window)
+        frag_layout.addLayout(frag_form)
+
+        self.btn_fragments = QtWidgets.QPushButton("Predict fragments")
+        self.btn_fragments.setProperty("primary", True)
+        frag_layout.addWidget(self.btn_fragments)
+
+        self.frag_tree = QtWidgets.QTreeWidget()
+        self.frag_tree.setHeaderLabels(["m/z", "Piece", "Route", "Cuts"])
+        self.frag_tree.setColumnWidth(0, 90)
+        self.frag_tree.setColumnWidth(1, 120)
+        self.frag_tree.setAlternatingRowColors(True)
+        self.frag_tree.setToolTip(
+            "Double-click to send the m/z on; the drawing below shows where "
+            "the molecule would break")
+        frag_layout.addWidget(self.frag_tree, 3)
+
+        self.structure_view = StructureView()
+        frag_layout.addWidget(self.structure_view, 2)
+
+        self.frag_note = QtWidgets.QLabel(
+            "The mass is arithmetic and exact. The route beside it is only the "
+            "simplest one that reaches that mass — not evidence of how the "
+            "molecule actually breaks. Confirm against a measured product "
+            "spectrum before trusting a fragment.")
+        self.frag_note.setWordWrap(True)
+        self.frag_note.setProperty("role", "warning")
+        frag_layout.addWidget(self.frag_note)
+
         self.tree = QtWidgets.QTreeWidget()
         self.tree.setHeaderLabels(["Species / structure", "Formula", "mDa",
                                    "ppm", "n"])
@@ -135,6 +215,11 @@ class LipidPanel(QtWidgets.QWidget):
         self.name_edit.returnPressed.connect(self.look_up_name)
         self.name_tree.currentItemChanged.connect(self._show_ions)
         self.ion_tree.itemDoubleClicked.connect(self._ion_activated)
+        self.btn_fragments.clicked.connect(self.predict_fragments)
+        self.frag_name.returnPressed.connect(self.predict_fragments)
+        self.frag_target.returnPressed.connect(self.predict_fragments)
+        self.frag_tree.currentItemChanged.connect(self._show_cleavage)
+        self.frag_tree.itemDoubleClicked.connect(self._fragment_activated)
         self.refresh_availability()
 
     # -- availability -------------------------------------------------------- #
@@ -143,7 +228,8 @@ class LipidPanel(QtWidgets.QWidget):
         self.install_box.setVisible(not installed)
         for widget in (self.btn_search, self.mz_edit, self.adduct_combo,
                        self.tol_spin, self.unit_combo,
-                       self.btn_lookup, self.name_edit):
+                       self.btn_lookup, self.name_edit,
+                       self.btn_fragments, self.frag_name):
             widget.setEnabled(installed)
         if installed:
             database = lipidmaps.database()
@@ -306,6 +392,119 @@ class LipidPanel(QtWidgets.QWidget):
         self.sigPrecursor.emit(record.name or record.abbrev, record.formula,
                                record.lm_id, adduct, float(mz))
         self._report(f"{record.name} {adduct} — {mz:.4f} sent to the component.")
+
+    # -- fragments ------------------------------------------------------------ #
+    def set_fragment_target(self, name: str, mz: float | None = None) -> None:
+        """Ask about a lipid from elsewhere in the app."""
+        self.frag_name.setText(name)
+        if mz is not None:
+            self.frag_target.setText(f"{mz:.4f}")
+        self.modes.setCurrentIndex(2)
+        self.predict_fragments()
+
+    def predict_fragments(self) -> None:
+        database = lipidmaps.database()
+        if database is None:
+            self._report("Install the database first.")
+            return
+        text = self.frag_name.text().strip()
+        if not text:
+            self._report("Type a lipid name, its shorthand or its LM_ID.")
+            return
+        found = database.find_by_name(text, limit=1)
+        if not found:
+            self._report(f"Nothing named like {text!r}.")
+            return
+
+        record = found[0]
+        molecule = record.molecule()
+        self.frag_tree.clear()
+        self.structure_view.set_structure(molecule)
+        if molecule is None:
+            self._report(
+                f"{record.name} has no structure in the index. Reinstall the "
+                "database to add the connection tables.")
+            return
+
+        charge = 1 if self.frag_polarity.currentIndex() == 0 else -1
+        cuts, losses = self.frag_cuts.value(), self.frag_losses.value()
+        ions = self._near_target(predict(molecule, charge=charge,
+                                         max_cuts=cuts, max_losses=losses))
+        wider = ""
+        if not ions and self.frag_target.text().strip():
+            # a mass the analyst already uses turning up empty is worth more
+            # than silence: say what it would take to reach it
+            needed = self._reachable_at(molecule, charge, cuts, losses)
+            wider = (f" It is reachable with {needed}." if needed else
+                     " No combination of one or two cuts and two losses "
+                     "reaches it.")
+
+        for ion in ions:
+            row = QtWidgets.QTreeWidgetItem(self.frag_tree, [
+                f"{ion.mz:.4f}", ion.formula,
+                ion.description.split(" ", 1)[1] if " " in ion.description
+                else "as drawn",
+                str(ion.fragment.cut_count),
+            ])
+            row.setData(0, ROLE_ION, ion)
+            row.setTextAlignment(0, QtCore.Qt.AlignmentFlag.AlignRight
+                                 | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            row.setTextAlignment(3, QtCore.Qt.AlignmentFlag.AlignRight
+                                 | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        if ions:
+            self.frag_tree.setCurrentItem(self.frag_tree.topLevelItem(0))
+
+        if wider:
+            self._report(f"{record.name}: nothing within the current limits."
+                         + wider)
+            return
+        warning = "" if molecule.reliable else (
+            " Its hydrogen count does not match the published formula, so "
+            "these masses are not to be trusted.")
+        self._report(f"{record.name}: {len(ions)} ion(s) from "
+                     f"{len(molecule.atoms)} atoms." + warning)
+
+    def _reachable_at(self, molecule, charge: int, cuts: int,
+                      losses: int) -> str:
+        """The smallest limits that would reach the mass being asked about."""
+        for more_cuts in range(cuts, 3):
+            for more_losses in range(losses, 3):
+                if (more_cuts, more_losses) == (cuts, losses):
+                    continue
+                if self._near_target(predict(molecule, charge=charge,
+                                             max_cuts=more_cuts,
+                                             max_losses=more_losses)):
+                    return f"cuts ≤ {more_cuts} and losses ≤ {more_losses}"
+        return ""
+
+    def _near_target(self, ions: list) -> list:
+        """Narrow to a mass being checked, when one was given."""
+        text = self.frag_target.text().strip().replace(",", ".")
+        if not text:
+            return ions
+        try:
+            target = float(text)
+        except ValueError:
+            return ions
+        half = self.frag_tolerance.value()
+        return [i for i in ions if abs(i.mz - target) <= half]
+
+    def _show_cleavage(self, item, _previous=None) -> None:
+        ion = item.data(0, ROLE_ION) if item is not None else None
+        self.structure_view.set_fragment(ion.fragment if ion else None)
+
+    def _fragment_activated(self, item, _column: int) -> None:
+        ion = item.data(0, ROLE_ION)
+        if ion is None:
+            return
+        name = self.frag_name.text().strip()
+        database = lipidmaps.database()
+        found = database.find_by_name(name, limit=1) if database else []
+        lm_id = found[0].lm_id if found else ""
+        self.sigFragment.emit(found[0].name if found else name, lm_id,
+                              ion.description, float(ion.mz))
+        self._report(f"{ion.mz:.4f} ({ion.description}) sent on. The route is "
+                     "the simplest arithmetic, not a mechanism.")
 
     def _report(self, text: str) -> None:
         self.status.setText(text)

@@ -42,13 +42,22 @@ the packaging never picks it up.
 
 ## What it was verified to do
 
-With the stub in place, CrossOver 26.3 on macOS ran the Windows build and
-read a real acquisition:
+With the stub in place, CrossOver 26.3 on macOS ran the Windows build, opened
+its window, and read a real acquisition. `--digest` was then run three ways on
+the same file and the output compared:
 
-    OpenQuant 0.5.2 on Windows AMD64, Python 3.13.15
-    SCIEX libraries: ready
-    demo_Sample_01.wiff: 1 sample(s), 81 channel(s),
-        first TIC 339 points, max 5,355,040
+    macOS from source        3b24687cb917465f81c242902d4fd17b...
+    macOS from the CI disk image  same
+    Windows MSI under CrossOver   same
 
-The same numbers the macOS build gives for that file, and the window opens.
-Nothing about that is a promise: it is one bottle, on one machine, once.
+Identical, to the byte, once the CRLF the Windows build writes is normalised.
+That is 81 channel chromatograms compared by sum, maximum and a SHA-256 of the
+whole array, one sample TIC, five complete spectra, five extracted traces, and
+twenty-five integrated peaks with their retention times and areas at nine
+decimal places — the numbers a quantitative result is made of.
+
+What that does and does not establish: the reader, the maths and the
+integration give the same answers on both systems, from the same file, in one
+bottle on one machine. It is not a statement about Wine in general, about
+other acquisitions, or about anything the interface does after the numbers
+are read.

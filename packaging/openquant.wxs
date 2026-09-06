@@ -10,9 +10,14 @@
   being listed: a PyInstaller bundle is a few thousand files and no hand-kept
   list survives a dependency change.
 
-  Build (WiX 5, installed as a dotnet tool):
-      dotnet tool install --global wix
-      wix build packaging/openquant.wxs -d Version=0.5.0 -b dist -o OpenQuant.msi
+  Build with WiX 5, installed as a dotnet tool. Pinned: WiX 7 refuses to run
+  without accepting a paid maintenance-fee EULA.
+
+      dotnet tool install wix -g ; version 5.0.2
+      wix build packaging/openquant.wxs -d Version=0.5.1 -b dist -o OpenQuant.msi
+
+  (written without a double hyphen anywhere: XML forbids one inside a comment,
+  and WiX reports it as an invalid source file rather than a comment problem)
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="OpenQuant"

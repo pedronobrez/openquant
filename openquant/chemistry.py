@@ -176,6 +176,9 @@ class Adduct:
         return mz * abs(self.charge) - self.delta
 
 
+#: not an ion: the entry that lets a neutral mass be searched as if it were one
+NEUTRAL = "M (neutral)"
+
 ADDUCTS: list[Adduct] = [
     Adduct("[M-H]-", -1, -PROTON_MASS),
     Adduct("[M+Cl]-", -1, 34.96885268 + ELECTRON_MASS),
@@ -187,7 +190,7 @@ ADDUCTS: list[Adduct] = [
     Adduct("[M+Na]+", 1, 22.98922421),
     Adduct("[M+K]+", 1, 38.96315810),
     Adduct("[M+2H]2+", 2, 2 * PROTON_MASS),
-    Adduct("M (neutral)", 1, 0.0),
+    Adduct(NEUTRAL, 1, 0.0),
 ]
 
 ADDUCTS_BY_NAME = {a.name: a for a in ADDUCTS}

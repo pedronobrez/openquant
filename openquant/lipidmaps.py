@@ -41,7 +41,7 @@ from urllib.request import urlopen
 import numpy as np
 
 from .bootstrap import CACHE_DIR, urlopen as safe_urlopen
-from .chemistry import ADDUCTS_BY_NAME, Adduct
+from .chemistry import ADDUCTS, ADDUCTS_BY_NAME, NEUTRAL, Adduct
 
 #: elements a lipid from a biological sample is built from. LMSD also holds
 #: organoarsenic and fluorinated structures, which are valid entries and absurd
@@ -54,6 +54,9 @@ _ELEMENT = re.compile(r"([A-Z][a-z]?)\d*")
 #: the published SDF, about 21 MB compressed
 DATABASE_URL = "https://www.lipidmaps.org/files/?file=LMSD&ext=sdf.zip"
 INDEX_PATH = CACHE_DIR / "lipidmaps" / "lmsd-index.json.gz"
+#: where it lived before the software was renamed. A 21 MB download should not
+#: have to happen twice because the cache directory changed name.
+LEGACY_INDEX_PATH = Path.home() / ".openpeakview" / "lipidmaps" / "lmsd-index.json.gz"
 INDEX_VERSION = 1
 
 #: SDF tags kept in the index, mapped to the field they fill
@@ -112,6 +115,35 @@ class LipidMatch:
         if not self.theoretical:
             return 0.0
         return (self.measured - self.theoretical) / self.theoretical * 1e6
+
+
+@dataclass(frozen=True)
+class IonForm:
+    """
+    A lipid seen through one ionisation form: the reverse of a mass search.
+
+    The website lists these on every molecule page. They are arithmetic on the
+    exact mass, so they are computed here rather than fetched: no network, and
+    the answer carries the full precision of the formula instead of the four
+    decimals a page prints.
+    """
+
+    record: LipidRecord
+    adduct: str
+    mz: float
+    charge: int
+
+    @property
+    def species(self) -> str:
+        return self.record.species
+
+    @property
+    def formula(self) -> str:
+        return self.record.formula
+
+    @property
+    def name(self) -> str:
+        return self.record.name or self.record.abbrev
 
 
 @dataclass
@@ -298,17 +330,50 @@ class LipidDatabase:
 
     def search_name(self, text: str, limit: int = 50) -> list[LipidRecord]:
         """Case-insensitive substring search over names and abbreviations."""
-        needle = text.strip().lower()
+        return self.find_by_name(text, limit)
+
+    def find_by_name(self, text: str, limit: int = 25) -> list[LipidRecord]:
+        """
+        Records whose name, abbreviation or LM_ID matches, best first.
+
+        An exact name outranks one that merely contains it: searching
+        `12,13-DiHOME` should not answer `12,13-DiHOME(9)` first because it
+        happens to sit earlier in the file.
+        """
+        needle = _squash(text)
         if not needle:
             return []
-        found = []
-        for record in self.records:
-            haystack = f"{record.name} {record.abbrev} {record.lm_id}".lower()
-            if needle in haystack:
-                found.append(record)
-                if len(found) >= limit:
-                    break
-        return found
+        scored: list[tuple[int, int, int, LipidRecord]] = []
+        for index, record in enumerate(self.records):
+            best = None
+            for field in (record.name, record.abbrev, record.lm_id):
+                if not field:
+                    continue
+                squashed = _squash(field)
+                if squashed == needle:
+                    rank = 0
+                elif squashed.startswith(needle):
+                    rank = 1
+                elif needle in squashed:
+                    rank = 2
+                else:
+                    continue
+                best = rank if best is None else min(best, rank)
+            if best is not None:
+                # shorter names are the more specific ones at the same rank
+                scored.append((best, len(record.name or record.abbrev), index,
+                               record))
+        scored.sort()
+        return [record for _rank, _length, _index, record in scored[:limit]]
+
+    def precursor(self, name: str, adduct: str | Adduct = "[M+H]+",
+                  ) -> IonForm | None:
+        """
+        The m/z of the named lipid through one adduct — a mass search run
+        backwards, for when the compound is known and the channel is not.
+        """
+        found = self.find_by_name(name, limit=1)
+        return ion_form(found[0], adduct) if found else None
 
     def by_id(self, lm_id: str) -> LipidRecord | None:
         target = lm_id.strip().upper()
@@ -338,6 +403,42 @@ class LipidDatabase:
         known = LipidRecord.__dataclass_fields__
         return cls([LipidRecord(**{k: v for k, v in row.items() if k in known})
                     for row in payload.get("records", [])])
+
+
+def _squash(text: str) -> str:
+    """
+    Compare names without tripping over spacing.
+
+    LIPID MAPS writes `SM 30:1;O2` where a method writes `SM(d18:1/12:0)`;
+    neither should fail to match itself over a stray space.
+    """
+    return "".join(text.split()).casefold()
+
+
+def ion_form(record: LipidRecord, adduct: str | Adduct) -> IonForm | None:
+    """The m/z a record would be seen at through one adduct."""
+    form = ADDUCTS_BY_NAME.get(adduct) if isinstance(adduct, str) else adduct
+    if form is None or not record.exact_mass:
+        return None
+    return IonForm(record=record, adduct=form.name,
+                   mz=form.mz(record.exact_mass), charge=form.charge)
+
+
+def ion_forms(record: LipidRecord,
+              adducts: list[str] | None = None) -> list[IonForm]:
+    """
+    Every adduct's m/z for one record, positive first then negative.
+
+    The neutral entry is left out: it exists so a neutral mass can be searched
+    as if it were an ion, and it is not one. The neutral mass belongs to the
+    lipid, and is on the record.
+    """
+    names = (adducts if adducts is not None
+             else [a.name for a in ADDUCTS if a.name != NEUTRAL])
+    forms = [ion_form(record, name) for name in names]
+    found = [f for f in forms if f is not None]
+    found.sort(key=lambda f: (-f.charge, f.mz))
+    return found
 
 
 def mass_precision(value: float, text: str | None = None) -> float:
@@ -379,8 +480,29 @@ def group_by_species(matches: list[LipidMatch]) -> list[SpeciesMatch]:
 # --------------------------------------------------------------------------- #
 # installation
 # --------------------------------------------------------------------------- #
+def adopt_legacy_index(path: str | os.PathLike = INDEX_PATH) -> bool:
+    """
+    Move an index left behind under the old cache directory.
+
+    Returns True when one was adopted. Falling back to reading it in place
+    would work too, but moving it means the answer stops depending on a
+    directory named after software that no longer exists.
+    """
+    target = Path(path)
+    if target.exists() or not LEGACY_INDEX_PATH.exists():
+        return False
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        LEGACY_INDEX_PATH.replace(target)
+    except OSError:
+        return False
+    return True
+
+
 def is_installed(path: str | os.PathLike = INDEX_PATH) -> bool:
-    return Path(path).exists()
+    if Path(path).exists():
+        return True
+    return adopt_legacy_index(path)
 
 
 def build_index(zip_bytes: bytes,

@@ -486,6 +486,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.formula_panel.sigSendToCalculator.connect(
             self.mass_calc.formula_edit.setText)
         self.lipid_panel.sigAnnotate.connect(self._lipid_annotation)
+        self.lipid_panel.sigPrecursor.connect(self._lipid_precursor)
 
         QtGui.QShortcut(QtGui.QKeySequence(QtCore.Qt.Key.Key_Left), self,
                         activated=lambda: self._step_scan(-1))
@@ -1235,6 +1236,33 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         """A structure picked in the LIPID MAPS tab feeds the chemistry panels."""
         self.mass_calc.formula_edit.setText(formula)
         self._update_status(f"{name} · {formula} · {lm_id}")
+
+    def _lipid_precursor(self, name: str, formula: str, lm_id: str,
+                         adduct: str, mz: float) -> None:
+        """
+        An ion picked in the LIPID MAPS tab becomes a component.
+
+        This is the reverse of annotation: the compound is known and what is
+        wanted is the channel to extract it on. The component carries the
+        formula and the LM_ID, so where the mass came from stays on the record.
+        """
+        method = self.session.method
+        if method.by_name(name) is not None:
+            self.xic_mz.setText(f"{mz:.4f}")
+            self._update_status(
+                f"{name} is already in the method — {mz:.4f} put in the "
+                "manual XIC box instead.")
+            return
+        method.components.append(Component(
+            name=name, precursor=mz, formula=formula, adduct=adduct,
+            lm_id=lm_id, tolerance=method.tolerance, unit=method.unit,
+        ))
+        self.session.notify_method_changed()
+        self.mass_calc.formula_edit.setText(formula)
+        self.xic_mz.setText(f"{mz:.4f}")
+        self._update_status(
+            f"{name} {adduct} — m/z {mz:.4f} added to the method "
+            f"({len(method.components)} component(s)).")
 
     def _send_to_finder(self, mz: float, adduct: str) -> None:
         self.formula_panel.set_target(mz, adduct)

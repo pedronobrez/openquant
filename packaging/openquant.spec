@@ -14,6 +14,7 @@
 #
 # Build:  pyinstaller packaging/openquant.spec --noconfirm
 
+import re
 import sys
 from pathlib import Path
 
@@ -21,6 +22,13 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 MACOS = sys.platform == "darwin"
 WINDOWS = sys.platform.startswith("win")
+
+# read rather than repeat: a version written here as well as in the package
+# is a version that will disagree with itself at the first bump
+VERSION = re.search(
+    r'__version__ = "([^"]+)"',
+    (Path(SPECPATH).parent / "openquant" / "__init__.py").read_text(),
+).group(1)
 
 # the vendor assemblies, kept at the same relative path the code expects.
 # Only SCIEX: alpharaw also ships Bruker and Thermo readers this app has no
@@ -92,7 +100,7 @@ if MACOS:
         info_plist={
             "CFBundleName": "OpenQuant",
             "CFBundleDisplayName": "OpenQuant",
-            "CFBundleShortVersionString": "0.5.0",
+            "CFBundleShortVersionString": VERSION,
             "NSHighResolutionCapable": True,
             # the window follows the system light or dark setting
             "NSRequiresAquaSystemAppearance": False,

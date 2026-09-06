@@ -32,6 +32,38 @@ ROLE_NAME = QtCore.Qt.ItemDataRole.UserRole
 ALL_COMPONENTS = "\u0000all-components"
 
 
+class ComponentTree(QtWidgets.QTreeWidget):
+    """
+    The component list, whose rows are as wide as the panel holding them.
+
+    The column is sized to its contents so a long name can be scrolled to
+    instead of elided. On its own that leaves the column narrower than the
+    viewport whenever the names are short, and a row is painted across its
+    columns rather than across the widget — so the selection and the
+    alternating stripes stop in mid-air. The column is therefore the wider of
+    what it holds and what there is room for.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setHeaderHidden(True)
+        self.setAlternatingRowColors(True)
+        self.setTextElideMode(QtCore.Qt.TextElideMode.ElideNone)
+        self.header().setSectionResizeMode(
+            QtWidgets.QHeaderView.ResizeMode.Interactive)
+        self.header().setStretchLastSection(False)
+        self.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+    def fit_column(self) -> None:
+        self.setColumnWidth(
+            0, max(self.sizeHintForColumn(0), self.viewport().width()))
+
+    def resizeEvent(self, event):  # noqa: N802 (Qt API)
+        super().resizeEvent(event)
+        self.fit_column()
+
+
 class AnalyticsWorkspace(QtWidgets.QWidget):
     """
     The component list drives the review grid, and the grid and the results
@@ -84,17 +116,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.component_filter.setPlaceholderText("Filter components…")
         self.component_filter.setClearButtonEnabled(True)
         left_layout.addWidget(self.component_filter)
-        self.component_tree = QtWidgets.QTreeWidget()
-        self.component_tree.setHeaderHidden(True)
-        self.component_tree.setAlternatingRowColors(True)
-        # a name wider than the pane scrolls into view rather than being cut;
-        # dragging the splitter is the other way to read it
-        self.component_tree.setTextElideMode(QtCore.Qt.TextElideMode.ElideNone)
-        self.component_tree.header().setSectionResizeMode(
-            QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        self.component_tree.header().setStretchLastSection(False)
-        self.component_tree.setHorizontalScrollBarPolicy(
-            QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.component_tree = ComponentTree()
         left_layout.addWidget(self.component_tree, 1)
         self.integration = IntegrationPanel()
         left_layout.addWidget(self.integration)
@@ -202,6 +224,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
                 selected_item = item
         self.component_tree.blockSignals(False)
 
+        self.component_tree.fit_column()
         if selected_item is None:
             selected_item = self._first_component_item()
         if selected_item is not None:
@@ -226,6 +249,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             if item.data(0, ROLE_NAME):
                 item.setHidden(bool(needle) and needle not in item.text(0).lower())
             it += 1
+        self.component_tree.fit_column()
 
     def _on_component_changed(self, current, _previous) -> None:
         name = current.data(0, ROLE_NAME) if current is not None else None

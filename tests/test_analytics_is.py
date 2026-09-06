@@ -85,10 +85,21 @@ def test_a_long_analyte_name_is_readable_in_the_tree(qapp, workspace):
     assert item.toolTip(0) == item.text(0)
 
 
-def test_the_tree_column_grows_to_the_widest_name(qapp, workspace):
+def test_the_tree_column_grows_past_the_pane_for_a_long_name(qapp, workspace):
     tree = workspace.component_tree
-    narrow = tree.columnWidth(0)
     components = list(workspace.session.method.components)
-    components[2].name = "LacCER(d18:1/24:1(15Z))" * 3
+    components[2].name = "LacCER(d18:1/24:1(15Z))" * 12
     workspace.session.set_components(components)
-    assert tree.columnWidth(0) > narrow
+    # wider than the pane, so the name can be scrolled to rather than elided
+    assert tree.columnWidth(0) > tree.viewport().width()
+
+
+def test_short_names_still_fill_the_row(qapp, workspace):
+    """
+    A row is painted across its columns, not across the widget.
+
+    Sized to its contents alone the column stops at the longest name, and the
+    selection and the alternating stripes end in mid-air beside it.
+    """
+    tree = workspace.component_tree
+    assert tree.columnWidth(0) >= tree.viewport().width()

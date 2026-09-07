@@ -95,3 +95,41 @@ def shorten_names(entries: list[SampleEntry]) -> None:
     prefix = prefix[: prefix.rfind("_") + 1] if "_" in prefix else ""
     for entry, stem in zip(entries, stems):
         entry.name = stem[len(prefix):] or stem
+    _make_names_distinct(entries)
+
+
+def _make_names_distinct(entries: list[SampleEntry]) -> None:
+    """
+    Two entries must never read the same.
+
+    Shortening can collapse two different files onto one name — the same
+    acquisition also present as mzML is the obvious case, and two batches
+    holding a file of the same name in different folders is the other. One
+    .wiff can also carry several injections, which all take the file's name.
+    Two identical rows in the tree, or two identically labelled traces in a
+    legend, are worse than a long name: there is no way to tell which is
+    which, and no way to know that anything is wrong.
+    """
+    by_name: dict[str, list[SampleEntry]] = {}
+    for entry in entries:
+        by_name.setdefault(entry.name, []).append(entry)
+
+    for name, clashing in by_name.items():
+        if len(clashing) < 2:
+            continue
+        for candidate in (
+            # the same acquisition in two formats: say which
+            [os.path.splitext(e.filename)[1].lstrip(".") for e in clashing],
+            # several injections in one file: the sample's own name
+            [str(getattr(e.sample, "name", "") or "") for e in clashing],
+            # the same file name under different folders
+            [os.path.basename(os.path.dirname(e.path)) for e in clashing],
+        ):
+            if all(candidate) and len(set(candidate)) == len(clashing):
+                for entry, suffix in zip(clashing, candidate):
+                    entry.name = f"{name} ({suffix})"
+                break
+        else:
+            # nothing distinguishes them but their order
+            for number, entry in enumerate(clashing, start=1):
+                entry.name = f"{name} #{number}"

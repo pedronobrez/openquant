@@ -251,3 +251,22 @@ def test_the_reopen_actions_work_without_the_menu_open(qapp):
     owned = {a.text() for a in workspace.actions()}
     assert {"Samples and channels", "Side panels"} <= owned
     workspace.close()
+
+
+def test_the_workspace_does_not_grow_a_status_bar_of_its_own(qapp):
+    """
+    It is a QMainWindow inside a tab, and calling statusBar() on one creates
+    the bar. Every message was then printed twice: once in the strip inside
+    the tab, once in the shell's own at the bottom of the window.
+    """
+    from openquant.ui.explorer import ExplorerWorkspace
+
+    workspace = ExplorerWorkspace(Session())
+    seen = []
+    workspace.sigStatus.connect(seen.append)
+    workspace._update_status("hello")
+    qapp.processEvents()
+
+    assert seen == ["hello"]
+    assert workspace.findChild(QtWidgets.QStatusBar) is None
+    workspace.close()

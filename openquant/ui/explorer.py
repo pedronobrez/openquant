@@ -1654,5 +1654,12 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         )
 
     def _update_status(self, text: str) -> None:
-        self.statusBar().showMessage(text)
+        """
+        Say it once.
+
+        This workspace is a QMainWindow nested in the shell's tab widget, so
+        calling statusBar() here creates a second status bar inside the tab,
+        directly above the shell's own — and every message was printed in
+        both. The shell owns the status bar; this only reports.
+        """
         self.sigStatus.emit(text)

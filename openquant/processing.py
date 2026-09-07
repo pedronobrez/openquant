@@ -164,6 +164,73 @@ def pick_peaks(mz: np.ndarray, intensity: np.ndarray, max_peaks: int = 15,
     return peaks
 
 
+#: a gap this many times the local sampling interval is empty spectrum rather
+#: than the inside of a peak
+PROFILE_GAP = 2.5
+
+
+def restore_profile_zeros(mz: np.ndarray, intensity: np.ndarray,
+                          gap_factor: float = PROFILE_GAP
+                          ) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Put back the zero points a vendor stripped out of a profile spectrum.
+
+    Instruments record a profile at a fixed sampling rate, but the file
+    usually keeps only the points where something was detected. Drawn as they
+    come, a straight line runs from the last point of one peak to the first
+    point of the next, and the empty stretch between two peaks appears as a
+    slope descending across it — signal where there is none.
+
+    SCIEX's own library repairs this on the way out, using the sampling
+    interval it knows. An mzML records no such thing, so the interval is
+    measured from the file: the smallest quarter of the gaps are the ones
+    inside peaks, and interpolating those across the mass axis gives the
+    interval at any mass. No instrument physics is assumed — the spacing of a
+    time-of-flight grows with the square root of mass and an Orbitrap's grows
+    faster, and reading it off the data covers both.
+
+    This is for drawing. It changes no intensity and creates no peak: every
+    point added is a zero, at a mass where the instrument reported nothing.
+    A spectrum that already carries its zeros has no gap wide enough to
+    trigger it, and comes back untouched.
+    """
+    mz = np.asarray(mz, dtype=float)
+    intensity = np.asarray(intensity, dtype=float)
+    if mz.size < 3:
+        return mz, intensity
+
+    gaps = np.diff(mz)
+    positive = gaps > 0
+    if not positive.any():
+        return mz, intensity
+    inside_peaks = positive & (gaps <= np.quantile(gaps[positive], 0.25))
+    if int(inside_peaks.sum()) < 2:
+        # nothing is densely sampled: this is a peak list, not a profile
+        return mz, intensity
+
+    midpoints = (mz[:-1] + mz[1:]) / 2.0
+    step = np.interp(mz, midpoints[inside_peaks], gaps[inside_peaks])
+
+    out_mz: list[float] = []
+    out_y: list[float] = []
+    if intensity[0] != 0 and step[0] > 0:
+        out_mz.append(mz[0] - step[0])
+        out_y.append(0.0)
+    for index in range(mz.size - 1):
+        out_mz.append(float(mz[index]))
+        out_y.append(float(intensity[index]))
+        width = step[index]
+        if width > 0 and gaps[index] > gap_factor * width:
+            out_mz.extend((float(mz[index] + width), float(mz[index + 1] - width)))
+            out_y.extend((0.0, 0.0))
+    out_mz.append(float(mz[-1]))
+    out_y.append(float(intensity[-1]))
+    if intensity[-1] != 0 and step[-1] > 0:
+        out_mz.append(float(mz[-1] + step[-1]))
+        out_y.append(0.0)
+    return np.array(out_mz), np.array(out_y)
+
+
 def centroid_spectrum(mz: np.ndarray, intensity: np.ndarray,
                       min_relative: float = 0.0005,
                       min_distance: float = 0.005) -> tuple[np.ndarray, np.ndarray]:

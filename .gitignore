@@ -3,6 +3,9 @@
 *.wiff.scan
 *.wiff2
 *.wiff2.scan
+*.mzML
+*.mzml
+*.mzXML
 *.timeseries.data
 data/
 

@@ -11,6 +11,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 from . import theme
 from ..processing import (
+    restore_profile_zeros,
     ChromPeak,
     centroid_spectrum,
     gaussian_smooth,
@@ -78,6 +79,9 @@ def _label_height(points: int = 8) -> float:
     probe.setFont(font)
     return float(abs(probe.boundingRect().height()))
 
+
+#: clear space kept between two labels before one of them is dropped
+LABEL_GAP = 5.0
 
 class _DragViewBox(pg.ViewBox):
     """ViewBox that turns a horizontal drag into a range selection."""
@@ -864,6 +868,9 @@ class SpectrumView(BasePlot):
         self._overlay: tuple[list[tuple[float, float]], str, str] | None = None
         self._overlay_items: list[pg.GraphicsObject] = []
         self.legend.setVisible(False)  # the title already names the spectrum
+        # which labels fit depends on how far apart the peaks are on screen,
+        # so it is decided again whenever the view moves
+        self.viewbox.sigRangeChanged.connect(self._thin_labels)
 
     def _y_label_raw(self) -> str:
         return "Intensity, cps"
@@ -884,7 +891,11 @@ class SpectrumView(BasePlot):
         x, y = super().condition(trace)
         if self._centroid:
             return centroid_spectrum(x, y)
-        return x, y
+        # a profile spectrum whose zeros were stripped out draws a slope
+        # across every empty stretch; putting them back is a drawing repair
+        # and adds no intensity anywhere. Data that already has them is
+        # returned unchanged.
+        return restore_profile_zeros(x, y)
 
     def set_centroid(self, enabled: bool) -> None:
         self._centroid = enabled
@@ -1010,9 +1021,9 @@ class SpectrumView(BasePlot):
             return
         for n, trace in enumerate(self.traces):
             x, y = self._display(trace, n)
-            for mz, intensity in pick_peaks(x, np.abs(y),
-                                            max_peaks=self._n_labels,
-                                            min_relative=0.02, min_distance=0.05):
+            peaks = pick_peaks(x, np.abs(y), max_peaks=self._n_labels,
+                               min_relative=0.02, min_distance=0.05)
+            for rank, (mz, intensity) in enumerate(peaks):
                 below = self._mirror and n % 2 == 1
                 sign = -1.0 if below else 1.0
                 text = pg.TextItem(self._label_for(mz), color=theme.foreground(),
@@ -1021,8 +1032,64 @@ class SpectrumView(BasePlot):
                 font.setPointSize(8)
                 text.setFont(font)
                 text.setPos(mz, intensity * sign)
+                # pick_peaks returns the strongest first: that is the order in
+                # which labels get to claim room, so a crowded stretch keeps
+                # the peak worth reading
+                text.mz = mz
+                text.rank = rank
+                text.below = below
                 self.plot.addItem(text, ignoreBounds=True)
                 self._labels.append(text)
+        self._thin_labels()
+
+    def _thin_labels(self, *_args) -> None:
+        """
+        Hide the labels that would print on top of each other, and keep the
+        ones at the ends of the axis inside the plot.
+
+        Two peaks a few millidaltons apart are one pixel apart on a full
+        spectrum, and their labels were drawn over one another — unreadable,
+        and worse than unreadable because the result looks like a single wrong
+        number. Zooming in separates the peaks, so the decision is made again
+        on every range change and the hidden labels come back as there is room
+        for them.
+
+        A label at the right-hand end used to run off the edge — the precursor
+        is at the end of its own scan window, so this was the normal case for
+        a product ion spectrum. Widening the mass axis to fit the text would
+        be showing masses that were never scanned; the text is anchored to its
+        other side instead.
+        """
+        if not self._labels:
+            return
+        box = self.viewbox
+        width = float(box.width())
+        (x_low, x_high), _y = box.viewRange()
+        if width <= 0 or x_high <= x_low:
+            return
+        scale = width / (x_high - x_low)
+        taken: list[tuple[float, float]] = []
+        for text in sorted(self._labels, key=lambda t: getattr(t, "rank", 0)):
+            half = text.boundingRect().width() / 2.0
+            centre = (text.mz - x_low) * scale
+            anchor_x = 0.5
+            if centre - half < 0:
+                anchor_x, left = 0.0, centre
+            elif centre + half > width:
+                anchor_x, left = 1.0, centre - 2 * half
+            else:
+                left = centre - half
+            right = left + 2 * half
+            if right < 0 or left > width:
+                text.setVisible(False)
+                continue
+            if any(left < other_right + LABEL_GAP and right > other_left - LABEL_GAP
+                   for other_left, other_right in taken):
+                text.setVisible(False)
+                continue
+            text.setAnchor(pg.Point(anchor_x, 0.0 if text.below else 1.0))
+            text.setVisible(True)
+            taken.append((left, right))
 
     def contextMenuEvent(self, event):  # noqa: N802 (Qt API)
         selection = self.selected_range()

@@ -154,3 +154,58 @@ def test_groups_keep_the_order_the_batch_introduces_them_in():
     entries[2].sample_group = "control"
     rows = summarise(results, entries, method, GROUP_BY_SAMPLE_GROUP, "area")
     assert [r.group for r in rows] == ["treated", "control"]
+
+
+# -- two entries must never read the same ------------------------------------ #
+def _entry(path, index=0, sample=None):
+    from openquant.samples import SampleEntry
+
+    return SampleEntry(path=path, sample_index=index,
+                       name=os.path.basename(path), sample=sample)
+
+
+def test_the_same_acquisition_in_two_formats_is_told_apart():
+    """
+    Opening a .wiff and its mzML gave two rows called "1" and two traces in
+    the legend called "1", with nothing to say which was which.
+    """
+    from openquant.samples import shorten_names
+
+    entries = [_entry("/data/demo_Sample_01.wiff"),
+               _entry("/data/demo_Sample_01.mzML"),
+               _entry("/data/demo_Sample_03.wiff")]
+    shorten_names(entries)
+    names = [e.name for e in entries]
+    assert len(set(names)) == 3
+    assert names[0] == "1 (wiff)"
+    assert names[1] == "1 (mzML)"
+    assert names[2] == "3"
+
+
+def test_the_same_name_in_two_folders_is_told_apart():
+    from openquant.samples import shorten_names
+
+    entries = [_entry("/data/monday/run.wiff"), _entry("/data/tuesday/run.wiff")]
+    shorten_names(entries)
+    assert {e.name for e in entries} == {"run (monday)", "run (tuesday)"}
+
+
+def test_several_injections_in_one_file_keep_their_own_names():
+    from openquant.samples import shorten_names
+
+    class Sample:
+        def __init__(self, name):
+            self.name = name
+
+    entries = [_entry("/data/batch.wiff", 0, Sample("blank")),
+               _entry("/data/batch.wiff", 1, Sample("QC01"))]
+    shorten_names(entries)
+    assert {e.name for e in entries} == {"batch (blank)", "batch (QC01)"}
+
+
+def test_when_nothing_distinguishes_them_they_are_numbered():
+    from openquant.samples import shorten_names
+
+    entries = [_entry("/data/run.wiff", 0), _entry("/data/run.wiff", 1)]
+    shorten_names(entries)
+    assert {e.name for e in entries} == {"run #1", "run #2"}

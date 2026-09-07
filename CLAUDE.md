@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.6.4 released. 617 tests. Public repository.**
+**Version 0.6.5 released. 617 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not

@@ -5,6 +5,11 @@ name: CI
 # whole suite runs on all three here — which is what stops the two untried
 # platforms from drifting further out of reach.
 
+# In a private repository a macOS minute is billed as ten and a Windows minute
+# as two, and this workflow was using 98% of the free allowance — nearly two
+# thirds of it macOS. What follows spends the expensive runners where a mistake
+# would actually escape, and Linux everywhere else.
+
 on:
   push:
     branches: [main]
@@ -12,13 +17,36 @@ on:
     # Without this the package job below could never fire, because its own
     # condition asks for a ref the workflow was never started for.
     tags: ["v*"]
+    # a change to prose cannot break a build
+    paths-ignore: ["**.md", "docs/**", "LICENSE"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", "LICENSE"]
   workflow_dispatch:
+  # the vendor libraries are checked once a week rather than on every commit;
+  # see the job itself
+  schedule:
+    - cron: "17 6 * * 1"
+
+# pushing a branch and then a tag started two full runs, and a quick second
+# push started a third while the first was still going. Only the newest run
+# for a given ref is worth finishing.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     name: ${{ matrix.os }} · Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
+    # Linux runs on everything. macOS and Windows run on a pull request, on a
+    # tag, and when asked for by hand — the places where something would
+    # otherwise reach a release unchecked. A plain push to main gets Linux
+    # only, which is 6 billable minutes instead of 33.
+    if: >-
+      startsWith(matrix.os, 'ubuntu')
+      || github.event_name == 'pull_request'
+      || github.event_name == 'workflow_dispatch'
+      || startsWith(github.ref, 'refs/tags/')
     strategy:
       fail-fast: false
       matrix:
@@ -93,6 +121,16 @@ jobs:
     # file — those are not in the repository.
     name: .NET bootstrap · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    # Once a week, on a tag, or on request. This checks that SCIEX's managed
+    # assemblies still load under a .NET runtime on three systems — which
+    # depends on those assemblies and that runtime, not on anything committed
+    # here, and changes perhaps once a year. Running it on every push was 642
+    # billable minutes, a third of the whole allowance, to re-learn the same
+    # answer.
+    if: >-
+      github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
+      || startsWith(github.ref, 'refs/tags/')
     continue-on-error: true
     strategy:
       fail-fast: false
@@ -137,7 +175,9 @@ jobs:
     name: Package · ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     needs: test
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || startsWith(github.ref, 'refs/tags/')
     # needed to create the release and hang the installers off it
     permissions:
       contents: write

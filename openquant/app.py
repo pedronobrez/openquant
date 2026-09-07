@@ -11,9 +11,10 @@ from PyQt6 import QtCore, QtWidgets
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="openquant",
-        description="Open source quantitation for SCIEX LC-MS data (.wiff).",
+        description="Open source quantitation for LC-MS data (.wiff, .mzML).",
     )
-    parser.add_argument("files", nargs="*", help=".wiff files to open")
+    parser.add_argument("files", nargs="*",
+                        help="raw data files to open (.wiff, .mzML)")
     parser.add_argument(
         "--selftest", action="store_true",
         help="open the files, report what was read, and exit without a window")
@@ -98,7 +99,7 @@ def _digest(files: list[str]) -> int:
     from . import __version__
     from .bootstrap import ensure
     from .processing import detect_peaks
-    from .wiff import WiffFile
+    from .raw import open_raw
 
     def line(*parts) -> None:
         print("\t".join(str(p) for p in parts), flush=True)
@@ -117,7 +118,7 @@ def _digest(files: list[str]) -> int:
 
     for path in files:
         name = os.path.basename(str(path).replace("\\", "/"))
-        wiff = WiffFile(path)
+        wiff = open_raw(path)
         try:
             sample = wiff.sample(0)
             channels = sample.channels
@@ -187,11 +188,11 @@ def _selftest(files: list[str]) -> int:
         print(f"SCIEX libraries: unavailable — {exc}")
         return 1 if files else 0
 
-    from .wiff import WiffFile
+    from .raw import open_raw
     for path in files:
         wiff = None
         try:
-            wiff = WiffFile(path)
+            wiff = open_raw(path)
             sample = wiff.sample(0)
             x, y = sample.channels[0].tic()
             print(f"{path}: {len(wiff.sample_names)} sample(s), "

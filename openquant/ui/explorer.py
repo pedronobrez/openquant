@@ -76,6 +76,10 @@ class ChannelRef:
         return f"{base} · {self.channel.info.label}"
 
 
+class _Cancelled(Exception):
+    """The reader asked to stop, from inside the writer's progress callback."""
+
+
 class ExplorerWorkspace(QtWidgets.QMainWindow):
     """
     Qualitative review of the raw data.
@@ -432,6 +436,11 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.act_detect = proc.addAction("Detect peaks")
         self.act_exp_chrom = QtGui.QAction("Export chromatograms (CSV)…", self)
         self.act_exp_spec = QtGui.QAction("Export spectrum (CSV)…", self)
+        self.act_exp_mzml = QtGui.QAction("Export sample as mzML…", self)
+        self.act_exp_mzml.setToolTip(
+            "Write the selected sample as open-format mzML, spectrum for "
+            "spectrum, so it can be read elsewhere"
+        )
         self.act_detect.setToolTip(
             "Integrate the peaks of every chromatogram trace and fill the Results tab"
         )
@@ -491,7 +500,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
     def build_actions(self) -> dict:
         """Actions the shell adds to its own menus for this workspace."""
         return {
-            "File": [self.act_exp_chrom, self.act_exp_spec],
+            "File": [self.act_exp_chrom, self.act_exp_spec, self.act_exp_mzml],
             "View": [self.act_autoscale, self.act_norm, self.act_mirror,
                      self.act_stack, self.act_overview, self.act_labels,
                      self.act_apex, self.act_relative, self.act_legend,
@@ -521,6 +530,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             lambda: self._export(self.chrom, "chromatograms"))
         self.act_exp_spec.triggered.connect(
             lambda: self._export(self.spectrum, "spectrum"))
+        self.act_exp_mzml.triggered.connect(self._export_mzml)
         self.act_set_bg.triggered.connect(self._set_background)
         self.act_clear_bg.triggered.connect(self._clear_background)
         self.act_explain.triggered.connect(self.explain_spectrum)
@@ -1544,6 +1554,66 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                 writer.writerows(zip(x.tolist(), y.tolist()))
                 writer.writerow([])
         self._update_status(f"Exported to {path}")
+
+    def _export_mzml(self) -> None:
+        """
+        Write the selected sample out as mzML.
+
+        Every spectrum goes through, as the instrument stored it, along with
+        the total ion current the instrument reported rather than a sum taken
+        here. A run of this size is tens of thousands of spectra, so the
+        window says how far it has got instead of appearing to hang.
+        """
+        # whichever sample the tree is pointing at, falling back to the first
+        # one open — exporting is about a sample, not about a channel
+        entry = self.active_ref.entry if self.active_ref else None
+        if entry is None or not entry.is_loaded:
+            entry = next((e for e in self.session.entries if e.is_loaded), None)
+        if entry is None:
+            self._update_status("Open a file before exporting it.")
+            return
+
+        suggestion = os.path.join(self._last_dir(), f"{entry.name}.mzML")
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Export as mzML", suggestion, "mzML (*.mzML)")
+        if not path:
+            return
+        self._remember_dir(path)
+
+        progress = QtWidgets.QProgressDialog(
+            f"Writing {os.path.basename(path)}…", "Cancel", 0, 100, self)
+        progress.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        cancelled = False
+
+        def tick(done: int, total: int) -> None:
+            nonlocal cancelled
+            progress.setValue(int(done / max(total, 1) * 100))
+            QtWidgets.QApplication.processEvents()
+            if progress.wasCanceled():
+                cancelled = True
+                raise _Cancelled()
+
+        from ..mzml import write_mzml
+
+        try:
+            write_mzml(entry.sample, path, progress=tick)
+        except _Cancelled:
+            pass
+        except Exception as exc:
+            progress.close()
+            QtWidgets.QMessageBox.warning(self, "Export failed", str(exc))
+            return
+        progress.close()
+        if cancelled:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            self._update_status("Export cancelled.")
+            return
+        size = os.path.getsize(path) / 1048576
+        self._update_status(f"Exported {entry.name} to {path} ({size:.0f} MB)")
 
     def _show_help(self) -> None:
         QtWidgets.QMessageBox.information(

@@ -1,7 +1,7 @@
 # OpenQuant
 
-Open source quantitation and review for SCIEX LC-MS data (`.wiff` +
-`.wiff.scan`). Qualitative review the way PeakView works — TIC, BPC, the
+Open source quantitation and review for LC-MS data — SCIEX `.wiff` read
+directly, and **mzML** from any instrument that ProteoWizard can convert. Qualitative review the way PeakView works — TIC, BPC, the
 individual channels of the acquisition method, extracted ion chromatograms,
 and mass spectra scan by scan or averaged over a selected region of a peak —
 and batch quantitation the way MultiQuant does: a component table, peak review
@@ -33,6 +33,38 @@ before the genuine one. See that directory for why and how.
 written as `.oqproj`.*
 
 ![screenshot](docs/screenshot.png)
+
+## Formats
+
+`.wiff` (with its `.wiff.scan`) is read through SCIEX's own libraries. `.mzML`
+is read directly, which is how data from other instruments gets in: a Thermo
+`.raw`, an Agilent `.d` or a Bruker `.tdf` becomes mzML through ProteoWizard's
+msconvert and opens here.
+
+`File ▸ Export sample as mzML…` writes the other way, spectrum for spectrum,
+with the total ion current the instrument reported rather than one recomputed
+here.
+
+How much survives the trip was measured rather than assumed. Exporting a real
+81-channel acquisition and reading it back gives, on all five injections of a
+batch:
+
+| | |
+|---|---|
+| spectra | identical, every channel, to the last digit |
+| channel chromatograms | identical, every channel |
+| the run's total ion chromatogram | identical, 577 points |
+| integrated peak areas | identical |
+| extracted ion chromatograms | differ, see below |
+
+The one difference is the extracted ion chromatogram. SCIEX's own extraction
+counts part of a peak whose measured points fall just outside the window, and
+this reads the points inside it — a median of 0.58% and at most 12% of peak
+height on that acquisition, always lower. Two attempts at reproducing the
+vendor's edge rule were made and neither survived being tested on windows
+other than the ones it was derived from, so the plain rule is what ships and
+this paragraph is the warning. Quantify a series in one format.
+
 
 ## Starting a project
 

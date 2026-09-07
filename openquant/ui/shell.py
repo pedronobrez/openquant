@@ -12,6 +12,7 @@ import os
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from .. import raw
 from ..session import LEGACY_PROJECT_SUFFIX, PROJECT_SUFFIX, Session
 from . import style, theme
 from .analytics import AnalyticsWorkspace
@@ -152,7 +153,7 @@ class MainShell(QtWidgets.QMainWindow):
     def open_files(self) -> None:
         paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
             self, "Open SCIEX files", self._last_dir(),
-            "wiff files (*.wiff);;All files (*)")
+            raw.FILE_FILTER)
         for path in paths:
             self.load_file(path)
         if paths:

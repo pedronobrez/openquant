@@ -19,6 +19,7 @@ from .calibration import Calibration
 from .method import ProcessingMethod
 from .quantify import ResultsSet, XicCache
 from .samples import SampleEntry, shorten_names
+from .raw import open_raw
 from .wiff import WiffFile
 
 PROJECT_SUFFIX = ".oqproj"
@@ -38,7 +39,7 @@ class Session(QtCore.QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.files: list[WiffFile] = []
+        self.files: list = []
         self.entries: list[SampleEntry] = []
         self.method = ProcessingMethod()
         self.results = ResultsSet()
@@ -69,9 +70,9 @@ class Session(QtCore.QObject):
         return bool(self.entries or self.method.components or len(self.results))
 
     # -- files ------------------------------------------------------------------ #
-    def open_file(self, path: str) -> WiffFile:
-        """Open a .wiff and add each of its samples to the batch."""
-        wiff = WiffFile(path)
+    def open_file(self, path: str):
+        """Open a raw file of any supported format and add its samples."""
+        wiff = open_raw(path)
         self.files.append(wiff)
         for index in range(len(wiff.sample_names)):
             sample = wiff.sample(index)
@@ -178,7 +179,7 @@ class Session(QtCore.QObject):
 
         entries = [SampleEntry.from_dict(row) for row in data.get("samples", [])]
         missing: list[str] = []
-        opened: dict[str, WiffFile] = {}
+        opened: dict[str, object] = {}
         for entry in entries:
             if not os.path.exists(entry.path):
                 missing.append(entry.path)
@@ -186,7 +187,7 @@ class Session(QtCore.QObject):
             wiff = opened.get(entry.path)
             if wiff is None:
                 try:
-                    wiff = WiffFile(entry.path)
+                    wiff = open_raw(entry.path)
                 except Exception:
                     missing.append(entry.path)
                     continue

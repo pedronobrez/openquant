@@ -14,6 +14,7 @@ import os
 
 from PyQt6 import QtCore, QtWidgets
 
+from .. import raw
 from ..components import load_components
 from ..method import ProcessingMethod
 from ..samples import SAMPLE_TYPES
@@ -191,7 +192,7 @@ class SamplesPage(QtWidgets.QWizardPage):
     def add_files(self) -> None:
         paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
             self, "Add SCIEX files", self._start_dir,
-            "wiff files (*.wiff);;All files (*)")
+            raw.FILE_FILTER)
         self.add_paths(paths)
 
     def add_paths(self, paths: list[str]) -> list[str]:

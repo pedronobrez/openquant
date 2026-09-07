@@ -9,8 +9,16 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.6.1 released; 0.6.2 pending. 534 tests. Private repository:
-`pedronobrez/openquant`.**
+**Version 0.6.1 released; 0.6.2 pending. 534 tests.**
+
+The repository was recreated on 2026-09-07 to drop a history that showed a
+person's name and unpublished results in its screenshots. Rewriting was not
+enough: GitHub keeps `refs/pull/*` forever and two diagnostic pull requests
+still pointed at the old commits. The previous repository is
+`pedronobrez/openquant-archive`, private, and the installers built from it are
+saved outside any repository in `~/Documents/OpenQuant-releases/v0.6.1`.
+**Do not open a pull request from a branch carrying anything that must not be
+public: closing it does not remove the ref.**
 
 ---
 
@@ -143,6 +151,15 @@ UV detector, is not implemented there) — untested on real Windows.
   Without it nothing opens off Windows.
 - **`OpenFileMode.ReadOnlyShared`.** Anything else takes an exclusive lock and
   a second window — or Analyst — cannot open the same file.
+- **`processEvents()` does not drain deferred deletions.** `setCellWidget`
+  marks the widget it replaces for `deleteLater`, and until a real event loop
+  runs it the old one is still a visible child at the origin. Opening ten
+  files rebuilds the samples table ten times and leaves ninety combo boxes
+  piled on the first row's first cell — which is what the screenshots caught
+  before they were regenerated with
+  `sendPostedEvents(None, QEvent.Type.DeferredDelete)` first. The application
+  is fine; anything that grabs or asserts on a widget tree is not, unless it
+  flushes. `tests/conftest.py` does this after every test.
 - **The Windows build needs Windows 10 1703+ and will not run under Wine**
   without the shim in `packaging/wine/`. Qt6Core imports eighteen `ucnv_*`
   symbols from `icuuc.dll`, which Windows ships in System32 and the PyQt6

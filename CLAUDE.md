@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.6.3 released. 566 tests. Public repository.**
+**Version 0.6.3 released. 585 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -58,6 +58,7 @@ openquant/
   quantify.py     extraction and integration of a component in a sample
   calibration.py  regressions and weightings
   statistics.py   grouped means, SD, %CV
+  qc.py           control charts through the run, drift, replicate precision
   components.py   the component table; method.py the processing method
   samples.py      SampleEntry, sample types and groups, name shortening
   matching.py     which channel serves a component
@@ -160,6 +161,15 @@ UV detector, is not implemented there) — untested on real Windows.
   `sendPostedEvents(None, QEvent.Type.DeferredDelete)` first. The application
   is fine; anything that grabs or asserts on a widget tree is not, unless it
   flushes. `tests/conftest.py` does this after every test.
+- **A control chart needs a floor under its spread, not just a sigma.**
+  Measured on the demo batch: eleven injections repeating to within half a
+  per cent give a median absolute deviation of about 0.8%, and three of those
+  is an internal standard 2.4% low — an ordinary injection. Two of eleven came
+  out as four-sigma outliers, and would have on almost every real batch. So
+  `qc.Injection.out` needs both conditions, past 3σ **and** at least
+  `OUT_PERCENT` from the centre; drift needs both a magnitude and a Spearman
+  correlation for the same reason. A flag that fires on every batch is not
+  read on any of them.
 - **A `QTextDocument` printed to a `QPdfWriter` needs the writer as its
   layout's paint device.** Without one it measures type at the screen's 96
   dots to the inch while the page is sized in the writer's 1200, so every
@@ -197,7 +207,8 @@ Checked against the code, not the README. Everything in the README's feature
 tables exists. These do not:
 
 Since done: LOD/LOQ (`validation.detection_limits`), carryover
-(`validation.carryover`) and the report (`report.py`, `File ▸ Export report…`).
+(`validation.carryover`), the report (`report.py`, `File ▸ Export report…`)
+and batch QC (`qc.py`, the `Batch QC` tab, and a report section).
 
 | Missing | Which tool | Worth it? |
 |---|---|---|
@@ -267,7 +278,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-566 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+585 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

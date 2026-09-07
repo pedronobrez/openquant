@@ -1,4 +1,4 @@
-"""Metric plots: any results column against the row order or another column."""
+"""Metric plots: any results column against the injection order or another."""
 
 from __future__ import annotations
 
@@ -7,11 +7,18 @@ from PyQt6 import QtCore, QtWidgets
 
 from . import theme
 from ..session import Session
+from ..validation import acquisition_order
 from .plots import colour
 from .results_table import COLUMNS
 
 #: only numeric columns can be plotted
 NUMERIC = [c for c in COLUMNS if c.decimals is not None]
+
+#: the order the instrument ran the samples, from their acquisition times.
+#: This used to be the order the results happened to be computed in — which
+#: follows the order the files were opened, and is only sometimes the same
+#: thing. A drift plotted against the wrong sequence is not a drift.
+INJECTION_ORDER = "injection order"
 ROW_ORDER = "row order"
 
 NO_COLOUR = "nothing"
@@ -28,11 +35,13 @@ UNGROUPED_COLOUR = "#9a9a9a"
 
 class MetricPlotPanel(QtWidgets.QWidget):
     """
-    Plots one results column against another, or against the row order.
+    Plots one results column against another, or against the injection order.
 
     A batch is easiest to judge as a picture: an internal standard drifting
     across an injection sequence, or a response that stops tracking
-    concentration, shows up here long before it does in a table of numbers.
+    concentration, shows up here long before it does in a table of numbers —
+    which is why the sequence has to be the one the instrument ran, and not
+    the order the files were opened in.
     """
 
     sigPointActivated = QtCore.pyqtSignal(str, str)   # sample key, component
@@ -48,7 +57,10 @@ class MetricPlotPanel(QtWidgets.QWidget):
         bar = QtWidgets.QHBoxLayout()
         bar.addWidget(QtWidgets.QLabel("X"))
         self.x_combo = QtWidgets.QComboBox()
-        self.x_combo.addItem(ROW_ORDER)
+        self.x_combo.addItems([INJECTION_ORDER, ROW_ORDER])
+        self.x_combo.setToolTip(
+            "Injection order comes from the acquisition times in the files; "
+            "row order is the order they were opened in")
         self.x_combo.addItems([c.title for c in NUMERIC])
         bar.addWidget(self.x_combo)
         bar.addWidget(QtWidgets.QLabel("Y"))
@@ -114,12 +126,20 @@ class MetricPlotPanel(QtWidgets.QWidget):
 
         # entry_by_key scans the batch, and this runs once per point
         entries = {e.key: e for e in self.session.entries}
+        injection = self._injection_numbers() if x_title == INJECTION_ORDER else {}
+        if injection:
+            rows = sorted(rows, key=lambda r: injection.get(r.sample_key, 0))
         by_group: dict[str, list[dict]] = {}
         order: list[str] = []
         self._points = []
         for index, result in enumerate(rows):
             y = self._value(result, y_column)
-            x = float(index + 1) if x_column is None else self._value(result, x_column)
+            if x_column is not None:
+                x = self._value(result, x_column)
+            elif injection:
+                x = float(injection.get(result.sample_key, 0)) or None
+            else:
+                x = float(index + 1)
             if x is None or y is None:
                 continue
             key = self._colour_key(result, entries)
@@ -138,6 +158,11 @@ class MetricPlotPanel(QtWidgets.QWidget):
         self.status.setText(
             f"{total} point(s)"
             + (f" · {len(order)} group(s)" if self._colouring() else ""))
+
+    def _injection_numbers(self) -> dict[str, int]:
+        """Each sample's place in the run, from its acquisition time."""
+        return {entry.key: number for number, entry
+                in enumerate(acquisition_order(self.session.entries), start=1)}
 
     def _colouring(self) -> str:
         choice = self.colour_combo.currentText()

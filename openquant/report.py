@@ -34,6 +34,8 @@ from .method import ProcessingMethod
 from .quantify import PeakResult, ResultsSet
 from .samples import SampleEntry
 from .statistics import GROUP_BY_SAMPLE_TYPE, summarise
+from .qc import (CV_PERCENT, DRIFT_CORRELATION, DRIFT_PERCENT,
+                 OUTLIER_SIGMA, OUT_PERCENT, batch_qc)
 from .validation import all_detection_limits, carryover
 
 #: the statuses a row can carry. Matched without regard to case: the results
@@ -52,6 +54,7 @@ SECTIONS = {
     "calibration": "Calibration",
     "limits": "Detection and quantitation limits",
     "carryover": "Carryover",
+    "quality": "Batch quality",
     "results": "Results",
     "statistics": "Statistics",
 }
@@ -221,6 +224,27 @@ def _findings(results: ResultsSet, entries: list[SampleEntry],
         notes.append(f"{len(found.failures)} component(s) over the carryover "
                      f"limit in {_escape(worst.blank)}, the worst "
                      f"{_escape(worst.component)} at {_number(worst.percent, 2)}%.")
+
+    try:
+        quality = batch_qc(results, entries, method)
+    except Exception:                                  # a report must still print
+        quality = None
+    if quality is not None:
+        if quality.drifted:
+            worst = max(quality.drifted, key=lambda c: abs(c.drift))
+            notes.append(f"{len(quality.drifted)} internal standard(s) drifted "
+                         f"across the run, the worst {_escape(worst.component)} "
+                         f"by {_number(worst.drift, 1)}%.")
+        stray = sum(len(chart.out) for chart in quality.out)
+        if stray:
+            notes.append(f"{stray} injection(s) more than three robust standard "
+                         f"deviations from their internal standard's centre.")
+        if quality.imprecise:
+            worst = max(quality.imprecise, key=lambda r: r.percent_cv)
+            notes.append(f"{len(quality.imprecise)} component(s) over "
+                         f"{_number(CV_PERCENT, 0)}% CV across the quality "
+                         f"controls, the worst {_escape(worst.component)} at "
+                         f"{_number(worst.percent_cv, 1)}%.")
 
     extrapolated = [limits for limits in all_detection_limits(calibrations, method)
                     if limits.extrapolated]
@@ -396,6 +420,88 @@ def _carryover(title: str, results: ResultsSet, entries: list[SampleEntry],
             + _table(["Component", "Blank", "At the lowest standard", "%", ""],
                      rows, right={1, 2, 3}, empty="Nothing to compare.",
                      widths=["24%", "16%", "22%", "11%", "27%"]))
+
+
+def _quality(title: str, results: ResultsSet, entries: list[SampleEntry],
+             method: ProcessingMethod, breaks: set[str] | None = None) -> str:
+    """
+    What the run did between the first injection and the last.
+
+    Per-sample review cannot see a response that falls away across ninety
+    injections: every point is inside its limits and the batch is still not
+    the batch it started as.
+    """
+    report = batch_qc(results, entries, method)
+    parts = [_heading(title, breaks)]
+    if report.note:
+        return "".join(parts) + f'<p class="empty">{_escape(report.note)}</p>'
+
+    order = ("in the order the instrument ran them"
+             if report.ordered else
+             f"in the order the files were opened — {report.timed} of "
+             f"{report.injections} injections carry an acquisition time")
+    parts.append(
+        f'<p class="meta">Internal-standard response {order}. The centre is '
+        f"the median and the spread the median absolute deviation, so that "
+        f"one bad injection cannot widen the limits meant to catch it. An "
+        f"injection is called out when it is both beyond "
+        f"{OUTLIER_SIGMA:g}&#963; and at least {OUT_PERCENT:g}% from the "
+        f"centre: a batch that repeats itself well has a spread so small "
+        f"that three of them is a difference nobody would act on. Drift is "
+        f"the fitted change across the whole run, reported when it is at "
+        f"least {DRIFT_PERCENT:g}% and goes one way (Spearman's &#961; "
+        f"beyond {DRIFT_CORRELATION:g}).</p>")
+
+    rows = []
+    for chart in report.charts:
+        if not chart.measurable:
+            rows.append([_escape(chart.component),
+                         f"{len(chart.injections):,}", "—", "—", "—", "—",
+                         _escape(chart.note or "not measurable")])
+            continue
+        verdict = []
+        if chart.drifted:
+            verdict.append('<span class="bad">drift</span>')
+        if chart.out:
+            verdict.append(f'<span class="bad">{len(chart.out)} outside '
+                           f"3&#963;</span>")
+        if chart.excess_warnings:
+            verdict.append(f"{len(chart.warned)} beyond 2&#963;")
+        rows.append([
+            _escape(chart.component), f"{len(chart.injections):,}",
+            _number(chart.centre, 1), _number(chart.sigma, 1),
+            _number(chart.drift, 1), _number(chart.correlation, 3),
+            "; ".join(verdict) or (_escape(chart.note) if chart.note
+                                   else "steady"),
+        ])
+    parts.append(_table(
+        ["Component", "n", "Centre", "Spread", "Drift %", "\u03c1", "Verdict"],
+        rows, right={1, 2, 3, 4, 5}, empty="Nothing to chart.",
+        widths=["22%", "7%", "13%", "13%", "10%", "9%", "26%"]))
+
+    for chart in report.charts:
+        for point in chart.out:
+            parts.append(
+                f'<p class="foot">{_escape(chart.component)} — injection '
+                f"{point.order}, {_escape(point.sample)}: "
+                f"{_number(point.percent, 1)}% from the centre "
+                f"({_number(point.sigmas, 1)}&#963;)</p>")
+
+    measured = [row for row in report.precision if row.measurable]
+    if measured:
+        parts.append("<h3>Precision of the quality controls</h3>")
+        rows = []
+        for row in sorted(measured, key=lambda r: -(r.percent_cv or 0.0)):
+            rows.append([
+                _escape(row.component), f"{row.replicates:,}",
+                _number(row.mean, 1), _number(row.percent_cv, 2),
+                ('<span class="bad">over the limit</span>' if row.fails
+                 else "within the limit"),
+            ])
+        parts.append(_table(["Component", "n", "Mean", "%CV", ""], rows,
+                            right={1, 2, 3}, empty="Nothing to summarise.",
+                            widths=["30%", "9%", "20%", "13%", "28%"]))
+    return "".join(parts)
 
 
 def _results(title: str, results: ResultsSet, method: ProcessingMethod,
@@ -580,6 +686,9 @@ def build_html(session, title: str = "Batch report",
         elif key == "carryover":
             parts.append(_carryover(name, session.results, entries, method,
                                     breaks))
+        elif key == "quality":
+            parts.append(_quality(name, session.results, entries, method,
+                                  breaks))
         elif key == "results":
             parts.append(_results(name, session.results, method, breaks))
         elif key == "statistics":

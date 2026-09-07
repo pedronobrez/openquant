@@ -21,6 +21,7 @@ from .acceptance_panel import AcceptancePanel
 from .calibration_panel import CalibrationPanel
 from .integration_panel import IntegrationPanel
 from .metric_plot import MetricPlotPanel
+from .qc_panel import QualityPanel
 from .statistics_panel import StatisticsPanel
 from .peak_review import PeakReviewGrid
 from .results_table import ResultsTable
@@ -137,12 +138,14 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.calibration = CalibrationPanel()
         self.statistics = StatisticsPanel(session)
         self.metrics = MetricPlotPanel(session)
+        self.quality = QualityPanel(session)
         self.bottom = QtWidgets.QTabWidget()
         self.bottom.setDocumentMode(True)
         self.bottom.addTab(self.results, "Results")
         self.bottom.addTab(self.calibration, "Calibration")
         self.bottom.addTab(self.statistics, "Statistics")
         self.bottom.addTab(self.metrics, "Metric plot")
+        self.bottom.addTab(self.quality, "Batch QC")
         right.addWidget(self.grid)
         right.addWidget(self.bottom)
         right.setStretchFactor(0, 3)
@@ -176,6 +179,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.acceptance.sigApplyComponent.connect(self._apply_acceptance_component)
         self.acceptance.sigApplyAll.connect(self._apply_acceptance_all)
         self.metrics.sigPointActivated.connect(self._on_row_selected)
+        self.quality.sigSampleActivated.connect(self.grid.select)
 
         session.sigMethodChanged.connect(self.reload_components)
         session.sigSamplesChanged.connect(self.refresh_grid)

@@ -136,6 +136,7 @@ injection comes back as `kUnknown`.
 | Export | the visible columns of the visible rows, as CSV |
 | **LOD / LOQ** | derived from each curve's scatter about its own line, 3.3σ/S and 10σ/S as ICH Q2 defines them; a limit that lands below the lowest standard is marked as extrapolated rather than demonstrated |
 | **Carryover** | the blank injected after the highest standard, against the response at the lowest calibrated concentration, with a 20% limit. A run with no blank in that position reports that it was not measured, rather than a number from the nearest blank |
+| **Batch QC** | control charts of the internal standards against the order the instrument injected, taken from the acquisition times. The centre is the median and the spread the median absolute deviation, so one bad injection cannot widen the limits meant to catch it; an injection is called out only when it is both beyond 3σ and at least 20% from the centre, and a run is called drifting only when the fitted change is at least 20% and goes one way. Plus the %CV of the quality controls |
 | **Report** | `File ▸ Export report…` writes the whole batch — summary, samples, method, calibration, limits, carryover, per-component results and statistics — as A4 portrait PDF to hand over or HTML to keep. Numbered sections, a contents list with page numbers, and a heading row that repeats on every page. Built from the session rather than from the screen, so it holds what was measured and not what happened to be on show |
 
 ### Calibration

@@ -32,7 +32,7 @@ class SamplesWorkspace(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
 
         bar = QtWidgets.QHBoxLayout()
-        self.btn_open = QtWidgets.QPushButton("Open .wiff…")
+        self.btn_open = QtWidgets.QPushButton("Add data files…")
         self.btn_close = QtWidgets.QPushButton("Close all")
         bar.addWidget(self.btn_open)
         bar.addWidget(self.btn_close)

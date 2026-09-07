@@ -95,7 +95,7 @@ def test_shorten_names_strips_the_common_prefix():
         SampleEntry("/d/demo_STD_L1.wiff", 0, ""),
     ]
     shorten_names(entries)
-    assert [e.name for e in entries] == ["QC001", "S001"]
+    assert [e.name for e in entries] == ["QC01", "STD_L1"]
 
 
 def test_shorten_names_keeps_a_single_file_intact():

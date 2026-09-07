@@ -172,11 +172,10 @@ tables exists. These do not:
 
 ## Open questions
 
-- **`C12:0 _Ceramide` retention time.** Its real peak is at ~4.40 min; the
-  method says 5.62. It is the internal standard for 13 components, so if the
-  method is wrong those 13 are quantified against a window with nothing in it.
-  Raised, never answered. The other internal standards have not been checked
-  the same way.
+- **An internal standard's retention time does not match its method**, in the
+  batch this was developed against. Recorded in `NOTES.local.md`, which is not
+  tracked: it is an observation about somebody's unpublished method rather
+  than about this software.
 - **The Windows installer has never been run on real Windows.** CI builds it
   and proves the bundle starts and reads a `.wiff` on a GitHub runner; nobody
   has installed the MSI on a machine.

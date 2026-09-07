@@ -32,6 +32,9 @@ exports/
 !tests/fixtures/*.csv
 !tests/fixtures/*.mol
 
+# Anotacoes locais sobre os dados, nunca versionadas
+NOTES.local.md
+
 # Sistema
 .DS_Store
 Thumbs.db

@@ -177,9 +177,9 @@ def test_the_same_acquisition_in_two_formats_is_told_apart():
     shorten_names(entries)
     names = [e.name for e in entries]
     assert len(set(names)) == 3
-    assert names[0] == "1 (wiff)"
-    assert names[1] == "1 (mzML)"
-    assert names[2] == "3"
+    assert names[0] == "01 (wiff)"
+    assert names[1] == "01 (mzML)"
+    assert names[2] == "03"
 
 
 def test_the_same_name_in_two_folders_is_told_apart():

@@ -218,6 +218,9 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, dock)
         dock.setMinimumWidth(330)
         self.dock_tree = dock
+        self.act_dock_tree = self._reopen_action(
+            dock, "Samples and channels", "Ctrl+Shift+S",
+            "The tree of open files and their channels, on the left")
 
     def _build_side_dock(self) -> None:
         dock = QtWidgets.QDockWidget("Panels", self)
@@ -262,6 +265,9 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, dock)
         dock.setMinimumWidth(360)
         self.dock_side = dock
+        self.act_dock_side = self._reopen_action(
+            dock, "Side panels", "Ctrl+Shift+P",
+            "Components, results, XIC and the rest, on the right")
 
     def _build_xic_tab(self) -> QtWidgets.QWidget:
         page = QtWidgets.QWidget()
@@ -456,13 +462,40 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                 return True
         return False
 
+    def _reopen_action(self, dock, text: str, shortcut: str,
+                       tip: str) -> QtGui.QAction:
+        """
+        The way back after a side panel has been closed.
+
+        A dock has a close button and nothing that undoes it. Qt lists them in
+        a context menu on the toolbar, which nobody finds — close the tree of
+        samples and channels and the workspace looks broken with no way back.
+
+        The action is made here, where the dock is, rather than when the menu
+        asks for it: the shortcut has to work whether or not anything built a
+        menu, and it only fires at all if the window itself owns the action.
+        """
+        action = dock.toggleViewAction()
+        action.setText(text)
+        action.setShortcut(QtGui.QKeySequence(shortcut))
+        action.setShortcutContext(QtCore.Qt.ShortcutContext.WindowShortcut)
+        action.setToolTip(tip)
+        self.addAction(action)
+        return action
+
+    def _dock_actions(self) -> list:
+        separator = QtGui.QAction(self)
+        separator.setSeparator(True)
+        return [separator, self.act_dock_tree, self.act_dock_side]
+
     def build_actions(self) -> dict:
         """Actions the shell adds to its own menus for this workspace."""
         return {
             "File": [self.act_exp_chrom, self.act_exp_spec],
             "View": [self.act_autoscale, self.act_norm, self.act_mirror,
                      self.act_stack, self.act_overview, self.act_labels,
-                     self.act_apex, self.act_relative, self.act_legend],
+                     self.act_apex, self.act_relative, self.act_legend,
+                     *self._dock_actions()],
             "Panels": list(self.panel_actions),
             "Process": [self.act_centroid, self.act_marker, self.act_marker_clear,
                         self.act_set_bg, self.act_clear_bg, self.act_explain,

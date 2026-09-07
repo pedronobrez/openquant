@@ -206,3 +206,48 @@ def test_collapse_all_folds_the_samples_but_keeps_the_files(qapp):
     assert not sample.isExpanded()
     assert wiff.isExpanded()
     workspace.close()
+
+
+# -- getting a closed panel back --------------------------------------------- #
+
+
+def test_the_side_panels_can_be_reopened_from_the_menu(qapp):
+    """
+    A dock has a close button and, until this, nothing that undid it.
+
+    Qt offers the list in a context menu on the toolbar, which is not
+    somewhere anyone looks: closing the tree of samples and channels left the
+    workspace looking broken with no way back.
+    """
+    from openquant.ui.explorer import ExplorerWorkspace
+
+    workspace = ExplorerWorkspace(Session())
+    workspace.show()          # a dock of a hidden window is never "visible"
+    qapp.processEvents()
+    actions = workspace.build_actions()["View"]
+    by_text = {a.text(): a for a in actions if not a.isSeparator()}
+
+    assert "Samples and channels" in by_text
+    assert "Side panels" in by_text
+
+    for dock, action in ((workspace.dock_tree, by_text["Samples and channels"]),
+                         (workspace.dock_side, by_text["Side panels"])):
+        assert action.isCheckable()
+        dock.setVisible(False)
+        qapp.processEvents()
+        assert not action.isChecked(), "the menu should show the dock as hidden"
+        action.trigger()
+        qapp.processEvents()
+        assert dock.isVisible(), "triggering the action should bring it back"
+
+    workspace.close()
+
+
+def test_the_reopen_actions_work_without_the_menu_open(qapp):
+    """They carry shortcuts, which only fire if the window owns the action."""
+    from openquant.ui.explorer import ExplorerWorkspace
+
+    workspace = ExplorerWorkspace(Session())
+    owned = {a.text() for a in workspace.actions()}
+    assert {"Samples and channels", "Side panels"} <= owned
+    workspace.close()

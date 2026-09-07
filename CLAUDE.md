@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.6.5 released. 624 tests. Public repository.**
+**Version 0.6.5 released. 629 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -162,6 +162,19 @@ UV detector, is not implemented there) — untested on real Windows.
   `sendPostedEvents(None, QEvent.Type.DeferredDelete)` first. The application
   is fine; anything that grabs or asserts on a widget tree is not, unless it
   flushes. `tests/conftest.py` does this after every test.
+- **On a sparse trace, signal-to-noise is not a ratio to noise.**
+  `estimate_noise` returns 0.000 for an XIC that is 85–97% zeros, which is
+  what a scheduled MRM channel looks like, so `detect_peaks` falls back to
+  `NOISE_FLOOR = 1.0` and the reported S/N becomes **the peak height divided
+  by one** — measured on a real batch, an internal standard of 30 counts
+  reported S/N 30, and one of 42,400 counts reported 42,400. Anything gated on
+  S/N is therefore gated on absolute height with an arbitrary constant, which
+  includes `IntegrationParams.min_snr`, `AcceptanceLimits.min_snr` and
+  `qc.MIN_SNR`. The last of those was added specifically to stop control
+  charts flagging standards that are barely present, and on that batch it
+  changes nothing for exactly this reason. What that question actually needs
+  is a per-method floor on the internal standard's absolute response; S/N
+  cannot stand in for it.
 - **The retention-time window is not what the detector may see.** It says
   where the apex may be. Handing `detect_peaks` exactly that window meant two
   things, both found by reprocessing a real batch: peaks were truncated at the
@@ -321,7 +334,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-624 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+629 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

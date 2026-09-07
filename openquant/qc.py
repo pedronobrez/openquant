@@ -76,6 +76,21 @@ DRIFT_PERCENT = 20.0
 #: and how monotonic that change has to be before it is called a trend
 DRIFT_CORRELATION = 0.5
 
+#: the signal-to-noise below which a response is not quantified, and so is
+#: not charted either.
+#:
+#: Ten is the conventional limit of quantitation, the same figure `validation`
+#: derives an LOQ at. Below it the per-cent floors elsewhere in this module do
+#: nothing useful: they exist to stop a batch that repeats itself well from
+#: flagging ordinary scatter, and a standard whose median response is five
+#: counts reads three hundred per cent high the moment it gives twenty. Every
+#: flag against such a standard is arithmetic performed on noise, and a
+#: control chart that spends its flags there is not read anywhere else.
+#:
+#: Measured on a real batch: of eleven internal standards, eight had a median
+#: response between 4 and 52 counts and produced almost every flag in the run.
+MIN_SNR = 10.0
+
 #: the coefficient of variation expected of replicate quality controls, and
 #: the fewest replicates worth quoting one from
 CV_PERCENT = 15.0
@@ -175,6 +190,9 @@ class ControlChart:
     injections: list[Injection] = field(default_factory=list)
     drift: float | None = None
     correlation: float | None = None
+    #: the median signal-to-noise of the injections on the chart, where it is
+    #: known. None means it was not measured, which does not suppress anything.
+    snr: float | None = None
     note: str = ""
 
     @property
@@ -182,11 +200,24 @@ class ControlChart:
         return self.centre is not None and self.sigma is not None
 
     @property
+    def quantifiable(self) -> bool:
+        """
+        Whether the response is large enough for a deviation from it to mean
+        anything. Below the limit of quantitation it is not, and the chart
+        still draws — the points are worth seeing — but it flags nothing.
+        """
+        return self.snr is None or self.snr >= MIN_SNR
+
+    @property
     def out(self) -> list[Injection]:
+        if not self.quantifiable:
+            return []
         return [point for point in self.injections if point.out]
 
     @property
     def warned(self) -> list[Injection]:
+        if not self.quantifiable:
+            return []
         return [point for point in self.injections if point.warned]
 
     @property
@@ -211,13 +242,15 @@ class ControlChart:
         an artefact of fitting a line to noise, and a strong correlation over
         a two per cent change is a trend nobody has to act on.
         """
-        return (self.drift is not None and self.correlation is not None
+        return (self.quantifiable
+                and self.drift is not None and self.correlation is not None
                 and abs(self.drift) >= DRIFT_PERCENT
                 and abs(self.correlation) >= DRIFT_CORRELATION)
 
 
 def control_chart(component: str, points: list[tuple[SampleEntry, float]],
-                  is_internal_standard: bool = False) -> ControlChart:
+                  is_internal_standard: bool = False,
+                  snr: float | None = None) -> ControlChart:
     """
     A control chart for one component, from injections already in order.
 
@@ -225,7 +258,7 @@ def control_chart(component: str, points: list[tuple[SampleEntry, float]],
     order the instrument ran them; everything below is about what that
     sequence does and does not license.
     """
-    chart = ControlChart(component=component,
+    chart = ControlChart(component=component, snr=snr,
                          is_internal_standard=is_internal_standard)
     if len(points) < MIN_INJECTIONS:
         chart.note = (f"only {len(points)} injection(s); "
@@ -244,7 +277,11 @@ def control_chart(component: str, points: list[tuple[SampleEntry, float]],
         return chart
 
     chart.centre, chart.sigma = centre, sigma
-    if sigma == 0:
+    if not chart.quantifiable:
+        chart.note = (f"median signal-to-noise {snr:,.0f}, below {MIN_SNR:g}: "
+                      f"the response is too small to quantify, so nothing is "
+                      f"flagged against it")
+    elif sigma == 0:
         # more than half the injections gave the same number to the last
         # digit, which is not a batch behaving well — it is a reason to
         # distrust the measurement rather than to flag every other point
@@ -405,6 +442,7 @@ def batch_qc(results: ResultsSet, entries: list[SampleEntry],
 
     for name in wanted:
         points: list[tuple[SampleEntry, float]] = []
+        ratios: list[float] = []
         for entry in ordered:
             if name in internal and entry.sample_type not in SPIKED_TYPES:
                 continue
@@ -416,8 +454,14 @@ def batch_qc(results: ResultsSet, entries: list[SampleEntry],
             if value is None or not result.found:
                 continue
             points.append((entry, float(value)))
+            if result.snr:
+                ratios.append(float(result.snr))
+        # the median, so that a standard strong through the run is not
+        # written off by the few injections where it happened to fail
+        snr = float(np.median(ratios)) if ratios else None
         report.charts.append(
-            control_chart(name, points, is_internal_standard=name in internal))
+            control_chart(name, points, is_internal_standard=name in internal,
+                          snr=snr))
 
     report.precision = precision(results, entries, method)
     return report

@@ -14,8 +14,8 @@ import pyqtgraph as pg
 from PyQt6 import QtCore, QtWidgets
 
 from . import theme
-from ..qc import (OUTLIER_SIGMA, OUT_PERCENT, WARN_SIGMA, BatchQC,
-                  ControlChart, batch_qc)
+from ..qc import (MIN_SNR, OUTLIER_SIGMA, OUT_PERCENT, WARN_SIGMA,
+                  BatchQC, ControlChart, batch_qc)
 from ..session import Session
 
 POINT = "#234b8c"
@@ -80,9 +80,10 @@ class QualityPanel(QtWidgets.QWidget):
         self.plot.addItem(self._scatter)
         body.addWidget(self.plot)
 
-        self.table = QtWidgets.QTableWidget(0, 7)
+        self.table = QtWidgets.QTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(
-            ["Component", "n", "Centre", "Spread", "Drift %", "ρ", "Verdict"])
+            ["Component", "n", "Centre", "Spread", "S/N", "Drift %", "ρ",
+             "Verdict"])
         self.table.setEditTriggers(
             QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setDefaultSectionSize(20)
@@ -163,7 +164,10 @@ class QualityPanel(QtWidgets.QWidget):
             said.append(f"{stray} injection(s) beyond {OUTLIER_SIGMA:g}σ")
         if report.imprecise:
             said.append(f"{len(report.imprecise)} component(s) over the %CV limit")
-        if not report.drifted and not stray and not report.imprecise:
+        quiet = [c for c in report.charts if not c.quantifiable]
+        if quiet:
+            said.append(f"{len(quiet)} below S/N {MIN_SNR:g}")
+        if not report.drifted and not stray and not report.imprecise and not quiet:
             said.append("nothing outside its limits")
         self.status.setText(" · ".join(said))
 
@@ -171,22 +175,24 @@ class QualityPanel(QtWidgets.QWidget):
         charts = self._report.charts if self._report else []
         self.table.setRowCount(len(charts))
         for row, chart in enumerate(charts):
+            snr = f"{chart.snr:,.0f}" if chart.snr is not None else "—"
             cells = [chart.component, f"{len(chart.injections):,}"]
             if chart.measurable:
-                cells += [f"{chart.centre:,.1f}", f"{chart.sigma:,.1f}",
+                cells += [f"{chart.centre:,.1f}", f"{chart.sigma:,.1f}", snr,
                           f"{chart.drift:,.1f}" if chart.drift is not None else "—",
                           f"{chart.correlation:.3f}"
                           if chart.correlation is not None else "—",
                           self._verdict(chart)]
             else:
-                cells += ["—", "—", "—", "—", chart.note or "not measurable"]
+                cells += ["—", "—", snr, "—", "—",
+                          chart.note or "not measurable"]
             for column, text in enumerate(cells):
                 item = QtWidgets.QTableWidgetItem(text)
-                if column in (1, 2, 3, 4, 5):
+                if column in (1, 2, 3, 4, 5, 6):
                     item.setTextAlignment(
                         QtCore.Qt.AlignmentFlag.AlignRight
                         | QtCore.Qt.AlignmentFlag.AlignVCenter)
-                if column == 6 and (chart.drifted or chart.out):
+                if column == 7 and (chart.drifted or chart.out):
                     item.setForeground(pg.mkColor(theme.danger()))
                 self.table.setItem(row, column, item)
         self.table.setColumnWidth(0, 160)
@@ -212,6 +218,8 @@ class QualityPanel(QtWidgets.QWidget):
 
     @staticmethod
     def _verdict(chart: ControlChart) -> str:
+        if not chart.quantifiable:
+            return f"below S/N {MIN_SNR:g} — not quantified, so not flagged"
         said = []
         if chart.drifted:
             said.append(f"drift {chart.drift:+,.0f}%")

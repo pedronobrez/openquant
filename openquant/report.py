@@ -35,7 +35,7 @@ from .quantify import PeakResult, ResultsSet
 from .samples import SampleEntry
 from .statistics import GROUP_BY_SAMPLE_TYPE, summarise
 from .qc import (CV_PERCENT, DRIFT_CORRELATION, DRIFT_PERCENT,
-                 OUTLIER_SIGMA, OUT_PERCENT, batch_qc)
+                 MIN_SNR, OUTLIER_SIGMA, OUT_PERCENT, batch_qc)
 from .validation import all_detection_limits, carryover
 
 #: the statuses a row can carry. Matched without regard to case: the results
@@ -450,16 +450,25 @@ def _quality(title: str, results: ResultsSet, entries: list[SampleEntry],
         f"that three of them is a difference nobody would act on. Drift is "
         f"the fitted change across the whole run, reported when it is at "
         f"least {DRIFT_PERCENT:g}% and goes one way (Spearman's &#961; "
-        f"beyond {DRIFT_CORRELATION:g}).</p>")
+        f"beyond {DRIFT_CORRELATION:g}). A standard whose median "
+        f"signal-to-noise is below {MIN_SNR:g} is charted but not flagged: "
+        f"below the limit of quantitation a small absolute change is a large "
+        f"relative one, and every flag against it would be arithmetic on "
+        f"noise.</p>")
 
     rows = []
     for chart in report.charts:
         if not chart.measurable:
             rows.append([_escape(chart.component),
-                         f"{len(chart.injections):,}", "—", "—", "—", "—",
+                         f"{len(chart.injections):,}", "—", "—",
+                         _number(chart.snr, 0) if chart.snr is not None else "—",
+                         "—", "—",
                          _escape(chart.note or "not measurable")])
             continue
         verdict = []
+        if not chart.quantifiable:
+            verdict.append(f"below S/N {MIN_SNR:g} — not quantified, so not "
+                           f"flagged")
         if chart.drifted:
             verdict.append('<span class="bad">drift</span>')
         if chart.out:
@@ -470,14 +479,16 @@ def _quality(title: str, results: ResultsSet, entries: list[SampleEntry],
         rows.append([
             _escape(chart.component), f"{len(chart.injections):,}",
             _number(chart.centre, 1), _number(chart.sigma, 1),
+            _number(chart.snr, 0) if chart.snr is not None else "—",
             _number(chart.drift, 1), _number(chart.correlation, 3),
             "; ".join(verdict) or (_escape(chart.note) if chart.note
                                    else "steady"),
         ])
     parts.append(_table(
-        ["Component", "n", "Centre", "Spread", "Drift %", "\u03c1", "Verdict"],
-        rows, right={1, 2, 3, 4, 5}, empty="Nothing to chart.",
-        widths=["22%", "7%", "13%", "13%", "10%", "9%", "26%"]))
+        ["Component", "n", "Centre", "Spread", "S/N", "Drift %", "\u03c1",
+         "Verdict"],
+        rows, right={1, 2, 3, 4, 5, 6}, empty="Nothing to chart.",
+        widths=["20%", "6%", "12%", "12%", "9%", "9%", "8%", "24%"]))
 
     for chart in report.charts:
         for point in chart.out:

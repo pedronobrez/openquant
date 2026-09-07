@@ -293,3 +293,84 @@ def test_a_failed_injection_is_still_caught_in_a_tight_batch():
     chart = qc.batch_qc(_results(entries, "IS", areas), entries,
                         _method()).charts[0]
     assert [point.sample for point in chart.out] == ["S05"]
+
+
+# --------------------------------------------------------------------------- #
+# a response too small to quantify
+# --------------------------------------------------------------------------- #
+#: a steady response with two injections far out of line, so that what is
+#: being tested is the signal-to-noise gate and not the spread
+NOISY = [100, 104, 96, 300, 102, 98, 101, 99, 280, 103, 97, 100]
+
+
+def _results_with_snr(entries, component, areas, snr):
+    results = ResultsSet.from_list([])
+    for entry, area in zip(entries, areas):
+        row = PeakResult(sample_key=entry.key, sample_name=entry.name,
+                         component=component)
+        row.area, row.snr = float(area), float(snr)
+        results.replace(row)
+    return results
+
+
+def test_a_standard_below_the_limit_of_quantitation_flags_nothing():
+    """
+    Measured on a real batch: eight of eleven internal standards had a median
+    response between 4 and 52 counts and produced almost every flag in the
+    run. A standard whose median is five counts reads three hundred per cent
+    high the moment it gives twenty, and the per-cent floors cannot help —
+    a small absolute change is a huge relative one.
+    """
+    entries = _batch(12)
+    areas = NOISY
+    chart = qc.batch_qc(_results_with_snr(entries, "IS", areas, snr=2.0),
+                        entries, _method()).charts[0]
+    assert chart.measurable                 # the centre is still computed
+    assert not chart.quantifiable
+    assert chart.out == [] and chart.warned == [] and not chart.drifted
+    assert "below 10" in chart.note
+    assert len(chart.injections) == 12      # and the points are still there
+
+
+def test_the_same_numbers_above_the_limit_are_flagged():
+    """The suppression has to be about the signal, not about the arithmetic."""
+    entries = _batch(12)
+    chart = qc.batch_qc(_results_with_snr(entries, "IS", NOISY, snr=250.0),
+                        entries, _method()).charts[0]
+    assert chart.quantifiable
+    assert [p.sample for p in chart.out] == ["S03", "S08"]
+
+
+def test_a_drift_in_a_response_too_small_to_quantify_is_not_reported():
+    entries = _batch(20)
+    areas = [40 - n for n in range(20)]
+    chart = qc.batch_qc(_results_with_snr(entries, "IS", areas, snr=3.0),
+                        entries, _method()).charts[0]
+    assert abs(chart.drift) > qc.DRIFT_PERCENT      # the arithmetic still runs
+    assert not chart.drifted                        # and is not acted on
+
+
+def test_an_unmeasured_signal_to_noise_suppresses_nothing():
+    """None means not measured, which is not the same as measured and small."""
+    entries = _batch(12)
+    areas = [10000 + (n % 3 - 1) * 40 for n in range(12)]
+    areas[7] = 2000.0
+    chart = qc.batch_qc(_results(entries, "IS", areas), entries,
+                        _method()).charts[0]
+    assert chart.snr is None and chart.quantifiable
+    assert [p.sample for p in chart.out] == ["S07"]
+
+
+def test_the_median_decides_not_the_worst_injection():
+    """A standard strong through the run is not written off by two failures."""
+    entries = _batch(12)
+    results = ResultsSet.from_list([])
+    for n, entry in enumerate(entries):
+        row = PeakResult(sample_key=entry.key, sample_name=entry.name,
+                         component="IS")
+        row.area = 10000.0 if n != 7 else 2000.0
+        row.snr = 2.0 if n in (3, 9) else 400.0
+        results.replace(row)
+    chart = qc.batch_qc(results, entries, _method()).charts[0]
+    assert chart.snr == pytest.approx(400.0)
+    assert chart.quantifiable

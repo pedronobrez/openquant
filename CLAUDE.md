@@ -174,11 +174,11 @@ UV detector, is not implemented there) — untested on real Windows.
 Checked against the code, not the README. Everything in the README's feature
 tables exists. These do not:
 
+Since done: LOD/LOQ (`validation.detection_limits`), carryover
+(`validation.carryover`) and the report (`report.py`, `File ▸ Export report…`).
+
 | Missing | Which tool | Worth it? |
 |---|---|---|
-| **LOD / LOQ from the calibration curve** | MultiQuant | Yes — method validation needs it and the curve data is already there |
-| **Reports** | both | Yes — CSV export exists, a printable report does not |
-| **Carryover / blank checks** | MultiQuant | Yes, and cheap: flag a blank that shows signal at a component's RT |
 | **Alternative integration algorithms** | MultiQuant | One algorithm with seven parameters against MQ4 / AutoPeak / Summation. Not obviously a gap in results, but it is a difference |
 | **Contour view (RT × m/z)** | PeakView | Nice to have; a real piece of work |
 | **Spectral library search** | PeakView | Structure-based annotation covers lipids better; a library would cover everything else |

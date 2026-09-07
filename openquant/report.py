@@ -27,6 +27,7 @@ from .method import ProcessingMethod
 from .quantify import PeakResult, ResultsSet
 from .samples import SampleEntry
 from .statistics import GROUP_BY_SAMPLE_TYPE, summarise
+from .validation import all_detection_limits, carryover
 
 #: the statuses a row can carry. Matched without regard to case: the results
 #: capitalise them and an earlier version of this counted them in lower case,
@@ -171,6 +172,59 @@ def _calibrations(calibrations: dict[str, Calibration],
               "concentration.")
 
 
+def _limits(calibrations, method: ProcessingMethod) -> str:
+    rows = []
+    for limits in all_detection_limits(calibrations, method):
+        if not limits.measurable:
+            rows.append([_escape(limits.component), "—", "—", "—", "—",
+                         _escape(limits.note or "not derived")])
+            continue
+        note = limits.note
+        if limits.extrapolated:
+            warning = (f"below the lowest standard "
+                       f"({_number(limits.lowest_standard, 4)}) — extrapolated, "
+                       f"not demonstrated")
+            note = f"{note}; {warning}" if note else warning
+        rows.append([
+            _escape(limits.component),
+            _number(limits.lod, 4), _number(limits.loq, 4),
+            _number(limits.sigma, 6), _number(limits.slope, 6),
+            _escape(note),
+        ])
+    return ("<h2>Detection and quantitation limits</h2>"
+            '<p class="meta">3.3&#963;/S and 10&#963;/S, with &#963; the '
+            "residual standard deviation of the curve about its own line "
+            "(ICH Q2). Internal standards are left out.</p>"
+            + _table(["Component", "LOD", "LOQ", "σ", "Slope", "Notes"],
+                     rows, right={1, 2, 3, 4},
+                     empty="No curve to derive a limit from."))
+
+
+def _carryover(results: ResultsSet, entries: list[SampleEntry],
+               method: ProcessingMethod) -> str:
+    found = carryover(results, entries, method)
+    if found.note:
+        return (f'<h2>Carryover</h2><p class="empty">{_escape(found.note)}</p>')
+    rows = []
+    for row in sorted(found.rows, key=lambda r: -r.percent):
+        rows.append([
+            _escape(row.component), _number(row.blank_area, 1),
+            _number(row.reference_area, 1), _number(row.percent, 2),
+            "FAIL" if row.fails else "ok",
+        ])
+    first = found.rows[0] if found.rows else None
+    heading = ""
+    if first is not None:
+        heading = (f'<p class="meta">{_escape(first.blank)}, injected after '
+                   f"{_escape(first.follows)}, against the response at the "
+                   f"lowest calibrated concentration ({_escape(first.reference)}). "
+                   f"Limit {_number(first.limit, 0)}%.</p>")
+    return ("<h2>Carryover</h2>" + heading
+            + _table(["Component", "Blank", "At the lowest standard", "%", ""],
+                     rows, right={1, 2, 3},
+                     empty="Nothing to compare."))
+
+
 def _results(results: ResultsSet, method: ProcessingMethod) -> str:
     by_component: dict[str, list[PeakResult]] = {}
     for row in results:
@@ -251,7 +305,8 @@ td.num { text-align: right; }
 def build_html(session, title: str = "Batch report",
                grouping: str = GROUP_BY_SAMPLE_TYPE,
                sections: tuple[str, ...] = ("summary", "samples", "method",
-                                            "calibration", "results",
+                                            "calibration", "limits",
+                                            "carryover", "results",
                                             "statistics")) -> str:
     """
     The whole report as one HTML document.
@@ -271,6 +326,10 @@ def build_html(session, title: str = "Batch report",
         parts.append(_method(method))
     if "calibration" in sections:
         parts.append(_calibrations(session.calibrations, method))
+    if "limits" in sections:
+        parts.append(_limits(session.calibrations, method))
+    if "carryover" in sections:
+        parts.append(_carryover(session.results, entries, method))
     if "results" in sections:
         parts.append(_results(session.results, method))
     if "statistics" in sections:

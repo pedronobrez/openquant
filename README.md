@@ -134,6 +134,8 @@ injection comes back as `kUnknown`.
 | Columns | which ones are shown and to how many decimals |
 | **Used** | exclude a row from the statistics without deleting it |
 | Export | the visible columns of the visible rows, as CSV |
+| **LOD / LOQ** | derived from each curve's scatter about its own line, 3.3σ/S and 10σ/S as ICH Q2 defines them; a limit that lands below the lowest standard is marked as extrapolated rather than demonstrated |
+| **Carryover** | the blank injected after the highest standard, against the response at the lowest calibrated concentration, with a 20% limit. A run with no blank in that position reports that it was not measured, rather than a number from the nearest blank |
 | **Report** | `File ▸ Export report…` writes the whole batch — summary, samples, method, calibration, per-component results and statistics — as PDF to hand over or HTML to keep. Built from the session rather than from the screen, so it holds what was measured and not what happened to be on show |
 
 ### Calibration

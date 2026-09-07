@@ -619,12 +619,25 @@ class MzmlFile:
 
         mzML has no idea of an experiment; it has a list of spectra. Scans
         that share an MS level, a precursor, a collision energy and a mass
-        range came from the same entry in the acquisition method, and the
-        order they first appear in is the order the method ran them.
+        range came from the same entry in the acquisition method — except
+        when a method has two entries that agree on all of those, which is
+        common enough: a panel may run the same transition twice at different
+        points in the cycle. On a real 81-channel acquisition, grouping by
+        those properties alone gave 69 channels.
+
+        What separates them is the order of acquisition, which mzML does keep.
+        A scheduled method runs its experiments in a fixed cycle, so the
+        position of a spectrum within that cycle says which entry produced it,
+        and identical entries sit at different positions. See `acquisition
+        cycles` below for how the cycle is found, and for what happens when
+        there is not one — data-dependent acquisition has no repeating order,
+        and there the properties are all there is.
         """
+        cycles = acquisition_cycles([h.key for h in self.headers])
         grouped: dict[tuple, list[_ScanHeader]] = {}
-        for header in self.headers:
-            grouped.setdefault(header.key, []).append(header)
+        for position, header in zip(cycles, self.headers):
+            key = header.key if position is None else position
+            grouped.setdefault(key, []).append(header)
         return [MzmlChannel(sample, index, group)
                 for index, group in enumerate(grouped.values())]
 
@@ -643,6 +656,72 @@ class MzmlFile:
 
     def __repr__(self) -> str:
         return f"<MzmlFile {self.filename}: {len(self.headers)} spectra>"
+
+
+# --------------------------------------------------------------------------- #
+# acquisition cycles
+# --------------------------------------------------------------------------- #
+#: the longest cycle worth looking for. A scheduled method with more entries
+#: than this in one cycle is not something this has been seen to encounter,
+#: and an unbounded search over tens of thousands of spectra is slow for
+#: nothing.
+MAX_CYCLE = 4096
+
+#: a cycle has to repeat at least this many times to be believed. Two
+#: consecutive stretches that happen to match are a coincidence; twenty are a
+#: method.
+MIN_REPEATS = 4
+
+
+def acquisition_cycles(keys: list) -> list:
+    """
+    Where each spectrum sits in the method's cycle, or None if there is no cycle.
+
+    A scheduled acquisition runs its experiments in a fixed order and repeats
+    it: this file's 23,722 spectra are a cycle of 44 experiments run 339
+    times, followed by a cycle of 37 run 238 times — 44 + 37 being exactly the
+    81 channels the vendor's own file declares. Position in the cycle is
+    therefore the experiment, and it separates two entries that a method
+    happens to have given identical settings.
+
+    Returns a list the same length as `keys`, each item either
+    (period, position) or None where no cycle was found. Data-dependent
+    acquisition chooses its precursors from the last survey scan, so nothing
+    repeats and everything comes back None, which leaves the caller to group
+    by the properties of the scans as before.
+    """
+    total = len(keys)
+    positions: list = [None] * total
+    start, period = 0, 0
+    while start < total:
+        length, end = _cycle_at(keys, start, total)
+        if length is None:
+            # no cycle from here on: leave the rest ungrouped by position
+            break
+        for index in range(start, end):
+            positions[index] = (period, (index - start) % length)
+        start, period = end, period + 1
+    return positions
+
+
+def _cycle_at(keys: list, start: int, total: int):
+    """The shortest cycle beginning at `start`, and how far it runs."""
+    limit = min(MAX_CYCLE, (total - start) // MIN_REPEATS)
+    for length in range(1, limit + 1):
+        if keys[start:start + length] != keys[start + length:start + 2 * length]:
+            continue
+        end = start + length
+        while (end + length <= total
+               and keys[end:end + length] == keys[start:start + length]):
+            end += length
+        if (end - start) // length >= MIN_REPEATS:
+            # whatever is left of a final, incomplete cycle belongs to this
+            # period too — an acquisition can be stopped part way through one
+            remainder = total - end
+            if 0 < remainder < length and keys[end:total] == keys[start:start + remainder]:
+                end = total
+            return length, end
+    return None, total
 
 
 # --------------------------------------------------------------------------- #

@@ -45,9 +45,11 @@ msconvert and opens here.
 with the total ion current the instrument reported rather than one recomputed
 here.
 
-How much survives the trip was measured rather than assumed. Exporting a real
-81-channel acquisition and reading it back gives, on all five injections of a
-batch:
+How much survives the trip was measured rather than assumed, and checked
+against ProteoWizard as well as against ourselves: msconvert reads what this
+writes, and what msconvert writes from it reads back here with the same
+numbers. Exporting a real 81-channel acquisition and reading it back gives, on
+all five injections of a batch:
 
 | | |
 |---|---|
@@ -56,6 +58,15 @@ batch:
 | the run's total ion chromatogram | identical, 577 points |
 | integrated peak areas | identical |
 | extracted ion chromatograms | differ, see below |
+
+Channels are worked out from the order of acquisition, not only from the
+properties of the scans. A method can have two entries that agree on MS level,
+precursor, collision energy and mass range — this panel runs some transitions
+twice — and grouping by those alone gave 69 channels instead of 81. A
+scheduled method repeats its experiments in a fixed cycle, so position in the
+cycle is the entry: this acquisition is a cycle of 44 run 339 times followed
+by one of 37 run 238 times, and 44 + 37 is the 81 the vendor's file declares.
+Data-dependent acquisition has no such cycle and falls back to the properties.
 
 The one difference is the extracted ion chromatogram. SCIEX's own extraction
 counts part of a peak whose measured points fall just outside the window, and

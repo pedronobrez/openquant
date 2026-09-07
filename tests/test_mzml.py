@@ -383,3 +383,61 @@ def test_the_run_total_is_summed_by_cycle_not_by_time(tmp_path):
     # the fast period's two channels are added cycle by cycle; the slow one
     # keeps its own times
     assert np.array_equal(total, np.array([11.0, 100.0, 22.0, 33.0, 200.0, 44.0]))
+
+
+# --------------------------------------------------------------------------- #
+# the acquisition cycle
+# --------------------------------------------------------------------------- #
+def test_a_repeating_method_is_split_by_position_in_the_cycle():
+    """
+    Two entries of a method can agree on every property mzML records. On a
+    real 81-channel acquisition, grouping by MS level, precursor, collision
+    energy and mass range alone gave 69 channels: a panel ran some transitions
+    twice at different points in the cycle. The order of acquisition is what
+    separates them, and mzML does keep that.
+    """
+    cycle = ["ms1", "a", "b", "a"]          # "a" twice, at positions 1 and 3
+    keys = cycle * 8
+    positions = mzml.acquisition_cycles(keys)
+    assert all(p is not None for p in positions)
+    assert len(set(positions)) == 4, "four entries, not three"
+    # the two "a" entries are told apart
+    a_positions = {p for p, k in zip(positions, keys) if k == "a"}
+    assert len(a_positions) == 2
+
+
+def test_two_periods_are_found_one_after_the_other():
+    """
+    A method runs in periods and each has its own cycle. The acquisition this
+    was checked against is a cycle of 44 run 339 times followed by a cycle of
+    37 run 238 times — and 44 + 37 is exactly the 81 channels the vendor's own
+    file declares.
+    """
+    keys = ["p", "q"] * 10 + ["x", "y", "z"] * 10
+    positions = mzml.acquisition_cycles(keys)
+    periods = {p[0] for p in positions if p is not None}
+    assert periods == {0, 1}
+    assert len({p for p in positions if p is not None}) == 5   # 2 + 3
+
+
+def test_an_acquisition_stopped_mid_cycle_keeps_its_last_scans():
+    keys = ["a", "b", "c"] * 6 + ["a", "b"]
+    positions = mzml.acquisition_cycles(keys)
+    assert all(p is not None for p in positions)
+    assert positions[-2:] == [(0, 0), (0, 1)]
+
+
+def test_data_dependent_acquisition_has_no_cycle_and_says_so():
+    """
+    DDA picks its precursors from the last survey scan, so nothing repeats.
+    Reporting a cycle there would invent channels; the properties of the scans
+    are all there is, and the caller falls back to them.
+    """
+    keys = ["ms1", "p1", "p2", "ms1", "p3", "p4", "ms1", "p5", "p6",
+            "ms1", "p7", "p8"]
+    assert all(p is None for p in mzml.acquisition_cycles(keys))
+
+
+def test_a_short_run_is_not_mistaken_for_a_cycle():
+    """Two stretches that happen to match are a coincidence, not a method."""
+    assert all(p is None for p in mzml.acquisition_cycles(["a", "b", "a", "b"]))

@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.6.4 released. 595 tests. Public repository.**
+**Version 0.6.4 released. 617 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -59,6 +59,7 @@ openquant/
   calibration.py  regressions and weightings
   statistics.py   grouped means, SD, %CV
   qc.py           control charts through the run, drift, replicate precision
+  contour.py      the run as a retention time by m/z grid
   components.py   the component table; method.py the processing method
   samples.py      SampleEntry, sample types and groups, name shortening
   matching.py     which channel serves a component
@@ -161,6 +162,22 @@ UV detector, is not implemented there) — untested on real Windows.
   `sendPostedEvents(None, QEvent.Type.DeferredDelete)` first. The application
   is fine; anything that grabs or asserts on a widget tree is not, unless it
   flushes. `tests/conftest.py` does this after every test.
+- **A contour averages the scans it cannot draw, it does not skip them.**
+  A long run has more scans than a screen has rows. Sampling every k-th scan
+  is faster and loses a one-scan peak entirely, so `build_contour` averages
+  each group into its row — the mean rather than the sum, because the last
+  group is usually short and a row that is dimmer only for that is a lie
+  about the data. It also asks for spectra with `add_zeros=False`: a
+  histogram of intensities cannot be changed by adding points of intensity
+  zero, and restoring them triples the reading for the same grid.
+- **`Contour.at` searches its bin edges to the right**, because that is where
+  numpy's histogram puts a value sitting exactly on an edge. Searching left
+  reads the cell next door and the readout under the cursor disagrees with
+  the picture under it — caught by a test, not by eye.
+- **Nothing is quantified off the contour.** Its m/z bins are wider than the
+  instrument's steps and its rows may be several scans averaged, so
+  `Extract this view` goes back to the reader for both the XIC and the
+  spectrum. `Contour.slice_rt` and `slice_mz` exist for drawing, and say so.
 - **The window does not always hold one peak.** Integration used to take
   `peaks[0]` — `detect_peaks` sorts by area, so the largest in the window,
   with nothing consulting the expected retention time. With a co-eluting
@@ -290,7 +307,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-595 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+617 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

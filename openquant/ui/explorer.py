@@ -27,6 +27,8 @@ from .component_list import ComponentListPanel
 from .formula_panel import FormulaPanel
 from .lipid_panel import LipidPanel
 from .mass_calc_panel import MassCalcPanel
+from ..contour import Contour, build_contour
+from .contour_view import ContourView
 from .plots import SpectrumView, Trace, colour
 from .results_panel import Result, ResultsPanel
 from .sample_info import SampleInfoPanel
@@ -76,6 +78,15 @@ class ChannelRef:
         return f"{base} · {self.channel.info.label}"
 
 
+VIEW_CHROMATOGRAM = "Chromatogram"
+VIEW_CONTOUR = "Contour"
+
+#: how many built surfaces to keep. Each is a grid of some ten megabytes, and
+#: a file of eighty-one channels would otherwise fill memory with pictures
+#: nobody is looking at any more.
+CONTOUR_CACHE = 6
+
+
 class _Cancelled(Exception):
     """The reader asked to stop, from inside the writer's progress callback."""
 
@@ -103,7 +114,10 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self._background_cache: dict[tuple, tuple[np.ndarray, np.ndarray]] = {}
 
         self.chrom = ChromatogramArea()
+        self.contour_view = ContourView()
         self.spectrum = SpectrumView()
+        #: built contours, by channel and by the ranges they were built over
+        self._contour_cache: dict[tuple, object] = {}
 
         self._build_ui()
         self._connect()
@@ -132,7 +146,13 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         layout.setSpacing(4)
 
         bar = QtWidgets.QHBoxLayout()
-        bar.addWidget(QtWidgets.QLabel("Chromatogram:"))
+        bar.addWidget(QtWidgets.QLabel("View:"))
+        self.view_combo = QtWidgets.QComboBox()
+        self.view_combo.addItems([VIEW_CHROMATOGRAM, VIEW_CONTOUR])
+        self.view_combo.setToolTip(
+            "The contour is the same data with neither axis summed away: "
+            "time across, m/z up, intensity as colour")
+        bar.addWidget(self.view_combo)
         self.mode_combo = QtWidgets.QComboBox()
         self.mode_combo.addItems(["TIC", "BPC"])
         self.mode_combo.setToolTip("Chromatogram type for the checked channels")
@@ -143,7 +163,11 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.active_combo.setMinimumWidth(320)
         bar.addWidget(self.active_combo, 1)
         layout.addLayout(bar)
-        layout.addWidget(self.chrom)
+
+        self.top_stack = QtWidgets.QStackedWidget()
+        self.top_stack.addWidget(self.chrom)
+        self.top_stack.addWidget(self.contour_view)
+        layout.addWidget(self.top_stack)
         return box
 
     def _wrap_spectrum(self) -> QtWidgets.QWidget:
@@ -554,6 +578,10 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
 
         self.mode_combo.currentTextChanged.connect(lambda _: self.refresh_chromatogram())
         self.active_combo.currentIndexChanged.connect(self._on_active_changed)
+        self.view_combo.currentTextChanged.connect(self._on_view_changed)
+        self.contour_view.sigPointPicked.connect(self._on_contour_point)
+        self.contour_view.sigRegionPicked.connect(self._on_contour_region)
+        self.contour_view.sigRebuildRequested.connect(self._rebuild_contour)
 
         self.chrom.sigClicked.connect(self._on_chrom_click)
         self.chrom.sigRangeSelected.connect(self._on_chrom_range)
@@ -769,6 +797,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.xic_defs.clear()
         self.active_ref = None
         self._background_cache.clear()
+        self._contour_cache.clear()
         self.tree.clear()
         self.xic_list.clear()
         self.active_combo.clear()
@@ -885,6 +914,96 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         if self.active_ref and self.active_ref.channel:
             self._show_scan(min(self.current_scan,
                                 self.active_ref.channel.info.n_scans - 1))
+        if self._contour_showing:
+            self._show_contour()
+
+    # ----------------------------------------------------------- contour -- #
+    @property
+    def _contour_showing(self) -> bool:
+        return self.top_stack.currentIndex() == 1
+
+    def _on_view_changed(self, name: str) -> None:
+        self.top_stack.setCurrentIndex(1 if name == VIEW_CONTOUR else 0)
+        # TIC against BPC is a choice about a chromatogram; on a surface with
+        # neither axis summed away it means nothing, so it goes away
+        self.mode_combo.setVisible(not self._contour_showing)
+        if self._contour_showing and self.contour_view.contour().is_empty:
+            self._show_contour()
+
+    def _show_contour(self, rt_range=None, mz_range=None) -> None:
+        """
+        Build the surface for the active channel, or show the one already
+        built for it.
+
+        Reading every scan is the cost, so it is cached against the channel
+        and the ranges it was built over, and a second look at the same
+        channel is instant. It is also cancellable: a partial surface of the
+        first half of a run still shows what is in the first half.
+        """
+        ref = self.active_ref
+        channel = ref.channel if ref else None
+        if channel is None:
+            self.contour_view.set_contour(Contour(
+                note="Pick an active channel to build a contour."))
+            return
+
+        key = (ref.key, rt_range, mz_range)
+        cached = self._contour_cache.get(key)
+        if cached is not None:
+            self.contour_view.set_contour(cached, ref.label)
+            return
+
+        progress = QtWidgets.QProgressDialog(
+            f"Reading {channel.info.n_scans:,} scans…", "Cancel", 0, 100, self)
+        progress.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(400)
+
+        def tick(done: int, total: int):
+            progress.setValue(int(done / max(total, 1) * 100))
+            QtWidgets.QApplication.processEvents()
+            return not progress.wasCanceled()
+
+        try:
+            contour = build_contour(channel, rt_range=rt_range,
+                                    mz_range=mz_range, progress=tick)
+        except Exception as exc:
+            progress.close()
+            self._update_status(f"Contour failed: {exc}")
+            return
+        progress.close()
+        self._contour_cache[key] = contour
+        while len(self._contour_cache) > CONTOUR_CACHE:
+            self._contour_cache.pop(next(iter(self._contour_cache)))
+        self.contour_view.set_contour(contour, ref.label)
+        self._update_status(f"Contour of {ref.label}: {contour.scans:,} scans")
+
+    def _rebuild_contour(self) -> None:
+        """Read the scans again over what is on screen, at the full grid."""
+        rt_lo, rt_hi, mz_lo, mz_hi = self.contour_view.view_ranges()
+        self._show_contour(rt_range=(rt_lo, rt_hi), mz_range=(mz_lo, mz_hi))
+
+    def _on_contour_point(self, rt: float, _mz: float) -> None:
+        """A click on the surface shows the spectrum underneath it."""
+        channel = self.active_ref.channel if self.active_ref else None
+        if channel is not None:
+            self._show_scan(channel.scan_at_rt(rt))
+
+    def _on_contour_region(self, rt_lo: float, rt_hi: float,
+                           mz_lo: float, mz_hi: float) -> None:
+        """
+        The rectangle on screen, as a chromatogram and a spectrum.
+
+        Both come from the reader rather than from the grid. The grid is a
+        picture: its m/z bins are wider than the instrument's steps and its
+        rows may be several scans averaged together, so a number taken off it
+        would be neither the instrument's nor reproducible from the file.
+        """
+        channel = self.active_ref.channel if self.active_ref else None
+        if channel is None:
+            return
+        self._add_xic(mz_lo, mz_hi, f"m/z {mz_lo:.3f}–{mz_hi:.3f}")
+        self._show_average(rt_lo, rt_hi)
+        self.view_combo.setCurrentText(VIEW_CHROMATOGRAM)
 
     def _activate_trace_key(self, key: str) -> None:
         """When a stacked pane is clicked, make its channel the active one."""

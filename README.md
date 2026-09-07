@@ -95,7 +95,7 @@ once rather than once per view.
 
 | Workspace | What it is for |
 |---|---|
-| **Explorer** | qualitative review of the raw data: chromatograms, spectra, XICs, chemistry |
+| **Explorer** | qualitative review of the raw data: chromatograms, contours, spectra, XICs, chemistry |
 | **Analytics** | the batch, quantitatively: one chromatogram per sample for each component, and the results table |
 | **Method** | the component table — what to extract, where, and how the result is reported |
 | **Samples** | the batch: sample type, study group, expected concentration, dilution |
@@ -123,6 +123,7 @@ injection comes back as `kUnknown`.
 | **Manual** | drag across a peak to integrate exactly that range; the row is marked ✎ and survives reprocessing |
 | Back to automatic | right-click a hand-integrated panel |
 | Integration parameters | per component, with **Update method for component** / **for group**, **Back to method defaults**, and copy/paste between components |
+| Contour | **View ▸ Contour** draws the active channel as a surface — time across, m/z up, intensity as colour — so an interference beside a target or a ridge down the whole run is visible rather than inferred. Square root by default, because a linear ramp over four decades shows the base peak and nothing else. Click a spot for the spectrum under it; **Extract this view** takes the chromatogram and spectrum of the rectangle on screen, both from the reader rather than from the grid |
 | Noise region | right-click a panel with a stretch of baseline shaded to measure S/N there, peak-to-peak or by standard deviation |
 | Which peak | **Peak**: `largest` takes the biggest peak in the retention-time window, `nearest the expected RT` uses the method's time to decide. It matters when the window holds two — a co-eluting isomer or isobar, ordinary in lipidomics — where the taller peak is not necessarily the analyte. `largest` is the default, so no existing project changes its numbers; where proximity overrules size, the row says what it passed over |
 | **Show IS** | the internal standard drawn behind the analyte, rescaled to it, so retention times and shapes compare |

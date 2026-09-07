@@ -38,28 +38,28 @@ jobs:
   test:
     name: ${{ matrix.os }} · Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
-    # Linux runs on everything. macOS and Windows run on a pull request, on a
-    # tag, and when asked for by hand — the places where something would
-    # otherwise reach a release unchecked. A plain push to main gets Linux
-    # only, which is 6 billable minutes instead of 33.
-    if: >-
-      startsWith(matrix.os, 'ubuntu')
-      || github.event_name == 'pull_request'
-      || github.event_name == 'workflow_dispatch'
-      || startsWith(github.ref, 'refs/tags/')
     strategy:
       fail-fast: false
+      # Linux runs on everything; macOS and Windows on a pull request, on a
+      # tag, and on request — the places where a mistake would otherwise reach
+      # a release. A plain push to main is then 6 billable minutes instead of
+      # 33.
+      #
+      # The matrix is what varies rather than a condition on the job, because
+      # a job's own `if` cannot see the matrix context. Both lists name
+      # ubuntu 3.10 as well: it is the floor pyproject declares, and it stays
+      # true only by being run.
       matrix:
-        include:
-          - os: macos-latest
-            python: "3.13"
-          - os: windows-latest
-            python: "3.13"
-          - os: ubuntu-latest
-            python: "3.13"
-          # the floor declared in pyproject, so it stays true
-          - os: ubuntu-latest
-            python: "3.10"
+        include: >-
+          ${{ fromJSON(
+            (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/'))
+            && '[{"os":"ubuntu-latest","python":"3.13"},
+                 {"os":"ubuntu-latest","python":"3.10"}]'
+            || '[{"os":"ubuntu-latest","python":"3.13"},
+                 {"os":"ubuntu-latest","python":"3.10"},
+                 {"os":"macos-latest","python":"3.13"},
+                 {"os":"windows-latest","python":"3.13"}]'
+          ) }}
 
     steps:
       - uses: actions/checkout@v4

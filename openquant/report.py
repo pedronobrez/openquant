@@ -14,6 +14,12 @@ generated with no window on screen, and tested.
 Nothing is rounded that a decision depends on. Areas and concentrations keep
 the digits the results carry; retention times keep three decimals, which is
 better than any chromatography, and percentages two.
+
+The page is A4 portrait, and the styling is deliberately narrow: Qt's rich
+text engine understands a small subset of CSS and silently ignores the rest,
+so everything here is something that was rendered and looked at. Cell padding
+comes from the `cellpadding` attribute and column widths from `width`, because
+the CSS spellings of both do nothing.
 """
 
 from __future__ import annotations
@@ -22,6 +28,7 @@ import datetime as _dt
 import html
 import os
 
+from . import __version__
 from .calibration import Calibration
 from .method import ProcessingMethod
 from .quantify import PeakResult, ResultsSet
@@ -34,6 +41,37 @@ from .validation import all_detection_limits, carryover
 #: so a batch with twenty-eight passes and two failures reported that no
 #: acceptance criteria had been set.
 STATUSES = ("pass", "marginal", "fail")
+
+#: the sections, in the order they are printed, with the headings they carry.
+#: A caller names them by key; the number in front is added here so that
+#: leaving one out does not leave a gap in the numbering.
+SECTIONS = {
+    "summary": "Summary",
+    "samples": "Samples",
+    "method": "Method",
+    "calibration": "Calibration",
+    "limits": "Detection and quantitation limits",
+    "carryover": "Carryover",
+    "results": "Results",
+    "statistics": "Statistics",
+}
+ALL_SECTIONS = tuple(SECTIONS)
+
+#: A4 portrait, in millimetres: left, top, right, bottom, then the bands kept
+#: clear at the top and bottom of every page for the running furniture.
+MARGINS_MM = (18.0, 15.0, 15.0, 15.0)
+HEADER_MM = 8.0
+FOOTER_MM = 10.0
+
+#: how many times the document may be laid out again to pull a stranded
+#: heading onto the page of the thing it introduces. Moving one heading can
+#: strand another, and this stops that chasing its own tail.
+MAX_REFLOWS = 3
+
+#: markers on a sample's name, explained in a legend under the table that
+#: uses them. A column of "yes / no / by hand" costs more width than it earns.
+EXCLUDED = "†"
+BY_HAND = "‡"
 
 
 def _escape(value) -> str:
@@ -49,35 +87,158 @@ def _number(value, decimals: int = 4) -> str:
         return _escape(value)
 
 
-def _table(headers: list[str], rows: list[list[str]], right: set[int] = frozenset(),
-           empty: str = "Nothing to show.") -> str:
+def _table(headers: list[str] | None, rows: list[list[str]],
+           right: set[int] = frozenset(), empty: str = "Nothing to show.",
+           widths: list[str] | None = None) -> str:
+    """
+    One table, striped, with a heading row that repeats on every printed page.
+
+    Qt takes the width of a column from the `width` attribute of its cells and
+    the space inside a cell from `cellpadding`; the CSS properties of the same
+    names are parsed and dropped. Both are given here in per cent and in
+    pixels, which is what those attributes mean.
+
+    Columns are wide enough for the longest single word in their heading. A
+    heading may wrap at a space — two lines of `Internal standard` reads
+    fine — but one that wraps inside a word does not, and `Concentratio/n` is
+    what a column that is four points too narrow looks like.
+
+    Headings are optional: a table of names against values has nothing to put
+    in them, and an empty heading row is a grey band that means nothing.
+    """
     if not rows:
         return f'<p class="empty">{_escape(empty)}</p>'
-    head = "".join(f"<th>{_escape(h)}</th>" for h in headers)
+    head = ""
+    if headers:
+        cells = []
+        for index, heading in enumerate(headers):
+            width = f' width="{widths[index]}"' if widths else ""
+            align = ' class="num"' if index in right else ""
+            cells.append(f"<th{width}{align}>{_escape(heading)}</th>")
+        head = f'<thead><tr>{"".join(cells)}</tr></thead>'
     body = []
-    for row in rows:
-        cells = "".join(
-            f'<td class="{"num" if index in right else ""}">{cell}</td>'
-            for index, cell in enumerate(row))
-        body.append(f"<tr>{cells}</tr>")
-    return (f'<table><thead><tr>{head}</tr></thead>'
+    for number, row in enumerate(rows):
+        stripe = ' class="alt"' if number % 2 else ""
+        cells = []
+        for index, cell in enumerate(row):
+            width = (f' width="{widths[index]}"'
+                     if widths and not headers else "")
+            cells.append(f'<td class="{"num" if index in right else ""}"'
+                         f"{width}>{cell}</td>")
+        body.append(f'<tr{stripe}>{"".join(cells)}</tr>')
+    return (f'<table width="100%" cellpadding="4" cellspacing="0">{head}'
             f'<tbody>{"".join(body)}</tbody></table>')
+
+
+def _heading(title: str, breaks: set[str] | None = None) -> str:
+    css = ' class="break"' if breaks and title in breaks else ""
+    return f"<h2{css}>{_escape(title)}</h2>"
+
+
+# --------------------------------------------------------------------------- #
+# the front of the report
+# --------------------------------------------------------------------------- #
+def _title_block(title: str, project: str | None, entries, method) -> str:
+    """
+    What the report is of, on the page rather than in a file name.
+
+    A report is read detached from everything that made it, so the batch it
+    describes has to be identifiable from the paper alone.
+    """
+    when = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+    where = os.path.basename(project) if project else "unsaved project"
+    standards = sum(1 for e in entries if e.sample_type == "Standard")
+    internal = sum(1 for c in method.components if c.is_internal_standard)
+    return (
+        f'<p class="eyebrow">OpenQuant {_escape(__version__)} · batch report</p>'
+        f"<h1>{_escape(title)}</h1>"
+        f'<table class="ident" width="100%" cellpadding="4" cellspacing="0">'
+        f'<tr><td class="label" width="18%">Project</td><td width="32%">{_escape(where)}</td>'
+        f'<td class="label" width="18%">Generated</td><td width="32%">{when}</td></tr>'
+        f'<tr><td class="label">Samples</td><td>{len(entries):,}'
+        f'{f" ({standards:,} standards)" if standards else ""}</td>'
+        f'<td class="label">Components</td><td>{len(method.components):,}'
+        f'{f" ({internal:,} internal standards)" if internal else ""}</td></tr>'
+        f"</table>"
+    )
+
+
+def _contents(titles: list[str], pages: dict[str, int] | None) -> str:
+    """
+    The sections, and where they are.
+
+    The page numbers are not known until the document has been laid out, so
+    this is built twice: once with the column empty to fix the pagination, and
+    again with the numbers found by that first pass. The row heights are the
+    same either way, which is what makes the second pass agree with the first.
+    """
+    if len(titles) < 2:
+        return ""
+    rows = []
+    for number, title in enumerate(titles):
+        stripe = ' class="alt"' if number % 2 else ""
+        page = "" if not pages else str(pages.get(title, ""))
+        cell = (f'<td class="num" width="8%">{page}</td>'
+                if pages is not None else "")
+        rows.append(f'<tr{stripe}><td>{_escape(title)}</td>{cell}</tr>')
+    return ('<h2 class="plain">Contents</h2>'
+            f'<table class="contents" width="60%" cellpadding="3" cellspacing="0">'
+            f'{"".join(rows)}</table>')
 
 
 # --------------------------------------------------------------------------- #
 # the sections
 # --------------------------------------------------------------------------- #
-def _header(title: str, project: str | None, entries, method) -> str:
-    when = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
-    where = os.path.basename(project) if project else "unsaved project"
-    return (
-        f"<h1>{_escape(title)}</h1>"
-        f'<p class="meta">{_escape(where)} · {len(entries)} sample(s) · '
-        f"{len(method.components)} component(s) · generated {when}</p>"
-    )
+def _findings(results: ResultsSet, entries: list[SampleEntry],
+              method: ProcessingMethod, calibrations) -> str:
+    """
+    What a reader should not have to find for themselves.
+
+    A summary that only counts things makes the reader hunt through eight
+    sections for the two rows that matter. This says what failed and where,
+    and says plainly when nothing did — which is not the same as saying
+    everything passed, because a batch with no acceptance criteria fails
+    nothing at all.
+    """
+    notes = []
+
+    failed = [row for row in results
+              if str(getattr(row, "status", "") or "").strip().lower() == "fail"]
+    if failed:
+        components = sorted({row.component for row in failed})
+        shown = ", ".join(_escape(name) for name in components[:4])
+        if len(components) > 4:
+            shown += f" and {len(components) - 4} more"
+        notes.append(f"{len(failed):,} result(s) outside their acceptance "
+                     f"criteria, in {shown}.")
+
+    try:
+        found = carryover(results, entries, method)
+    except Exception:                                  # a report must still print
+        found = None
+    if found is not None and found.failures:
+        worst = max(found.failures, key=lambda row: row.percent)
+        notes.append(f"{len(found.failures)} component(s) over the carryover "
+                     f"limit in {_escape(worst.blank)}, the worst "
+                     f"{_escape(worst.component)} at {_number(worst.percent, 2)}%.")
+
+    extrapolated = [limits for limits in all_detection_limits(calibrations, method)
+                    if limits.extrapolated]
+    if extrapolated:
+        notes.append(f"{len(extrapolated)} limit(s) of quantitation fall below "
+                     f"the lowest standard: extrapolated from the curve, not "
+                     f"demonstrated by it.")
+
+    if not notes:
+        return ('<p class="empty">Nothing was found outside the limits that '
+                'were set. Where no criterion was set, nothing is claimed.</p>')
+    items = "".join(f"<li>{note}</li>" for note in notes)
+    return f'<ul class="findings">{items}</ul>'
 
 
-def _summary(results: ResultsSet, entries: list[SampleEntry]) -> str:
+def _summary(title: str, results: ResultsSet, entries: list[SampleEntry],
+             method: ProcessingMethod, calibrations,
+             breaks: set[str] | None = None) -> str:
     rows = list(results)
     counted = {name: 0 for name in STATUSES}
     integrated = 0
@@ -101,10 +262,13 @@ def _summary(results: ResultsSet, entries: list[SampleEntry]) -> str:
                      " / ".join(f"{counted[name]:,}" for name in STATUSES)])
     else:
         body.append(["Acceptance", "no criteria set — no status is reported"])
-    return "<h2>Summary</h2>" + _table(["", ""], body, right={1})
+    return (_heading(title, breaks)
+            + _table(None, body, right={1}, widths=["70%", "30%"])
+            + _findings(results, entries, method, calibrations))
 
 
-def _samples(entries: list[SampleEntry]) -> str:
+def _samples(title: str, entries: list[SampleEntry],
+             breaks: set[str] | None = None) -> str:
     rows = []
     for entry in entries:
         rows.append([
@@ -115,12 +279,14 @@ def _samples(entries: list[SampleEntry]) -> str:
             _number(entry.dilution_factor, 4),
             _escape(entry.comment or ""),
         ])
-    return "<h2>Samples</h2>" + _table(
+    return _heading(title, breaks) + _table(
         ["Sample", "File", "Type", "Group", "Concentration", "Dilution", "Comment"],
-        rows, right={4, 5}, empty="No samples were open.")
+        rows, right={4, 5}, empty="No samples were open.",
+        widths=["15%", "23%", "12%", "12%", "14%", "9%", "15%"])
 
 
-def _method(method: ProcessingMethod) -> str:
+def _method(title: str, method: ProcessingMethod,
+            breaks: set[str] | None = None) -> str:
     rows = []
     for component in method.components:
         role = "internal standard" if component.is_internal_standard else (
@@ -134,14 +300,16 @@ def _method(method: ProcessingMethod) -> str:
             _escape(component.internal_standard or "—"),
             _escape(role),
         ])
-    return "<h2>Method</h2>" + _table(
+    return _heading(title, breaks) + _table(
         ["Component", "Group", "Precursor", "Fragment", "RT", "Window",
          "Tolerance", "Internal standard", "Role"],
-        rows, right={2, 3, 4, 5, 6}, empty="The method has no components.")
+        rows, right={2, 3, 4, 5, 6}, empty="The method has no components.",
+        widths=["15%", "13%", "10%", "10%", "7%", "8%", "10%", "15%", "12%"])
 
 
-def _calibrations(calibrations: dict[str, Calibration],
-                  method: ProcessingMethod) -> str:
+def _calibrations(title: str, calibrations: dict[str, Calibration],
+                  method: ProcessingMethod,
+                  breaks: set[str] | None = None) -> str:
     """
     The curves, with an internal standard's marked as what it is.
 
@@ -165,14 +333,16 @@ def _calibrations(calibrations: dict[str, Calibration],
             _escape(curve.equation), _number(curve.r2, 6), _number(curve.r, 6),
             f"{len(curve.used_points)} of {len(curve.points)}",
         ])
-    return "<h2>Calibration</h2>" + _table(
+    return _heading(title, breaks) + _table(
         ["Component", "Regression", "Weighting", "Equation", "r²", "r", "Points"],
         rows, right={4, 5, 6},
         empty="No curve was built. Mark samples as Standard and give them a "
-              "concentration.")
+              "concentration.",
+        widths=["19%", "12%", "11%", "26%", "10%", "10%", "12%"])
 
 
-def _limits(calibrations, method: ProcessingMethod) -> str:
+def _limits(title: str, calibrations, method: ProcessingMethod,
+            breaks: set[str] | None = None) -> str:
     rows = []
     for limits in all_detection_limits(calibrations, method):
         if not limits.measurable:
@@ -191,26 +361,29 @@ def _limits(calibrations, method: ProcessingMethod) -> str:
             _number(limits.sigma, 6), _number(limits.slope, 6),
             _escape(note),
         ])
-    return ("<h2>Detection and quantitation limits</h2>"
-            '<p class="meta">3.3&#963;/S and 10&#963;/S, with &#963; the '
-            "residual standard deviation of the curve about its own line "
-            "(ICH Q2). Internal standards are left out.</p>"
+    return (_heading(title, breaks)
+            + '<p class="meta">3.3&#963;/S and 10&#963;/S, with &#963; the '
+              "residual standard deviation of the curve about its own line "
+              "(ICH Q2). Internal standards are left out.</p>"
             + _table(["Component", "LOD", "LOQ", "σ", "Slope", "Notes"],
                      rows, right={1, 2, 3, 4},
-                     empty="No curve to derive a limit from."))
+                     empty="No curve to derive a limit from.",
+                     widths=["18%", "11%", "11%", "12%", "12%", "36%"]))
 
 
-def _carryover(results: ResultsSet, entries: list[SampleEntry],
-               method: ProcessingMethod) -> str:
+def _carryover(title: str, results: ResultsSet, entries: list[SampleEntry],
+               method: ProcessingMethod, breaks: set[str] | None = None) -> str:
     found = carryover(results, entries, method)
     if found.note:
-        return (f'<h2>Carryover</h2><p class="empty">{_escape(found.note)}</p>')
+        return (_heading(title, breaks)
+                + f'<p class="empty">{_escape(found.note)}</p>')
     rows = []
     for row in sorted(found.rows, key=lambda r: -r.percent):
+        verdict = ('<span class="bad">over the limit</span>' if row.fails
+                   else "within the limit")
         rows.append([
             _escape(row.component), _number(row.blank_area, 1),
-            _number(row.reference_area, 1), _number(row.percent, 2),
-            "FAIL" if row.fails else "ok",
+            _number(row.reference_area, 1), _number(row.percent, 2), verdict,
         ])
     first = found.rows[0] if found.rows else None
     heading = ""
@@ -219,55 +392,88 @@ def _carryover(results: ResultsSet, entries: list[SampleEntry],
                    f"{_escape(first.follows)}, against the response at the "
                    f"lowest calibrated concentration ({_escape(first.reference)}). "
                    f"Limit {_number(first.limit, 0)}%.</p>")
-    return ("<h2>Carryover</h2>" + heading
+    return (_heading(title, breaks) + heading
             + _table(["Component", "Blank", "At the lowest standard", "%", ""],
-                     rows, right={1, 2, 3},
-                     empty="Nothing to compare."))
+                     rows, right={1, 2, 3}, empty="Nothing to compare.",
+                     widths=["24%", "16%", "22%", "11%", "27%"]))
 
 
-def _results(results: ResultsSet, method: ProcessingMethod) -> str:
+def _results(title: str, results: ResultsSet, method: ProcessingMethod,
+             breaks: set[str] | None = None) -> str:
+    """
+    Every integrated row, by component.
+
+    Twelve columns do not fit an A4 page at a size anybody reads, so the two
+    that are almost always empty are not columns: a row that carries a flag,
+    a note, an exclusion or a manual integration is marked and written out
+    underneath its table. That puts the exceptions where they get noticed
+    instead of in a column of blanks.
+    """
     by_component: dict[str, list[PeakResult]] = {}
     for row in results:
         by_component.setdefault(row.component, []).append(row)
 
-    parts = ["<h2>Results</h2>"]
     if not by_component:
-        return parts[0] + '<p class="empty">Nothing was integrated.</p>'
+        return (_heading(title, breaks)
+                + '<p class="empty">Nothing was integrated.</p>')
 
     order = [c.name for c in method.components if c.name in by_component]
     order += [name for name in sorted(by_component) if name not in order]
 
+    parts = [_heading(title, breaks)]
     for name in order:
-        rows = []
+        rows, notes, marked = [], [], False
         for row in sorted(by_component[name], key=lambda r: r.sample_name):
-            flags = "; ".join(row.flags) if row.flags else ""
+            label = _escape(row.sample_name)
+            if not row.used:
+                label += f' <span class="mark">{EXCLUDED}</span>'
+                marked = True
+            elif row.manual:
+                label += f' <span class="mark">{BY_HAND}</span>'
+                marked = True
+            drift = (row.rt - row.expected_rt
+                     if row.rt is not None and row.expected_rt else None)
+            status = _escape(row.status or "—")
+            if str(row.status or "").strip().lower() == "fail":
+                status = f'<span class="bad">{status}</span>'
             rows.append([
-                _escape(row.sample_name),
-                _number(row.rt, 3), _number(row.expected_rt, 3),
-                _number(row.area, 1), _number(row.height, 1),
-                _number(row.snr, 1),
+                label,
+                _number(row.rt, 3), _number(drift, 3) if drift is not None else "—",
+                _number(row.area, 1), _number(row.height, 1), _number(row.snr, 1),
                 _number(row.area_ratio, 4) if row.area_ratio is not None else "—",
                 _number(row.calculated_concentration, 4)
                 if row.calculated_concentration is not None else "—",
                 _number(row.accuracy, 2) if row.accuracy is not None else "—",
-                _escape(row.status or "—"),
-                _escape(flags or row.note or ""),
-                "no" if not row.used else ("by hand" if row.manual else "yes"),
+                status,
             ])
-        parts.append(f"<h3>{_escape(name)}</h3>")
+            said = "; ".join(row.flags) if row.flags else (row.note or "")
+            if said:
+                notes.append(f"{_escape(row.sample_name)} — {_escape(said)}")
+        css = ' class="break"' if breaks and name in breaks else ""
+        parts.append(f"<h3{css}>{_escape(name)}</h3>")
         parts.append(_table(
-            ["Sample", "RT", "Expected", "Area", "Height", "S/N", "Ratio",
-             "Concentration", "Accuracy %", "Status", "Flags", "Used"],
-            rows, right={1, 2, 3, 4, 5, 6, 7, 8}))
+            ["Sample", "RT", "Δ RT", "Area", "Height", "S/N", "Ratio",
+             "Concentration", "Accuracy %", "Status"],
+            rows, right={1, 2, 3, 4, 5, 6, 7, 8},
+            widths=["15%", "7%", "7%", "10%", "10%", "8%", "8%", "13%",
+                    "11%", "11%"]))
+        if marked:
+            parts.append(f'<p class="foot">{EXCLUDED} excluded from the '
+                         f"statistics&nbsp;&nbsp;&nbsp;{BY_HAND} integrated by "
+                         f"hand</p>")
+        for note in notes:
+            parts.append(f'<p class="foot">{note}</p>')
     return "".join(parts)
 
 
-def _statistics(results: ResultsSet, entries: list[SampleEntry],
-                method: ProcessingMethod, grouping: str) -> str:
+def _statistics(title: str, results: ResultsSet, entries: list[SampleEntry],
+                method: ProcessingMethod, grouping: str,
+                breaks: set[str] | None = None) -> str:
     try:
         summary = summarise(results, entries, method, grouping, "response")
     except Exception as exc:                      # a report must still print
-        return f'<h2>Statistics</h2><p class="empty">Not computed: {_escape(exc)}</p>'
+        return (_heading(title, breaks)
+                + f'<p class="empty">Not computed: {_escape(exc)}</p>')
     rows = []
     for row in summary:
         rows.append([
@@ -276,64 +482,109 @@ def _statistics(results: ResultsSet, entries: list[SampleEntry],
             _number(row.mean, 4), _number(row.standard_deviation, 4),
             _number(row.percent_cv, 2), _number(row.accuracy, 2),
         ])
-    return (f"<h2>Statistics</h2><p class=\"meta\">Response, grouped by "
-            f"{_escape(grouping)}.</p>"
+    return (_heading(title, breaks)
+            + f'<p class="meta">Response, grouped by {_escape(grouping)}.</p>'
             + _table(["Component", "Group", "n", "Mean", "SD", "%CV", "Accuracy %"],
-                     rows, right={2, 3, 4, 5, 6},
-                     empty="Nothing to summarise."))
+                     rows, right={2, 3, 4, 5, 6}, empty="Nothing to summarise.",
+                     widths=["22%", "17%", "10%", "14%", "13%", "11%", "13%"]))
 
 
+# --------------------------------------------------------------------------- #
+# how it looks
+# --------------------------------------------------------------------------- #
+#: Everything here was rendered and looked at. Qt's rich text engine takes a
+#: subset of CSS and drops the rest without a word, so `padding` on a cell,
+#: `width` on a table and any selector cleverer than `tag.class` are absent
+#: on purpose — the attributes in `_table` do that work instead.
 _STYLE = """
-body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+@page { size: A4 portrait; margin: 15mm 15mm 15mm 18mm; }
+body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
        font-size: 9pt; color: #16181c; }
-h1 { font-size: 17pt; margin: 0 0 2pt 0; }
-h2 { font-size: 12pt; margin: 16pt 0 4pt 0; border-bottom: 1px solid #b9bec7;
+p.eyebrow { color: #234b8c; font-size: 7.5pt; font-weight: 600;
+            letter-spacing: 1px; margin: 0 0 2pt 0; }
+h1 { font-size: 19pt; font-weight: 600; color: #16181c; margin: 0 0 7pt 0; }
+h2 { font-size: 11.5pt; font-weight: 600; color: #234b8c;
+     margin: 18pt 0 5pt 0; border-bottom: 2px solid #234b8c;
      padding-bottom: 2pt; }
-h3 { font-size: 10pt; margin: 10pt 0 3pt 0; color: #234b8c; }
-p.meta { color: #5b6472; margin: 0 0 8pt 0; }
-p.empty { color: #5b6472; font-style: italic; }
+h2.plain { border-bottom: 1px solid #c3c9d3; }
+h3 { font-size: 9.5pt; font-weight: 600; margin: 12pt 0 3pt 0; color: #16181c; }
+h2.break, h3.break { page-break-before: always; }
+p { margin: 0 0 4pt 0; }
+p.meta { color: #5b6472; font-size: 8pt; margin: 0 0 6pt 0; }
+p.empty { color: #5b6472; font-style: italic; margin: 2pt 0 6pt 0; }
+p.foot { color: #5b6472; font-size: 7.5pt; margin: 2pt 0 0 0; }
+ul.findings { margin: 6pt 0 0 0; }
+li { margin: 0 0 2pt 0; }
 span.aside { color: #5b6472; font-style: italic; }
-table { border-collapse: collapse; width: 100%; margin-bottom: 6pt; }
-th { text-align: left; background: #eef1f5; border-bottom: 1px solid #b9bec7;
-     padding: 3pt 5pt; font-weight: 600; }
-td { padding: 2pt 5pt; border-bottom: 1px solid #e3e6ea; }
+span.mark { color: #5b6472; }
+span.bad { color: #a4262c; font-weight: 600; }
+table { border-collapse: collapse; }
+th { font-size: 8pt; text-align: left; background: #e8edf4; color: #234b8c;
+     border-bottom: 1.5px solid #234b8c; font-weight: 600; }
+th.num { text-align: right; }
+td { font-size: 8pt; border-bottom: 1px solid #dfe3e9; vertical-align: top; }
 td.num { text-align: right; }
+td.label { color: #5b6472; background: #f2f4f7; }
+tr.alt td { background: #f7f9fb; }
+table.ident td { border-bottom: 1px solid #dfe3e9; }
+table.contents td { border-bottom: 1px solid #eef1f5; }
 """
 
 
 # --------------------------------------------------------------------------- #
 def build_html(session, title: str = "Batch report",
                grouping: str = GROUP_BY_SAMPLE_TYPE,
-               sections: tuple[str, ...] = ("summary", "samples", "method",
-                                            "calibration", "limits",
-                                            "carryover", "results",
-                                            "statistics")) -> str:
+               sections: tuple[str, ...] = ALL_SECTIONS,
+               contents: dict[str, int] | None = None,
+               breaks: set[str] | None = None) -> str:
     """
     The whole report as one HTML document.
 
     Sections are named so a caller can leave out what it does not want — a
-    hundred-component method makes a results section nobody prints.
+    hundred-component method makes a results section nobody prints — and are
+    numbered here rather than in the section functions, so that leaving one
+    out closes the gap instead of leaving one.
+
+    `contents` is how the printed version puts page numbers in its table of
+    contents: `None` for no page column at all, an empty mapping to reserve
+    the column while the numbers are still unknown, and the mapping itself on
+    the second pass. `breaks` names the headings that are to start a fresh
+    page. Both are worked out by `write_pdf`, which has to lay the document
+    out before it can know either.
     """
     entries = list(session.entries)
     method = session.method
-    parts = [f"<html><head><meta charset='utf-8'><style>{_STYLE}</style></head><body>",
-             _header(title, session.project_path, entries, method)]
-    if "summary" in sections:
-        parts.append(_summary(session.results, entries))
-    if "samples" in sections:
-        parts.append(_samples(entries))
-    if "method" in sections:
-        parts.append(_method(method))
-    if "calibration" in sections:
-        parts.append(_calibrations(session.calibrations, method))
-    if "limits" in sections:
-        parts.append(_limits(session.calibrations, method))
-    if "carryover" in sections:
-        parts.append(_carryover(session.results, entries, method))
-    if "results" in sections:
-        parts.append(_results(session.results, method))
-    if "statistics" in sections:
-        parts.append(_statistics(session.results, entries, method, grouping))
+    order = [key for key in ALL_SECTIONS if key in sections]
+    titles = {key: f"{number}. {SECTIONS[key]}"
+              for number, key in enumerate(order, start=1)}
+
+    parts = ["<!DOCTYPE html>",
+             "<html><head><meta charset='utf-8'>",
+             f"<title>{_escape(title)}</title>",
+             f"<style>{_STYLE}</style></head><body>",
+             _title_block(title, session.project_path, entries, method),
+             _contents(list(titles.values()), contents)]
+    for key in order:
+        name = titles[key]
+        if key == "summary":
+            parts.append(_summary(name, session.results, entries, method,
+                                  session.calibrations, breaks))
+        elif key == "samples":
+            parts.append(_samples(name, entries, breaks))
+        elif key == "method":
+            parts.append(_method(name, method, breaks))
+        elif key == "calibration":
+            parts.append(_calibrations(name, session.calibrations, method, breaks))
+        elif key == "limits":
+            parts.append(_limits(name, session.calibrations, method, breaks))
+        elif key == "carryover":
+            parts.append(_carryover(name, session.results, entries, method,
+                                    breaks))
+        elif key == "results":
+            parts.append(_results(name, session.results, method, breaks))
+        elif key == "statistics":
+            parts.append(_statistics(name, session.results, entries, method,
+                                     grouping, breaks))
     parts.append("</body></html>")
     return "".join(parts)
 
@@ -345,25 +596,165 @@ def write_html(session, path: str | os.PathLike, **kwargs) -> str:
     return path
 
 
+# --------------------------------------------------------------------------- #
+# printing
+# --------------------------------------------------------------------------- #
+def _section_pages(document, page_height: float) -> dict[str, int]:
+    """
+    Which page each heading landed on, once the document has been laid out.
+
+    Qt records the heading level of a block, so the sections can be found
+    without matching their text against anything.
+    """
+    layout = document.documentLayout()
+    pages: dict[str, int] = {}
+    block = document.begin()
+    while block.isValid():
+        if block.blockFormat().headingLevel() == 2:
+            top = layout.blockBoundingRect(block).top()
+            pages.setdefault(block.text().strip(), int(top // page_height) + 1)
+        block = block.next()
+    return pages
+
+
+def _orphan_headings(document, page_height: float) -> set[str]:
+    """
+    Headings left stranded at the foot of a page, their content overleaf.
+
+    Qt has no `keep-with-next`, so the only way to hold a heading to what it
+    introduces is to lay the document out, see which headings were separated
+    from it, and lay it out again with those pushed to the next page. A
+    heading is stranded when the block that follows it starts on a later
+    page — which is precisely the test, and says nothing about how much space
+    was left underneath.
+    """
+    layout = document.documentLayout()
+    stranded: set[str] = set()
+    block = document.begin()
+    while block.isValid():
+        level = block.blockFormat().headingLevel()
+        following = block.next()
+        if level in (2, 3) and following.isValid() and block.text().strip():
+            here = int(layout.blockBoundingRect(block).top() // page_height)
+            there = int(layout.blockBoundingRect(following).top() // page_height)
+            if there > here:
+                stranded.add(block.text().strip())
+        block = block.next()
+    return stranded
+
+
+def _furniture(painter, writer, page: int, total: int, title: str,
+               header: float, footer: float, body) -> None:
+    """
+    The running header and footer: what this is, and where the reader is in it.
+
+    Page one carries the title block, so the running header starts on page two;
+    the footer is on every page, because a page that comes loose from the
+    others has to say what it belongs to.
+    """
+    from PyQt6 import QtCore, QtGui
+
+    rule = QtGui.QColor("#c3c9d3")
+    muted = QtGui.QColor("#5b6472")
+    font = QtGui.QFont()
+    font.setFamilies(["Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"])
+    font.setPointSizeF(7.0)
+    painter.save()
+    painter.setFont(font)
+    painter.setPen(muted)
+
+    width = body.width()
+    if page > 1:
+        band = QtCore.QRectF(0, 0, width, header * 0.62)
+        painter.drawText(band, int(QtCore.Qt.AlignmentFlag.AlignLeft
+                                   | QtCore.Qt.AlignmentFlag.AlignVCenter), title)
+        painter.setPen(QtGui.QPen(rule, writer.resolution() / 1200.0))
+        painter.drawLine(QtCore.QPointF(0, header * 0.72),
+                         QtCore.QPointF(width, header * 0.72))
+        painter.setPen(muted)
+
+    top = header + body.height()
+    painter.setPen(QtGui.QPen(rule, writer.resolution() / 1200.0))
+    painter.drawLine(QtCore.QPointF(0, top + footer * 0.28),
+                     QtCore.QPointF(width, top + footer * 0.28))
+    painter.setPen(muted)
+    band = QtCore.QRectF(0, top + footer * 0.34, width, footer * 0.66)
+    stamp = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+    painter.drawText(band, int(QtCore.Qt.AlignmentFlag.AlignLeft
+                               | QtCore.Qt.AlignmentFlag.AlignTop),
+                     f"OpenQuant {__version__} · generated {stamp}")
+    painter.drawText(band, int(QtCore.Qt.AlignmentFlag.AlignRight
+                               | QtCore.Qt.AlignmentFlag.AlignTop),
+                     f"Page {page} of {total}")
+    painter.restore()
+
+
 def write_pdf(session, path: str | os.PathLike, **kwargs) -> str:
     """
-    The same document, laid out and paginated by Qt.
+    The same document, on A4 portrait pages, with page numbers.
 
-    Imported here rather than at the top so that building the HTML — which is
-    what the tests exercise — needs no GUI toolkit at all.
+    Two things here are not obvious and both were bugs. The layout is given
+    the writer as its paint device: without one it measures type at the
+    screen's ninety-six dots to the inch while the page is sized in the
+    writer's twelve hundred, so every point size comes out at a twelfth of
+    itself and the whole report collapses into a corner of page one. And it
+    is laid out twice, because the table of contents cannot know a page
+    number until the pages exist; the first pass reserves the column so that
+    the second paginates identically.
+
+    Qt is imported here rather than at the top so that building the HTML —
+    which is what the tests exercise — needs no GUI toolkit at all.
     """
     from PyQt6 import QtCore, QtGui
 
     path = str(path)
-    document = QtGui.QTextDocument()
-    document.setHtml(build_html(session, **kwargs))
-
+    title = kwargs.get("title", "Batch report")
     writer = QtGui.QPdfWriter(path)
     writer.setPageSize(QtGui.QPageSize(QtGui.QPageSize.PageSizeId.A4))
-    writer.setPageOrientation(QtGui.QPageLayout.Orientation.Landscape)
-    writer.setPageMargins(QtCore.QMarginsF(12, 12, 12, 12),
+    writer.setPageOrientation(QtGui.QPageLayout.Orientation.Portrait)
+    left, top, right, bottom = MARGINS_MM
+    writer.setPageMargins(QtCore.QMarginsF(left, top, right, bottom),
                           QtGui.QPageLayout.Unit.Millimeter)
-    writer.setTitle(kwargs.get("title", "Batch report"))
-    document.setPageSize(QtCore.QSizeF(writer.width(), writer.height()))
-    document.print(writer)
+    writer.setTitle(title)
+    writer.setCreator(f"OpenQuant {__version__}")
+
+    def millimetres(value: float) -> float:
+        return value / 25.4 * writer.resolution()
+
+    header, footer = millimetres(HEADER_MM), millimetres(FOOTER_MM)
+    body = QtCore.QSizeF(writer.width(), writer.height() - header - footer)
+
+    def lay_out(contents, breaks=None):
+        document = QtGui.QTextDocument()
+        document.documentLayout().setPaintDevice(writer)
+        document.setHtml(build_html(session, contents=contents, breaks=breaks,
+                                    **kwargs))
+        document.setPageSize(body)
+        return document
+
+    breaks: set[str] = set()
+    document = lay_out({})
+    for _ in range(MAX_REFLOWS):                  # a break can strand another
+        stranded = _orphan_headings(document, body.height()) - breaks
+        if not stranded:
+            break
+        breaks |= stranded
+        document = lay_out({}, breaks)
+    document = lay_out(_section_pages(document, body.height()), breaks)
+
+    painter = QtGui.QPainter(writer)
+    try:
+        total = document.pageCount()
+        for index in range(total):
+            if index:
+                writer.newPage()
+            painter.save()
+            painter.translate(0.0, header - index * body.height())
+            document.drawContents(painter, QtCore.QRectF(
+                0.0, index * body.height(), body.width(), body.height()))
+            painter.restore()
+            _furniture(painter, writer, index + 1, total, title, header, footer,
+                       body)
+    finally:
+        painter.end()
     return path

@@ -5,9 +5,16 @@ A report is read once, months later, by somebody who does not have the
 project. What matters is that every number in it is the number in the
 results, that a missing thing says so instead of printing nothing, and that
 it is built without a window so it can be checked here.
+
+The printed side is tested too, and for a reason: the first version laid the
+document out at the screen's resolution and printed it at the writer's, so
+every point size came out at a twelfth of itself and an eight-section report
+sat in the top corner of a single otherwise blank page. Nothing about that
+was visible from the HTML, which is why the tests below open the PDF.
 """
 
 import os
+import re
 
 import pytest
 
@@ -56,11 +63,22 @@ def test_a_report_can_be_built_without_a_window(qapp):
     """Nothing here reads a widget, so it can be generated and checked."""
     session = _session(qapp)
     document = report.build_html(session, title="A batch")
-    assert document.startswith("<html>")
+    assert document.startswith("<!DOCTYPE html>")
     assert "A batch" in document
     for section in ("Summary", "Samples", "Method", "Calibration", "Results",
                     "Statistics"):
-        assert f">{section}<" in document, section
+        assert f"{section}</h2>" in document, section
+
+
+def test_the_sections_are_numbered_without_gaps(qapp):
+    """
+    Leaving a section out closes the numbering rather than leaving a hole,
+    which is why the number is put on here and not in the section itself.
+    """
+    session = _session(qapp)
+    document = report.build_html(session, sections=("summary", "results"))
+    assert ">1. Summary</h2>" in document
+    assert ">2. Results</h2>" in document
 
 
 def test_the_numbers_are_the_results_numbers(qapp):
@@ -138,8 +156,8 @@ def test_sections_can_be_left_out(qapp):
     """A hundred-component method makes a results section nobody prints."""
     session = _session(qapp)
     document = report.build_html(session, sections=("summary", "samples"))
-    assert ">Samples<" in document
-    assert ">Results<" not in document
+    assert "Samples</h2>" in document
+    assert "Results</h2>" not in document
 
 
 def test_it_writes_a_pdf_that_is_a_pdf(qapp, tmp_path):
@@ -156,7 +174,7 @@ def test_it_writes_html_that_opens_on_its_own(qapp, tmp_path):
     session = _session(qapp)
     path = report.write_html(session, tmp_path / "batch.html")
     text = open(path, encoding="utf-8").read()
-    assert text.startswith("<html>")
+    assert text.startswith("<!DOCTYPE html>")   # not quirks mode in a browser
     assert "<style>" in text          # no separate stylesheet to lose
 
 
@@ -179,3 +197,65 @@ def test_an_internal_standards_curve_is_labelled_as_meaningless(qapp):
     assert "flat by design" in document
     # said once, about the internal standard, not about the analyte
     assert document.count("flat by design") == 1
+
+
+# --------------------------------------------------------------------------- #
+# the printed page
+# --------------------------------------------------------------------------- #
+def _long_batch(qapp, samples: int = 40):
+    """A batch too big for one page, whatever the layout."""
+    session = _session(qapp)
+    session.entries = [
+        SampleEntry(f"/d/S{n:02d}.wiff", 0, f"Sample_{n:02d}", "Unknown",
+                    None, 1.0, "")
+        for n in range(samples)]
+    session.results = ResultsSet.from_list([])
+    for n in range(samples):
+        for component in ("PC 34:1", "PC 34:1 (d7)"):
+            session.results.replace(_result(
+                f"Sample_{n:02d}", component, rt=11.4, area=10618.25,
+                height=47020.5, snr=2153.0, area_ratio=0.4271, used=True,
+                status="Pass"))
+    return session
+
+
+def _page_count(path: str) -> int:
+    with open(path, "rb") as handle:
+        return len(re.findall(rb"/Type\s*/Page[^s]", handle.read()))
+
+
+def test_a_report_too_long_for_one_page_gets_more_than_one(qapp, tmp_path):
+    """
+    The whole of a forty-sample batch once fitted on page one, because the
+    text was being laid out at a twelfth of its size. Page count is the
+    cheapest thing that notices.
+    """
+    path = report.write_pdf(_long_batch(qapp), tmp_path / "long.pdf",
+                            title="A long batch")
+    assert _page_count(path) >= 3
+
+
+def test_the_page_is_not_mostly_blank(qapp, tmp_path):
+    """
+    What the eye caught and no assertion did: a report whose type is too
+    small to read leaves the bottom of the page empty. Ink below the
+    half-way line is what says the page was filled.
+    """
+    pdf = pytest.importorskip("PyQt6.QtPdf")
+    from PyQt6 import QtCore
+
+    path = report.write_pdf(_long_batch(qapp), tmp_path / "ink.pdf",
+                            title="A long batch")
+    document = pdf.QPdfDocument(None)
+    document.load(path)
+    image = document.render(1, QtCore.QSize(600, 848))     # page two, of many
+    assert not image.isNull()
+
+    lowest = 0
+    for y in range(image.height()):
+        for x in range(0, image.width(), 3):
+            if image.pixelColor(x, y).lightness() < 200:
+                lowest = y
+                break
+    assert lowest > image.height() * 0.75, (
+        f"ink stops {lowest / image.height():.0%} down a page that should be full")

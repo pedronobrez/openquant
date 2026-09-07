@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.6.2 released. 534 tests. Public repository.**
+**Version 0.6.2 released. 566 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -160,6 +160,28 @@ UV detector, is not implemented there) — untested on real Windows.
   `sendPostedEvents(None, QEvent.Type.DeferredDelete)` first. The application
   is fine; anything that grabs or asserts on a widget tree is not, unless it
   flushes. `tests/conftest.py` does this after every test.
+- **A `QTextDocument` printed to a `QPdfWriter` needs the writer as its
+  layout's paint device.** Without one it measures type at the screen's 96
+  dots to the inch while the page is sized in the writer's 1200, so every
+  point size comes out at a twelfth of itself: the first version of the
+  report put eight sections into the top corner of a single otherwise blank
+  page. `report.write_pdf` sets it, and two tests open the PDF — one counts
+  pages, one looks for ink below the half-way line — because nothing about
+  this is visible in the HTML.
+- **Qt's HTML is a subset and it fails silently.** `padding` on a table cell
+  and `width` on a table do nothing; the `cellpadding` and `width`
+  *attributes* do, the first in pixels at 96 dpi. `<thead>` repeats on every
+  printed page, `page-break-before` works, `tr.alt td` works, and anything
+  cleverer than `tag.class` does not. Every rule in `report._STYLE` was
+  rendered and looked at.
+- **Nothing in Qt keeps a heading with what it introduces.** `write_pdf`
+  lays the document out, asks which headings ended a page with their content
+  on the next, and lays it out again with those pushed over — up to
+  `MAX_REFLOWS` times, since moving one heading can strand another. The table
+  of contents needs its own pass for the same reason: page numbers do not
+  exist until the pages do. A hundred-page report is therefore laid out three
+  times and takes about seventeen seconds, which is why the export puts up a
+  wait cursor.
 - **The Windows build needs Windows 10 1703+ and will not run under Wine**
   without the shim in `packaging/wine/`. Qt6Core imports eighteen `ucnv_*`
   symbols from `icuuc.dll`, which Windows ships in System32 and the PyQt6
@@ -245,7 +267,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-534 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+566 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

@@ -119,12 +119,21 @@ class MainShell(QtWidgets.QMainWindow):
         if not os.path.splitext(path)[1]:
             path += ".html" if wants_html else ".pdf"
         title = f"{stem} — batch report"
+        # a hundred-page report is laid out more than once, to number its
+        # contents and to keep headings with what they introduce, and that is
+        # seconds of work with the window frozen. Say so rather than look hung.
+        self.statusBar().showMessage(f"Writing {os.path.basename(path)}…")
+        QtWidgets.QApplication.setOverrideCursor(
+            QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
+        QtWidgets.QApplication.processEvents()
         try:
             writer = write_html if wants_html else write_pdf
             writer(self.session, path, title=title)
         except Exception as exc:
             QtWidgets.QMessageBox.warning(self, "Report failed", str(exc))
             return
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
         size = os.path.getsize(path) / 1024
         self.statusBar().showMessage(f"Report written to {path} ({size:,.0f} KB)")
 

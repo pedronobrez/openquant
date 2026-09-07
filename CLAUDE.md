@@ -1,0 +1,241 @@
+# OpenQuant — status and working notes
+
+Open source review and quantitation for LC-MS data. A working replacement for
+SCIEX PeakView (qualitative) and MultiQuant (quantitative), reading `.wiff`
+directly and `.mzML` from any instrument.
+
+This file is for picking the work up in a new session without rereading the
+history. It records what is true, what was measured, and what is not settled.
+`README.md` is for someone using the application; this is for someone changing
+it.
+
+**Version 0.6.1 released; 0.6.2 pending. 534 tests. Private repository:
+`pedronobrez/openquant`.**
+
+---
+
+## Ground rules that came out of the work
+
+These were learned the expensive way. Breaking one has cost a day before.
+
+- **Measure before claiming.** Every performance and fidelity number in this
+  file was produced by running something, not by reading code. Two attempts at
+  reverse-engineering a vendor algorithm were made and both were wrong; the
+  second looked right until it was tested on data it had not been fitted to.
+- **A stated difference beats an invented rule.** Where behaviour could not be
+  reproduced faithfully, the plain version ships with the measured gap written
+  down. See the extraction note below.
+- **Never substitute our arithmetic for the instrument's.** Totals, retention
+  times and areas come from the vendor where the vendor reports them. Summing
+  the stored points instead moved every integrated area by 2%.
+- **Raw data is never committed.** `.wiff`, `.wiff.scan`, `.mzML`, `.csv` are
+  ignored. Verified: no raw file has ever been in the history.
+- **`x or default` is a trap for a measured zero.** A scan with a total ion
+  current of zero was read as missing metadata and dropped a whole channel
+  onto a fallback, on three of five real files.
+
+---
+
+## Layout
+
+```
+openquant/
+  raw.py          open_raw(path) → the right reader by extension. The only
+                  place that knows formats exist.
+  wiff.py         SCIEX, through Clearcore2 over .NET
+  mzml.py         mzML reader and writer
+  bootstrap.py    brings up .NET and the SCIEX assemblies off Windows
+  processing.py   smoothing, baselines, peak detection, centroiding,
+                  restore_profile_zeros
+  quantify.py     extraction and integration of a component in a sample
+  calibration.py  regressions and weightings
+  statistics.py   grouped means, SD, %CV
+  components.py   the component table; method.py the processing method
+  samples.py      SampleEntry, sample types and groups, name shortening
+  matching.py     which channel serves a component
+  chemistry.py    formulae, adducts, isotope patterns
+  lipidmaps.py    LMSD index, name → precursor, mass → candidates
+  structure.py    molfile parsing, bond cleavage enumeration
+  explain.py      scores candidate structures against a measured spectrum
+  precursor.py    confirms a precursor in the survey and product scans
+  session.py      the open batch; project save and load (.oqproj)
+  app.py          CLI: --selftest, --digest
+  ui/             shell.py owns the window; explorer / analytics /
+                  method_workspace / samples_workspace are the four tabs
+packaging/        PyInstaller spec, DMG script, WiX source, wine/ shim
+```
+
+### The reader protocol
+
+Everything above `raw.py` asks a file for samples, a sample for channels, and
+a channel for chromatograms and spectra. `MzmlChannel`, `MzmlSample` and
+`MzmlFile` implement exactly the surface of `wiff.Channel`, `Sample` and
+`WiffFile`, **signatures included** — checked by reflection, not by eye. No
+code anywhere does `isinstance` on a reader or touches a reader's private
+attributes. Keep it that way; a third format should need nothing but a new
+module and an entry in `raw.FORMATS`.
+
+---
+
+## Verified facts
+
+Run against five real acquisitions (81 channels each, ~24,000 spectra).
+
+**Builds agree.** `--digest` prints a numeric fingerprint of what a build
+reads. From source on macOS, from the CI disk image, and from the Windows
+installer under CrossOver: byte-identical output, sha256 `ebdeebc2…`. 405
+channel chromatograms, 25 spectra, 125 integrated peaks with areas to nine
+decimals. All 405 channel hashes differ from one another, so those were five
+different acquisitions rather than one read five times.
+
+**Formats agree, except in one place.** Exporting a `.wiff` to mzML and
+reading it back:
+
+| | |
+|---|---|
+| spectra | identical, every channel |
+| channel chromatograms | identical, every channel |
+| the run's total ion chromatogram | identical, 577 points |
+| chromatographic peak areas | identical |
+| extracted ion chromatograms | **differ** |
+
+The extraction is the exception and it reaches quantitation. SCIEX counts part
+of a peak whose measured points fall just outside the mass window; this sums
+the points inside. Median 0.58% of peak height, at most 12%, always lower.
+End to end, quantifying one component from `.wiff` and from its mzML gives the
+same retention time and the same peak width with the area differing by 0.54%.
+**Quantify a series in one format.** Two attempts at reproducing the vendor's
+edge rule are in the history and neither survived being tested on windows
+other than the ones it was derived from — the second was a coin toss, better
+on 41 channels and worse on 38.
+
+**ProteoWizard agrees.** msconvert reads what this writes, and its own mzML
+written from that reads back here with identical spectra and chromatograms.
+Converting a `.wiff` with msconvert itself fails under Wine (`getTWC()`, the
+UV detector, is not implemented there) — untested on real Windows.
+
+---
+
+## Things that are subtle and will look like bugs
+
+- **A profile spectrum from mzML has fewer points than the same one from
+  `.wiff`.** SCIEX strips the zeros when storing and puts them back when
+  drawing. `processing.restore_profile_zeros` does the same for anything else,
+  measuring the sampling interval from the file — the smallest quarter of the
+  gaps are the ones inside peaks. Without it the baseline appears raised, and,
+  worse, peak labels were centroids taken across the gaps: one read 184.8466
+  for a peak at 185.0077.
+- **mzML has no idea of an experiment.** Channels are inferred. Scan
+  properties alone gave 69 channels where the acquisition has 81, because a
+  method can have two entries agreeing on MS level, precursor, collision
+  energy and mass range. `mzml.acquisition_cycles` recovers them from the
+  order of acquisition: a scheduled method repeats a fixed cycle, and position
+  in it is the entry. This file is a cycle of 44 run 339 times then one of 37
+  run 238 times — 44 + 37 = 81 channels, 44·339 + 37·238 = 23,722 spectra.
+  Data-dependent acquisition has no cycle; a cycle must repeat four times to
+  be believed, and otherwise the properties are all there is.
+- **The run's total ion chromatogram is summed by cycle, not by time.** The
+  experiments of one cycle are measured one after another, so the union of
+  their times is one point per spectrum — 23,722 where the instrument reports
+  577.
+- **`sWindows = False`.** `bootstrap` flips a private static field in
+  Clearcore2 by reflection to force the managed structured-storage path.
+  Without it nothing opens off Windows.
+- **`OpenFileMode.ReadOnlyShared`.** Anything else takes an exclusive lock and
+  a second window — or Analyst — cannot open the same file.
+- **The Windows build needs Windows 10 1703+ and will not run under Wine**
+  without the shim in `packaging/wine/`. Qt6Core imports eighteen `ucnv_*`
+  symbols from `icuuc.dll`, which Windows ships in System32 and the PyQt6
+  wheel does not carry. The shim must never go in the installer: on real
+  Windows an application-local copy is found before the genuine one, and a
+  test enforces this.
+
+---
+
+## What is missing against PeakView and MultiQuant
+
+Checked against the code, not the README. Everything in the README's feature
+tables exists. These do not:
+
+| Missing | Which tool | Worth it? |
+|---|---|---|
+| **LOD / LOQ from the calibration curve** | MultiQuant | Yes — method validation needs it and the curve data is already there |
+| **Reports** | both | Yes — CSV export exists, a printable report does not |
+| **Carryover / blank checks** | MultiQuant | Yes, and cheap: flag a blank that shows signal at a component's RT |
+| **Alternative integration algorithms** | MultiQuant | One algorithm with seven parameters against MQ4 / AutoPeak / Summation. Not obviously a gap in results, but it is a difference |
+| **Contour view (RT × m/z)** | PeakView | Nice to have; a real piece of work |
+| **Spectral library search** | PeakView | Structure-based annotation covers lipids better; a library would cover everything else |
+| **Mass recalibration** | PeakView | Only matters if the instrument drifts |
+| **Audit trail, e-signatures** | MultiQuant | Only for a regulated laboratory |
+
+---
+
+## Open questions
+
+- **`C12:0 _Ceramide` retention time.** Its real peak is at ~4.40 min; the
+  method says 5.62. It is the internal standard for 13 components, so if the
+  method is wrong those 13 are quantified against a window with nothing in it.
+  Raised, never answered. The other internal standards have not been checked
+  the same way.
+- **The Windows installer has never been run on real Windows.** CI builds it
+  and proves the bundle starts and reads a `.wiff` on a GitHub runner; nobody
+  has installed the MSI on a machine.
+- **Reading a `.wiff` has only ever been done on macOS.** Linux and Windows
+  run the suite and start the application; the SCIEX path is checked only as
+  far as "the assemblies load".
+- **The portability plan had phases 1, 2 and 4** which were described in an
+  earlier session and are not written down anywhere in the repository. Phase 0
+  (CI) and phase 3 (packaging) are done.
+
+---
+
+## Continuous integration
+
+Private repositories get 2,000 free minutes a month and this was at 98%,
+nearly two thirds of it macOS, which bills at ten times a Linux minute
+(Windows at two). So:
+
+- a push to `main` runs **Linux only** — about 6 billable minutes
+- macOS and Windows run on a pull request, on a tag, and on request
+- the `.NET bootstrap` check runs **weekly**, on a tag, or on request; it
+  asks whether SCIEX's assemblies still load, which does not depend on
+  anything committed here
+- markdown, `docs/` and the licence start nothing
+- only the newest run for a ref finishes
+
+A tag runs everything and publishes the three installers. Estimated: 40 pushes,
+2 releases and 4 weeks come to about 20% of the allowance.
+
+**Releasing is one command.** `git tag -a vX.Y.Z -m "…" && git push origin
+vX.Y.Z`. Bump `openquant/__init__.py` in the same commit — `pyproject` and the
+PyInstaller spec read it from there, and a tag whose version disagrees with the
+package produces installers named after the wrong one.
+
+---
+
+## Where to look when something breaks
+
+| Symptom | Look at |
+|---|---|
+| A `.wiff` will not open | `bootstrap.ensure()`; run `python -m openquant.bootstrap --install` |
+| Two builds disagree | `--digest` on both, `diff` the output; the Windows build writes CRLF |
+| An mzML has the wrong number of channels | `mzml.acquisition_cycles`; a file with no repeating cycle falls back to scan properties |
+| A spectrum looks like it has a raised baseline | `restore_profile_zeros` did not fire; the file is probably centroided |
+| Areas differ between formats | expected, see above; check it is 0.5% and not 50% |
+| The application will not quit | a modal dialog. `offer_start` used to do this and no longer does |
+| CI burns minutes | check nothing added macOS to a push trigger |
+
+---
+
+## Test suite
+
+534 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+
+`tests/conftest.py` collects and flushes Qt's deferred deletions after every
+test. Without it the suite segfaults on Linux in a different place on every
+run: the modules share one `QApplication`, and Python's collector was freeing
+C++ widgets it still held. macOS and Windows read the same freed memory
+without noticing, which is luck rather than correctness.
+
+Static analysis runs in CI: `ruff check openquant tests --select F,E9,B019`.
+It found a `NameError` that had been sitting in the statistics table.

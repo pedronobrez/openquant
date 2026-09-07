@@ -382,6 +382,53 @@ def _walk_to_edge(smoothed: np.ndarray, apex: int, step: int,
     return index
 
 
+#: which peak in the retention-time window is the component
+#:
+#: `largest` takes the biggest peak in the window, which is what this always
+#: did and stays the default so that no existing project changes its numbers.
+#: It is the right answer when the window holds one real peak and some noise,
+#: and the wrong one when it holds two: an isobaric or isomeric species
+#: co-eluting inside a ±0.6 min window is ordinary in lipidomics, and there
+#: the taller peak wins whether or not the method's retention time points at
+#: it. `nearest` uses that retention time to decide instead.
+PEAK_LARGEST = "largest"
+PEAK_NEAREST = "nearest the expected RT"
+PEAK_CHOICES = (PEAK_LARGEST, PEAK_NEAREST)
+
+
+def choose_peak(peaks: list["ChromPeak"], expected_rt: float | None,
+                rule: str = PEAK_LARGEST) -> tuple["ChromPeak | None", str]:
+    """
+    Which of the peaks found in the window is the component.
+
+    Proximity is decided among the peaks that already passed the height and
+    signal-to-noise gates, so those gates are what stops `nearest` picking
+    noise that happens to sit on the expected retention time. A method whose
+    window is full of small peaks needs `min_relative_height` raised, not a
+    different rule.
+
+    Returns the peak and a note, which is empty unless the rule actually
+    changed the answer. A policy that silently picks the smaller of two peaks
+    is a policy nobody can review, so when proximity overrules size the result
+    says what it passed over.
+    """
+    if not peaks:
+        return None, ""
+    largest = max(peaks, key=lambda peak: peak.area)
+    if rule != PEAK_NEAREST:
+        return largest, ""
+    if expected_rt is None:
+        return largest, "no expected retention time; took the largest peak"
+    # equally close, take the larger: proximity has said all it can
+    nearest = min(peaks, key=lambda peak: (abs(peak.apex_rt - expected_rt),
+                                           -peak.area))
+    if nearest is largest:
+        return nearest, ""
+    times = (largest.area / nearest.area) if nearest.area > 0 else float("inf")
+    return nearest, (f"chosen by proximity; the largest peak in the window is "
+                     f"at {largest.apex_rt:.3f} min and {times:.1f}\u00d7 the area")
+
+
 def detect_peaks(x: np.ndarray, y: np.ndarray, min_relative: float = 0.02,
                  min_snr: float = 3.0, smooth_sigma: float = 1.0,
                  max_peaks: int = 50,

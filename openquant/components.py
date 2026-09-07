@@ -15,7 +15,8 @@ import os
 from dataclasses import asdict, dataclass, fields
 
 from .chemistry import ADDUCTS_BY_NAME, FormulaError, monoisotopic_mass, parse_formula
-from .processing import SNR_MODES, SNR_PEAK_TO_PEAK
+from .processing import (PEAK_CHOICES, PEAK_LARGEST, SNR_MODES,
+                         SNR_PEAK_TO_PEAK)
 
 #: how a component's result is reported
 RESPONSE_AREA = "area"
@@ -70,10 +71,14 @@ class IntegrationParams:
     noise_start: float | None = None
     noise_end: float | None = None
     snr_mode: str = SNR_PEAK_TO_PEAK
+    #: which peak in the window is the component when there is more than one
+    peak_choice: str = PEAK_LARGEST
 
     def __post_init__(self):
         if self.snr_mode not in SNR_MODES:
             self.snr_mode = SNR_PEAK_TO_PEAK
+        if self.peak_choice not in PEAK_CHOICES:
+            self.peak_choice = PEAK_LARGEST
 
     @property
     def noise_region(self) -> tuple[float, float] | None:

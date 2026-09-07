@@ -5,7 +5,7 @@ from __future__ import annotations
 from PyQt6 import QtCore, QtWidgets
 
 from ..components import IntegrationParams
-from ..processing import SNR_MODES
+from ..processing import PEAK_CHOICES, SNR_MODES
 from .collapsible import CollapsibleGroup
 
 
@@ -62,6 +62,15 @@ class IntegrationPanel(CollapsibleGroup):
             "How the noise behind S/N is measured inside the noise region")
         form.addRow("Noise as", self.snr_mode)
 
+        self.peak_choice = QtWidgets.QComboBox()
+        self.peak_choice.addItems(list(PEAK_CHOICES))
+        self.peak_choice.setToolTip(
+            "Which peak in the retention-time window is the component when "
+            "more than one clears the gates. Largest is what a single peak "
+            "with noise beside it needs; nearest is what two co-eluting "
+            "species need, where the taller one is not necessarily yours")
+        form.addRow("Peak", self.peak_choice)
+
         noise_row = QtWidgets.QHBoxLayout()
         self.noise_label = QtWidgets.QLabel("—")
         self.noise_label.setProperty("role", "caption")
@@ -97,6 +106,7 @@ class IntegrationPanel(CollapsibleGroup):
         for widget in (self.smooth, self.baseline, self.min_height, self.min_snr):
             widget.valueChanged.connect(self._emit_changed)
         self.snr_mode.currentTextChanged.connect(self._emit_changed)
+        self.peak_choice.currentTextChanged.connect(self._emit_changed)
         self.btn_component.clicked.connect(
             lambda: self.sigApplyComponent.emit(self.params()))
         self.btn_group.clicked.connect(
@@ -114,6 +124,7 @@ class IntegrationPanel(CollapsibleGroup):
         self.min_height.setValue(params.min_relative_height)
         self.min_snr.setValue(params.min_snr)
         self.snr_mode.setCurrentText(params.snr_mode)
+        self.peak_choice.setCurrentText(params.peak_choice)
         region = params.noise_region
         self.noise_label.setText(
             f"{region[0]:.2f}–{region[1]:.2f} min" if region else "automatic")
@@ -132,6 +143,7 @@ class IntegrationPanel(CollapsibleGroup):
             noise_start=region[0] if region else None,
             noise_end=region[1] if region else None,
             snr_mode=self.snr_mode.currentText(),
+            peak_choice=self.peak_choice.currentText(),
         )
 
     @property

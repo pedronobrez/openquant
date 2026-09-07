@@ -124,6 +124,7 @@ injection comes back as `kUnknown`.
 | Back to automatic | right-click a hand-integrated panel |
 | Integration parameters | per component, with **Update method for component** / **for group**, **Back to method defaults**, and copy/paste between components |
 | Noise region | right-click a panel with a stretch of baseline shaded to measure S/N there, peak-to-peak or by standard deviation |
+| Which peak | **Peak**: `largest` takes the biggest peak in the retention-time window, `nearest the expected RT` uses the method's time to decide. It matters when the window holds two — a co-eluting isomer or isobar, ordinary in lipidomics — where the taller peak is not necessarily the analyte. `largest` is the default, so no existing project changes its numbers; where proximity overrules size, the row says what it passed over |
 | **Show IS** | the internal standard drawn behind the analyte, rescaled to it, so retention times and shapes compare |
 | Results table | one row per sample and component: RT, expected RT, ΔRT, area, height, width, S/N, and why a row is empty |
 | Internal standards | mark a component as one, point analytes at it, and get IS area, area ratio and height ratio |

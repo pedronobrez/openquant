@@ -19,6 +19,7 @@ from .matching import match_channel
 from .method import ProcessingMethod
 from .processing import (
     ChromPeak,
+    choose_peak,
     detect_peaks,
     estimate_noise,
     gaussian_smooth,
@@ -268,7 +269,11 @@ def integrate_component(entry: SampleEntry, component: Component,
     if not peaks:
         result.note = "no peak above noise"
         return result
-    return apply_peak(result, peaks[0])
+    peak, note = choose_peak(peaks, component.rt, params.peak_choice)
+    result = apply_peak(result, peak)
+    if note:
+        result.note = note
+    return result
 
 
 def measured_noise(x: np.ndarray, y: np.ndarray,

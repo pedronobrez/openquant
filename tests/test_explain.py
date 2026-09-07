@@ -7,16 +7,16 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pathlib import Path  # noqa: E402
+from pathlib import Path
 
-from openquant.explain import (  # noqa: E402
+from openquant.explain import (
     explain,
     match_peaks,
     rank_candidates,
     significant_peaks,
 )
-from openquant.lipidmaps import LipidDatabase, LipidRecord  # noqa: E402
-from openquant.structure import parse_molblock, predict  # noqa: E402
+from openquant.lipidmaps import LipidDatabase, LipidRecord
+from openquant.structure import parse_molblock, predict
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

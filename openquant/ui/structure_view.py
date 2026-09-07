@@ -41,7 +41,7 @@ class StructureView(QtWidgets.QWidget):
         self.update()
 
     # -- painting ------------------------------------------------------------ #
-    def paintEvent(self, _event):  # noqa: N802 (Qt API)
+    def paintEvent(self, _event):
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), QtGui.QColor(theme.background()))

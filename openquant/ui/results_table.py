@@ -170,13 +170,13 @@ class ResultsModel(QtCore.QAbstractTableModel):
         return ""
 
     # -- Qt interface -------------------------------------------------------------- #
-    def rowCount(self, parent=QtCore.QModelIndex()) -> int:  # noqa: N802
+    def rowCount(self, parent=QtCore.QModelIndex()) -> int:
         return 0 if parent.isValid() else len(self._rows)
 
-    def columnCount(self, parent=QtCore.QModelIndex()) -> int:  # noqa: N802
+    def columnCount(self, parent=QtCore.QModelIndex()) -> int:
         return 0 if parent.isValid() else len(COLUMNS)
 
-    def headerData(self, section, orientation, role=QtCore.Qt.ItemDataRole.DisplayRole):  # noqa: N802
+    def headerData(self, section, orientation, role=QtCore.Qt.ItemDataRole.DisplayRole):
         if role != QtCore.Qt.ItemDataRole.DisplayRole:
             return None
         if orientation == QtCore.Qt.Orientation.Horizontal:
@@ -252,7 +252,7 @@ class ResultsModel(QtCore.QAbstractTableModel):
         component = self.session.method.by_name(self._rows[row].component)
         return component is not None and not component.is_internal_standard
 
-    def setData(self, index, value, role=QtCore.Qt.ItemDataRole.EditRole):  # noqa: N802
+    def setData(self, index, value, role=QtCore.Qt.ItemDataRole.EditRole):
         if (role == QtCore.Qt.ItemDataRole.CheckStateRole
                 and index.column() == USED_COLUMN):
             result = self._rows[index.row()]
@@ -276,7 +276,7 @@ class InternalStandardDelegate(QtWidgets.QStyledItemDelegate):
         super().__init__(parent)
         self.session = session
 
-    def createEditor(self, parent, _option, index):  # noqa: N802 (Qt API)
+    def createEditor(self, parent, _option, index):
         combo = QtWidgets.QComboBox(parent)
         combo.addItem("")
         combo.addItems(sorted((c.name for c in self.session.method.internal_standards),
@@ -288,10 +288,10 @@ class InternalStandardDelegate(QtWidgets.QStyledItemDelegate):
             combo.insertItem(1, current)
         return combo
 
-    def setEditorData(self, editor, index):  # noqa: N802 (Qt API)
+    def setEditorData(self, editor, index):
         editor.setCurrentText(index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")
 
-    def setModelData(self, editor, model, index):  # noqa: N802 (Qt API)
+    def setModelData(self, editor, model, index):
         model.setData(index, editor.currentText(),
                       QtCore.Qt.ItemDataRole.EditRole)
 
@@ -317,7 +317,7 @@ class StatusFilterProxy(QtCore.QSortFilterProxyModel):
     def component(self) -> str:
         return self._component
 
-    def filterAcceptsRow(self, row, parent):  # noqa: N802 (Qt API)
+    def filterAcceptsRow(self, row, parent):
         if not super().filterAcceptsRow(row, parent):
             return False
         if self._component:

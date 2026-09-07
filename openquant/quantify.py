@@ -14,7 +14,7 @@ import numpy as np
 from .calibration import Calibration, CalibrationPoint
 from .calibration import fit as fit_curve
 from .calibration import remove_outliers
-from .components import AcceptanceLimits, Component, IntegrationParams
+from .components import Component, IntegrationParams
 from .matching import match_channel
 from .method import ProcessingMethod
 from .processing import (

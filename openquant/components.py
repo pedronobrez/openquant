@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import csv
 import os
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, fields
 
 from .chemistry import ADDUCTS_BY_NAME, FormulaError, monoisotopic_mass, parse_formula
 from .processing import SNR_MODES, SNR_PEAK_TO_PEAK

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pyqtgraph as pg
 from PyQt6 import QtCore, QtWidgets
 

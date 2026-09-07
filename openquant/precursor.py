@@ -262,7 +262,7 @@ def measure(entry: SampleEntry, component: Component,
         result.note = "precursor not seen in the survey scan"
         return result
 
-    local_mz, local_i = mz[inside], intensity[inside]
+    local_i = intensity[inside]
     apex = int(np.argmax(local_i))
     height = float(local_i[apex])
     if height < min_intensity:

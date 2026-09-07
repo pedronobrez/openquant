@@ -93,7 +93,7 @@ def shorten_names(entries: list[SampleEntry]) -> None:
     stems = [os.path.splitext(e.filename)[0] for e in entries]
     prefix = os.path.commonprefix(stems) if len(stems) > 1 else ""
     prefix = prefix[: prefix.rfind("_") + 1] if "_" in prefix else ""
-    for entry, stem in zip(entries, stems):
+    for entry, stem in zip(entries, stems, strict=True):
         entry.name = stem[len(prefix):] or stem
     _make_names_distinct(entries)
 
@@ -126,7 +126,7 @@ def _make_names_distinct(entries: list[SampleEntry]) -> None:
             [os.path.basename(os.path.dirname(e.path)) for e in clashing],
         ):
             if all(candidate) and len(set(candidate)) == len(clashing):
-                for entry, suffix in zip(clashing, candidate):
+                for entry, suffix in zip(clashing, candidate, strict=True):
                     entry.name = f"{name} ({suffix})"
                 break
         else:

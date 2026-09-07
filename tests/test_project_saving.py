@@ -1,17 +1,16 @@
 """Unsaved work is tracked, and cannot be lost without being offered a save."""
 
-import json
 import os
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6 import QtWidgets  # noqa: E402
+from PyQt6 import QtWidgets
 
-from openquant.components import Component  # noqa: E402
-from openquant.samples import SampleEntry  # noqa: E402
-from openquant.session import (  # noqa: E402
+from openquant.components import Component
+from openquant.samples import SampleEntry
+from openquant.session import (
     LEGACY_PROJECT_SUFFIX, PROJECT_SUFFIX, Session,
 )
 

@@ -1,20 +1,19 @@
 """The New Project wizard and the unsaved-work guard around it."""
 
-import json
 import os
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6 import QtCore, QtWidgets  # noqa: E402
+from PyQt6 import QtCore, QtWidgets
 
-from openquant.components import Component, save_components  # noqa: E402
-from openquant.samples import QC, STANDARD, SampleEntry, UNKNOWN  # noqa: E402
-from openquant.session import (  # noqa: E402
-    LEGACY_PROJECT_SUFFIX, PROJECT_SUFFIX, Session,
+from openquant.components import Component, save_components
+from openquant.samples import QC, STANDARD, SampleEntry, UNKNOWN
+from openquant.session import (
+    PROJECT_SUFFIX, Session,
 )
-from openquant.ui.new_project import (  # noqa: E402
+from openquant.ui.new_project import (
     METHOD, METHOD_EMPTY, METHOD_IMPORT, PROJECT, SAMPLES, SUMMARY,
     NewProjectWizard, StartDialog,
 )

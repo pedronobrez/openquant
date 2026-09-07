@@ -9,7 +9,6 @@ uncompressed binaries, a centroided run, numpress.
 """
 
 import base64
-import struct
 import zlib
 
 import numpy as np

@@ -6,12 +6,12 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6 import QtCore, QtGui, QtWidgets  # noqa: E402
+from PyQt6 import QtCore, QtGui, QtWidgets
 
-from openquant.components import Component  # noqa: E402
-from openquant.session import Session  # noqa: E402
-from openquant.ui import style, theme  # noqa: E402
-from openquant.ui.collapsible import CollapsibleGroup  # noqa: E402
+from openquant.components import Component
+from openquant.session import Session
+from openquant.ui import style, theme
+from openquant.ui.collapsible import CollapsibleGroup
 
 
 @pytest.fixture(scope="module")

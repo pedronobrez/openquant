@@ -562,7 +562,7 @@ def install(path: str | os.PathLike = INDEX_PATH, progress=None) -> LipidDatabas
     try:
         payload = safe_urlopen(DATABASE_URL).read()
     except Exception:
-        with urlopen(DATABASE_URL) as response:   # noqa: S310 - fixed URL
+        with urlopen(DATABASE_URL) as response:
             payload = response.read()
     if progress:
         progress("Building the local index…")

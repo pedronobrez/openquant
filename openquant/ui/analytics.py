@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6 import QtCore, QtWidgets
 
 from ..calibration import fit as fit_curve
 from ..calibration import remove_outliers
@@ -59,7 +59,7 @@ class ComponentTree(QtWidgets.QTreeWidget):
         self.setColumnWidth(
             0, max(self.sizeHintForColumn(0), self.viewport().width()))
 
-    def resizeEvent(self, event):  # noqa: N802 (Qt API)
+    def resizeEvent(self, event):
         super().resizeEvent(event)
         self.fit_column()
 

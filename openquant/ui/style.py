@@ -98,7 +98,7 @@ class ThemeWatcher(QtCore.QObject):
         app.styleHints().colorSchemeChanged.connect(self._check)
         app.installEventFilter(self)
 
-    def eventFilter(self, obj, event):  # noqa: N802 (Qt API)
+    def eventFilter(self, obj, event):
         if event.type() == QtCore.QEvent.Type.ApplicationPaletteChange:
             self._check()
         return super().eventFilter(obj, event)

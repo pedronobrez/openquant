@@ -9,6 +9,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 from ..statistics import (GROUP_BY_SAMPLE_GROUP, GROUPINGS, QUANTITIES,
                           summarise)
 from ..session import Session
+from . import theme
 
 FIXED = ["Component", "Group", "n", "Mean", "SD", "%CV", "Accuracy %"]
 

@@ -245,17 +245,17 @@ class PeakPanel(pg.PlotWidget):
         )
 
     # -- interaction -------------------------------------------------------------- #
-    def mousePressEvent(self, event):  # noqa: N802 (Qt API)
+    def mousePressEvent(self, event):
         if self.sample_key:
             self.sigClicked.emit(self.sample_key)
         super().mousePressEvent(event)
 
-    def mouseDoubleClickEvent(self, event):  # noqa: N802 (Qt API)
+    def mouseDoubleClickEvent(self, event):
         if self.sample_key:
             self.sigDoubleClicked.emit(self.sample_key)
         super().mouseDoubleClickEvent(event)
 
-    def contextMenuEvent(self, event):  # noqa: N802 (Qt API)
+    def contextMenuEvent(self, event):
         if self.sample_key:
             self.sigContextMenu.emit(self.sample_key, event.globalPos())
             event.accept()

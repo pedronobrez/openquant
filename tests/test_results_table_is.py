@@ -6,13 +6,13 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6 import QtCore, QtGui, QtWidgets  # noqa: E402
+from PyQt6 import QtCore, QtGui, QtWidgets
 
-from openquant.components import Component  # noqa: E402
-from openquant.quantify import PeakResult, ResultsSet  # noqa: E402
-from openquant.session import Session  # noqa: E402
-from openquant.ui import theme  # noqa: E402
-from openquant.ui.results_table import (  # noqa: E402
+from openquant.components import Component
+from openquant.quantify import PeakResult, ResultsSet
+from openquant.session import Session
+from openquant.ui import theme
+from openquant.ui.results_table import (
     FIELD_INDEX, IS_COLUMN, MAX_AUTO_WIDTH, ResultsTable,
 )
 

@@ -159,7 +159,7 @@ def ensure(auto_install_dotnet: bool = False) -> None:
     # Load the runtime through alpharaw BEFORE any other `import clr`, because
     # pythonnet's runtime choice is process-wide.
     try:
-        import alpharaw.raw_access.clr_utils as clr_utils  # noqa: F401
+        import alpharaw.raw_access.clr_utils as clr_utils
     except ImportError as exc:  # pragma: no cover
         raise BootstrapError(
             "the `alpharaw` package is missing. Install it with: pip install alpharaw"

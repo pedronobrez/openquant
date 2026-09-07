@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6 import QtCore, QtWidgets
 
 from .. import lipidmaps
 from ..chemistry import ADDUCTS

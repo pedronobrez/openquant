@@ -6,11 +6,11 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6 import QtCore  # noqa: E402
+from PyQt6 import QtCore
 
-from openquant import lipidmaps  # noqa: E402
-from openquant.chemistry import ADDUCTS_BY_NAME  # noqa: E402
-from openquant.lipidmaps import LipidDatabase, LipidRecord  # noqa: E402
+from openquant import lipidmaps
+from openquant.chemistry import ADDUCTS_BY_NAME
+from openquant.lipidmaps import LipidDatabase, LipidRecord
 
 
 @pytest.fixture
@@ -216,7 +216,6 @@ def test_every_panel_can_be_reached_by_name(qapp):
     Five of them sit behind two small arrows, which is how a panel ends up
     findable by accident or not at all.
     """
-    from PyQt6 import QtWidgets
 
     from openquant.session import Session
     from openquant.ui.explorer import ExplorerWorkspace

@@ -20,7 +20,6 @@ from .method import ProcessingMethod
 from .quantify import ResultsSet, XicCache
 from .samples import SampleEntry, shorten_names
 from .raw import open_raw
-from .wiff import WiffFile
 
 PROJECT_SUFFIX = ".oqproj"
 #: the suffix used before the software was renamed; still opened, never written

@@ -6,16 +6,16 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from pathlib import Path  # noqa: E402
+from pathlib import Path
 
-from PyQt6 import QtGui, QtWidgets  # noqa: E402
+from PyQt6 import QtGui, QtWidgets
 
-from openquant import lipidmaps  # noqa: E402
-from openquant.lipidmaps import LipidDatabase, LipidRecord  # noqa: E402
-from openquant.structure import parse_molblock  # noqa: E402
-from openquant.ui import style  # noqa: E402
-from openquant.ui.lipid_panel import ROLE_ION, LipidPanel  # noqa: E402
-from openquant.ui.structure_view import StructureView  # noqa: E402
+from openquant import lipidmaps
+from openquant.lipidmaps import LipidDatabase, LipidRecord
+from openquant.structure import parse_molblock
+from openquant.ui import style
+from openquant.ui.lipid_panel import ROLE_ION, LipidPanel
+from openquant.ui.structure_view import StructureView
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

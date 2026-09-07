@@ -95,7 +95,7 @@ class _DragViewBox(pg.ViewBox):
         #: owns the box — see BasePlot._headroom_px.
         self.headroom_px = 0.0
 
-    def suggestPadding(self, axis):  # noqa: N802 (pyqtgraph API)
+    def suggestPadding(self, axis):
         """
         Room for the labels that sit on top of the tallest peak.
 
@@ -1091,7 +1091,7 @@ class SpectrumView(BasePlot):
             text.setVisible(True)
             taken.append((left, right))
 
-    def contextMenuEvent(self, event):  # noqa: N802 (Qt API)
+    def contextMenuEvent(self, event):
         selection = self.selected_range()
         menu = QtWidgets.QMenu(self)
         local = self.plot.mapFromGlobal(event.globalPos())

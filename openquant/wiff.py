@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from functools import lru_cache
 
 import numpy as np
 
@@ -99,6 +98,7 @@ class Channel:
         self._sample = sample
         self._exp = sample._ms.GetMSExperiment(index)
         self.index = index
+        self._tic: tuple[np.ndarray, np.ndarray] | None = None
         self.info = self._read_info()
 
     # -- metadata ------------------------------------------------------------ #
@@ -135,10 +135,12 @@ class Channel:
         )
 
     # -- chromatograms -------------------------------------------------------- #
-    @lru_cache(maxsize=1)
     def tic(self) -> tuple[np.ndarray, np.ndarray]:
-        c = self._exp.GetTotalIonChromatogram()
-        return _to_numpy(c.GetActualXValues()), _to_numpy(c.GetActualYValues())
+        if self._tic is None:
+            c = self._exp.GetTotalIonChromatogram()
+            self._tic = (_to_numpy(c.GetActualXValues()),
+                         _to_numpy(c.GetActualYValues()))
+        return self._tic
 
     @property
     def rt(self) -> np.ndarray:
@@ -251,15 +253,18 @@ class Sample:
         self._ms = self._sample.MassSpectrometerSample
         self.name = str(wiff.sample_names[index])
         self.instrument = str(self._ms.InstrumentName)
+        self._tic: tuple[np.ndarray, np.ndarray] | None = None
         self.channels: list[Channel] = [
             Channel(self, i) for i in range(int(self._ms.ExperimentCount))
         ]
 
-    @lru_cache(maxsize=1)
     def tic(self) -> tuple[np.ndarray, np.ndarray]:
         """TIC of the whole sample (sum over all experiments)."""
-        c = self._ms.GetTotalIonChromatogram()
-        return _to_numpy(c.GetActualXValues()), _to_numpy(c.GetActualYValues())
+        if self._tic is None:
+            c = self._ms.GetTotalIonChromatogram()
+            self._tic = (_to_numpy(c.GetActualXValues()),
+                         _to_numpy(c.GetActualYValues()))
+        return self._tic
 
     @property
     def acquisition_time(self) -> str:

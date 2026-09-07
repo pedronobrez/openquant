@@ -127,7 +127,7 @@ class ProjectPage(QtWidgets.QWizardPage):
             name += PROJECT_SUFFIX
         return os.path.join(folder, name)
 
-    def isComplete(self) -> bool:  # noqa: N802 (Qt API)
+    def isComplete(self) -> bool:
         path = self.project_path()
         return bool(path) and os.path.isdir(os.path.dirname(path))
 
@@ -185,7 +185,7 @@ class SamplesPage(QtWidgets.QWizardPage):
         self.btn_remove.clicked.connect(self._remove)
         self.btn_apply.clicked.connect(self._apply)
 
-    def initializePage(self) -> None:  # noqa: N802 (Qt API)
+    def initializePage(self) -> None:
         self._rebuild()
 
     # -- batch ------------------------------------------------------------------- #
@@ -323,7 +323,7 @@ class SamplesPage(QtWidgets.QWizardPage):
             entry.sample_group = group
             self._refresh()
 
-    def isComplete(self) -> bool:  # noqa: N802 (Qt API)
+    def isComplete(self) -> bool:
         # a project with no samples is allowed: a method is often built first
         return True
 
@@ -396,7 +396,7 @@ class MethodPage(QtWidgets.QWizardPage):
         for radio in (self.radio_import, self.radio_acquisition, self.radio_empty):
             radio.toggled.connect(lambda _c: self.completeChanged.emit())
 
-    def initializePage(self) -> None:  # noqa: N802 (Qt API)
+    def initializePage(self) -> None:
         channels = len(self.session.generate_components())
         self.radio_acquisition.setEnabled(channels > 0)
         self.acquisition_label.setText(
@@ -453,7 +453,7 @@ class MethodPage(QtWidgets.QWizardPage):
         method.unit = self.unit_combo.currentText()
         method.concentration_unit = self.conc_edit.text().strip()
 
-    def isComplete(self) -> bool:  # noqa: N802 (Qt API)
+    def isComplete(self) -> bool:
         return not (self.radio_import.isChecked() and not self._imported)
 
 
@@ -481,7 +481,7 @@ class SummaryPage(QtWidgets.QWizardPage):
             "Process the batch as soon as the project is created")
         layout.addWidget(self.check_process)
 
-    def initializePage(self) -> None:  # noqa: N802 (Qt API)
+    def initializePage(self) -> None:
         wizard = self.wizard()
         entries = self.session.entries
         groups = sorted({e.sample_group for e in entries if e.sample_group})

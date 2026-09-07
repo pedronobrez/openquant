@@ -303,7 +303,7 @@ class MainShell(QtWidgets.QMainWindow):
         return True
 
     # -- lifecycle ------------------------------------------------------------- #
-    def closeEvent(self, event):  # noqa: N802 (Qt API)
+    def closeEvent(self, event):
         if not self.confirm_discard("Quit anyway?"):
             event.ignore()
             return

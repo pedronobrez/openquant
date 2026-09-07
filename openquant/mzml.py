@@ -30,10 +30,8 @@ import base64
 import hashlib
 import os
 import re
-import struct
 import zlib
 from dataclasses import dataclass
-from functools import lru_cache
 from xml.etree import ElementTree as ET
 
 import numpy as np
@@ -210,6 +208,10 @@ class MzmlChannel:
         self._sample = sample
         self._headers = headers
         self.index = index
+        # cached here rather than with lru_cache on the method: that keeps one
+        # instance alive for the life of the process, and with maxsize=1 it
+        # caches nothing at all when the caller walks 81 channels in turn
+        self._tic: tuple[np.ndarray, np.ndarray] | None = None
         self.info = self._read_info()
 
     def _read_info(self) -> ChannelInfo:
@@ -233,7 +235,6 @@ class MzmlChannel:
         )
 
     # -- chromatograms -------------------------------------------------------- #
-    @lru_cache(maxsize=1)
     def tic(self) -> tuple[np.ndarray, np.ndarray]:
         """
         The total ion current per scan.
@@ -243,13 +244,16 @@ class MzmlChannel:
         would substitute our arithmetic for the instrument's — a difference
         that shows up as a chromatogram that does not match the vendor's.
         """
-        times = np.array([h.rt for h in self._headers], dtype=float)
-        if all(h.total_ion_current is not None for h in self._headers):
-            return times, np.array([h.total_ion_current for h in self._headers],
-                                   dtype=float)
-        values = np.array([float(self._read(h)["intensity"].sum())
-                           for h in self._headers], dtype=float)
-        return times, values
+        if self._tic is None:
+            times = np.array([h.rt for h in self._headers], dtype=float)
+            if all(h.total_ion_current is not None for h in self._headers):
+                values = np.array([h.total_ion_current for h in self._headers],
+                                  dtype=float)
+            else:
+                values = np.array([float(self._read(h)["intensity"].sum())
+                                   for h in self._headers], dtype=float)
+            self._tic = (times, values)
+        return self._tic
 
     @property
     def rt(self) -> np.ndarray:
@@ -407,11 +411,11 @@ class MzmlSample:
     def __init__(self, file: "MzmlFile"):
         self._file = file
         self.index = 0
+        self._tic: tuple[np.ndarray, np.ndarray] | None = None
         self.name = file.run_id or os.path.splitext(file.filename)[0]
         self.instrument = file.instrument
         self.channels: list[MzmlChannel] = file._build_channels(self)
 
-    @lru_cache(maxsize=1)
     def tic(self) -> tuple[np.ndarray, np.ndarray]:
         """
         The TIC of the whole run: every channel's total, at the times it was
@@ -431,6 +435,8 @@ class MzmlSample:
         for the acquisition this was checked against, two periods of 339 and
         238 cycles, and 577 points.
         """
+        if self._tic is not None:
+            return self._tic
         if not self.channels:
             return np.zeros(0), np.zeros(0)
         periods: dict[int, list] = {}
@@ -449,7 +455,8 @@ class MzmlSample:
         axis = np.concatenate(axes)
         total = np.concatenate(totals)
         order = np.argsort(axis, kind="stable")
-        return axis[order], total[order]
+        self._tic = (axis[order], total[order])
+        return self._tic
 
     @property
     def acquisition_time(self) -> str:
@@ -635,7 +642,9 @@ class MzmlFile:
         """
         cycles = acquisition_cycles([h.key for h in self.headers])
         grouped: dict[tuple, list[_ScanHeader]] = {}
-        for position, header in zip(cycles, self.headers):
+        # strict: one position per spectrum, and a mismatch would silently
+        # drop the scans past the end of the shorter list
+        for position, header in zip(cycles, self.headers, strict=True):
             key = header.key if position is None else position
             grouped.setdefault(key, []).append(header)
         return [MzmlChannel(sample, index, group)

@@ -6,9 +6,9 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6 import QtGui, QtWidgets  # noqa: E402
+from PyQt6 import QtGui, QtWidgets
 
-from openquant.ui import style, theme  # noqa: E402
+from openquant.ui import style, theme
 
 
 @pytest.fixture(scope="module")

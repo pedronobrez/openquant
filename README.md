@@ -134,6 +134,7 @@ injection comes back as `kUnknown`.
 | Columns | which ones are shown and to how many decimals |
 | **Used** | exclude a row from the statistics without deleting it |
 | Export | the visible columns of the visible rows, as CSV |
+| **Report** | `File ▸ Export report…` writes the whole batch — summary, samples, method, calibration, per-component results and statistics — as PDF to hand over or HTML to keep. Built from the session rather than from the screen, so it holds what was measured and not what happened to be on show |
 
 ### Calibration
 

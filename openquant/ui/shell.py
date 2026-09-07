@@ -94,6 +94,40 @@ class MainShell(QtWidgets.QMainWindow):
         elif choice == StartDialog.OPEN:
             self.open_project()
 
+    def export_report(self) -> None:
+        """
+        Write the batch out as a document.
+
+        PDF for handing over, HTML for keeping: the second opens in a browser
+        long after this application is gone, which is the point of a report as
+        against an export.
+        """
+        from ..report import write_html, write_pdf
+
+        if not self.session.entries:
+            self.statusBar().showMessage("Open a batch before reporting on it.")
+            return
+        stem = (os.path.splitext(os.path.basename(self.session.project_path))[0]
+                if self.session.project_path else "batch")
+        path, chosen = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Export report", os.path.join(self._last_dir(), f"{stem}.pdf"),
+            "PDF (*.pdf);;Web page (*.html)")
+        if not path:
+            return
+        self.settings.setValue("io/last_dir", os.path.dirname(path))
+        wants_html = path.lower().endswith(".html") or "html" in chosen.lower()
+        if not os.path.splitext(path)[1]:
+            path += ".html" if wants_html else ".pdf"
+        title = f"{stem} — batch report"
+        try:
+            writer = write_html if wants_html else write_pdf
+            writer(self.session, path, title=title)
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "Report failed", str(exc))
+            return
+        size = os.path.getsize(path) / 1024
+        self.statusBar().showMessage(f"Report written to {path} ({size:,.0f} KB)")
+
     # -- theme --------------------------------------------------------------- #
     def retheme(self) -> None:
         """
@@ -130,6 +164,10 @@ class MainShell(QtWidgets.QMainWindow):
         self.act_open = file_menu.addAction("Add data files…")
         self.act_open.setShortcut(QtGui.QKeySequence.StandardKey.Open)
         self.act_close = file_menu.addAction("Close all")
+        self.act_report = file_menu.addAction("Export report…")
+        self.act_report.setToolTip(
+            "A document of the whole batch — method, calibration, results and "
+            "statistics — to print or to hand over")
         file_menu.addSeparator()
         for action in self.explorer.build_actions()["File"]:
             file_menu.addAction(action)
@@ -158,6 +196,7 @@ class MainShell(QtWidgets.QMainWindow):
         self.act_open_project.triggered.connect(self.open_project)
         self.act_save_project.triggered.connect(self.save_project)
         self.act_save_project_as.triggered.connect(self.save_project_as)
+        self.act_report.triggered.connect(self.export_report)
         self.samples.btn_open.clicked.connect(self.open_files)
 
     # -- files --------------------------------------------------------------- #

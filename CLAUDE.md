@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.6.5 released. 617 tests. Public repository.**
+**Version 0.6.5 released. 624 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -162,6 +162,20 @@ UV detector, is not implemented there) — untested on real Windows.
   `sendPostedEvents(None, QEvent.Type.DeferredDelete)` first. The application
   is fine; anything that grabs or asserts on a widget tree is not, unless it
   flushes. `tests/conftest.py` does this after every test.
+- **The retention-time window is not what the detector may see.** It says
+  where the apex may be. Handing `detect_peaks` exactly that window meant two
+  things, both found by reprocessing a real batch: peaks were truncated at the
+  boundary, and — worse — `detect_peaks` returns nothing below five points, so
+  a ±0.5 min window on a method sampling one transition every 14.6 s holds
+  four scans and came back empty **whatever was in it**. A peak of 44,875
+  counts read as "no peak above noise". Whether a component was integrated at
+  all depended on whether its window happened to catch four scans or five,
+  which is set by the channel's start offset. `quantify.detection_range`
+  gives the detector `MARGIN_SCANS` either side and the apex is required to
+  land inside the declared window afterwards. On that batch it took the rows
+  with a peak from 1,771 to 2,665 and the components with any peak at all from
+  89 to 139 of 141. The margin is small on purpose: everything inside it
+  competes on relative height with the real peak.
 - **A contour averages the scans it cannot draw, it does not skip them.**
   A long run has more scans than a screen has rows. Sampling every k-th scan
   is faster and loses a one-scan peak entirely, so `build_contour` averages
@@ -307,7 +321,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-617 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+624 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

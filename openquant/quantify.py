@@ -29,6 +29,13 @@ from .processing import (
 )
 from .samples import CALIBRATION_TYPES, SampleEntry
 
+#: scans given to the detector either side of the window, so that it can
+#: see a peak's edges rather than a slice of its middle
+MARGIN_SCANS = 3
+
+#: below this `detect_peaks` refuses, and the reason is reported as such
+MIN_DETECTION_POINTS = 5
+
 #: confidence of a qualifier's ion ratio
 PASS = "Pass"
 MARGINAL = "Marginal"
@@ -263,17 +270,62 @@ def integrate_component(entry: SampleEntry, component: Component,
 
     params = method.integration_for(component)
     noise = measured_noise(x, y, params)
-    peaks = detect_peaks(x[mask], y[mask],
+    peaks = detect_peaks(x[detection_range(x, mask)], y[detection_range(x, mask)],
                          min_relative=params.min_relative_height,
                          min_snr=params.min_snr, noise=noise)
+    if window is not None:
+        # the window says where the apex may be, not where the peak has to
+        # end. Peaks found in the margin belong to something else.
+        peaks = [p for p in peaks if window[0] <= p.apex_rt <= window[1]]
     if not peaks:
-        result.note = "no peak above noise"
+        result.note = _nothing_found(x, mask)
         return result
     peak, note = choose_peak(peaks, component.rt, params.peak_choice)
     result = apply_peak(result, peak)
     if note:
         result.note = note
     return result
+
+
+def detection_range(x: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """
+    The stretch the detector is given: the window, plus room to see the edges.
+
+    A retention-time window says where the apex may be. It is not a statement
+    about where the peak ends, and handing the detector exactly that window
+    has two consequences, both measured on real data.
+
+    A peak is truncated at the boundary, which biases its area. And below five
+    points `detect_peaks` declines outright — so with the 14.6 s sampling of a
+    scheduled method, a ±0.5 min window holding four scans returned nothing at
+    all, whatever was in it: a peak of 44,875 counts came back as "no peak
+    above noise". Whether a component was integrated then depended on whether
+    its window happened to catch four scans or five, which is set by the
+    channel's start offset — an accident of the acquisition rather than
+    anything about the chemistry.
+
+    So the detector sees a few scans either side and the apex is required to
+    land inside the declared window afterwards. The margin is deliberately
+    small: everything in it competes on relative height with the real peak,
+    and a wide margin would let a tall neighbour suppress it.
+    """
+    inside = np.flatnonzero(mask)
+    if inside.size == 0:
+        return mask
+    first = max(int(inside[0]) - MARGIN_SCANS, 0)
+    last = min(int(inside[-1]) + MARGIN_SCANS, x.size - 1)
+    widened = np.zeros(x.size, dtype=bool)
+    widened[first:last + 1] = True
+    return widened
+
+
+def _nothing_found(x: np.ndarray, mask: np.ndarray) -> str:
+    """Why there is no peak — which is not always that there is no signal."""
+    points = int(detection_range(x, mask).sum())
+    if points < MIN_DETECTION_POINTS:
+        return (f"only {points} points to detect in; the window is narrower "
+                f"than the sampling can resolve")
+    return "no peak above noise"
 
 
 def measured_noise(x: np.ndarray, y: np.ndarray,

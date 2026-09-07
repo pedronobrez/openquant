@@ -7,7 +7,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6 import QtWidgets  # noqa: E402
+from PyQt6 import QtCore, QtWidgets  # noqa: E402
 
 from openquant.components import Component, save_components  # noqa: E402
 from openquant.samples import QC, STANDARD, SampleEntry, UNKNOWN  # noqa: E402
@@ -264,3 +264,48 @@ def test_a_file_it_cannot_read_is_a_failure_not_a_silence(qapp, tmp_path):
     broken = tmp_path / "not-really.wiff"
     broken.write_text("nonsense")
     assert app_module._selftest([str(broken)]) == 1
+
+
+# -- the start prompt must not hold the application hostage ------------------ #
+def test_the_start_prompt_does_not_block_quitting(qapp):
+    """
+    It used to be shown with exec(), which runs an event loop of its own.
+    While one is running the application cannot be quit by anything — not
+    Cmd-Q, not the red button, not the Quit the system sends at logout. The
+    only way out of a prompt offering to start some work was to answer it.
+    """
+    from openquant.ui.shell import MainShell
+
+    shell = MainShell()
+    shell.settings.setValue("shell/skip_start", False)
+    shell.show()
+    shell.offer_start()
+    qapp.processEvents()
+
+    dialog = QtWidgets.QApplication.activeModalWidget()
+    assert dialog is not None, "the prompt should be showing"
+    assert dialog.windowModality() != QtCore.Qt.WindowModality.ApplicationModal
+
+    assert shell.close(), "the window should close with the prompt still open"
+    qapp.processEvents()
+    assert not shell.isVisible()
+
+
+def test_answering_the_start_prompt_still_does_what_it_says(qapp, monkeypatch):
+    from openquant.ui.shell import MainShell
+    from openquant.ui.new_project import StartDialog
+
+    shell = MainShell()
+    shell.settings.setValue("shell/skip_start", False)
+    asked = []
+    monkeypatch.setattr(MainShell, "new_project", lambda self: asked.append("new"))
+    shell.offer_start()
+    qapp.processEvents()
+
+    dialog = QtWidgets.QApplication.activeModalWidget()
+    dialog.choice = StartDialog.NEW
+    dialog.accept()
+    qapp.processEvents()
+
+    assert asked == ["new"]
+    shell.close()

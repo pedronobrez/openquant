@@ -110,7 +110,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self._restore_settings()
         self.session.sigSamplesChanged.connect(self.rebuild_tree)
         self.session.sigMethodChanged.connect(self._refresh_components)
-        self._update_status("Open a .wiff file to start.")
+        self._update_status("Open a .wiff or .mzML file to start.")
 
     # ------------------------------------------------------------------ UI -- #
     def _build_ui(self) -> None:

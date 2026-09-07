@@ -48,7 +48,7 @@ class MainShell(QtWidgets.QMainWindow):
         self.setCentralWidget(self.tabs)
 
         self._build_menu()
-        self.statusBar().showMessage("Open a .wiff file to start.")
+        self.statusBar().showMessage("Open a .wiff or .mzML file to start.")
 
         for workspace in (self.explorer, self.analytics, self.method, self.samples):
             workspace.sigStatus.connect(self.statusBar().showMessage)
@@ -68,16 +68,30 @@ class MainShell(QtWidgets.QMainWindow):
 
     # -- start ----------------------------------------------------------------- #
     def offer_start(self) -> None:
-        """Ask how to begin, unless the analyst has said not to."""
+        """
+        Ask how to begin, unless the analyst has said not to.
+
+        Shown without blocking. exec() runs an event loop of its own, and
+        while one is running the application cannot be quit at all — not by
+        Cmd-Q, not by the red button, not by the Quit the system sends when
+        it is shutting down or logging out. A prompt offering to start some
+        work should not be able to trap the application it is offering to
+        start; the only way out was to answer it.
+        """
         if self.settings.value("shell/skip_start", False, type=bool):
             return
         dialog = StartDialog(self)
-        dialog.exec()
+        dialog.finished.connect(lambda _code, d=dialog: self._start_chosen(d))
+        dialog.open()
+
+    def _start_chosen(self, dialog) -> None:
         if dialog.check_skip.isChecked():
             self.settings.setValue("shell/skip_start", True)
-        if dialog.choice == StartDialog.NEW:
+        choice = dialog.choice
+        dialog.deleteLater()
+        if choice == StartDialog.NEW:
             self.new_project()
-        elif dialog.choice == StartDialog.OPEN:
+        elif choice == StartDialog.OPEN:
             self.open_project()
 
     # -- theme --------------------------------------------------------------- #
@@ -113,7 +127,7 @@ class MainShell(QtWidgets.QMainWindow):
         self.act_save_project_as.setShortcut(
             QtGui.QKeySequence.StandardKey.SaveAs)
         file_menu.addSeparator()
-        self.act_open = file_menu.addAction("Add .wiff…")
+        self.act_open = file_menu.addAction("Add data files…")
         self.act_open.setShortcut(QtGui.QKeySequence.StandardKey.Open)
         self.act_close = file_menu.addAction("Close all")
         file_menu.addSeparator()
@@ -152,7 +166,7 @@ class MainShell(QtWidgets.QMainWindow):
 
     def open_files(self) -> None:
         paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
-            self, "Open SCIEX files", self._last_dir(),
+            self, "Add data files", self._last_dir(),
             raw.FILE_FILTER)
         for path in paths:
             self.load_file(path)

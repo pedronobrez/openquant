@@ -8,6 +8,7 @@ three installers described on [[installation]].
 
 | Version | Date | What came in |
 |---|---|---|
+| 0.6.9 | 2026-09-08 | this manual: forty-four pages linked like a vault, with search, backlinks and a printed copy from **Help ▸ Export manual as PDF…**; the orphan-heading rule of the [[report]] fixed for a heading whose next block was itself pushed to a new page |
 | 0.6.8 | 2026-09-07 | three [[integration-algorithms]] — valley, summation, Gaussian fit — with every row saying which produced its number; [[compare-algorithms]] with the one-trace view, adoption, and a report section; the fit's three-points-on-the-flanks rule, measured on a real standard |
 | 0.6.7 | 2026-09-07 | [[suggest-from-data]]: retention times calibrated per height band, windows from the sampling; **Exclude failed injections** in Batch QC; the [[check-method]] dialog; S/N reported as unmeasured rather than as a constant — [[signal-to-noise]] |
 | 0.6.6 | 2026-09-07 | the injection response index and the unusable-chart verdict in [[batch-qc]]; a signal-to-noise condition on the charts; the detector given a margin either side of the window, which took a real batch from 1,771 to 2,665 peaks — [[integration-parameters]] |

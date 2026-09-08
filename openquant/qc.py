@@ -69,6 +69,25 @@ OUTLIER_SIGMA = 3.0
 WARN_PERCENT = 10.0
 OUT_PERCENT = 20.0
 
+#: and the deviation past which a point is out however wide the spread.
+#:
+#: The floors above stop a batch that repeats itself well from flagging
+#: ordinary scatter. This is the mirror of that, and it was needed for the
+#: same reason in reverse: a batch whose own scatter is wide swallows a real
+#: failure. Measured on a real run, an injection where every internal standard
+#: came back at a fifth of normal — an injection that plainly failed — sat at
+#: 2.6 robust standard deviations, because the batch it was being compared
+#: against varied by a third from injection to injection.
+#:
+#: Half of a response, or double it, is not a matter of statistics.
+ALWAYS_OUT_PERCENT = 50.0
+
+#: the fraction of a chart that can be out before the chart itself is the
+#: finding. Listing seventeen bad injections out of twenty-six misses what
+#: they say together, which is that nothing can be normalised against this
+#: standard — and a verdict nobody can act on is a verdict nobody reads.
+UNUSABLE_FRACTION = 1 / 3
+
 #: a fitted change across the whole run, as a percentage of the centre,
 #: beyond which the run drifted rather than wandered
 DRIFT_PERCENT = 20.0
@@ -95,6 +114,14 @@ MIN_SNR = 10.0
 #: the fewest replicates worth quoting one from
 CV_PERCENT = 15.0
 MIN_REPLICATES = 3
+
+#: what the index is charted under
+RESPONSE_INDEX = "injection response index"
+
+#: the fewest internal standards worth taking a median across. With one, the
+#: index is that standard's own chart again under another name; with two there
+#: is no median, only an average of a disagreement.
+MIN_INDEX_STANDARDS = 3
 
 #: sample types that carry the internal standard. A double blank is extracted
 #: without it and a solvent injection never saw it, so neither belongs on its
@@ -164,7 +191,12 @@ class Injection:
 
     @property
     def out(self) -> bool:
-        """Unusual for this batch, and far enough out to act on."""
+        """
+        Unusual for this batch and far enough out to act on — or so far out
+        that how usual it is for the batch stops being the question.
+        """
+        if self.percent is not None and abs(self.percent) >= ALWAYS_OUT_PERCENT:
+            return True
         return (self.sigmas is not None and abs(self.sigmas) > OUTLIER_SIGMA
                 and self.percent is not None
                 and abs(self.percent) >= OUT_PERCENT)
@@ -232,6 +264,19 @@ class ControlChart:
         """
         expected = int(round(0.05 * len(self.injections)))
         return max(0, len(self.warned) - expected)
+
+    @property
+    def unusable(self) -> bool:
+        """
+        Whether the standard itself is the finding, rather than any injection.
+
+        A third of the run more than half away from the centre is not a set of
+        outliers; it is a standard that cannot normalise anything. Saying so
+        once is worth more than naming the injections one at a time.
+        """
+        if not self.injections or not self.quantifiable:
+            return False
+        return len(self.out) / len(self.injections) > UNUSABLE_FRACTION
 
     @property
     def drifted(self) -> bool:
@@ -377,11 +422,62 @@ def precision(results: ResultsSet, entries: list[SampleEntry],
 # --------------------------------------------------------------------------- #
 # the batch
 # --------------------------------------------------------------------------- #
+def response_index(charts: list[ControlChart],
+                   entries: list[SampleEntry]) -> ControlChart | None:
+    """
+    The internal standards of each injection, taken together.
+
+    A single standard's chart cannot tell an injection that failed from a
+    compound that misbehaved: both look like a point a long way from the
+    centre. Comparing the standards *within* an injection can. Each is divided
+    by its own median across the run, so that standards of wildly different
+    response are on one scale, and the median of those is the injection's
+    index — near one when the injection did what the others did.
+
+    That distinction is the whole point. Every standard down together is an
+    injection to repeat. One standard down while its neighbours in the same
+    injection are fine is that compound's problem, and no amount of looking
+    at the injection will show it.
+
+    Measured on a real batch: taken separately the standards looked hopeless,
+    with scatter between 32% and 228%. Taken together the injections sat
+    within ±18% — except one at 0.08, where every standard had gone at once.
+    """
+    usable = [chart for chart in charts
+              if chart.measurable and chart.centre and chart.injections]
+    if len(usable) < MIN_INDEX_STANDARDS:
+        return ControlChart(
+            component=RESPONSE_INDEX,
+            note=f"fewer than {MIN_INDEX_STANDARDS} internal standards were "
+                 f"measured; there is nothing to take a median across")
+
+    relative = [{point.sample: point.value / chart.centre
+                 for point in chart.injections} for chart in usable]
+    points: list[tuple[SampleEntry, float]] = []
+    for entry in acquisition_order(entries):
+        ratios = [table[entry.name] for table in relative if entry.name in table]
+        if len(ratios) < MIN_INDEX_STANDARDS:
+            continue
+        points.append((entry, float(np.median(ratios))))
+    if not points:
+        return ControlChart(
+            component=RESPONSE_INDEX,
+            note="no injection carried enough internal standards")
+    chart = control_chart(RESPONSE_INDEX, points)
+    chart.note = (f"the median of {len(usable)} internal standards, each "
+                  f"against its own median across the run"
+                  + (f"; {chart.note}" if chart.note else ""))
+    return chart
+
+
 @dataclass
 class BatchQC:
     """What the run did, from first injection to last."""
 
     charts: list[ControlChart] = field(default_factory=list)
+    #: the standards of each injection taken together, which separates an
+    #: injection that failed from a compound that misbehaved
+    index: ControlChart | None = None
     precision: list[Precision] = field(default_factory=list)
     injections: int = 0
     timed: int = 0
@@ -405,6 +501,10 @@ class BatchQC:
     @property
     def out(self) -> list[ControlChart]:
         return [chart for chart in self.charts if chart.out]
+
+    @property
+    def unusable(self) -> list[ControlChart]:
+        return [chart for chart in self.charts if chart.unusable]
 
     @property
     def imprecise(self) -> list[Precision]:
@@ -463,5 +563,6 @@ def batch_qc(results: ResultsSet, entries: list[SampleEntry],
             control_chart(name, points, is_internal_standard=name in internal,
                           snr=snr))
 
+    report.index = response_index(report.charts, entries)
     report.precision = precision(results, entries, method)
     return report

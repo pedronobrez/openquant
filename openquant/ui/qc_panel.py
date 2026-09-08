@@ -14,8 +14,9 @@ import pyqtgraph as pg
 from PyQt6 import QtCore, QtWidgets
 
 from . import theme
-from ..qc import (MIN_SNR, OUTLIER_SIGMA, OUT_PERCENT, WARN_SIGMA,
-                  BatchQC, ControlChart, batch_qc)
+from ..qc import (ALWAYS_OUT_PERCENT, MIN_SNR, OUTLIER_SIGMA,
+                  OUT_PERCENT, WARN_SIGMA, BatchQC, ControlChart,
+                  batch_qc)
 from ..session import Session
 
 POINT = "#234b8c"
@@ -138,8 +139,7 @@ class QualityPanel(QtWidgets.QWidget):
         previous = self.component.currentText()
         self.component.blockSignals(True)
         self.component.clear()
-        if self._report:
-            self.component.addItems([c.component for c in self._report.charts])
+        self.component.addItems([c.component for c in self._charts()])
         index = self.component.findText(previous)
         self.component.setCurrentIndex(max(index, 0))
         self.component.blockSignals(False)
@@ -159,20 +159,34 @@ class QualityPanel(QtWidgets.QWidget):
                     f"sequence is a guess")
         if report.drifted:
             said.append(f"{len(report.drifted)} drifting")
-        stray = sum(len(chart.out) for chart in report.out)
+        if report.unusable:
+            said.append(f"{len(report.unusable)} standard(s) cannot normalise")
+        stray = sum(len(chart.out) for chart in report.out
+                    if not chart.unusable)
         if stray:
-            said.append(f"{stray} injection(s) beyond {OUTLIER_SIGMA:g}σ")
+            said.append(f"{stray} injection(s) outside their limits")
+        if report.index is not None and report.index.out:
+            said.append(f"{len(report.index.out)} injection(s) where every "
+                        f"standard went together")
         if report.imprecise:
             said.append(f"{len(report.imprecise)} component(s) over the %CV limit")
         quiet = [c for c in report.charts if not c.quantifiable]
         if quiet:
             said.append(f"{len(quiet)} below S/N {MIN_SNR:g}")
-        if not report.drifted and not stray and not report.imprecise and not quiet:
+        if (not report.drifted and not stray and not report.imprecise
+                and not quiet and not report.unusable):
             said.append("nothing outside its limits")
         self.status.setText(" · ".join(said))
 
+    def _charts(self) -> list:
+        """The index first: it is what an injection failure shows up in."""
+        if not self._report:
+            return []
+        index = [self._report.index] if self._report.index is not None else []
+        return index + list(self._report.charts)
+
     def _fill_table(self) -> None:
-        charts = self._report.charts if self._report else []
+        charts = self._charts()
         self.table.setRowCount(len(charts))
         for row, chart in enumerate(charts):
             snr = f"{chart.snr:,.0f}" if chart.snr is not None else "—"
@@ -220,6 +234,10 @@ class QualityPanel(QtWidgets.QWidget):
     def _verdict(chart: ControlChart) -> str:
         if not chart.quantifiable:
             return f"below S/N {MIN_SNR:g} — not quantified, so not flagged"
+        if chart.unusable:
+            return (f"cannot normalise: {len(chart.out)} of "
+                    f"{len(chart.injections)} injections over "
+                    f"{ALWAYS_OUT_PERCENT:g}% from the centre")
         said = []
         if chart.drifted:
             said.append(f"drift {chart.drift:+,.0f}%")
@@ -244,8 +262,7 @@ class QualityPanel(QtWidgets.QWidget):
 
     def _draw_selected(self, *_args) -> None:
         name = self.component.currentText()
-        chart = next((c for c in (self._report.charts if self._report else [])
-                      if c.component == name), None)
+        chart = next((c for c in self._charts() if c.component == name), None)
         self._chart = chart
         self._clear()
         self._fill_table()

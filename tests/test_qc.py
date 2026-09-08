@@ -374,3 +374,107 @@ def test_the_median_decides_not_the_worst_injection():
     chart = qc.batch_qc(results, entries, _method()).charts[0]
     assert chart.snr == pytest.approx(400.0)
     assert chart.quantifiable
+
+
+# --------------------------------------------------------------------------- #
+# the injections taken together
+# --------------------------------------------------------------------------- #
+def _many_standards(entries, plan):
+    """`plan` maps a standard's name to its response in each injection."""
+    results = ResultsSet.from_list([])
+    for component, areas in plan.items():
+        for entry, area in zip(entries, areas):
+            row = PeakResult(sample_key=entry.key, sample_name=entry.name,
+                             component=component)
+            row.area = float(area)
+            results.replace(row)
+    return results
+
+
+def test_an_injection_where_every_standard_went_together_is_named():
+    """
+    What a single standard's chart cannot say. Injection 7 has all three
+    standards at a fifth of normal — the injection failed — and each standard
+    separately only sees one point a long way from its own centre.
+    """
+    entries = _batch(12)
+    plan = {}
+    for name, level in (("IS_A", 10000.0), ("IS_B", 800.0), ("IS_C", 40.0)):
+        areas = [level * (1.0 + (n % 3 - 1) * 0.05) for n in range(12)]
+        areas[7] = level * 0.2
+        plan[name] = areas
+    report = qc.batch_qc(_many_standards(entries, plan), entries,
+                         _method(internal=("IS_A", "IS_B", "IS_C")))
+    index = report.index
+    assert index is not None and index.measurable
+    assert [p.sample for p in index.out] == ["S07"]
+    assert index.injections[7].value == pytest.approx(0.2, abs=0.02)
+    assert "median of 3 internal standards" in index.note
+
+
+def test_one_standard_misbehaving_does_not_move_the_index():
+    """
+    The other half of the distinction: a compound's own problem must not read
+    as an injection failure, which is what a median across standards buys.
+    """
+    entries = _batch(12)
+    plan = {}
+    for name, level in (("IS_A", 10000.0), ("IS_B", 800.0), ("IS_C", 40.0)):
+        plan[name] = [level] * 12
+    plan["IS_B"] = [800.0 * (6.0 if n % 2 else 0.1) for n in range(12)]
+    report = qc.batch_qc(_many_standards(entries, plan), entries,
+                         _method(internal=("IS_A", "IS_B", "IS_C")))
+    assert report.index.out == []
+    assert any(c.component == "IS_B" and c.unusable for c in report.charts)
+
+
+def test_too_few_standards_get_no_index():
+    entries = _batch(12)
+    report = qc.batch_qc(_results(entries, "IS", [10000.0] * 12), entries,
+                         _method())
+    assert report.index is not None
+    assert not report.index.measurable
+    assert "fewer than 3 internal standards" in report.index.note
+
+
+# --------------------------------------------------------------------------- #
+# a batch too loose to flag its own failures
+# --------------------------------------------------------------------------- #
+def test_a_wide_batch_still_calls_out_an_injection_that_plainly_failed():
+    """
+    The mirror of the per-cent floors. Measured on a real run: an injection
+    where every standard came back at a fifth of normal sat at 2.6 robust
+    standard deviations, because the batch it was compared against varied by a
+    third from one injection to the next.
+    """
+    entries = _batch(20)
+    # a batch that swings 20% either way from injection to injection, which
+    # gives a robust sigma of about 3,000 on a centre of 10,000
+    areas = [8000.0 if n % 2 else 12000.0 for n in range(20)]
+    areas[9] = 2000.0
+    chart = qc.batch_qc(_results(entries, "IS", areas), entries,
+                        _method()).charts[0]
+    point = chart.injections[9]
+    assert abs(point.sigmas) < qc.OUTLIER_SIGMA      # the spread hides it
+    assert abs(point.percent) >= qc.ALWAYS_OUT_PERCENT
+    assert point.out
+
+
+def test_a_standard_mostly_out_is_reported_once_rather_than_injection_by_injection():
+    entries = _batch(24)
+    areas = [10000.0 if n % 2 else 500.0 for n in range(24)]
+    chart = qc.batch_qc(_results(entries, "IS", areas), entries,
+                        _method()).charts[0]
+    assert chart.unusable
+    assert len(chart.out) / len(chart.injections) > qc.UNUSABLE_FRACTION
+
+
+def test_a_batch_with_a_few_bad_injections_is_not_called_unusable():
+    entries = _batch(24)
+    areas = [10000.0] * 24
+    areas[5] = 3000.0
+    areas[17] = 20000.0
+    chart = qc.batch_qc(_results(entries, "IS", areas), entries,
+                        _method()).charts[0]
+    assert not chart.unusable
+    assert [p.sample for p in chart.out] == ["S05", "S17"]

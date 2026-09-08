@@ -34,8 +34,9 @@ from .method import ProcessingMethod
 from .quantify import PeakResult, ResultsSet
 from .samples import SampleEntry
 from .statistics import GROUP_BY_SAMPLE_TYPE, summarise
-from .qc import (CV_PERCENT, DRIFT_CORRELATION, DRIFT_PERCENT,
-                 MIN_SNR, OUTLIER_SIGMA, OUT_PERCENT, batch_qc)
+from .qc import (ALWAYS_OUT_PERCENT, CV_PERCENT, DRIFT_CORRELATION,
+                 DRIFT_PERCENT, MIN_SNR, OUTLIER_SIGMA, OUT_PERCENT,
+                 batch_qc)
 from .validation import all_detection_limits, carryover
 
 #: the statuses a row can carry. Matched without regard to case: the results
@@ -235,10 +236,20 @@ def _findings(results: ResultsSet, entries: list[SampleEntry],
             notes.append(f"{len(quality.drifted)} internal standard(s) drifted "
                          f"across the run, the worst {_escape(worst.component)} "
                          f"by {_number(worst.drift, 1)}%.")
-        stray = sum(len(chart.out) for chart in quality.out)
+        if quality.unusable:
+            notes.append(f"{len(quality.unusable)} internal standard(s) cannot "
+                         f"normalise anything: over a third of the run is more "
+                         f"than {_number(ALWAYS_OUT_PERCENT, 0)}% from their "
+                         f"centre.")
+        if quality.index is not None and quality.index.out:
+            notes.append(f"{len(quality.index.out)} injection(s) where every "
+                         f"internal standard went together — the injection, "
+                         f"not the compound.")
+        stray = sum(len(chart.out) for chart in quality.out
+                    if not chart.unusable)
         if stray:
-            notes.append(f"{stray} injection(s) more than three robust standard "
-                         f"deviations from their internal standard's centre.")
+            notes.append(f"{stray} injection(s) outside their internal "
+                         f"standard's limits.")
         if quality.imprecise:
             worst = max(quality.imprecise, key=lambda r: r.percent_cv)
             notes.append(f"{len(quality.imprecise)} component(s) over "
@@ -456,6 +467,28 @@ def _quality(title: str, results: ResultsSet, entries: list[SampleEntry],
         f"relative one, and every flag against it would be arithmetic on "
         f"noise.</p>")
 
+    if report.index is not None and report.index.measurable:
+        index = report.index
+        parts.append("<h3>The injections, taken together</h3>")
+        parts.append(
+            '<p class="meta">Each internal standard against its own median '
+            "across the run, then the median of those per injection. A single "
+            "standard cannot tell an injection that failed from a compound "
+            "that misbehaved; comparing the standards within an injection "
+            "can.</p>")
+        rows = []
+        for point in index.injections:
+            said = ("<span class=\"bad\">every standard went together</span>"
+                    if point.out else ("worth a look" if point.warned else ""))
+            rows.append([f"{point.order}", _escape(point.sample),
+                         _number(point.value, 2), _number(point.percent, 1),
+                         said])
+        parts.append(_table(["#", "Injection", "Index", "% from normal", ""],
+                            rows, right={0, 2, 3},
+                            widths=["6%", "34%", "12%", "16%", "32%"]))
+    elif report.index is not None and report.index.note:
+        parts.append(f'<p class="empty">{_escape(report.index.note)}</p>')
+
     rows = []
     for chart in report.charts:
         if not chart.measurable:
@@ -469,11 +502,15 @@ def _quality(title: str, results: ResultsSet, entries: list[SampleEntry],
         if not chart.quantifiable:
             verdict.append(f"below S/N {MIN_SNR:g} — not quantified, so not "
                            f"flagged")
+        elif chart.unusable:
+            verdict.append(f'<span class="bad">cannot normalise</span>: '
+                           f"{len(chart.out)} of {len(chart.injections)} "
+                           f"injections over {ALWAYS_OUT_PERCENT:g}% out")
         if chart.drifted:
             verdict.append('<span class="bad">drift</span>')
-        if chart.out:
+        if chart.out and not chart.unusable:
             verdict.append(f'<span class="bad">{len(chart.out)} outside '
-                           f"3&#963;</span>")
+                           f"their limits</span>")
         if chart.excess_warnings:
             verdict.append(f"{len(chart.warned)} beyond 2&#963;")
         rows.append([
@@ -491,7 +528,7 @@ def _quality(title: str, results: ResultsSet, entries: list[SampleEntry],
         widths=["20%", "6%", "12%", "12%", "9%", "9%", "8%", "24%"]))
 
     for chart in report.charts:
-        for point in chart.out:
+        for point in (chart.out if not chart.unusable else []):
             parts.append(
                 f'<p class="foot">{_escape(chart.component)} — injection '
                 f"{point.order}, {_escape(point.sample)}: "

@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.6.5 released. 629 tests. Public repository.**
+**Version 0.6.5 released. 635 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -162,6 +162,23 @@ UV detector, is not implemented there) — untested on real Windows.
   `sendPostedEvents(None, QEvent.Type.DeferredDelete)` first. The application
   is fine; anything that grabs or asserts on a widget tree is not, unless it
   flushes. `tests/conftest.py` does this after every test.
+- **A control chart compares a standard against itself, and that is not
+  enough on its own.** One standard's chart cannot tell an injection that
+  failed from a compound that misbehaved: both are a point far from the
+  centre. `qc.response_index` divides each internal standard by its own median
+  and takes the median of those per injection, so all-standards-down-together
+  is separable from one-standard-down-alone. On the batch it was written for,
+  the standards taken separately scattered between 32% and 228% and looked
+  hopeless; taken together the injections sat within ±18% with three
+  exceptions, one of them at 0.08 where every standard had gone at once.
+- **Flagging needs a floor and a ceiling, for opposite reasons.**
+  `OUT_PERCENT` stops a batch that repeats itself well from flagging ordinary
+  scatter. `ALWAYS_OUT_PERCENT` is its mirror: a batch whose own scatter is
+  wide swallows a real failure, and an injection where every standard came
+  back at a fifth of normal sat at 2.6 robust standard deviations. And when a
+  third of a chart is out, `unusable` reports the chart rather than the
+  injections — seventeen bad injections out of twenty-six is not a list of
+  outliers, it is a standard that cannot normalise anything.
 - **On a sparse trace, signal-to-noise is not a ratio to noise.**
   `estimate_noise` returns 0.000 for an XIC that is 85–97% zeros, which is
   what a scheduled MRM channel looks like, so `detect_peaks` falls back to
@@ -334,7 +351,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-629 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+635 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

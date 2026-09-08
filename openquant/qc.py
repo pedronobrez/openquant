@@ -511,6 +511,42 @@ class BatchQC:
         return [row for row in self.precision if row.fails]
 
 
+def failed_injections(report: "BatchQC") -> list[str]:
+    """The samples where every internal standard went at once."""
+    if report.index is None or not report.index.measurable:
+        return []
+    return [point.sample for point in report.index.out]
+
+
+def exclude_failed(results: ResultsSet, entries: list[SampleEntry],
+                   report: "BatchQC") -> int:
+    """
+    Take the results of the failed injections out of the statistics.
+
+    Detecting an injection that failed and then letting its numbers into the
+    means is most of the way to not having detected it. What is excluded is
+    marked with the reason, because `used` is also the operator\'s own
+    switch and a row that turned itself off without saying why is worse than
+    one that stayed on.
+
+    Rows integrated by hand are left alone: somebody looked at those.
+    """
+    failed = set(failed_injections(report))
+    if not failed:
+        return 0
+    keys = {entry.key for entry in entries if entry.name in failed}
+    changed = 0
+    for row in results:
+        if row.sample_key not in keys or row.manual or not row.used:
+            continue
+        row.used = False
+        note = "excluded: every internal standard low in this injection"
+        if note not in row.flags:
+            row.flags.append(note)
+        changed += 1
+    return changed
+
+
 def batch_qc(results: ResultsSet, entries: list[SampleEntry],
              method: ProcessingMethod,
              components: list[str] | None = None,

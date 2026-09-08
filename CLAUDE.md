@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.6.7 released. 648 tests. Public repository.**
+**Version 0.6.7 released. 664 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -61,6 +61,7 @@ openquant/
   qc.py           control charts through the run, drift, replicate precision
   contour.py      the run as a retention time by m/z grid
   health.py       what the method will fail at, before it is run
+  suggest.py      retention times and windows the batch can supply
   components.py   the component table; method.py the processing method
   samples.py      SampleEntry, sample types and groups, name shortening
   matching.py     which channel serves a component
@@ -180,6 +181,14 @@ UV detector, is not implemented there) — untested on real Windows.
   third of a chart is out, `unusable` reports the chart rather than the
   injections — seventeen bad injections out of twenty-six is not a list of
   outliers, it is a standard that cannot normalise anything.
+- **A proposal's confidence is measured, not asserted.** `suggest.suggest_times`
+  runs the estimator on the components that already declare a retention time
+  and reports, per peak-height band, how often it landed within one sampling
+  interval — then attaches that band's figure to each proposal. On the real
+  method it was 88% above ten thousand counts and 45% below a hundred, and
+  because nothing offered was above ten thousand, **nothing was pre-ticked**.
+  That is the intended outcome: the estimator did not prove itself at the
+  heights that need it, and saying so is the point of calibrating at all.
 - **`estimate_noise` returns None when it cannot measure**, and that is the
   ordinary case, not the exception. Over 846 real traces the median had three
   non-zero points in sixty-one and only 9% had a baseline that varied at all;
@@ -362,7 +371,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-648 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+664 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

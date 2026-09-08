@@ -61,6 +61,11 @@ class MethodWorkspace(QtWidgets.QWidget):
         )
         self.btn_import = QtWidgets.QPushButton("Import CSV…")
         self.btn_export = QtWidgets.QPushButton("Export CSV…")
+        self.btn_suggest = QtWidgets.QPushButton("Suggest from data…")
+        self.btn_suggest.setToolTip(
+            "Retention times from agreement between the open injections, and "
+            "window widths from their sampling. Every proposal says what it "
+            "rests on and nothing is applied without being ticked")
         self.btn_check = QtWidgets.QPushButton("Check method")
         self.btn_check.setToolTip(
             "Read the method against itself, and against the files that are "
@@ -72,7 +77,7 @@ class MethodWorkspace(QtWidgets.QWidget):
             "precursor mass")
         for widget in (self.btn_add, self.btn_remove, self.btn_generate,
                        self.btn_import, self.btn_export, self.btn_check,
-                       self.btn_annotate):
+                       self.btn_suggest, self.btn_annotate):
             bar.addWidget(widget)
         bar.addStretch(1)
         layout.addLayout(bar)
@@ -133,6 +138,7 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.btn_import.clicked.connect(self._import)
         self.btn_export.clicked.connect(self._export)
         self.btn_check.clicked.connect(self.check_method)
+        self.btn_suggest.clicked.connect(self.suggest_from_data)
         self.btn_annotate.clicked.connect(self._annotate)
         self.table.itemChanged.connect(self._on_edit)
         self.tol_spin.valueChanged.connect(self._defaults_changed)
@@ -398,6 +404,21 @@ class MethodWorkspace(QtWidgets.QWidget):
             return
         self.session.set_components(components)
         self._report(f"{len(components)} component(s) imported.")
+
+    def suggest_from_data(self) -> None:
+        """Offer what the open files can say about times and windows."""
+        from .suggest_dialog import SuggestDialog
+
+        if not self.session.method.components:
+            QtWidgets.QMessageBox.information(
+                self, "Suggest from data",
+                "Build the component list first — there is nothing to look "
+                "for.")
+            return
+        dialog = SuggestDialog(self.session, self)
+        if dialog.load():
+            dialog.exec()
+        dialog.deleteLater()
 
     def check_method(self) -> None:
         """

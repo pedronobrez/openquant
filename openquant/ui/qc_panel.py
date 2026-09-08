@@ -16,7 +16,7 @@ from PyQt6 import QtCore, QtWidgets
 from . import theme
 from ..qc import (ALWAYS_OUT_PERCENT, MIN_SNR, OUTLIER_SIGMA,
                   OUT_PERCENT, WARN_SIGMA, BatchQC, ControlChart,
-                  batch_qc)
+                  batch_qc, exclude_failed, failed_injections)
 from ..session import Session
 
 POINT = "#234b8c"
@@ -57,6 +57,13 @@ class QualityPanel(QtWidgets.QWidget):
         bar.addWidget(self.component, 1)
         self.btn_refresh = QtWidgets.QPushButton("Recheck")
         bar.addWidget(self.btn_refresh)
+        self.btn_exclude = QtWidgets.QPushButton("Exclude failed injections")
+        self.btn_exclude.setToolTip(
+            "Take the results of the injections where every internal "
+            "standard went at once out of the statistics, marked with the "
+            "reason. Rows integrated by hand are left alone")
+        self.btn_exclude.setEnabled(False)
+        bar.addWidget(self.btn_exclude)
         bar.addStretch(1)
         layout.addLayout(bar)
 
@@ -117,6 +124,7 @@ class QualityPanel(QtWidgets.QWidget):
 
         self.component.currentTextChanged.connect(self._draw_selected)
         self.btn_refresh.clicked.connect(self.reload)
+        self.btn_exclude.clicked.connect(self._exclude_failed)
         self.table.cellClicked.connect(self._on_row_clicked)
         session.sigResultsChanged.connect(self.reload)
         session.sigMethodChanged.connect(self.reload)
@@ -132,6 +140,7 @@ class QualityPanel(QtWidgets.QWidget):
                                 self.session.method)
         self._fill_table()
         self._fill_precision()
+        self.btn_exclude.setEnabled(bool(failed_injections(self._report)))
         self._reload_components()
         self._describe()
 
@@ -144,6 +153,26 @@ class QualityPanel(QtWidgets.QWidget):
         self.component.setCurrentIndex(max(index, 0))
         self.component.blockSignals(False)
         self._draw_selected()
+
+    def _exclude_failed(self) -> None:
+        if self._report is None:
+            return
+        failed = failed_injections(self._report)
+        if not failed:
+            return
+        answer = QtWidgets.QMessageBox.question(
+            self, "Exclude failed injections",
+            f"Take every result of {len(failed)} injection(s) out of the "
+            f"statistics?\n\n" + ", ".join(failed)
+            + "\n\nEach row is marked with the reason and can be put back "
+              "from the results table.")
+        if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        changed = exclude_failed(self.session.results, self.session.entries,
+                                 self._report)
+        self.session.notify_results_changed()
+        self.status.setText(f"{changed:,} result(s) excluded, from "
+                            f"{len(failed)} injection(s).")
 
     def _describe(self) -> None:
         report = self._report

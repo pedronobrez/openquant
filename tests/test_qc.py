@@ -478,3 +478,60 @@ def test_a_batch_with_a_few_bad_injections_is_not_called_unusable():
                         _method()).charts[0]
     assert not chart.unusable
     assert [p.sample for p in chart.out] == ["S05", "S17"]
+
+
+def test_the_results_of_a_failed_injection_can_be_taken_out():
+    """
+    Detecting an injection that failed and then letting its numbers into the
+    means is most of the way to not having detected it.
+    """
+    entries = _batch(12)
+    plan = {}
+    for name, level in (("IS_A", 10000.0), ("IS_B", 800.0), ("IS_C", 40.0)):
+        areas = [level] * 12
+        areas[7] = level * 0.2
+        plan[name] = areas
+    results = _many_standards(entries, plan)
+    report = qc.batch_qc(results, entries, _method(internal=("IS_A", "IS_B", "IS_C")))
+    assert qc.failed_injections(report) == ["S07"]
+
+    changed = qc.exclude_failed(results, entries, report)
+    assert changed == 3
+    excluded = [r for r in results if not r.used]
+    assert {r.sample_name for r in excluded} == {"S07"}
+    assert all("every internal standard low" in " ".join(r.flags)
+               for r in excluded)
+
+
+def test_excluding_twice_changes_nothing_more():
+    entries = _batch(12)
+    plan = {n: [1000.0] * 12 for n in ("IS_A", "IS_B", "IS_C")}
+    for name in plan:
+        plan[name][7] = 200.0
+    results = _many_standards(entries, plan)
+    report = qc.batch_qc(results, entries, _method(internal=tuple(plan)))
+    assert qc.exclude_failed(results, entries, report) == 3
+    assert qc.exclude_failed(results, entries, report) == 0
+
+
+def test_a_row_integrated_by_hand_is_left_alone():
+    """Somebody looked at that one."""
+    entries = _batch(12)
+    plan = {n: [1000.0] * 12 for n in ("IS_A", "IS_B", "IS_C")}
+    for name in plan:
+        plan[name][7] = 200.0
+    results = _many_standards(entries, plan)
+    row = results.get(entries[7].key, "IS_A")
+    row.manual = True
+    report = qc.batch_qc(results, entries, _method(internal=tuple(plan)))
+    qc.exclude_failed(results, entries, report)
+    assert results.get(entries[7].key, "IS_A").used
+
+
+def test_nothing_to_exclude_when_no_injection_failed():
+    entries = _batch(12)
+    plan = {n: [1000.0] * 12 for n in ("IS_A", "IS_B", "IS_C")}
+    results = _many_standards(entries, plan)
+    report = qc.batch_qc(results, entries, _method(internal=tuple(plan)))
+    assert qc.failed_injections(report) == []
+    assert qc.exclude_failed(results, entries, report) == 0

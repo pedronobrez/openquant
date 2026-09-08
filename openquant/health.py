@@ -83,7 +83,7 @@ def _overlap(a: tuple[float, float], b: tuple[float, float]) -> bool:
     return a[0] <= b[1] and b[0] <= a[1]
 
 
-def _shares_transition(a: Component, b: Component) -> bool:
+def shares_transition(a: Component, b: Component) -> bool:
     """
     Whether the mass spectrometer sees these two as the same measurement.
 
@@ -114,7 +114,7 @@ def check_method(method: ProcessingMethod,
     shared: list[str] = []
     for index, a in enumerate(components):
         for b in components[index + 1:]:
-            if not _shares_transition(a, b):
+            if not shares_transition(a, b):
                 continue
             windows = (a.rt_window(), b.rt_window())
             if None in windows or _overlap(*windows):

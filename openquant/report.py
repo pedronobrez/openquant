@@ -57,6 +57,7 @@ SECTIONS = {
     "limits": "Detection and quantitation limits",
     "carryover": "Carryover",
     "quality": "Batch quality",
+    "algorithms": "Integration algorithms",
     "results": "Results",
     "statistics": "Statistics",
 }
@@ -582,6 +583,84 @@ def _quality(title: str, results: ResultsSet, entries: list[SampleEntry],
     return "".join(parts)
 
 
+def _algorithms(title: str, comparison, method: ProcessingMethod,
+                breaks: set[str] | None = None, most: int = 40) -> str:
+    """
+    How much the areas owe to the algorithm that integrated them.
+
+    Printed only when a comparison was run. The totals first, then the
+    components whose number moved most between algorithms, because a reader
+    defending a result wants to know which ones to look at.
+    """
+    from .compare import SENSITIVE_PERCENT
+    from .processing import ALGORITHM_LABELS
+
+    parts = [_heading(title, breaks)]
+    label = {a: ALGORITHM_LABELS.get(a, a) for a in comparison.algorithms}
+    reference = label[comparison.reference]
+    parts.append(
+        f'<p class="meta">The batch was integrated once with each algorithm, '
+        f'every run automatic and calibrated on its own results. The '
+        f'reference is {_escape(reference.lower())}, which is what the '
+        f'method names; the current integration is '
+        f'{_escape(label.get(method.defaults.algorithm, method.defaults.algorithm).lower())}. '
+        f'&#916; is the median over the rows both algorithms found of '
+        f'|area &#8722; reference area| / reference area; a component '
+        f'past {SENSITIVE_PERCENT:g}% is one whose number depends on the '
+        f'decision as much as on the sample. %CV is the scatter over the '
+        f'rows meant to agree &#8212; every spiked injection for an internal '
+        f'standard, the quality controls for an analyte &#8212; and is the '
+        f'figure that can call an algorithm better rather than different: '
+        f'same files, same noise, only the arithmetic changed.</p>')
+
+    rows = []
+    for algorithm in comparison.algorithms:
+        totals = comparison.totals(algorithm)
+        precision = ("—" if totals.median_precision is None else
+                     f"{totals.median_precision:,.1f} (n={totals.precise_components})")
+        fell = f"{totals.fallbacks:,}"
+        if totals.too_sparse:
+            fell += f" ({totals.too_sparse:,} too few points)"
+        rows.append([_escape(label[algorithm]), f"{totals.found:,}",
+                     f"{totals.components_found}", fell,
+                     "—" if algorithm == comparison.reference else f"{totals.sensitive}",
+                     precision])
+    parts.append(_table(
+        ["Algorithm", "Rows found", "Components with a peak", "Fell back",
+         f"Moved > {SENSITIVE_PERCENT:g}%", "Median %CV"],
+        rows, right={1, 2, 3, 4, 5}))
+    parts.append(
+        '<p class="meta">A fit falls back to the valley area, and says so on '
+        'the row, when the peak has fewer than three points above one per '
+        'cent of its apex: two points and a width make a Gaussian, and a '
+        'third at a fraction of a per cent is the peak\u2019s foot rather '
+        'than its flank. That is the sampling\u2019s limit, not the '
+        'algorithm\u2019s, and no algorithm gets past it.</p>')
+
+    others = [a for a in comparison.algorithms if a != comparison.reference]
+    sensitive = sorted(
+        comparison.sensitive,
+        key=lambda c: -max((d.median_percent or 0.0) for d in c.deltas.values()))
+    if not sensitive:
+        parts.append(f'<p class="empty">No component moved by more than '
+                     f'{SENSITIVE_PERCENT:g}% between algorithms.</p>')
+        return "".join(parts)
+    headers = ["Component"] + [f"Δ median % — {label[a]}" for a in others] \
+        + [f"Δ max % — {label[a]}" for a in others]
+    table = []
+    for item in sensitive[:most]:
+        row = [_escape(item.component + (" (IS)" if item.is_internal_standard else ""))]
+        row += [_number(item.deltas[a].median_percent, 1) for a in others]
+        row += [_number(item.deltas[a].max_percent, 1) for a in others]
+        table.append(row)
+    parts.append(f"<p>{len(sensitive)} component(s) moved by more than "
+                 f"{SENSITIVE_PERCENT:g}%"
+                 + (f"; the {most} that moved most:" if len(sensitive) > most else ":")
+                 + "</p>")
+    parts.append(_table(headers, table, right=set(range(1, len(headers)))))
+    return "".join(parts)
+
+
 def _results(title: str, results: ResultsSet, method: ProcessingMethod,
              breaks: set[str] | None = None) -> str:
     """
@@ -738,7 +817,11 @@ def build_html(session, title: str = "Batch report",
     """
     entries = list(session.entries)
     method = session.method
-    order = [key for key in ALL_SECTIONS if key in sections]
+    # a comparison is only there when one was run; a section saying so on
+    # every report would be a page of nothing
+    comparison = getattr(session, "comparison", None)
+    order = [key for key in ALL_SECTIONS if key in sections
+             and (key != "algorithms" or comparison is not None)]
     titles = {key: f"{number}. {SECTIONS[key]}"
               for number, key in enumerate(order, start=1)}
 
@@ -767,6 +850,8 @@ def build_html(session, title: str = "Batch report",
         elif key == "quality":
             parts.append(_quality(name, session.results, entries, method,
                                   breaks))
+        elif key == "algorithms":
+            parts.append(_algorithms(name, comparison, method, breaks))
         elif key == "results":
             parts.append(_results(name, session.results, method, breaks))
         elif key == "statistics":

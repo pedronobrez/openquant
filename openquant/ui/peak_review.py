@@ -13,9 +13,14 @@ import pyqtgraph as pg
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from . import theme
+from ..processing import GaussianModel
 from ..quantify import PeakResult
 
 FOUND_PEN = "#1f77b4"
+#: a fitted curve, drawn over the points it was fitted to
+MODEL_PEN = "#e08a1e"
+#: how far past its boundaries a fitted curve is drawn, in sigmas
+MODEL_REACH = 3.0
 #: the integrated area. Blue, not green: green now marks a predicted fragment
 #: found in a spectrum, and one colour cannot mean two things.
 AREA_FILL = QtGui.QColor(35, 90, 175, 120)
@@ -83,6 +88,12 @@ class PeakPanel(pg.PlotWidget):
             [], [], pen=pg.mkPen(AREA_EDGE, width=1,
                                  style=QtCore.Qt.PenStyle.DashLine))
         self._baseline.setZValue(-7)
+        # the fitted curve, when the area is a model's rather than the
+        # trace's: the shading goes under the model, because that is the
+        # number, and the trace stays on top so the two can be compared
+        self._model = self.plot(
+            [], [], pen=pg.mkPen(MODEL_PEN, width=1.4))
+        self._model.setZValue(-6)
         self._band = pg.LinearRegionItem(brush=pg.mkBrush(0, 0, 0, 0),
                                          pen=pg.mkPen(AREA_EDGE, width=1),
                                          movable=False)
@@ -105,8 +116,12 @@ class PeakPanel(pg.PlotWidget):
         self.set_selected(False)
 
     def _show_area(self, x: np.ndarray, y: np.ndarray,
-                   start: float, end: float) -> None:
-        """Shade what was integrated: the trace over its straight baseline."""
+                   start: float, end: float,
+                   model: GaussianModel | None = None) -> None:
+        """
+        Shade what was integrated: the trace over its straight baseline, or
+        the fitted curve over it when the area came from a fit.
+        """
         inside = (x >= start) & (x <= end)
         if inside.sum() < 2:
             self._clear_area()
@@ -115,9 +130,22 @@ class PeakPanel(pg.PlotWidget):
         # the same baseline the integration used, so the picture and the
         # number cannot disagree
         base = np.linspace(ys[0], ys[-1], xs.size)
-        self._area_top.setData(xs, np.maximum(ys, base))
-        self._area_base.setData(xs, base)
         self._baseline.setData(xs, base)
+        if model is None:
+            self._area_top.setData(xs, np.maximum(ys, base))
+            self._area_base.setData(xs, base)
+            self._model.setData([], [])
+            return
+        reach = MODEL_REACH * model.sigma
+        lo = min(float(xs[0]), model.centre - reach)
+        hi = max(float(xs[-1]), model.centre + reach)
+        dense = np.linspace(lo, hi, 200)
+        slope = (base[-1] - base[0]) / (xs[-1] - xs[0]) if xs[-1] > xs[0] else 0.0
+        floor = base[0] + slope * (dense - xs[0])
+        curve = model.evaluate(dense) + floor
+        self._model.setData(dense, curve)
+        self._area_top.setData(dense, curve)
+        self._area_base.setData(dense, floor)
 
     def fence(self, x: np.ndarray, y: np.ndarray) -> None:
         """
@@ -149,6 +177,7 @@ class PeakPanel(pg.PlotWidget):
         self._area_top.setData([], [])
         self._area_base.setData([], [])
         self._baseline.setData([], [])
+        self._model.setData([], [])
 
     def set_manual_mode(self, enabled: bool) -> None:
         self.viewbox.manual_mode = enabled
@@ -191,7 +220,8 @@ class PeakPanel(pg.PlotWidget):
         if found:
             self._band.setRegion((result.start_rt, result.end_rt))
             self._band.show()
-            self._show_area(x, y, result.start_rt, result.end_rt)
+            self._show_area(x, y, result.start_rt, result.end_rt,
+                            GaussianModel.from_dict(result.model))
         else:
             self._band.hide()
             self._clear_area()
@@ -435,8 +465,12 @@ class PeakReviewGrid(QtWidgets.QWidget):
         self._fill()
 
     def _show_area(self, x: np.ndarray, y: np.ndarray,
-                   start: float, end: float) -> None:
-        """Shade what was integrated: the trace over its straight baseline."""
+                   start: float, end: float,
+                   model: GaussianModel | None = None) -> None:
+        """
+        Shade what was integrated: the trace over its straight baseline, or
+        the fitted curve over it when the area came from a fit.
+        """
         inside = (x >= start) & (x <= end)
         if inside.sum() < 2:
             self._clear_area()
@@ -445,9 +479,22 @@ class PeakReviewGrid(QtWidgets.QWidget):
         # the same baseline the integration used, so the picture and the
         # number cannot disagree
         base = np.linspace(ys[0], ys[-1], xs.size)
-        self._area_top.setData(xs, np.maximum(ys, base))
-        self._area_base.setData(xs, base)
         self._baseline.setData(xs, base)
+        if model is None:
+            self._area_top.setData(xs, np.maximum(ys, base))
+            self._area_base.setData(xs, base)
+            self._model.setData([], [])
+            return
+        reach = MODEL_REACH * model.sigma
+        lo = min(float(xs[0]), model.centre - reach)
+        hi = max(float(xs[-1]), model.centre + reach)
+        dense = np.linspace(lo, hi, 200)
+        slope = (base[-1] - base[0]) / (xs[-1] - xs[0]) if xs[-1] > xs[0] else 0.0
+        floor = base[0] + slope * (dense - xs[0])
+        curve = model.evaluate(dense) + floor
+        self._model.setData(dense, curve)
+        self._area_top.setData(dense, curve)
+        self._area_base.setData(dense, floor)
 
     def fence(self, x: np.ndarray, y: np.ndarray) -> None:
         """
@@ -479,6 +526,7 @@ class PeakReviewGrid(QtWidgets.QWidget):
         self._area_top.setData([], [])
         self._area_base.setData([], [])
         self._baseline.setData([], [])
+        self._model.setData([], [])
 
     def set_manual_mode(self, enabled: bool) -> None:
         """Dragging inside a panel marks the integration range instead of panning."""

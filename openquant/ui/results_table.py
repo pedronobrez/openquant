@@ -57,6 +57,7 @@ COLUMNS: list[Column] = [
     Column("Height", "height", 0, 90),
     Column("Width", "width", 3),
     Column("S/N", "snr", 0),
+    Column("Algorithm", "algorithm", None, 80),
     Column("IS", "internal_standard", None, 110),
     Column("IS area", "is_area", 0, 90),
     Column("Area ratio", "area_ratio", 4, 90),

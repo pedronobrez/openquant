@@ -5,7 +5,7 @@ from __future__ import annotations
 from PyQt6 import QtCore, QtWidgets
 
 from ..components import IntegrationParams
-from ..processing import PEAK_CHOICES, SNR_MODES
+from ..processing import ALGORITHM_LABELS, ALGORITHMS, PEAK_CHOICES, SNR_MODES
 from .collapsible import CollapsibleGroup
 
 
@@ -71,6 +71,19 @@ class IntegrationPanel(CollapsibleGroup):
             "species need, where the taller one is not necessarily yours")
         form.addRow("Peak", self.peak_choice)
 
+        self.algorithm = QtWidgets.QComboBox()
+        for name in ALGORITHMS:
+            self.algorithm.addItem(ALGORITHM_LABELS[name], name)
+        self.algorithm.setToolTip(
+            "How the area is arrived at. Valley walks out from the apex and "
+            "takes the trapezoid above a straight baseline. Summation does no "
+            "peak finding: the retention-time window is the boundary. "
+            "Gaussian fits a curve to the points inside the valley boundaries "
+            "and reports its area, which on a sparsely sampled trace depends "
+            "less on where the scans landed. Compare algorithms… in the "
+            "toolbar measures what the choice does to this batch")
+        form.addRow("Algorithm", self.algorithm)
+
         noise_row = QtWidgets.QHBoxLayout()
         self.noise_label = QtWidgets.QLabel("—")
         self.noise_label.setProperty("role", "caption")
@@ -107,6 +120,7 @@ class IntegrationPanel(CollapsibleGroup):
             widget.valueChanged.connect(self._emit_changed)
         self.snr_mode.currentTextChanged.connect(self._emit_changed)
         self.peak_choice.currentTextChanged.connect(self._emit_changed)
+        self.algorithm.currentIndexChanged.connect(self._emit_changed)
         self.btn_component.clicked.connect(
             lambda: self.sigApplyComponent.emit(self.params()))
         self.btn_group.clicked.connect(
@@ -125,6 +139,7 @@ class IntegrationPanel(CollapsibleGroup):
         self.min_snr.setValue(params.min_snr)
         self.snr_mode.setCurrentText(params.snr_mode)
         self.peak_choice.setCurrentText(params.peak_choice)
+        self.algorithm.setCurrentIndex(max(self.algorithm.findData(params.algorithm), 0))
         region = params.noise_region
         self.noise_label.setText(
             f"{region[0]:.2f}–{region[1]:.2f} min" if region else "automatic")
@@ -144,6 +159,7 @@ class IntegrationPanel(CollapsibleGroup):
             noise_end=region[1] if region else None,
             snr_mode=self.snr_mode.currentText(),
             peak_choice=self.peak_choice.currentText(),
+            algorithm=self.algorithm.currentData(),
         )
 
     @property

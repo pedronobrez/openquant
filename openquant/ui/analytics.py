@@ -96,6 +96,12 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             "Refit every curve from the samples marked as standards and read "
             "the unknowns back off them")
         bar.addWidget(self.btn_calibrate)
+        self.btn_compare = QtWidgets.QPushButton("Compare algorithms…")
+        self.btn_compare.setToolTip(
+            "Integrate the batch with every algorithm and put the answers "
+            "side by side: how far the areas move, and how well each one "
+            "repeats itself on the internal standards and quality controls")
+        bar.addWidget(self.btn_compare)
         self.btn_magnify = QtWidgets.QPushButton("Magnify peak")
         self.btn_magnify.setCheckable(True)
         self.btn_magnify.setToolTip(
@@ -159,6 +165,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.btn_process.clicked.connect(self.process_batch)
         self.btn_magnify.toggled.connect(self._set_magnified)
         self.btn_calibrate.clicked.connect(lambda: self._recalibrate())
+        self.btn_compare.clicked.connect(self.compare_algorithms)
         self.component_filter.textChanged.connect(self._filter_components)
         self.component_tree.currentItemChanged.connect(self._on_component_changed)
         # queued: the recalculation resets the results model, which must not
@@ -657,6 +664,72 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         found = sum(1 for r in results if r.found)
         self._report(f"{len(results)} row(s) across {len(loaded)} sample(s); "
                      f"{found} integrated.")
+
+    # -- algorithms ------------------------------------------------------------- #
+    def compare_algorithms(self) -> None:
+        """Integrate the batch every way and show the differences."""
+        from ..compare import compare_algorithms
+        from .compare_dialog import ComparisonDialog
+
+        method = self.session.method
+        components = [c for c in method.components if c.is_valid]
+        loaded = self.session.loaded_entries
+        if not components:
+            self._report("Build the component list in the Method workspace first.")
+            return
+        if not loaded:
+            self._report("Open at least one sample first.")
+            return
+
+        dialog = QtWidgets.QProgressDialog("Comparing…", "Cancel", 0, 100, self)
+        dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        dialog.setMinimumDuration(300)
+
+        def report(done: int, total: int) -> bool:
+            dialog.setMaximum(total)
+            dialog.setValue(done)
+            QtWidgets.QApplication.processEvents()
+            return not dialog.wasCanceled()
+
+        comparison = compare_algorithms(loaded, method, self.session.cache,
+                                        progress=report)
+        dialog.reset()
+        if comparison is None:
+            self._report("Comparison cancelled.")
+            return
+        self.session.comparison = comparison
+        self._comparison_dialog = ComparisonDialog(self.session, comparison, self)
+        self._comparison_dialog.sigAdopt.connect(self._adopt_algorithm)
+        self._comparison_dialog.show()
+        self._report(comparison.summary())
+
+    def _adopt_algorithm(self, algorithm: str) -> None:
+        """
+        Put the batch on one algorithm and integrate it again.
+
+        The whole batch, not the comparison's own rows: those were run
+        without the operator's manual integrations, which are kept here.
+        """
+        from ..compare import adopt_algorithm
+        from ..processing import ALGORITHM_LABELS
+
+        method = self.session.method
+        touched = adopt_algorithm(method, algorithm)
+        self.session.notify_method_changed()
+        self._show_integration_params()
+        loaded = self.session.loaded_entries
+        if loaded and self.session.results.results:
+            results = process(loaded, method, self.session.cache,
+                              previous=self.session.results, keep_manual=True)
+            self.session.results = results
+            self._recalibrate()
+        else:
+            self.process_batch()
+        label = ALGORITHM_LABELS.get(algorithm, algorithm)
+        message = f"Batch integrated with {label.lower()}."
+        if touched:
+            message += f" {touched} component override(s) moved with it."
+        self._report(message)
 
     def _report(self, text: str) -> None:
         self.status.setText(text)

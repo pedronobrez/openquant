@@ -18,6 +18,8 @@ from .components import Component, IntegrationParams
 from .matching import match_channel
 from .method import ProcessingMethod
 from .processing import (
+    ALGORITHM_GAUSSIAN,
+    ALGORITHM_SUMMATION,
     ChromPeak,
     choose_peak,
     detect_peaks,
@@ -25,7 +27,9 @@ from .processing import (
     gaussian_smooth,
     integrate_window,
     noise_in_region,
+    refine_gaussian,
     subtract_baseline,
+    summation_peak,
 )
 from .samples import CALIBRATION_TYPES, SampleEntry
 
@@ -35,6 +39,9 @@ MARGIN_SCANS = 3
 
 #: below this `detect_peaks` refuses, and the reason is reported as such
 MIN_DETECTION_POINTS = 5
+
+#: what `PeakResult.algorithm` says of a row the operator integrated by hand
+MANUAL = "manual"
 
 #: confidence of a qualifier's ion ratio
 PASS = "Pass"
@@ -65,6 +72,12 @@ class PeakResult:
     note: str = ""
     used: bool = True
     manual: bool = False
+    #: the algorithm that produced the area — the one that actually ran, so
+    #: a fit that fell back to the valley area is labelled valley. Empty on
+    #: rows integrated before this was recorded.
+    algorithm: str = ""
+    #: the fitted curve when the area came from one, as GaussianModel.to_dict
+    model: dict | None = None
     #: internal standard this component is reported against, and its response
     internal_standard: str = ""
     is_area: float | None = None
@@ -271,6 +284,18 @@ def integrate_component(entry: SampleEntry, component: Component,
 
     params = method.integration_for(component)
     noise = measured_noise(x, y, params)
+    if params.algorithm == ALGORITHM_SUMMATION:
+        # no detection at all: the window is the boundary, or there is none
+        if window is None:
+            result.note = "summation needs a retention-time window"
+            return result
+        peak, note = summation_peak(x, y, window[0], window[1], noise,
+                                    params.min_snr)
+        if peak is None:
+            result.note = note
+            return result
+        return apply_peak(result, peak)
+
     peaks = detect_peaks(x[detection_range(x, mask)], y[detection_range(x, mask)],
                          min_relative=params.min_relative_height,
                          min_snr=params.min_snr, noise=noise)
@@ -282,6 +307,9 @@ def integrate_component(entry: SampleEntry, component: Component,
         result.note = _nothing_found(x, mask)
         return result
     peak, note = choose_peak(peaks, component.rt, params.peak_choice)
+    if params.algorithm == ALGORITHM_GAUSSIAN:
+        peak, fit_note = refine_gaussian(x, y, peak, noise)
+        note = "; ".join(part for part in (note, fit_note) if part)
     result = apply_peak(result, peak)
     if note:
         result.note = note
@@ -386,6 +414,8 @@ def apply_peak(result: PeakResult, peak: ChromPeak, manual: bool = False) -> Pea
     result.end_rt = peak.end_rt
     result.note = ""
     result.manual = manual
+    result.algorithm = MANUAL if manual else peak.algorithm
+    result.model = peak.model.to_dict() if peak.model is not None else None
     return result
 
 

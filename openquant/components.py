@@ -15,8 +15,8 @@ import os
 from dataclasses import asdict, dataclass, fields
 
 from .chemistry import ADDUCTS_BY_NAME, FormulaError, monoisotopic_mass, parse_formula
-from .processing import (PEAK_CHOICES, PEAK_LARGEST, SNR_MODES,
-                         SNR_PEAK_TO_PEAK)
+from .processing import (ALGORITHM_VALLEY, ALGORITHMS, PEAK_CHOICES,
+                         PEAK_LARGEST, SNR_MODES, SNR_PEAK_TO_PEAK)
 
 #: how a component's result is reported
 RESPONSE_AREA = "area"
@@ -73,12 +73,17 @@ class IntegrationParams:
     snr_mode: str = SNR_PEAK_TO_PEAK
     #: which peak in the window is the component when there is more than one
     peak_choice: str = PEAK_LARGEST
+    #: how the area is arrived at — see processing.ALGORITHMS. A method saved
+    #: before this existed reads back as `valley`, which is what it ran.
+    algorithm: str = ALGORITHM_VALLEY
 
     def __post_init__(self):
         if self.snr_mode not in SNR_MODES:
             self.snr_mode = SNR_PEAK_TO_PEAK
         if self.peak_choice not in PEAK_CHOICES:
             self.peak_choice = PEAK_LARGEST
+        if self.algorithm not in ALGORITHMS:
+            self.algorithm = ALGORITHM_VALLEY
 
     @property
     def noise_region(self) -> tuple[float, float] | None:

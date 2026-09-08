@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.6.7 released. 664 tests. Public repository.**
+**Version 0.6.7 released. 698 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -54,8 +54,10 @@ openquant/
   mzml.py         mzML reader and writer
   bootstrap.py    brings up .NET and the SCIEX assemblies off Windows
   processing.py   smoothing, baselines, peak detection, centroiding,
-                  restore_profile_zeros
+                  restore_profile_zeros, and the three integration
+                  algorithms: valley, summation, Gaussian fit
   quantify.py     extraction and integration of a component in a sample
+  compare.py      the batch integrated every way, and the differences
   calibration.py  regressions and weightings
   statistics.py   grouped means, SD, %CV
   qc.py           control charts through the run, drift, replicate precision
@@ -189,6 +191,31 @@ UV detector, is not implemented there) — untested on real Windows.
   because nothing offered was above ten thousand, **nothing was pre-ticked**.
   That is the intended outcome: the estimator did not prove itself at the
   heights that need it, and saying so is the point of calibrating at all.
+- **A Gaussian fit through three points is exact, and that is a warning,
+  not a result.** The fit was written because a trapezoid over a peak two
+  or three points wide moves with where the scans landed: measured at 14.6 s
+  sampling, 5% with the phase for a peak 14 s wide at half height, and the
+  fit 0.00% wherever it could be made. Then it was run on the real batch
+  and the one internal standard with a response — 52,000 counts — came back
+  a third smaller than the trapezoid with r² = 1.000. The peak was one
+  point; the neighbours were 44 and 98, the same size as the baseline blips
+  further along the trace, and a curve through three points with three
+  parameters passes through them whatever they are. So `fit_gaussian` needs
+  three points at or above `MIN_SHAPE_FRACTION` of the apex — flanks, not
+  feet — and `GaussianModel.exact` says when there were only three, so the
+  dialog writes "exact through 3 points" where it would otherwise write an
+  r² that means nothing. With that, on the batch: 400 of 2,638 rows fitted,
+  2,238 fell back with the reason on the row, 2,169 of them because the
+  peak was fewer than three points wide; where the fit was made its area
+  was a median 0.977 of the trapezoid and no component moved by more than
+  20%. The choice of algorithm does not move this batch's numbers; the
+  sampling does, and the comparison is what says so with figures rather
+  than with an opinion. `compare.py` runs every algorithm on the batch,
+  each run calibrated on its own results, and reports per component the
+  median |Δ| against the reference and the %CV over the rows meant to
+  agree — the only figure that can call an algorithm better rather than
+  different, since the files and the noise are the same and only the
+  arithmetic changed.
 - **`estimate_noise` returns None when it cannot measure**, and that is the
   ordinary case, not the exception. Over 846 real traces the median had three
   non-zero points in sixty-one and only 9% had a baseline that varied at all;
@@ -300,13 +327,13 @@ Checked against the code, not the README. Everything in the README's feature
 tables exists. These do not:
 
 Since done: LOD/LOQ (`validation.detection_limits`), carryover
-(`validation.carryover`), the report (`report.py`, `File ▸ Export report…`)
-and batch QC (`qc.py`, the `Batch QC` tab, and a report section).
+(`validation.carryover`), the report (`report.py`, `File ▸ Export report…`),
+batch QC (`qc.py`, the `Batch QC` tab, and a report section), the contour
+view (`contour.py`), and integration algorithms with a comparison mode
+(`processing.ALGORITHMS`, `compare.py`, `Compare algorithms…`).
 
 | Missing | Which tool | Worth it? |
 |---|---|---|
-| **Alternative integration algorithms** | MultiQuant | One algorithm with seven parameters against MQ4 / AutoPeak / Summation. Not obviously a gap in results, but it is a difference |
-| **Contour view (RT × m/z)** | PeakView | Nice to have; a real piece of work |
 | **Spectral library search** | PeakView | Structure-based annotation covers lipids better; a library would cover everything else |
 | **Mass recalibration** | PeakView | Only matters if the instrument drifts |
 | **Audit trail, e-signatures** | MultiQuant | Only for a regulated laboratory |
@@ -371,7 +398,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-664 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+698 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

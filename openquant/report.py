@@ -900,6 +900,9 @@ def _orphan_headings(document, page_height: float) -> set[str]:
     page — which is precisely the test, and says nothing about how much space
     was left underneath.
     """
+    from PyQt6 import QtGui
+
+    before = QtGui.QTextFormat.PageBreakFlag.PageBreak_AlwaysBefore
     layout = document.documentLayout()
     stranded: set[str] = set()
     block = document.begin()
@@ -909,7 +912,13 @@ def _orphan_headings(document, page_height: float) -> set[str]:
         if level in (2, 3) and following.isValid() and block.text().strip():
             here = int(layout.blockBoundingRect(block).top() // page_height)
             there = int(layout.blockBoundingRect(following).top() // page_height)
-            if there > here:
+            # a block already pushed to a fresh page by its own break
+            # reports a bounding rect that starts where it would have been
+            # without one, so the page test alone misses a heading whose
+            # very next block is such a heading
+            pushed = bool(following.blockFormat().pageBreakPolicy() & before) \
+                and not bool(block.blockFormat().pageBreakPolicy() & before)
+            if there > here or pushed:
                 stranded.add(block.text().strip())
         block = block.next()
     return stranded
@@ -961,26 +970,31 @@ def _furniture(painter, writer, page: int, total: int, title: str,
     painter.restore()
 
 
-def write_pdf(session, path: str | os.PathLike, **kwargs) -> str:
+def print_document(build, path: str | os.PathLike, title: str,
+                   reflows: int = MAX_REFLOWS) -> str:
     """
-    The same document, on A4 portrait pages, with page numbers.
+    Lay an HTML document out on A4 portrait pages and write it as a PDF.
 
-    Two things here are not obvious and both were bugs. The layout is given
-    the writer as its paint device: without one it measures type at the
-    screen's ninety-six dots to the inch while the page is sized in the
-    writer's twelve hundred, so every point size comes out at a twelfth of
-    itself and the whole report collapses into a corner of page one. And it
-    is laid out twice, because the table of contents cannot know a page
-    number until the pages exist; the first pass reserves the column so that
-    the second paginates identically.
+    `build(contents, breaks)` returns the HTML: `contents` is `None` for no
+    page column in the table of contents, `{}` to reserve one, and the
+    mapping of heading to page on the final pass; `breaks` names the
+    headings to start on a fresh page. The report and the manual are both
+    printed through here, so the two things below that were bugs are fixed
+    in one place. `reflows` is how many times a stranded heading may be
+    chased: three is enough for a report, and a forty-page manual with a
+    heading every few paragraphs needs more.
 
-    Qt is imported here rather than at the top so that building the HTML —
-    which is what the tests exercise — needs no GUI toolkit at all.
+    The layout is given the writer as its paint device: without one it
+    measures type at the screen's ninety-six dots to the inch while the page
+    is sized in the writer's twelve hundred, so every point size comes out
+    at a twelfth of itself and the whole document collapses into a corner
+    of page one. And it is laid out more than once, because a heading
+    stranded at the foot of a page has to be pushed over, and the table of
+    contents cannot know a page number until the pages exist.
     """
     from PyQt6 import QtCore, QtGui
 
     path = str(path)
-    title = kwargs.get("title", "Batch report")
     writer = QtGui.QPdfWriter(path)
     writer.setPageSize(QtGui.QPageSize(QtGui.QPageSize.PageSizeId.A4))
     writer.setPageOrientation(QtGui.QPageLayout.Orientation.Portrait)
@@ -999,14 +1013,13 @@ def write_pdf(session, path: str | os.PathLike, **kwargs) -> str:
     def lay_out(contents, breaks=None):
         document = QtGui.QTextDocument()
         document.documentLayout().setPaintDevice(writer)
-        document.setHtml(build_html(session, contents=contents, breaks=breaks,
-                                    **kwargs))
+        document.setHtml(build(contents, breaks))
         document.setPageSize(body)
         return document
 
     breaks: set[str] = set()
     document = lay_out({})
-    for _ in range(MAX_REFLOWS):                  # a break can strand another
+    for _ in range(reflows):                      # a break can strand another
         stranded = _orphan_headings(document, body.height()) - breaks
         if not stranded:
             break
@@ -1030,3 +1043,18 @@ def write_pdf(session, path: str | os.PathLike, **kwargs) -> str:
     finally:
         painter.end()
     return path
+
+
+def write_pdf(session, path: str | os.PathLike, **kwargs) -> str:
+    """
+    The report on A4 portrait pages, with page numbers — see `print_document`
+    for what the printing has to get right.
+
+    Qt is imported there rather than here so that building the HTML — which
+    is what most of the tests exercise — needs no GUI toolkit at all.
+    """
+    title = kwargs.get("title", "Batch report")
+    return print_document(
+        lambda contents, breaks: build_html(session, contents=contents,
+                                            breaks=breaks, **kwargs),
+        path, title)

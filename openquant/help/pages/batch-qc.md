@@ -1,0 +1,91 @@
+---
+title: Batch QC
+---
+Per-sample review cannot see a response that falls away across ninety
+injections: every point is inside its limits and the batch is still not the
+batch it started as. The **Batch QC** tab of the [[analytics-workspace]]
+looks at the run as a run — the internal standards against the order the
+instrument injected, the injections taken together, and the precision of
+the quality controls.
+
+## Injection order
+
+The order comes from the acquisition times the files carry; where some
+carry none, the tab says so and falls back to the order the files were
+opened, which is usually the same order. A batch of fewer than six
+injections cannot say what normal looks like, and the tab says that too.
+
+## Control charts
+
+One chart per internal standard: its area in every spiked injection —
+Unknowns, Standards, Quality Controls and Blanks; not double blanks or
+solvent injections, which never saw the standard and would put two zeros in
+the middle of the run — against injection order, on the pattern of a
+Levey–Jennings chart.
+
+**The centre is the median and the spread the median absolute deviation**,
+scaled to a standard deviation, so that one bad injection cannot widen the
+limits meant to catch it. Then:
+
+| Verdict | Condition |
+|---|---|
+| warned | beyond 2σ **and** at least 10% from the centre |
+| out | beyond 3σ **and** at least 20% from the centre — or at least 50% from it however small the spread |
+| drifted | the change fitted across the whole run is at least 20% of the centre **and** goes one way: Spearman's ρ beyond 0.5 |
+| unusable | a third or more of the chart is out |
+
+The two conditions on every verdict were learned on real batches. A batch
+that repeats itself well has a spread so small that three of them is a
+difference nobody would act on: measured on one run, a median absolute
+deviation of 0.8% turned a standard 2.4% low — an ordinary injection — into
+a four-sigma outlier, and would have on almost every batch. The 50% rule is
+the mirror: a batch whose own scatter is wide swallows a real failure, and
+an injection where every standard came back at a fifth of normal sat at
+2.6σ. And when seventeen of twenty-six injections are out, listing
+seventeen outliers misses what they say together, which is that nothing can
+be normalised against this standard — so the chart is reported as unusable
+rather than the injections.
+
+A standard whose median signal-to-noise is below 10 is charted but not
+flagged: below the limit of quantitation a small absolute change is a large
+relative one, and every flag against it would be arithmetic on noise. On
+the batch this was written for, eight of eleven standards had a median
+response between 4 and 52 counts and produced almost every flag in the run.
+Whether that gate does what it says depends on the noise being measurable
+— see [[signal-to-noise]].
+
+## The injection response index
+
+One standard's chart cannot tell an injection that failed from a compound
+that misbehaved: both are a point far from the centre. The index divides
+each internal standard by its own median and takes the median of those per
+injection, so all-standards-down-together is separable from
+one-standard-down-alone. It needs at least three standards to be a median
+at all, and is charted under its own name with the same rules.
+
+On the batch it was written for, the standards taken separately scattered
+between 32% and 228% and looked hopeless; taken together the injections sat
+within ±18% with three exceptions, one of them at 0.08 where every standard
+had gone at once.
+
+## Controls
+
+| Control | Effect |
+|---|---|
+| **Component** | which chart is drawn; the table below lists every chart with its centre, spread, drift and verdict, and clicking a row draws it |
+| **Recheck** | recompute from the current results |
+| **Exclude failed injections** | untick every row of every injection the index calls out, marking each with the reason; enabled only when there are any, confirmed first, and rows integrated by hand are left alone — somebody looked at those |
+| clicking a point | selects that sample in the [[peak-review]] grid |
+
+## Precision
+
+The second tab: for each component, the %CV of its response over the
+quality controls — quality controls only, since unknowns differ by design
+and standards by construction — against a limit of 15%, from at least three
+replicates. A component with fewer says so.
+
+## In the report
+
+The [[report]]'s *Batch quality* section carries the charts' verdicts, the
+index, the drift, and the precision table, with the rules stated in the
+section's own words.

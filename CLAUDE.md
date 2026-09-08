@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.6.8 released. 698 tests. Public repository.**
+**Version 0.6.8 released. 712 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -38,6 +38,12 @@ These were learned the expensive way. Breaking one has cost a day before.
   the stored points instead moved every integrated area by 2%.
 - **Raw data is never committed.** `.wiff`, `.wiff.scan`, `.mzML`, `.csv` are
   ignored. Verified: no raw file has ever been in the history.
+- **The manual ships with every version.** `openquant/help/pages` is the
+  reference the user feeds to NotebookLM; a release that changes what the
+  application does changes the page that describes it, adds itself to
+  `version-history.md`, and regenerates the PDF for the user (never
+  committed). `tests/test_manual.py` fails on an unresolved `[[link]]`, a
+  page under six hundred characters, or a file the index does not list.
 - **`x or default` is a trap for a measured zero.** A scan with a total ion
   current of zero was read as missing metadata and dropped a whole channel
   onto a fallback, on three of five real files.
@@ -73,9 +79,13 @@ openquant/
   explain.py      scores candidate structures against a measured spectrum
   precursor.py    confirms a precursor in the survey and product scans
   session.py      the open batch; project save and load (.oqproj)
+  manual.py       the built-in manual: help/pages/*.md with [[wiki links]],
+                  the search index, and the PDF (through report.print_document)
+  help/pages/     the manual's pages, one Markdown file per page
   app.py          CLI: --selftest, --digest
   ui/             shell.py owns the window; explorer / analytics /
-                  method_workspace / samples_workspace are the four tabs
+                  method_workspace / samples_workspace are the four tabs;
+                  help_window.py is Help ▸ Manual
 packaging/        PyInstaller spec, DMG script, WiX source, wine/ shim
 ```
 
@@ -398,7 +408,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-698 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+712 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

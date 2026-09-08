@@ -28,3 +28,6 @@ version = { attr = "openquant.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["openquant*"]
+
+[tool.setuptools.package-data]
+openquant = ["help/pages/*.md"]

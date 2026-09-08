@@ -137,6 +137,28 @@ class MainShell(QtWidgets.QMainWindow):
         size = os.path.getsize(path) / 1024
         self.statusBar().showMessage(f"Report written to {path} ({size:,.0f} KB)")
 
+    # -- help ---------------------------------------------------------------- #
+    def show_manual(self, page: str | None = None) -> None:
+        """The manual, in its own window; one window, brought back if open."""
+        from .help_window import HelpWindow
+
+        window = getattr(self, "_help_window", None)
+        if window is None:
+            window = HelpWindow(self)
+            self._help_window = window
+        if page:
+            window.show_page(page)
+        window.show()
+        window.raise_()
+        window.activateWindow()
+
+    def export_manual(self) -> None:
+        from .help_window import HelpWindow
+
+        window = getattr(self, "_help_window", None) or HelpWindow(self)
+        self._help_window = window
+        window.export_pdf()
+
     # -- theme --------------------------------------------------------------- #
     def retheme(self) -> None:
         """
@@ -197,7 +219,12 @@ class MainShell(QtWidgets.QMainWindow):
                 lambda _checked, i=index: self.tabs.setCurrentIndex(i))
 
         help_menu = self.menuBar().addMenu("&Help")
-        help_menu.addAction("How to use…").triggered.connect(self.explorer._show_help)
+        act_manual = help_menu.addAction("Manual")
+        act_manual.setShortcut(QtGui.QKeySequence.StandardKey.HelpContents)
+        act_manual.triggered.connect(self.show_manual)
+        help_menu.addAction("Quick tips…").triggered.connect(self.explorer._show_help)
+        help_menu.addAction("Export manual as PDF…").triggered.connect(
+            self.export_manual)
 
         self.act_new_project.triggered.connect(self.new_project)
         self.act_open.triggered.connect(self.open_files)

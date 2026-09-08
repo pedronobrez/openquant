@@ -291,6 +291,16 @@ meaningless scores.
 Mouse conventions in both panes: drag = rubber-band zoom, double-click = fit,
 right-click = pyqtgraph menu (export image, axis options and so on).
 
+## Manual
+
+**Help ▸ Manual** (F1) opens the full manual inside the application: forty-odd
+pages covering every workspace, every control and every number, linked to one
+another the way a note vault is — each page ends with the pages that link to
+it — with a search box that matches by prefix. **Help ▸ Export manual as
+PDF…** prints the whole set as one A4 document. The pages are Markdown under
+`openquant/help/pages`, and a test fails the build on a link to a page that
+does not exist.
+
 ## Installation
 
 ```bash

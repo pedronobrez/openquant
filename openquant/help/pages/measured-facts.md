@@ -63,6 +63,15 @@ method of 141 components and 11 internal standards, sampled every 14.6 s.
   The internal standards' %CV was the same under all three. The algorithm
   does not move that batch's numbers; the sampling does.
 
+## Sampling
+
+- On the 26-injection batch, one scan every 14.6 s against peaks with **a
+  median of one point** on them; 129 of 139 components typically under the
+  three a fit needs, and 1 with five or more. Widths could be measured only
+  on the wider peaks (two points above half height), and those read a
+  median 14.6 s — one cycle — so every cycle time the sampling report
+  recommends for that batch is an upper bound.
+
 ## Noise
 
 - Over 846 real traces, the median had three non-zero points in sixty-one

@@ -262,13 +262,27 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.lipid_panel = LipidPanel()
         self.sample_info = SampleInfoPanel()
 
+        from .help_window import describe
+        xic_tab, peaks_tab = self._build_xic_tab(), self._build_peaks_tab()
         self.tabs.addTab(self.component_list, "Components")
         self.tabs.addTab(self.results_panel, "Results")
-        self.tabs.addTab(self._build_xic_tab(), "Manual XIC")
-        self.tabs.addTab(self._build_peaks_tab(), "Spectrum peaks")
+        self.tabs.addTab(xic_tab, "Manual XIC")
+        self.tabs.addTab(peaks_tab, "Spectrum peaks")
         self.tabs.addTab(self.mass_calc, "Mass calc")
         self.tabs.addTab(self.formula_panel, "Formula finder")
         self.tabs.addTab(self.lipid_panel, "LIPID MAPS")
+        for widget, page in ((self.component_list, "explorer-components-and-results"),
+                             (self.results_panel, "explorer-components-and-results"),
+                             (xic_tab, "manual-xic"),
+                             (peaks_tab, "chromatograms-and-spectra"),
+                             (self.mass_calc, "mass-calculator"),
+                             (self.formula_panel, "formula-finder"),
+                             (self.lipid_panel, "lipid-maps"),
+                             (self.sample_info, "sample-information"),
+                             (self.contour_view, "contour-view"),
+                             (self.chrom, "chromatograms-and-spectra"),
+                             (self.spectrum, "chromatograms-and-spectra")):
+            describe(widget, page)
         # eight tabs in a narrow dock elide into unreadable stubs; scroll
         # buttons keep the full names and let the reader page through them
         self.tabs.setUsesScrollButtons(True)

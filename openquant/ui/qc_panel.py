@@ -41,6 +41,7 @@ class QualityPanel(QtWidgets.QWidget):
         super().__init__(parent)
         self.session = session
         self._report: BatchQC | None = None
+        self._sampling = None
         self._chart: ControlChart | None = None
         self._keys: list[str] = []
 
@@ -109,10 +110,26 @@ class QualityPanel(QtWidgets.QWidget):
             "Quality controls only: unknowns differ by design and standards "
             "by construction, so neither says anything about precision")
 
+        self.sampling = QtWidgets.QTableWidget(0, 9)
+        self.sampling.setHorizontalHeaderLabels(
+            ["Component", "n", "Cycle (s)", "Width (s)", "Points", "Under 3",
+             "Cycle for a fit (s)", "Cycle for 10 (s)", "Narrower than a cycle"])
+        self.sampling.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.sampling.verticalHeader().setDefaultSectionSize(20)
+        self.sampling.horizontalHeader().setStretchLastSection(True)
+        self.sampling.setToolTip(
+            "How many points the acquisition put on each peak: those at or "
+            "above one per cent of its height. A Gaussian fit needs three; "
+            "textbooks ask for about ten across the base. The last two "
+            "columns are the cycle times that would give each for peaks of "
+            "that width — a property of the schedule, not of the processing")
+
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setDocumentMode(True)
         self.tabs.addTab(self.table, "Control charts")
         self.tabs.addTab(self.precision, "Precision")
+        self.tabs.addTab(self.sampling, "Sampling")
         body.addWidget(self.tabs)
         body.setSizes([520, 260])
         layout.addWidget(body, 1)
@@ -133,13 +150,16 @@ class QualityPanel(QtWidgets.QWidget):
     def reload(self, *_args) -> None:
         if not len(self.session.results):
             self._report = None
+            self._sampling = None
             self._clear()
+            self.sampling.setRowCount(0)
             self.status.setText("Process the batch to see how it held up.")
             return
         self._report = batch_qc(self.session.results, self.session.entries,
                                 self.session.method)
         self._fill_table()
         self._fill_precision()
+        self._fill_sampling()
         self.btn_exclude.setEnabled(bool(failed_injections(self._report)))
         self._reload_components()
         self._describe()
@@ -178,8 +198,13 @@ class QualityPanel(QtWidgets.QWidget):
         report = self._report
         if report is None:
             return
+        sparse = self._sampling.sparse if self._sampling else []
         if report.note:
-            self.status.setText(report.note)
+            said = [report.note]
+            if sparse:
+                said.append(f"{len(sparse)} component(s) with fewer than three "
+                            f"points on the peak — see Sampling")
+            self.status.setText(" · ".join(said))
             return
         said = [f"{report.injections} injection(s)"]
         said.append("in acquisition order" if report.ordered else
@@ -200,8 +225,14 @@ class QualityPanel(QtWidgets.QWidget):
         if report.imprecise:
             said.append(f"{len(report.imprecise)} component(s) over the %CV limit")
         quiet = [c for c in report.charts if not c.quantifiable]
-        if quiet:
-            said.append(f"{len(quiet)} below S/N {MIN_SNR:g}")
+        floored = [c for c in quiet if c.floor is not None]
+        if floored:
+            said.append(f"{len(floored)} below the floor the method declares")
+        if len(quiet) > len(floored):
+            said.append(f"{len(quiet) - len(floored)} below S/N {MIN_SNR:g}")
+        if sparse:
+            said.append(f"{len(sparse)} component(s) with fewer than three "
+                        f"points on the peak — see Sampling")
         if (not report.drifted and not stray and not report.imprecise
                 and not quiet and not report.unusable):
             said.append("nothing outside its limits")
@@ -239,6 +270,36 @@ class QualityPanel(QtWidgets.QWidget):
                     item.setForeground(pg.mkColor(theme.danger()))
                 self.table.setItem(row, column, item)
         self.table.setColumnWidth(0, 160)
+
+    def _fill_sampling(self) -> None:
+        from ..sampling import sampling_report
+
+        self._sampling = sampling_report(self.session.results, self.session.entries,
+                                         self.session.method)
+        rows = sorted(self._sampling.measured, key=lambda r: (r.points, -r.found))
+        self.sampling.setRowCount(len(rows))
+
+        def number(value, decimals=1):
+            return "—" if value is None else f"{value:,.{decimals}f}"
+
+        for index, row in enumerate(rows):
+            cells = [row.component + (" (IS)" if row.is_internal_standard else ""),
+                     f"{row.found:,}", number(row.cycle), number(row.width),
+                     number(row.points, 0),
+                     f"{row.sparse} ({row.sparse_share:.0%})" if row.found else "—",
+                     number(row.cycle_for_fit), number(row.cycle_for_base),
+                     f"{row.unmeasured}"]
+            for column, text in enumerate(cells):
+                item = QtWidgets.QTableWidgetItem(text)
+                if column:
+                    item.setTextAlignment(
+                        QtCore.Qt.AlignmentFlag.AlignRight
+                        | QtCore.Qt.AlignmentFlag.AlignVCenter)
+                if column in (0, 4) and row.too_sparse:
+                    item.setForeground(pg.mkColor(theme.danger()))
+                self.sampling.setItem(index, column, item)
+        self.sampling.setColumnWidth(0, 200)
+        self.sampling.setToolTip(self._sampling.summary())
 
     def _fill_precision(self) -> None:
         rows = [row for row in (self._report.precision if self._report else [])

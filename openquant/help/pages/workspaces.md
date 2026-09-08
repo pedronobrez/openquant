@@ -27,7 +27,7 @@ is collected in [[keyboard-shortcuts]].
 | Panels | one entry per side panel of the Explorer, Ctrl+Shift+1 onwards |
 | Process | Centroid, markers, background, Explain spectrum, Detect peaks |
 | Workspace | the four tabs |
-| Help | this manual (F1), the quick tips, and the manual as a PDF |
+| Help | this manual (F1, on the page for where the focus is), the quick tips, and the manual as a PDF |
 
 ## Theme
 

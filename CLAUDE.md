@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.6.9 released. 712 tests. Public repository.**
+**Version 0.6.9 released. 731 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -67,6 +67,8 @@ openquant/
   calibration.py  regressions and weightings
   statistics.py   grouped means, SD, %CV
   qc.py           control charts through the run, drift, replicate precision
+  sampling.py     points per peak, per component, and the cycle time the
+                  peaks would need
   contour.py      the run as a retention time by m/z grid
   health.py       what the method will fail at, before it is run
   suggest.py      retention times and windows the batch can supply
@@ -226,6 +228,34 @@ UV detector, is not implemented there) — untested on real Windows.
   agree — the only figure that can call an algorithm better rather than
   different, since the files and the noise are the same and only the
   arithmetic changed.
+- **The batch is one point per peak, and now says so.** `sampling.py`
+  reads the point count every integrated peak carries (`ChromPeak.points`,
+  `PeakResult.points`: points inside the boundaries at or above
+  `MIN_SHAPE_FRACTION` of the height) and the cycle from the channel's own
+  time axis. On the 26-injection batch: one scan every 14.6 s, a median of
+  **one** point on the peak, 129 of 139 components typically under the three
+  a fit needs, and 2,206 of 2,638 peaks (84%) with one point above half
+  height — so their width cannot be measured, only bounded, and every cycle
+  time the report recommends for that batch is an upper bound. The Batch QC
+  tab *Sampling* and the report section of the same name carry it. Two
+  things in the count that look wrong and are not: the valley walk's
+  boundary is the first point at or below five per cent of the apex and
+  becomes the baseline's end, so it never counts; and summation's
+  boundaries are the window's ends, so a four-scan window leaves two.
+- **A response floor is declared, not derived.** `Component.min_response`
+  (CSV `min_response`, aliases in `_ALIASES`) is what an internal standard
+  has to give before a ratio to it means anything. `ControlChart.floor`
+  decides `quantifiable` outright when set and the S/N 10 rule stands only
+  without one; `evaluate_acceptance` fails a row whose standard gave less
+  than its floor in that injection; `health.check_method` warns of a serving
+  standard with none. The batch cannot supply the number — measured, its
+  precision did not track its response — which is why it is a method field.
+- **F1 walks the widget tree.** `ui.help_window.describe(widget, page)` sets
+  a dynamic property; `help_page_for` walks up from the focused widget to
+  the first one that has it; the shell installs an application-wide event
+  filter so F1 pressed in a dialog — a separate window, out of reach of the
+  menu's shortcut — resolves the same way. `tests/test_help_context.py`
+  fails if a widget names a page the manual does not have.
 - **`estimate_noise` returns None when it cannot measure**, and that is the
   ordinary case, not the exception. Over 846 real traces the median had three
   non-zero points in sixty-one and only 9% had a baseline that varied at all;
@@ -408,7 +438,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-712 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+731 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

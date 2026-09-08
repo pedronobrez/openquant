@@ -193,7 +193,12 @@ class AnnotateDialog(QtWidgets.QDialog):
 
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok
-            | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+            | QtWidgets.QDialogButtonBox.StandardButton.Help)
+        from .help_window import describe, open_manual
+        describe(self, "annotate-from-lipid-maps")
+        buttons.helpRequested.connect(
+            lambda: open_manual(self, "annotate-from-lipid-maps"))
         buttons.button(QtWidgets.QDialogButtonBox.StandardButton.Ok).setText(
             "Apply the checked rows")
         buttons.accepted.connect(self.accept)

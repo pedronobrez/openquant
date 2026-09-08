@@ -17,6 +17,7 @@ is empty when it is.
 | Area, Height, Width | the peak; width is the full width at half height, in minutes |
 | S/N | height over the noise, or `—` when the noise could not be measured — see [[signal-to-noise]] |
 | Algorithm | which [[integration-algorithms|algorithm]] produced the area — *valley*, *summation*, *gaussian*, or *manual*; empty on rows from before this was recorded |
+| Points | how many points inside the boundaries sit at or above one per cent of the peak's height — the peak rather than its feet; what the *Sampling* tab of [[batch-qc]] summarises |
 | IS, IS area | the internal standard and its area in this sample; a standard that does not resolve is shown with the problem |
 | Area ratio, Height ratio | the component over its standard |
 | Response | what the method's Response column asks for: area, ratio or concentration |

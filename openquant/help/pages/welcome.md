@@ -27,6 +27,15 @@ application's **Help ▸ Manual** window and in the printed copy that
 | Analytics | quantitation: [[peak-review]], [[integration-parameters]], [[integration-algorithms]], [[calibration]], [[batch-qc]], the [[report]] |
 | Reference | [[projects-and-files]], the [[command-line]], [[keyboard-shortcuts]], [[troubleshooting]], the [[glossary]] and the [[version-history]] |
 
+## Getting to it
+
+**F1** (⌘? on macOS) opens the manual on the page for where you are: the
+panel that has the focus — the Integration panel, the results table, the
+Batch QC tab, a side tab of the Explorer — or, failing that, the workspace
+shown. Dialogs carry a **Help** button that does the same for their own
+page. **Help ▸ Manual** opens it on the same rule, and **Contents** in the
+manual's toolbar goes back to this page.
+
 ## Reading it
 
 Pages link to one another the way notes in a vault do. A link is drawn in

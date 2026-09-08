@@ -45,7 +45,11 @@ class NewProjectWizard(QtWidgets.QWizard):
         self.setWindowTitle("New project")
         self.setWizardStyle(QtWidgets.QWizard.WizardStyle.ModernStyle)
         self.setOption(QtWidgets.QWizard.WizardOption.NoBackButtonOnStartPage)
+        self.setOption(QtWidgets.QWizard.WizardOption.HaveHelpButton)
         self.resize(820, 560)
+        from .help_window import describe, open_manual
+        describe(self, "starting-a-project")
+        self.helpRequested.connect(lambda: open_manual(self, "starting-a-project"))
 
         self.setPage(PROJECT, ProjectPage(start_dir))
         self.setPage(SAMPLES, SamplesPage(session, start_dir))

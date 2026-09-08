@@ -60,9 +60,11 @@ ratio.
 The same applies to the acceptance criteria's minimum S/N and to the QC
 charts' quantifiable threshold: both are gated on absolute height with an
 arbitrary constant when the baseline is zero. What that question actually
-needs is a per-method floor on the internal standard's absolute response,
-and a batch of the kind this was developed on does not supply one — its
-precision does not track its response. See [[batch-qc]].
+needs is a floor on the internal standard's absolute response, and a batch
+of the kind this was developed on does not supply one — its precision does
+not track its response. So the method declares it: **Min. response** on
+the standard, read by the charts, the acceptance and the method check. See
+[[internal-standards-and-qualifiers]] and [[batch-qc]].
 
 ## Acceptance
 

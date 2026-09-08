@@ -225,6 +225,9 @@ class ControlChart:
     #: the median signal-to-noise of the injections on the chart, where it is
     #: known. None means it was not measured, which does not suppress anything.
     snr: float | None = None
+    #: the response floor the method declares for this standard, when it
+    #: does; the median has to clear it for the chart to flag anything
+    floor: float | None = None
     note: str = ""
 
     @property
@@ -237,8 +240,23 @@ class ControlChart:
         Whether the response is large enough for a deviation from it to mean
         anything. Below the limit of quantitation it is not, and the chart
         still draws — the points are worth seeing — but it flags nothing.
+
+        A floor declared in the method decides this outright: it comes from
+        somebody who knows what the standard gives when the run is right,
+        which is what the signal-to-noise rule is standing in for. Without
+        one, S/N — and on a scheduled acquisition, where the noise cannot be
+        measured, that is an absolute height against an arbitrary constant.
         """
+        if self.floor is not None:
+            return self.centre is not None and self.centre >= self.floor
         return self.snr is None or self.snr >= MIN_SNR
+
+    @property
+    def below_floor(self) -> list["Injection"]:
+        """The injections where the standard gave less than its floor."""
+        if self.floor is None:
+            return []
+        return [point for point in self.injections if point.value < self.floor]
 
     @property
     def out(self) -> list[Injection]:
@@ -295,7 +313,8 @@ class ControlChart:
 
 def control_chart(component: str, points: list[tuple[SampleEntry, float]],
                   is_internal_standard: bool = False,
-                  snr: float | None = None) -> ControlChart:
+                  snr: float | None = None,
+                  floor: float | None = None) -> ControlChart:
     """
     A control chart for one component, from injections already in order.
 
@@ -303,7 +322,7 @@ def control_chart(component: str, points: list[tuple[SampleEntry, float]],
     order the instrument ran them; everything below is about what that
     sequence does and does not license.
     """
-    chart = ControlChart(component=component, snr=snr,
+    chart = ControlChart(component=component, snr=snr, floor=floor,
                          is_internal_standard=is_internal_standard)
     if len(points) < MIN_INJECTIONS:
         chart.note = (f"only {len(points)} injection(s); "
@@ -323,9 +342,15 @@ def control_chart(component: str, points: list[tuple[SampleEntry, float]],
 
     chart.centre, chart.sigma = centre, sigma
     if not chart.quantifiable:
-        chart.note = (f"median signal-to-noise {snr:,.0f}, below {MIN_SNR:g}: "
-                      f"the response is too small to quantify, so nothing is "
-                      f"flagged against it")
+        if floor is not None:
+            chart.note = (f"median response {centre:,.0f}, below the floor of "
+                          f"{floor:,.0f} the method declares: the standard is "
+                          f"not there in a usable amount, so nothing is "
+                          f"flagged against it")
+        else:
+            chart.note = (f"median signal-to-noise {snr:,.0f}, below "
+                          f"{MIN_SNR:g}: the response is too small to "
+                          f"quantify, so nothing is flagged against it")
     elif sigma == 0:
         # more than half the injections gave the same number to the last
         # digit, which is not a batch behaving well — it is a reason to
@@ -595,9 +620,11 @@ def batch_qc(results: ResultsSet, entries: list[SampleEntry],
         # the median, so that a standard strong through the run is not
         # written off by the few injections where it happened to fail
         snr = float(np.median(ratios)) if ratios else None
+        component = method.by_name(name)
+        floor = component.min_response if component is not None else None
         report.charts.append(
             control_chart(name, points, is_internal_standard=name in internal,
-                          snr=snr))
+                          snr=snr, floor=floor))
 
     report.index = response_index(report.charts, entries)
     report.precision = precision(results, entries, method)

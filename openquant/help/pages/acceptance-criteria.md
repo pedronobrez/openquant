@@ -11,6 +11,12 @@ flags nothing until the criteria are actually stated.
 | **Accuracy ±** (%) | for a sample with an expected concentration, the accuracy is further than this from 100%; or no concentration could be read at all |
 | **Min. S/N** | the signal-to-noise is below this — or could not be measured, which is flagged as *S/N not measured* rather than passed, see [[signal-to-noise]] |
 
+One more check runs without a criterion being set: a row normalised
+against an internal standard that declares a **Min. response** is flagged
+*IS 40 below its floor of 100* and fails when the standard gave less than
+its floor in that injection — a ratio to a standard that is not there is
+not a measurement. See [[internal-standards-and-qualifiers]].
+
 **Apply to component** writes them as the selected component's own;
 **Apply to every component** writes them as the method's defaults and
 clears every override.
@@ -33,7 +39,7 @@ no expected concentration — does not count as checked either.
 
 The **Flags** column spells out the reasons: `RT +0.312 min`, `S/N 4`,
 `accuracy 71%`, `ion ratio 44.1%`, `not integrated`, `no concentration`,
-`S/N not measured`. Ion ratios and their tolerances are explained on
+`S/N not measured`, `IS 40 below its floor of 100`. Ion ratios and their tolerances are explained on
 [[internal-standards-and-qualifiers]].
 
 ## Reviewing by status

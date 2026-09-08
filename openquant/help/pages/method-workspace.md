@@ -25,6 +25,7 @@ standard, or concentration).
 | Conc. unit | the concentration unit shown for this component, when it differs from the method's |
 | Qualifier of | the quantifier this transition confirms, when it is a qualifier |
 | Ion ratio % and ± ratio % | the expected qualifier/quantifier area ratio, and the tolerance that overrides the method's |
+| Min. response | for an internal standard: the smallest area it has to give in an injection before a ratio to it means anything — see [[internal-standards-and-qualifiers]] |
 
 The internal-standard and qualifier columns are explained in
 [[internal-standards-and-qualifiers]].
@@ -84,6 +85,7 @@ name,precursor,fragment,rt,window,tolerance,unit
 | qualifier_of, ion_ratio, ion_ratio_tolerance | qualifier_of, qualifier, qualificador_de, quantifier; ion_ratio, expected_ion_ratio, razao_ionica; ion_ratio_tolerance, ion_ratio_tol |
 | regression, weighting | regression, curve, fit, regressao; weighting, weight, ponderacao, peso |
 | lm_id | lm_id, lipidmaps, lipidmaps_id, lmid |
+| min_response | min_response, response_floor, min_area, floor, piso_resposta, resposta_minima, area_minima |
 
 A component's own integration settings and acceptance criteria are not in
 the CSV; they are saved in the project.

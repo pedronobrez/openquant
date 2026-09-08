@@ -142,6 +142,8 @@ injection comes back as `kUnknown`.
 | Export | the visible columns of the visible rows, as CSV |
 | **LOD / LOQ** | derived from each curve's scatter about its own line, 3.3σ/S and 10σ/S as ICH Q2 defines them; a limit that lands below the lowest standard is marked as extrapolated rather than demonstrated |
 | **Carryover** | the blank injected after the highest standard, against the response at the lowest calibrated concentration, with a 20% limit. A run with no blank in that position reports that it was not measured, rather than a number from the nearest blank |
+| **Sampling** | the third tab of Batch QC, and a report section: for every component, the cycle time of its channel, the width of its peaks, and how many points sit on the peak — counted at integration and carried on every row — with the cycle times that would give a fit three points and the base ten. A property of the acquisition schedule, and the one thing no processing substitutes for |
+| **Response floor** | **Min. response** on an internal standard: what it has to give before a ratio to it means anything. The batch cannot derive it and S/N cannot stand in for it on a scheduled acquisition, so the method declares it; the control chart, the acceptance of every row normalised against the standard, and **Check method** all read it |
 | **Batch QC** | control charts of the internal standards against the order the instrument injected, taken from the acquisition times. The centre is the median and the spread the median absolute deviation, so one bad injection cannot widen the limits meant to catch it; an injection is called out only when it is both beyond 3σ and at least 20% from the centre, and a run is called drifting only when the fitted change is at least 20% and goes one way. Plus the %CV of the quality controls |
 | **Report** | `File ▸ Export report…` writes the whole batch — summary, samples, method, calibration, limits, carryover, per-component results and statistics — as A4 portrait PDF to hand over or HTML to keep. Numbered sections, a contents list with page numbers, and a heading row that repeats on every page. Built from the session rather than from the screen, so it holds what was measured and not what happened to be on show |
 
@@ -293,7 +295,10 @@ right-click = pyqtgraph menu (export image, axis options and so on).
 
 ## Manual
 
-**Help ▸ Manual** (F1) opens the full manual inside the application: forty-odd
+**Help ▸ Manual** (F1) opens the full manual inside the application, on the
+page for the panel that has the focus — the Integration panel, a Batch QC
+tab, a side panel of the Explorer — and every dialog has a **Help** button
+that does the same for its own page. It is forty-odd
 pages covering every workspace, every control and every number, linked to one
 another the way a note vault is — each page ends with the pages that link to
 it — with a search box that matches by prefix. **Help ▸ Export manual as

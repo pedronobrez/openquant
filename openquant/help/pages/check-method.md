@@ -13,6 +13,7 @@ results, which is later and harder.
 | shared transition | serious | two components declare the same precursor and fragment and have nothing — no retention time, or the same one — to separate them; the integration will return the same peak under both names |
 | missing internal standard | serious | a component names a standard that no component carries, or one that is not ticked IS |
 | internal standard without a time | serious | a standard with no retention time is searched over the whole run, and takes the largest peak anywhere in it; every component it normalises inherits that. The count of components it carries is given |
+| internal standard without a response floor | warning | a standard that serves components declares no **Min. response**, so the quality charts and the acceptance fall back to a signal-to-noise of ten — which on a scheduled acquisition is an absolute height against an arbitrary constant. See [[internal-standards-and-qualifiers]] |
 | no retention time | warning | the component's window is the whole run, so the largest peak in the run is the component whatever it is |
 | window too narrow | warning | at the sampling interval measured from the open files, the ±window holds fewer than eight points; below five the detector declines outright |
 

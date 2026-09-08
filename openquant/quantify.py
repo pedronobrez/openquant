@@ -78,6 +78,10 @@ class PeakResult:
     algorithm: str = ""
     #: the fitted curve when the area came from one, as GaussianModel.to_dict
     model: dict | None = None
+    #: points inside the boundaries at or above one per cent of the peak —
+    #: the peak rather than its feet. None on rows integrated before this
+    #: was counted.
+    points: int | None = None
     #: internal standard this component is reported against, and its response
     internal_standard: str = ""
     is_area: float | None = None
@@ -416,6 +420,7 @@ def apply_peak(result: PeakResult, peak: ChromPeak, manual: bool = False) -> Pea
     result.manual = manual
     result.algorithm = MANUAL if manual else peak.algorithm
     result.model = peak.model.to_dict() if peak.model is not None else None
+    result.points = peak.points
     return result
 
 
@@ -536,6 +541,18 @@ def evaluate_acceptance(results: ResultsSet, entries: list[SampleEntry],
                 checked = True
                 if result.snr < limits.min_snr:
                     result.flags.append(f"S/N {result.snr:.0f}")
+
+        standard = method.internal_standard_for(component)
+        if standard is not None and standard.min_response is not None \
+                and result.is_area is not None:
+            # the method declared what the standard has to give before a
+            # ratio to it means anything; below that the row is not
+            # normalised, whatever its own peak looks like
+            checked = True
+            if result.is_area < standard.min_response:
+                result.flags.append(
+                    f"IS {result.is_area:,.0f} below its floor of "
+                    f"{standard.min_response:,.0f}")
 
         if limits.accuracy_tolerance:
             entry = by_key.get(result.sample_key)

@@ -52,7 +52,11 @@ relative one, and every flag against it would be arithmetic on noise. On
 the batch this was written for, eight of eleven standards had a median
 response between 4 and 52 counts and produced almost every flag in the run.
 Whether that gate does what it says depends on the noise being measurable
-— see [[signal-to-noise]].
+— see [[signal-to-noise]] — which is why a **response floor declared in the
+method** replaces it: a standard with a **Min. response** is usable when
+its median clears the floor and not otherwise, the verdict says *below its
+floor of 100*, and on a usable chart the injections that fell under the
+floor are listed. See [[internal-standards-and-qualifiers]].
 
 ## The injection response index
 
@@ -83,6 +87,32 @@ The second tab: for each component, the %CV of its response over the
 quality controls — quality controls only, since unknowns differ by design
 and standards by construction — against a limit of 15%, from at least three
 replicates. A component with fewer says so.
+
+## Sampling
+
+The third tab measures the one thing three other findings kept running
+into: how many points the acquisition put on each peak. For every
+component, the cycle time of its channel (from the channel's own time
+axis), the median width of its peaks at half height, and the median number
+of **points on the peak** — points at or above one per cent of its height,
+the ones that are the peak rather than its feet, counted at integration
+and carried on every row of the [[results-table]]. A Gaussian fit needs
+three of them ([[integration-algorithms]]); quantitation textbooks ask for
+about ten across the base.
+
+The last columns are the cycle times that would give each, for peaks of
+that width: a fit at every phase of the scans needs the cycle no longer
+than 0.85 of the width at half height, and ten points across a base of
+four sigma need 0.17 of it. A peak with only one point above half height
+has no measurable width — it is narrower than a cycle — and is counted in
+the last column instead; the widths are then of the wider peaks only, and
+the cycle times that follow are upper bounds.
+
+On the batch this was written for: one scan every 14.6 s, **a median of one
+point on the peak**, 129 of 139 components typically under the three a fit
+needs. That is a property of the acquisition schedule, and nothing in the
+processing substitutes for it — the [[report]] carries the same table under
+*Sampling*, for the conversation with whoever writes the schedule.
 
 ## In the report
 

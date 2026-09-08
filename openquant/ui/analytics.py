@@ -162,6 +162,17 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         splitter.setSizes([300, 1200])
         layout.addWidget(splitter, 1)
 
+        from .help_window import describe
+        for widget, page in ((self.integration, "integration-parameters"),
+                             (self.acceptance, "acceptance-criteria"),
+                             (self.grid, "peak-review"),
+                             (self.results, "results-table"),
+                             (self.calibration, "calibration"),
+                             (self.statistics, "statistics"),
+                             (self.metrics, "metric-plot"),
+                             (self.quality, "batch-qc")):
+            describe(widget, page)
+
         self.btn_process.clicked.connect(self.process_batch)
         self.btn_magnify.toggled.connect(self._set_magnified)
         self.btn_calibrate.clicked.connect(lambda: self._recalibrate())
@@ -670,6 +681,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         """Integrate the batch every way and show the differences."""
         from ..compare import compare_algorithms
         from .compare_dialog import ComparisonDialog
+        from .help_window import describe
 
         method = self.session.method
         components = [c for c in method.components if c.is_valid]
@@ -699,6 +711,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             return
         self.session.comparison = comparison
         self._comparison_dialog = ComparisonDialog(self.session, comparison, self)
+        describe(self._comparison_dialog, "compare-algorithms")
         self._comparison_dialog.sigAdopt.connect(self._adopt_algorithm)
         self._comparison_dialog.show()
         self._report(comparison.summary())

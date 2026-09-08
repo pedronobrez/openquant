@@ -137,11 +137,16 @@ class ComparisonDialog(QtWidgets.QDialog):
             "it. Rows integrated by hand are kept")
         buttons.addWidget(self.btn_adopt)
         buttons.addStretch(1)
+        self.btn_help = QtWidgets.QPushButton("Help")
+        buttons.addWidget(self.btn_help)
         self.btn_close = QtWidgets.QPushButton("Close")
         buttons.addWidget(self.btn_close)
         layout.addLayout(buttons)
 
         self.btn_close.clicked.connect(self.close)
+        from .help_window import describe, open_manual
+        describe(self, "compare-algorithms")
+        self.btn_help.clicked.connect(lambda: open_manual(self, "compare-algorithms"))
         self.btn_adopt.clicked.connect(
             lambda: self.sigAdopt.emit(self.choice.currentData()))
         self.components.itemSelectionChanged.connect(self._component_changed)

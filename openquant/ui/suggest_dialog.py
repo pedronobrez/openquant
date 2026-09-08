@@ -45,7 +45,12 @@ class SuggestDialog(QtWidgets.QDialog):
 
         self.buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Apply
-            | QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+            | QtWidgets.QDialogButtonBox.StandardButton.Help)
+        from .help_window import describe, open_manual
+        describe(self, "suggest-from-data")
+        self.buttons.helpRequested.connect(
+            lambda: open_manual(self, "suggest-from-data"))
         self.buttons.button(
             QtWidgets.QDialogButtonBox.StandardButton.Apply).setText(
                 "Apply the ticked rows")

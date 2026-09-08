@@ -20,6 +20,55 @@ from ..manual import HOME, SCHEME, Manual, Page
 
 ROLE_ID = QtCore.Qt.ItemDataRole.UserRole
 
+#: the dynamic property a widget carries to say which page describes it.
+#: F1 walks up from the focused widget to the first one that has it, so a
+#: panel names its page once and everything inside it inherits the answer.
+HELP_PROPERTY = "helpPage"
+
+
+def describe(widget: QtWidgets.QWidget, page: str) -> None:
+    """Say which manual page a widget, and everything inside it, is about."""
+    widget.setProperty(HELP_PROPERTY, page)
+
+
+def help_page_for(widget: QtWidgets.QWidget | None) -> str | None:
+    """
+    The manual page for where the user is: the nearest ancestor that names
+    one. Walking up from the focused widget passes through the tab that
+    holds it before the tab widget, so the Batch QC tab and the Results tab
+    of one pane answer with their own pages and the pane never has to.
+    """
+    while widget is not None:
+        page = widget.property(HELP_PROPERTY)
+        if page:
+            return str(page)
+        widget = widget.parentWidget()
+    return None
+
+
+def open_manual(widget: QtWidgets.QWidget | None, page: str | None) -> None:
+    """
+    Open the manual on a page, from anywhere.
+
+    The main window owns the one help window; a dialog that has no main
+    window above it — the wizard before a project exists, say — gets a
+    window of its own rather than nothing.
+    """
+    window = widget.window() if widget is not None else None
+    shell = None
+    for candidate in [window] + QtWidgets.QApplication.topLevelWidgets():
+        if candidate is not None and hasattr(candidate, "show_manual"):
+            shell = candidate
+            break
+    if shell is not None:
+        shell.show_manual(page)
+        return
+    standalone = HelpWindow()
+    QtWidgets.QApplication.instance().setProperty("_openquant_help", standalone)
+    if page:
+        standalone.show_page(page)
+    standalone.show()
+
 
 def _stylesheet() -> str:
     dark = theme.is_dark()

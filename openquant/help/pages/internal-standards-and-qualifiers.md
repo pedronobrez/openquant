@@ -30,6 +30,31 @@ across the run and says which ones the batch can actually use;
 [[check-method]] says which standards lack a retention time and how many
 components they carry.
 
+## The response floor
+
+**Min. response** on an internal standard is the smallest area it has to
+give in an injection before a ratio to it means anything. It is declared
+by whoever knows the method — what the standard gives when the run is
+right — because nothing else can supply it: the batch cannot derive one
+(measured on a real batch, the standards' precision did not track their
+response), and signal-to-noise cannot stand in for one on a scheduled
+acquisition, where the baseline is exact zeros and "S/N" is the height
+against an arbitrary constant — see [[signal-to-noise]].
+
+Once declared, three things read it:
+
+- the standard's **control chart** on [[batch-qc]] is usable when its median
+  clears the floor and not otherwise, in place of the S/N 10 rule; and on a
+  usable chart the injections that fell under the floor are listed;
+- every row normalised against the standard is checked at acceptance: an
+  injection where the standard gave less than its floor is flagged
+  *IS 40 below its floor of 100* and fails — see [[acceptance-criteria]];
+- [[check-method]] warns of a standard that serves components and declares
+  no floor.
+
+The floor is an area in the same units as the results table, travels in the
+CSV as `min_response`, and is saved with the project.
+
 ## Qualifiers and ion ratios
 
 A qualifier is a second transition of the same compound, acquired to

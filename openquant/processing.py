@@ -366,6 +366,17 @@ FWHM_PER_SIGMA = 2.0 * np.sqrt(2.0 * np.log(2.0))
 GAUSSIAN_AREA = np.sqrt(2.0 * np.pi)
 
 
+def points_on_peak(corrected: np.ndarray) -> int:
+    """Points at or above MIN_SHAPE_FRACTION of the tallest, baseline removed."""
+    corrected = np.asarray(corrected, dtype=float)
+    if corrected.size == 0:
+        return 0
+    top = float(corrected.max())
+    if top <= 0:
+        return 0
+    return int(np.sum(corrected >= MIN_SHAPE_FRACTION * top))
+
+
 @dataclass(frozen=True)
 class GaussianModel:
     """The curve a Gaussian fit settled on, and how well it fitted."""
@@ -440,6 +451,10 @@ class ChromPeak:
     algorithm: str = ALGORITHM_VALLEY
     #: the fitted curve, when the area came from one
     model: GaussianModel | None = None
+    #: how many points inside the boundaries sit at or above
+    #: MIN_SHAPE_FRACTION of the peak's height — the points that are the
+    #: peak rather than its feet. What the sampling report counts.
+    points: int = 0
 
 
 def integrate_window(x: np.ndarray, y: np.ndarray, start: float, end: float,
@@ -474,6 +489,7 @@ def integrate_window(x: np.ndarray, y: np.ndarray, start: float, end: float,
         area=float(np.trapezoid(corrected, xs)),
         width=width,
         snr=float(height / measured) if measured else None,
+        points=points_on_peak(corrected),
     )
 
 
@@ -617,6 +633,7 @@ def detect_peaks(x: np.ndarray, y: np.ndarray, min_relative: float = 0.02,
                 area=float(np.trapezoid(corrected, xs)),
                 width=width,
                 snr=snr,
+                points=points_on_peak(corrected),
             )
         )
     return sorted(peaks, key=lambda p: p.area, reverse=True)
@@ -809,6 +826,7 @@ def refine_gaussian(x: np.ndarray, y: np.ndarray, peak: ChromPeak,
         snr=float(fit.height / measured) if measured else None,
         algorithm=ALGORITHM_GAUSSIAN,
         model=fit,
+        points=peak.points,
     ), ""
 
 
@@ -840,5 +858,5 @@ def summation_peak(x: np.ndarray, y: np.ndarray, start: float, end: float,
         apex_rt=peak.apex_rt, apex_index=peak.apex_index,
         start_rt=peak.start_rt, end_rt=peak.end_rt,
         height=peak.height, area=peak.area, width=peak.width, snr=peak.snr,
-        algorithm=ALGORITHM_SUMMATION,
+        algorithm=ALGORITHM_SUMMATION, points=peak.points,
     ), ""

@@ -13,7 +13,8 @@ from .annotate_dialog import AnnotateDialog, _looks_unnamed, propose
 
 COLUMNS = ["Name", "Group", "Precursor", "Fragment", "RT", "± RT", "Tol.",
            "Unit", "Formula", "Adduct", "IS", "Internal standard", "Response",
-           "Conc. unit", "Qualifier of", "Ion ratio %", "± ratio %"]
+           "Conc. unit", "Qualifier of", "Ion ratio %", "± ratio %",
+           "Min. response"]
 COL = {name: i for i, name in enumerate(COLUMNS)}
 
 #: widest a column is made when fitted to its contents; past this the
@@ -29,6 +30,7 @@ _NUMERIC = {
     COL["Tol."]: "tolerance",
     COL["Ion ratio %"]: "ion_ratio",
     COL["± ratio %"]: "ion_ratio_tolerance",
+    COL["Min. response"]: "min_response",
 }
 
 
@@ -179,6 +181,8 @@ class MethodWorkspace(QtWidgets.QWidget):
             COL["Ion ratio %"]: "" if c.ion_ratio is None else f"{c.ion_ratio:g}",
             COL["± ratio %"]: ("" if not c.ion_ratio_tolerance
                                else f"{c.ion_ratio_tolerance:g}"),
+            COL["Min. response"]: ("" if c.min_response is None
+                                   else f"{c.min_response:g}"),
         }
         for column, text in values.items():
             item = QtWidgets.QTableWidgetItem(text)
@@ -320,6 +324,7 @@ class MethodWorkspace(QtWidgets.QWidget):
             qualifier_of=text(COL["Qualifier of"]),
             ion_ratio=numbers.get("ion_ratio"),
             ion_ratio_tolerance=numbers.get("ion_ratio_tolerance") or 0.0,
+            min_response=numbers.get("min_response"),
         )
         return component if component.is_valid else None
 

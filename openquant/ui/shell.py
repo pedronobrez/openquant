@@ -56,6 +56,11 @@ class MainShell(QtWidgets.QMainWindow):
             lambda: self.tabs.setCurrentWidget(self.method))
         self.session.sigSamplesChanged.connect(self._samples_changed)
         self.session.sigProjectChanged.connect(self._update_title)
+        from .help_window import describe
+        describe(self.explorer, "explorer")
+        describe(self.analytics, "analytics-workspace")
+        describe(self.method, "method-workspace")
+        describe(self.samples, "samples-workspace")
         self.theme_watcher = style.ThemeWatcher(
             QtWidgets.QApplication.instance(), self)
         self.theme_watcher.sigThemeChanged.connect(self.retheme)
@@ -138,6 +143,24 @@ class MainShell(QtWidgets.QMainWindow):
         self.statusBar().showMessage(f"Report written to {path} ({size:,.0f} KB)")
 
     # -- help ---------------------------------------------------------------- #
+    def context_page(self) -> str:
+        """The manual page for what has the focus, or for the workspace shown."""
+        from .help_window import help_page_for
+
+        focused = QtWidgets.QApplication.focusWidget()
+        page = help_page_for(focused) if focused is not None else None
+        return page or help_page_for(self.tabs.currentWidget()) or "welcome"
+
+    def eventFilter(self, watched, event):
+        if event.type() == QtCore.QEvent.Type.KeyPress and \
+                event.matches(QtGui.QKeySequence.StandardKey.HelpContents):
+            from .help_window import help_page_for
+
+            widget = watched if isinstance(watched, QtWidgets.QWidget) else None
+            self.show_manual(help_page_for(widget) or self.context_page())
+            return True
+        return super().eventFilter(watched, event)
+
     def show_manual(self, page: str | None = None) -> None:
         """The manual, in its own window; one window, brought back if open."""
         from .help_window import HelpWindow
@@ -221,7 +244,10 @@ class MainShell(QtWidgets.QMainWindow):
         help_menu = self.menuBar().addMenu("&Help")
         act_manual = help_menu.addAction("Manual")
         act_manual.setShortcut(QtGui.QKeySequence.StandardKey.HelpContents)
-        act_manual.triggered.connect(self.show_manual)
+        act_manual.triggered.connect(lambda: self.show_manual(self.context_page()))
+        # the menu's shortcut answers while this window is active; a dialog
+        # is a window of its own, and F1 pressed there reaches the filter
+        QtWidgets.QApplication.instance().installEventFilter(self)
         help_menu.addAction("Quick tips…").triggered.connect(self.explorer._show_help)
         help_menu.addAction("Export manual as PDF…").triggered.connect(
             self.export_manual)

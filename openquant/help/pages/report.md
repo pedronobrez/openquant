@@ -21,6 +21,7 @@ leaving a hole.
 | Detection and quantitation limits | LOD and LOQ per component, with the notes of [[detection-limits-and-carryover]] |
 | Carryover | the blank after the top standard, or why it was not measured |
 | Batch quality | the control charts' verdicts, the injection response index, drift, and the precision of the QCs — [[batch-qc]] |
+| Sampling | points per peak for every component, the cycle times the peaks would need, and how many peaks were narrower than a cycle — the *Sampling* tab of [[batch-qc]] |
 | Integration algorithms | only when [[compare-algorithms]] has been run: the totals per algorithm and the components that moved most |
 | Results | every row: sample, component, RT, area, ratio, concentration, accuracy, status and flags |
 | Statistics | the grouped summary of the [[statistics]] page, by sample type |

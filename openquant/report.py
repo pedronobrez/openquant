@@ -57,6 +57,7 @@ SECTIONS = {
     "limits": "Detection and quantitation limits",
     "carryover": "Carryover",
     "quality": "Batch quality",
+    "sampling": "Sampling",
     "algorithms": "Integration algorithms",
     "results": "Results",
     "statistics": "Statistics",
@@ -531,8 +532,12 @@ def _quality(title: str, results: ResultsSet, entries: list[SampleEntry],
             continue
         verdict = []
         if not chart.quantifiable:
-            verdict.append(f"below S/N {MIN_SNR:g} — not quantified, so not "
-                           f"flagged")
+            if chart.floor is not None:
+                verdict.append(f"below its floor of {chart.floor:,.0f} — not "
+                               f"usable, so not flagged")
+            else:
+                verdict.append(f"below S/N {MIN_SNR:g} — not quantified, so "
+                               f"not flagged")
         elif chart.unusable:
             verdict.append(f'<span class="bad">cannot normalise</span>: '
                            f"{len(chart.out)} of {len(chart.injections)} "
@@ -544,6 +549,9 @@ def _quality(title: str, results: ResultsSet, entries: list[SampleEntry],
                            f"their limits</span>")
         if chart.excess_warnings:
             verdict.append(f"{len(chart.warned)} beyond 2&#963;")
+        if chart.quantifiable and chart.below_floor:
+            verdict.append(f"{len(chart.below_floor)} injection(s) below the "
+                           f"floor of {chart.floor:,.0f}")
         rows.append([
             _escape(chart.component), f"{len(chart.injections):,}",
             _number(chart.centre, 1), _number(chart.sigma, 1),
@@ -580,6 +588,62 @@ def _quality(title: str, results: ResultsSet, entries: list[SampleEntry],
         parts.append(_table(["Component", "n", "Mean", "%CV", ""], rows,
                             right={1, 2, 3}, empty="Nothing to summarise.",
                             widths=["30%", "9%", "20%", "13%", "28%"]))
+    return "".join(parts)
+
+
+def _sampling(title: str, results: ResultsSet, entries: list[SampleEntry],
+              method: ProcessingMethod, breaks: set[str] | None = None,
+              most: int = 60) -> str:
+    """
+    How many points the acquisition put on each peak.
+
+    The one thing three other sections keep running into — estimates that
+    cannot be trusted, floors that cannot be derived, algorithms that change
+    nothing — and the one thing no processing can fix. Said here with the
+    cycle time the peaks would need, so that the schedule can be changed.
+    """
+    from .sampling import BASE_POINTS, sampling_report
+    from .processing import MIN_FIT_POINTS
+
+    report = sampling_report(results, entries, method)
+    parts = [_heading(title, breaks)]
+    parts.append(
+        f'<p class="meta">For each component, the cycle time of its channel, '
+        f"the median width of its peaks at half height, and the median number "
+        f"of points on the peak — points at or above one per cent of its "
+        f"height, the ones that are the peak rather than its feet. A Gaussian "
+        f"fit needs {MIN_FIT_POINTS}; quantitation textbooks ask for about "
+        f"{BASE_POINTS} across the base. The last two columns are the cycle "
+        f"times that would give each, for peaks of that width. This is a "
+        f"property of the acquisition schedule, and nothing in the "
+        f"processing substitutes for it. A peak with one point above half "
+        f"height has no measurable width — it is narrower than a cycle — and "
+        f"is counted in the last column rather than in the width.</p>")
+    parts.append(f"<p>{_escape(report.summary())}</p>")
+    if report.note or not report.measured:
+        return "".join(parts)
+    rows = sorted(report.measured, key=lambda r: (r.points, -r.found))
+    table = []
+    for row in rows[:most]:
+        name = _escape(row.component + (" (IS)" if row.is_internal_standard else ""))
+        if row.too_sparse:
+            name = f'<span class="bad">{name}</span>'
+        table.append([
+            name, f"{row.found:,}",
+            _number(row.cycle, 1), _number(row.width, 1), _number(row.points, 0),
+            (f"{row.sparse} ({row.sparse_share:.0%})" if row.found else "—"),
+            _number(row.cycle_for_fit, 1), _number(row.cycle_for_base, 1),
+            f"{row.unmeasured}",
+        ])
+    if len(rows) > most:
+        parts.append(f"<p>The {most} components with the fewest points, of "
+                     f"{len(rows)}:</p>")
+    parts.append(_table(
+        ["Component", "n", "Cycle (s)", "Width (s)", "Points",
+         f"Under {MIN_FIT_POINTS}", "Cycle for a fit (s)",
+         f"Cycle for {BASE_POINTS} (s)", "Narrower than a cycle"],
+        table, right={1, 2, 3, 4, 5, 6, 7, 8},
+        widths=["22%", "5%", "9%", "9%", "8%", "11%", "12%", "12%", "12%"]))
     return "".join(parts)
 
 
@@ -850,6 +914,9 @@ def build_html(session, title: str = "Batch report",
         elif key == "quality":
             parts.append(_quality(name, session.results, entries, method,
                                   breaks))
+        elif key == "sampling":
+            parts.append(_sampling(name, session.results, entries, method,
+                                   breaks))
         elif key == "algorithms":
             parts.append(_algorithms(name, comparison, method, breaks))
         elif key == "results":

@@ -154,6 +154,23 @@ def check_method(method: ProcessingMethod,
             f"anywhere wins, so the standard everything is divided by may be "
             f"a different peak in every injection. {detail}."))
 
+    unfloored = sorted(name for name in internal
+                       if served.get(name)
+                       and next((c for c in components if c.name == name),
+                                Component("", 1, 1)).min_response is None)
+    if unfloored:
+        health.findings.append(Finding(
+            "internal standard without a response floor", WARNING,
+            f"{len(unfloored)} internal standards declare no minimum response",
+            unfloored,
+            "Nothing says how much of the standard an injection has to show "
+            "before a ratio to it means anything. The quality charts and the "
+            "acceptance fall back to a signal-to-noise of ten, which on a "
+            "scheduled acquisition — where the baseline is exact zeros and "
+            "the noise cannot be measured — is an absolute height against an "
+            "arbitrary constant. Set Min. response on each standard to what "
+            "it gives when the run is right; the batch cannot derive it."))
+
     untimed = [c.name for c in components if not c.rt]
     if untimed:
         health.findings.append(Finding(

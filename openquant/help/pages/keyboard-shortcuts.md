@@ -12,7 +12,7 @@ On macOS, Ctrl is ⌘.
 | Ctrl+S | Save project |
 | Ctrl+Shift+S | Save project as… (in the Explorer, this toggles the Samples and channels dock instead) |
 | Ctrl+1 / 2 / 3 / 4 | Explorer / Analytics / Method / Samples — see [[workspaces]] |
-| F1 (⌘? on macOS) | this manual |
+| F1 (⌘? on macOS) | this manual, on the page for the panel that has the focus |
 | Ctrl+Q | Quit |
 
 ## Explorer

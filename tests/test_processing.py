@@ -117,13 +117,32 @@ def test_detect_peaks_rejects_single_count_spikes():
 
 
 def test_detect_peaks_keeps_real_peak_over_zero_baseline():
+    """
+    The peak is kept — the floor still filters — but no signal-to-noise is
+    reported, because a baseline of exact zeros has nothing to measure. It
+    used to report height over the floor of 1.0, which reads as a ratio and
+    is not one: on 846 real traces the noise was measurable in nine per cent.
+    """
     x = np.linspace(0, 10, 200)
     y = np.zeros_like(x)
     y[95:106] = [5, 12, 30, 70, 140, 200, 150, 80, 35, 14, 6]
     peaks = pr.detect_peaks(x, y, min_relative=0.05, min_snr=3.0)
     assert len(peaks) == 1
-    assert peaks[0].snr > 10
-    assert np.isfinite(peaks[0].snr)
+    assert peaks[0].height == pytest.approx(200.0, rel=0.05)
+    assert peaks[0].snr is None
+
+
+def test_a_measurable_baseline_still_gives_a_ratio():
+    """The other half: where there is a baseline, the number means what it says."""
+    rng = np.random.default_rng(4)
+    x = np.linspace(0, 10, 400)
+    y = 20.0 + rng.normal(0, 2.0, 400)
+    y[195:206] += np.array([5, 12, 30, 70, 140, 200, 150, 80, 35, 14, 6])
+    peaks = pr.detect_peaks(x, y, min_relative=0.05, min_snr=3.0)
+    assert peaks                       # noise peaks may pass too; take the real one
+    tallest = max(peaks, key=lambda p: p.area)
+    assert tallest.snr is not None
+    assert tallest.snr == pytest.approx(200 / 2.0, rel=0.5)
 
 
 def test_signal_to_noise_is_finite_on_zero_noise():

@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.6.6 released. 635 tests. Public repository.**
+**Version 0.6.6 released. 648 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -60,6 +60,7 @@ openquant/
   statistics.py   grouped means, SD, %CV
   qc.py           control charts through the run, drift, replicate precision
   contour.py      the run as a retention time by m/z grid
+  health.py       what the method will fail at, before it is run
   components.py   the component table; method.py the processing method
   samples.py      SampleEntry, sample types and groups, name shortening
   matching.py     which channel serves a component
@@ -179,7 +180,17 @@ UV detector, is not implemented there) — untested on real Windows.
   third of a chart is out, `unusable` reports the chart rather than the
   injections — seventeen bad injections out of twenty-six is not a list of
   outliers, it is a standard that cannot normalise anything.
-- **On a sparse trace, signal-to-noise is not a ratio to noise.**
+- **`estimate_noise` returns None when it cannot measure**, and that is the
+  ordinary case, not the exception. Over 846 real traces the median had three
+  non-zero points in sixty-one and only 9% had a baseline that varied at all;
+  a trace the instrument reports as exact zeros has a baseline below its
+  reporting threshold and there is nothing there to measure. `ChromPeak.snr`
+  and `PeakResult.snr` are `float | None` accordingly, and on that batch the
+  S/N was measurable for 23% of the peaks found. `NOISE_FLOOR` still filters —
+  it is an absolute intensity threshold wearing a signal-to-noise name, and it
+  still rejects the smallest peaks — but what it rejects on is no longer
+  reported as a ratio. An acceptance criterion on S/N that cannot be evaluated
+  now flags "S/N not measured" rather than passing quietly.
   `estimate_noise` returns 0.000 for an XIC that is 85–97% zeros, which is
   what a scheduled MRM channel looks like, so `detect_peaks` falls back to
   `NOISE_FLOOR = 1.0` and the reported S/N becomes **the peak height divided
@@ -351,7 +362,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-635 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+648 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

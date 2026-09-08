@@ -96,25 +96,33 @@ def subtract_baseline(x: np.ndarray, y: np.ndarray,
     return y - baseline
 
 
-def estimate_noise(y: np.ndarray) -> float:
+def estimate_noise(y: np.ndarray) -> float | None:
     """
     Robust noise from the median absolute deviation of point-to-point
     differences, scaled to a standard deviation. Insensitive to peaks.
 
-    In low-count XICs the signal is quantised and more than half the
-    differences are exactly zero, which zeroes the MAD. The fallback is the
-    standard deviation of the lower half of the points, which rarely contains a
-    peak. Returning zero would make every signal-to-noise ratio infinite and
-    the peak filter would accept anything.
+    In low-count XICs more than half the differences are exactly zero, which
+    zeroes the MAD; the fallback is the standard deviation of the lower half
+    of the points, which rarely contains a peak.
+
+    **None means the noise could not be measured**, which is not the same as
+    zero and is the ordinary case on a scheduled acquisition: measured over
+    846 real traces, the median had three non-zero points in sixty-one, and
+    nine per cent had a baseline that varied at all. A trace the instrument
+    reports as exact zeros has a baseline below its reporting threshold and
+    there is nothing there to measure. Saying so is the point — a caller that
+    substitutes a constant is welcome to, but it must not then call what it
+    computes a signal-to-noise ratio.
     """
     if y.size < 3:
-        return 0.0
+        return None
     diffs = np.diff(y)
     mad = float(np.median(np.abs(diffs - np.median(diffs))))
     if mad > 0:
         return mad * 1.4826 / np.sqrt(2.0)
     lower_half = np.sort(y)[: max(y.size // 2, 3)]
-    return float(np.std(lower_half))
+    spread = float(np.std(lower_half))
+    return spread if spread > 0 else None
 
 
 def centroid_mz(mz: np.ndarray, intensity: np.ndarray, apex: int,
@@ -320,7 +328,8 @@ class ChromPeak:
     height: float
     area: float
     width: float
-    snr: float
+    #: None when the baseline could not be measured, so no ratio exists
+    snr: float | None
 
 
 def integrate_window(x: np.ndarray, y: np.ndarray, start: float, end: float,
@@ -345,7 +354,7 @@ def integrate_window(x: np.ndarray, y: np.ndarray, start: float, end: float,
     apex = int(np.nonzero(window)[0][apex_local])
     half = corrected >= height / 2.0
     width = float(xs[half][-1] - xs[half][0]) if half.any() else 0.0
-    reference = max(noise if noise is not None else estimate_noise(y), noise_floor)
+    measured = noise if noise is not None else estimate_noise(y)
     return ChromPeak(
         apex_rt=float(x[apex]),
         apex_index=apex,
@@ -354,7 +363,7 @@ def integrate_window(x: np.ndarray, y: np.ndarray, start: float, end: float,
         height=height,
         area=float(np.trapezoid(corrected, xs)),
         width=width,
-        snr=float(height / reference),
+        snr=float(height / measured) if measured else None,
     )
 
 
@@ -451,7 +460,13 @@ def detect_peaks(x: np.ndarray, y: np.ndarray, min_relative: float = 0.02,
     if float(smoothed.max()) <= 0:
         return []
 
-    noise = max(noise if noise is not None else estimate_noise(y), noise_floor)
+    # what was measured, and what the filter runs on. Where the baseline
+    # cannot be measured the floor takes over, and the filter is then an
+    # absolute intensity threshold wearing a signal-to-noise name: it still
+    # rejects the smallest peaks, which is worth keeping, but the number it
+    # rejects on is not a ratio to anything and is not reported as one.
+    measured = noise if noise is not None else estimate_noise(y)
+    noise_used = max(measured or 0.0, noise_floor)
     threshold = float(smoothed.max()) * min_relative
     apexes = local_maxima(smoothed)
     apexes = apexes[smoothed[apexes] >= threshold]
@@ -466,9 +481,9 @@ def detect_peaks(x: np.ndarray, y: np.ndarray, min_relative: float = 0.02,
         # cent of a tall apex can still be under the trace's own background,
         # and then nothing stops the walk
         base = float(np.median(smoothed))
-        floor = base + max(noise, (float(smoothed[apex]) - base) * EDGE_FRACTION)
-        left = _walk_to_edge(smoothed, apex, -1, floor, noise)
-        right = _walk_to_edge(smoothed, apex, +1, floor, noise)
+        floor = base + max(noise_used, (float(smoothed[apex]) - base) * EDGE_FRACTION)
+        left = _walk_to_edge(smoothed, apex, -1, floor, noise_used)
+        right = _walk_to_edge(smoothed, apex, +1, floor, noise_used)
         if right - left < 2:
             continue
         xs, ys = x[left:right + 1], y[left:right + 1]
@@ -477,9 +492,9 @@ def detect_peaks(x: np.ndarray, y: np.ndarray, min_relative: float = 0.02,
         height = float(corrected.max())
         if height <= 0:
             continue
-        snr = float(height / noise)
-        if snr < min_snr:
+        if height / noise_used < min_snr:
             continue
+        snr = float(height / measured) if measured else None
         half = corrected >= height / 2.0
         width = float(xs[half][-1] - xs[half][0]) if half.any() else 0.0
         peaks.append(

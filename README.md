@@ -122,6 +122,7 @@ injection comes back as `kUnknown`.
 | **Magnify peak** | one panel filling the pane; double-clicking a panel does the same |
 | **Manual** | drag across a peak to integrate exactly that range; the row is marked ✎ and survives reprocessing |
 | Back to automatic | right-click a hand-integrated panel |
+| **Check method** | reads the method against itself and against the open files, before a batch is processed: components sharing a transition with nothing to separate them, internal standards with no retention time and how many components they carry, windows the sampling cannot resolve. Everything it reports would otherwise be learned from the results, which is later and harder |
 | Integration parameters | per component, with **Update method for component** / **for group**, **Back to method defaults**, and copy/paste between components |
 | Contour | **View ▸ Contour** draws the active channel as a surface — time across, m/z up, intensity as colour — so an interference beside a target or a ridge down the whole run is visible rather than inferred. Square root by default, because a linear ramp over four decades shows the base peak and nothing else. Click a spot for the spectrum under it; **Extract this view** takes the chromatogram and spectrum of the rectangle on screen, both from the reader rather than from the grid |
 | Noise region | right-click a panel with a stretch of baseline shaded to measure S/N there, peak-to-peak or by standard deviation |

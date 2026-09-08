@@ -204,8 +204,9 @@ class PeakPanel(pg.PlotWidget):
 
         if found:
             manual = " ✎" if result.manual else ""
+            ratio = f"{result.snr:,.0f}" if result.snr is not None else "—"
             title = (f"{result.sample_name}{manual}   {result.area:,.0f}"
-                     f"   S/N {result.snr:.0f}   {result.rt:.2f}")
+                     f"   S/N {ratio}   {result.rt:.2f}")
             colour = theme.foreground()
         else:
             title = f"{result.sample_name}   {result.note or 'not found'}"

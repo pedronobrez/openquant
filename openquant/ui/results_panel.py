@@ -39,7 +39,8 @@ class Result:
             f"{self.area:,.0f}",
             f"{self.height:,.0f}",
             f"{self.width:.3f}",
-            "∞" if self.snr == float("inf") else f"{self.snr:.0f}",
+            "—" if self.snr is None else
+            ("∞" if self.snr == float("inf") else f"{self.snr:.0f}"),
             self.note,
         ]
 
@@ -129,6 +130,7 @@ class ResultsPanel(QtWidgets.QWidget):
                     result.component, result.sample, result.channel, result.mz,
                     f"{result.rt:.4f}", f"{result.area:.4f}",
                     f"{result.height:.4f}", f"{result.width:.4f}",
-                    "" if result.snr == float("inf") else f"{result.snr:.2f}",
+                    "" if result.snr is None or result.snr == float("inf")
+                    else f"{result.snr:.2f}",
                     result.note,
                 ])

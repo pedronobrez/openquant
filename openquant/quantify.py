@@ -58,7 +58,8 @@ class PeakResult:
     area: float = 0.0
     height: float = 0.0
     width: float = 0.0
-    snr: float = 0.0
+    #: None when the baseline could not be measured — see estimate_noise
+    snr: float | None = None
     start_rt: float = 0.0
     end_rt: float = 0.0
     note: str = ""
@@ -496,9 +497,15 @@ def evaluate_acceptance(results: ResultsSet, entries: list[SampleEntry],
                 result.flags.append(f"RT {delta:+.3f} min")
 
         if limits.min_snr:
-            checked = True
-            if result.snr < limits.min_snr:
-                result.flags.append(f"S/N {result.snr:.0f}")
+            if result.snr is None:
+                # a criterion that cannot be evaluated is not a criterion that
+                # passed, and saying nothing would let it read as one
+                if result.found:
+                    result.flags.append("S/N not measured")
+            else:
+                checked = True
+                if result.snr < limits.min_snr:
+                    result.flags.append(f"S/N {result.snr:.0f}")
 
         if limits.accuracy_tolerance:
             entry = by_key.get(result.sample_key)

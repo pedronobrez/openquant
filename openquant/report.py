@@ -30,6 +30,7 @@ import os
 
 from . import __version__
 from .calibration import Calibration
+from .health import SERIOUS, check_method
 from .method import ProcessingMethod
 from .quantify import PeakResult, ResultsSet
 from .samples import SampleEntry
@@ -321,7 +322,8 @@ def _samples(title: str, entries: list[SampleEntry],
 
 
 def _method(title: str, method: ProcessingMethod,
-            breaks: set[str] | None = None) -> str:
+            breaks: set[str] | None = None,
+            entries: list[SampleEntry] | None = None) -> str:
     rows = []
     for component in method.components:
         role = "internal standard" if component.is_internal_standard else (
@@ -335,11 +337,39 @@ def _method(title: str, method: ProcessingMethod,
             _escape(component.internal_standard or "—"),
             _escape(role),
         ])
-    return _heading(title, breaks) + _table(
+    return (_heading(title, breaks) + _health(method, entries) + _table(
         ["Component", "Group", "Precursor", "Fragment", "RT", "Window",
          "Tolerance", "Internal standard", "Role"],
         rows, right={2, 3, 4, 5, 6}, empty="The method has no components.",
-        widths=["15%", "13%", "10%", "10%", "7%", "8%", "10%", "15%", "12%"])
+        widths=["15%", "13%", "10%", "10%", "7%", "8%", "10%", "15%", "12%"]))
+
+
+def _health(method: ProcessingMethod, entries: list[SampleEntry]) -> str:
+    """
+    What the method will fail at, before any of its numbers are read.
+
+    Put in front of the component table rather than after it: a reader who
+    learns that a third of the panel shares a transition should learn it
+    before they start reading rows.
+    """
+    try:
+        health = check_method(method, entries)
+    except Exception:                              # a report must still print
+        return ""
+    if health.sound and not health.skipped:
+        return '<p class="meta">Nothing in the method contradicts itself.</p>'
+    parts = []
+    for finding in health.findings:
+        names = ", ".join(finding.components[:6])
+        if finding.count > 6:
+            names += f", and {finding.count - 6} more"
+        mark = ('<span class="bad">serious</span>' if finding.severity == SERIOUS
+                else "warning")
+        parts.append(f'<p class="foot">{mark} — {_escape(finding.summary)}. '
+                     f"{_escape(finding.detail)} <i>{_escape(names)}</i></p>")
+    for note in health.skipped:
+        parts.append(f'<p class="foot">not checked: {_escape(note)}</p>')
+    return "".join(parts)
 
 
 def _calibrations(title: str, calibrations: dict[str, Calibration],
@@ -726,7 +756,7 @@ def build_html(session, title: str = "Batch report",
         elif key == "samples":
             parts.append(_samples(name, entries, breaks))
         elif key == "method":
-            parts.append(_method(name, method, breaks))
+            parts.append(_method(name, method, breaks, entries))
         elif key == "calibration":
             parts.append(_calibrations(name, session.calibrations, method, breaks))
         elif key == "limits":

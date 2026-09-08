@@ -61,12 +61,18 @@ class MethodWorkspace(QtWidgets.QWidget):
         )
         self.btn_import = QtWidgets.QPushButton("Import CSV…")
         self.btn_export = QtWidgets.QPushButton("Export CSV…")
+        self.btn_check = QtWidgets.QPushButton("Check method")
+        self.btn_check.setToolTip(
+            "Read the method against itself, and against the files that are "
+            "open: components that share a transition, internal standards "
+            "with no retention time, windows the sampling cannot resolve")
         self.btn_annotate = QtWidgets.QPushButton("Annotate from LIPID MAPS…")
         self.btn_annotate.setToolTip(
             "Propose a lipid species for every component still named after its "
             "precursor mass")
         for widget in (self.btn_add, self.btn_remove, self.btn_generate,
-                       self.btn_import, self.btn_export, self.btn_annotate):
+                       self.btn_import, self.btn_export, self.btn_check,
+                       self.btn_annotate):
             bar.addWidget(widget)
         bar.addStretch(1)
         layout.addLayout(bar)
@@ -126,6 +132,7 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.btn_generate.clicked.connect(self._generate)
         self.btn_import.clicked.connect(self._import)
         self.btn_export.clicked.connect(self._export)
+        self.btn_check.clicked.connect(self.check_method)
         self.btn_annotate.clicked.connect(self._annotate)
         self.table.itemChanged.connect(self._on_edit)
         self.tol_spin.valueChanged.connect(self._defaults_changed)
@@ -391,6 +398,44 @@ class MethodWorkspace(QtWidgets.QWidget):
             return
         self.session.set_components(components)
         self._report(f"{len(components)} component(s) imported.")
+
+    def check_method(self) -> None:
+        """
+        Say what the method will fail at, before a batch is processed.
+
+        Everything here would otherwise be learned from the results, which is
+        both later and harder: a component that shares a transition with
+        another reports a number that is not wrong so much as not its own.
+        """
+        from ..health import SERIOUS, check_method
+
+        health = check_method(self.session.method, self.session.entries)
+        if health.sound and not health.skipped:
+            QtWidgets.QMessageBox.information(
+                self, "Check method",
+                f"Nothing in the {health.components} components contradicts "
+                f"itself.")
+            return
+
+        lines = []
+        for finding in health.findings:
+            names = ", ".join(finding.components[:8])
+            if finding.count > 8:
+                names += f", and {finding.count - 8} more"
+            mark = "SERIOUS" if finding.severity == SERIOUS else "warning"
+            lines.append(f"{mark} — {finding.summary}\n    {finding.detail}"
+                         f"\n    {names}")
+        for note in health.skipped:
+            lines.append(f"not checked — {note}")
+
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("Check method")
+        box.setIcon(QtWidgets.QMessageBox.Icon.Warning if health.serious
+                    else QtWidgets.QMessageBox.Icon.Information)
+        box.setText(f"{len(health.serious)} serious, {len(health.warnings)} "
+                    f"warning(s) over {health.components} components.")
+        box.setDetailedText("\n\n".join(lines))
+        box.exec()
 
     def _export(self) -> None:
         components = self.components()

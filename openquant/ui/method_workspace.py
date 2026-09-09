@@ -10,6 +10,7 @@ from ..components import RESPONSES, Component, load_components, save_components
 from ..session import Session
 from . import style, theme
 from .annotate_dialog import AnnotateDialog, _looks_unnamed, propose
+from .help_window import describe
 
 COLUMNS = ["Name", "Group", "Precursor", "Fragment", "RT", "± RT", "Tol.",
            "Unit", "Formula", "Adduct", "IS", "Internal standard", "Response",
@@ -78,13 +79,17 @@ class MethodWorkspace(QtWidgets.QWidget):
             "The scheduled acquisition the method implies — every component "
             "with a retention time, over its window — with the dwell a target "
             "cycle leaves each transition at the busiest moment of the run")
+        self.btn_skyline = QtWidgets.QPushButton("Export for Skyline…")
+        self.btn_skyline.setToolTip(
+            "The method as a small-molecule transition list, in the columns "
+            "Skyline's Import Transition List reads")
         self.btn_annotate = QtWidgets.QPushButton("Annotate from LIPID MAPS…")
         self.btn_annotate.setToolTip(
             "Propose a lipid species for every component still named after its "
             "precursor mass")
         for widget in (self.btn_add, self.btn_remove, self.btn_generate,
                        self.btn_import, self.btn_export, self.btn_check,
-                       self.btn_schedule,
+                       self.btn_schedule, self.btn_skyline,
                        self.btn_suggest, self.btn_annotate):
             bar.addWidget(widget)
         bar.addStretch(1)
@@ -147,6 +152,7 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.btn_export.clicked.connect(self._export)
         self.btn_check.clicked.connect(self.check_method)
         self.btn_schedule.clicked.connect(self.export_schedule)
+        self.btn_skyline.clicked.connect(self.export_skyline)
         self.btn_suggest.clicked.connect(self.suggest_from_data)
         self.btn_annotate.clicked.connect(self._annotate)
         self.table.itemChanged.connect(self._on_edit)
@@ -157,6 +163,9 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.marginal_spin.valueChanged.connect(self._defaults_changed)
         QtGui.QShortcut(QtGui.QKeySequence("Delete"), self.table,
                         activated=self._remove_rows)
+        # F1 on the Skyline button opens the page about exporting rather
+        # than the one about the component table it happens to sit above
+        describe(self.btn_skyline, "export")
 
         session.sigMethodChanged.connect(self.reload)
         self.reload()
@@ -486,6 +495,26 @@ class MethodWorkspace(QtWidgets.QWidget):
         dialog = ScheduleDialog(self.session, self)
         if dialog.exec() and dialog.saved_path:
             self._report(f"Schedule written to {dialog.saved_path}")
+
+    def export_skyline(self) -> None:
+        """
+        The method as a transition list for Skyline.
+
+        Whatever the method cannot supply — a charge with no adduct behind
+        it, a component with no retention time — is said in the status line
+        rather than left for Skyline's import to complain about.
+        """
+        from ..skyline import write_transition_list
+
+        if not self.components():
+            self._report("Build the component list first.")
+            return
+        path, _chosen = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Export for Skyline", "transitions.csv", "CSV (*.csv)")
+        if not path:
+            return
+        listing = write_transition_list(self.session.method, path)
+        self._report(f"{listing.summary()} Written to {path}")
 
     def _annotate(self) -> None:
         """Name the unnamed components from their precursor masses."""

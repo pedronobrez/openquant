@@ -35,7 +35,7 @@ is empty when it is.
 | **View** | *By sample* or *By component* — which the rows are ordered and grouped by |
 | the filter box | free text matched against every column |
 | **Columns…** | which columns are shown, and to how many decimals |
-| **Export CSV…** | the visible columns of the visible rows |
+| **Export CSV…** | the visible columns of the visible rows; the whole batch at once is [[export|the Excel workbook]] |
 | a column header | sort |
 
 ## Editing in the table

@@ -74,9 +74,10 @@ clicar em um seleciona aquela amostra na grade de [[peak-review]].
 Esta página reporta; por si só ela não muda massa nenhuma. O que fazer com
 o que ela mostra é [[mass-recalibration]], cujo interruptor fica nesta mesma
 aba: ela reutiliza exatamente estas medidas, de modo que um padrão que
-falhou o teste de mesmo íon aqui também não é lock mass lá. Uma medida que a varredura de íons produto não confirmou é mantida e
-contada — uma deriva é uma deriva quer o scan confirmatório fosse forte o
-bastante quer não — e a contagem está na linha.
+falhou o teste de mesmo íon aqui também não é lock mass lá. Uma medida que a
+varredura de íons produto não confirmou é mantida e contada — uma deriva é
+uma deriva quer o scan confirmatório fosse forte o bastante quer não — e a
+contagem está na linha.
 
 A medida não é salva com o projeto; é um minuto para repetir. Enquanto ela
 vale, o [[report]] carrega uma seção *Mass drift* com a mesma tabela.

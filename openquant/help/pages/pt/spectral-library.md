@@ -89,6 +89,83 @@ região de baixa massa, além dos fragmentos que o registro lista: em espectros
 assim, o reverse é o que se deve ler, e o score simples diz quanta outra coisa
 havia ali.
 
+## Sua própria biblioteca
+
+Um padrão interno deuterado infundido de propósito não está em biblioteca
+pública nenhuma. O espectro na tela é o único registro dele que algum dia
+existirá, de modo que **Add spectrum to library…** o escreve numa biblioteca
+sua: um arquivo MSP que você escolhe uma vez, ao qual se acrescenta, e que é
+legível por qualquer coisa que leia MSP — inclusive este programa, o MS-DIAL
+e o MSPepSearch.
+
+Na primeira vez, um arquivo é pedido; depois disso o painel diz quantos
+registros ele contém. O diálogo pergunta apenas o que a aquisição não pode
+fornecer e preenche de antemão tudo o que pode:
+
+| Campo | De onde vem |
+|---|---|
+| **Name** | seu. É o que uma busca mostrará, e um registro sem ele não é sequer lido de volta |
+| **Precursor m/z** | o canal ativo, ou o que estiver digitado em **Precursor** acima |
+| **Adduct** | a polaridade que foi executada — `[M-H]-` para um método negativo, `[M+H]+` para um positivo — e qualquer outro aduto pode ser digitado |
+| **Formula** | sua, se for conhecida; um registro não precisa de uma |
+| **Collision energy** | a informação do canal, onde o instrumento registrou alguma |
+| **Comment** | o próprio título do painel do espectro — amostra, canal e os scans sobre os quais a média foi tomada — com o arquivo e a data de hoje |
+
+O espectro é escrito como **centroides**: bastões, um por íon, não os pontos
+de perfil. Se o painel de [[chromatograms-and-spectra]] estiver mostrando um
+espectro de perfil, ele é centroidado na saída, do mesmo modo que para uma
+busca. Picos abaixo de um por cento do pico-base são descartados — a linha de
+base de uma varredura de íons produto são milhares deles, e um registro que
+os carregasse corresponderia a qualquer coisa — e no máximo duzentos do que
+sobra são mantidos, do mais forte para o mais fraco. As intensidades são
+guardadas em relação ao pico-base, como porcentagem, que é como todo formato
+de biblioteca as contém.
+
+O registro entra no arquivo como MSP no estilo NIST: `Name`, `PrecursorMZ`,
+`Precursor_type`, `Formula`, `Collision_energy`, `Comment`, `Num Peaks`, e
+então a lista de picos. Se a biblioteca carregada for o arquivo que acabou de
+ser escrito, ela é lida de novo em seguida, de modo que o registro novo pode
+ser buscado imediatamente — o que é também a verificação de que ele foi
+escrito numa forma que o analisador lê de volta.
+
+### Medido
+
+Num lote real de aquisições de íons produto — 26 injeções de um método cujos
+144 canais são um composto cada, na sua própria energia de colisão, que é o
+mesmo formato de uma infusão de um padrão:
+
+Catorze registros foram escritos a partir da primeira injeção, cada um a
+média de todos os 61 scans de um canal, centroidada. De onze mil a vinte e um
+mil pontos de perfil viraram de 84 a 3,650 centroides e de 7 a 82 picos no
+registro; o arquivo são catorze registros em 13.9 kB, construído em menos de
+dois segundos. Lidos de volta, todos os catorze voltaram com cada campo com
+que foram escritos, as massas dentro de 5·10⁻⁶ Da e as intensidades relativas
+dentro de 5·10⁻⁷ — o arredondamento do texto, e nada mais.
+
+Depois, os **mesmos canais de uma injeção diferente** foram buscados contra
+aquela biblioteca, sem filtro de precursor, de modo que a correspondência é
+espectral apenas:
+
+| | Injeção 02 | Injeção 13 |
+|---|---|---|
+| o registro certo veio primeiro | 14 de 14 | 14 de 14 |
+| o score dele | 13–95, mediana 60 | 33–95, mediana 63 |
+| o reverse dele | 45–96, mediana 87 | 61–99, mediana 83 |
+| o melhor registro *errado* | 42 | 42 |
+
+Um composto diferente não corresponde. O registro feito a partir do padrão em
+354.3 foi buscado contra cada um dos outros treze canais da segunda injeção:
+nove deles não retornaram **correspondência alguma** — menos de dois picos em
+comum — e o melhor dos demais pontuou 19 com um reverse de 67, contra 95 e 96
+para o seu próprio canal. Com o filtro de precursor que o painel aplica por
+padrão, cada busca teve exatamente um registro na janela e o encontrou.
+
+As pontuações se leem baixas pelo mesmo motivo que os números do MassBank
+acima: uma varredura de íons produto num TOF carrega o precursor, os isótopos
+dele e toda a região de baixa massa, além dos fragmentos, e nada disso está
+num registro construído a partir de uma média mais limpa. O reverse é o que
+se deve ler.
+
 ## O que a biblioteca não sabe
 
 Um registro é o espectro de um instrumento em uma energia de colisão. Uma

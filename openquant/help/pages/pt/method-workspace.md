@@ -40,6 +40,8 @@ As colunas de padrão interno e de qualificador são explicadas em
   serve [[annotate-from-lipid-maps]].
 - **Import CSV…** e **Export CSV…** leem e escrevem a tabela como uma
   planilha, ver abaixo.
+- **Export for Skyline…** escreve o método como uma lista de transições de
+  moléculas pequenas, ver [[export]].
 - **Suggest from data…** propõe tempos de retenção e larguras de janela a
   partir das injeções abertas, ver [[suggest-from-data]].
 - **Check method** lê o método contra si mesmo e contra os arquivos abertos,
@@ -49,8 +51,6 @@ As colunas de padrão interno e de qualificador são explicadas em
 - **Export schedule…** escreve a aquisição agendada que o método implica, com
   o dwell time que um ciclo alvo deixa a cada transição, ver
   [[acquisition-schedule]].
-- **Export for Skyline…** escreve o método como uma lista de transições de
-  moléculas pequenas, ver [[export]].
 
 ## Padrões do método
 

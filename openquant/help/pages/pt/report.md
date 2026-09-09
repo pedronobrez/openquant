@@ -23,6 +23,7 @@ vez de deixar um buraco.
 | Batch quality | os vereditos das cartas de controle, o índice de resposta da injeção, a deriva e a precisão dos QCs — [[batch-qc]] |
 | Mass drift | apenas quando a aba [[mass-drift]] mediu: a massa de cada padrão ao longo da corrida e se o eixo se manteve |
 | Sampling | pontos por pico para cada componente, os tempos de ciclo de que os picos precisariam e quantos picos foram mais estreitos que um ciclo — a aba *Sampling* de [[batch-qc]] |
+| Compared spectra | apenas enquanto o Explorer estiver mantendo espectros juntos: a figura cabeça-cauda, uma tabela dos traços e as massas que eles compartilham dentro de 10 ppm — [[chromatograms-and-spectra]] |
 | Integration algorithms | apenas quando [[compare-algorithms]] foi executado: os totais por algoritmo e os componentes que mais se moveram |
 | Batch comparison | apenas quando [[compare-batches]] foi executado: os totais lado a lado e os componentes na ordem do quanto se moveram |
 | Results | cada linha: amostra, componente, RT, área, razão, concentração, exatidão, status e marcações |
@@ -36,9 +37,21 @@ rende.
 Uma seção sem nada a mostrar diz isso — *no standards, so there is nothing to
 carry over* — em vez de imprimir uma tabela vazia.
 
-Um relatório é o que se guarda. Aquilo em que se continua a trabalhar é a
-pasta de trabalho Excel com as mesmas seções — ver [[export]], que cobre
-também a lista de transições para o Skyline.
+## A única figura
+
+Todo o resto de um relatório é um número numa tabela. *Compared spectra* é a
+exceção, porque dois espectros cabeça-cauda são lidos como uma forma e não
+como uma lista, e ela só é impressa enquanto a comparação vale — fixe um
+espectro no painel de [[chromatograms-and-spectra]] e a seção aparece,
+desafixe e ela some. A figura é desenhada a partir dos dados no momento em
+que o relatório é escrito, com o dobro do tamanho com que é impressa, e viaja
+dentro do documento: um relatório em HTML continua sendo um único arquivo que
+pode ser enviado por e-mail. Sob ela estão os traços, cada um com o seu
+pico-base e quantos picos ele contém, e as massas que todos os espectros
+carregam dentro de 10 ppm, com a altura de cada uma como fração do seu
+próprio pico-base — que é o único modo como dois espectros de tamanhos
+diferentes se comparam numa tabela. Uma massa presente em um e ausente no
+outro é uma diferença, e uma diferença se lê na figura.
 
 ## O layout impresso
 
@@ -67,3 +80,7 @@ abaixo da metade da altura — porque nada disso era visível no HTML.
 
 A mesma maquinaria de impressão produz o PDF deste manual, a partir de
 **Help ▸ Export manual as PDF…**.
+
+Um relatório é o que se guarda. Aquilo em que se continua a trabalhar é a
+pasta de trabalho Excel com as mesmas seções — ver [[export]], que cobre
+também a lista de transições para o Skyline.

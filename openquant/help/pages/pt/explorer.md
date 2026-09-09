@@ -66,12 +66,8 @@ transforma um espectro em perfil em bastões; *Set background* toma a faixa
 selecionada do cromatograma como branco e subtrai o seu espectro médio de
 todo espectro mostrado; *Explain spectrum* pontua candidatos do LIPID MAPS
 contra o espectro (ver [[lipid-maps]]); *Detect peaks* integra todos os
-traços do cromatograma e preenche a aba Results.
-
-Onde nada elui — uma infusão pulverizada por um minuto, cada scan igual ao
-anterior — a corrida inteira é promediada num único espectro, e é com ele
-que o painel abre; *Average whole run* faz o mesmo em qualquer canal. Ver
-[[direct-infusion]].
+traços do cromatograma e preenche a aba Results; *Average whole run* promedia
+todos os scans do canal ativo num único espectro (ver [[direct-infusion]]).
 
 ## Os controles de scan
 
@@ -79,7 +75,9 @@ que o painel abre; *Average whole run* faz o mesmo em qualquer canal. Ver
 ciclo do canal ativo; as setas avançam por eles, e as teclas ← e → também; o
 tempo de retenção do scan é mostrado ao lado. **Average selected range**
 substitui o espectro de um único scan pela média sobre a faixa marcada no
-cromatograma.
+cromatograma, e *Average whole run*, na barra de ferramentas Processing,
+promedia todos os scans do canal ativo — que é como uma [[direct-infusion]]
+é aberta.
 
 ## Convenções de mouse
 

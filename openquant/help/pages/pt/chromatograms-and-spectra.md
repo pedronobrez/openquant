@@ -34,7 +34,10 @@ quase idênticas possam ser distinguidas.
 
 O espectro de um scan do canal ativo, ou a média sobre um intervalo selecionado.
 Canais de íons produto mostram o que sobreviveu à fragmentação de seu precursor;
-o canal de survey (TOF MS) mostra tudo o que elui naquele momento.
+o canal de survey (TOF MS) mostra tudo o que elui naquele momento. Onde nada
+elui — uma infusão pulverizada por um minuto, cada scan igual ao anterior — a
+corrida inteira é promediada num único espectro em vez disso, e é com ele que
+o painel abre: ver [[direct-infusion]].
 
 | Gesto | Efeito |
 |---|---|
@@ -53,9 +56,6 @@ cento do pico-base — encontrados por máximo local, centroidizados em dados de
 perfil, e fundidos quando mais próximos que 0.03 Da, de modo que o topo ondulado
 de um perfil não apareça como cinco massas. Dê duplo clique numa linha para
 extrair aquela massa como um XIC.
-
-*Average whole run*, na barra de ferramentas Processing, promedia todos os
-scans do canal ativo — que é como uma [[direct-infusion]] é aberta.
 
 ## Comparando espectros entre amostras
 
@@ -79,6 +79,31 @@ fixado, as cores fazem a separação e o Mirror alterna.
 Todo o resto lê o espectro ao vivo: a tabela de picos, o [[formula-finder]], o
 Explain do [[lipid-maps]], a [[spectral-library]]. As cópias fixadas são
 figuras, e são perdidas quando os arquivos são fechados.
+
+### Levando a comparação embora
+
+**File ▸ Export comparison (PNG/SVG)…** escreve o que o painel está mostrando
+como uma única figura — habilitado assim que algo é fixado. O PNG sai com o
+dobro do tamanho do próprio desenho, que é o que deixa a tipografia e os
+bastões nítidos quando ela é impressa ou posta num slide; o SVG é o mesmo
+desenho em vetores, para uma figura que será redimensionada. De um jeito ou
+de outro a figura é desenhada de novo a partir dos dados em vez de capturada
+da tela, de modo que ela é a mesma qualquer que seja o tamanho da janela, e é
+sempre desenhada para o papel: fundo branco e eixos escuros, seja qual for o
+tema em que a aplicação esteja. Uma cor de traço que foi clareada para se
+manter legível numa janela escura é escurecida até se ler sobre branco,
+conservando o seu matiz, de modo que um traço conhecido pela sua cor na tela
+é o mesmo traço na página.
+
+A mesma figura entra no [[report]], sob *Compared spectra*, com uma tabela
+dos traços e uma tabela das massas que eles têm em comum. O que o relatório
+imprime é o que o painel mostra: fixar um espectro inicia a comparação, mudar
+o espectro ao vivo ou qualquer um dos dois interruptores a atualiza, e
+**Unpin spectra** a descarta. Não há nada a manter em dia à mão e nada que
+possa ficar desatualizado — se o painel contém dois espectros que valham ser
+reportados, o relatório também os contém; se não, o relatório deixa a seção
+de fora. Ela não é salva com o projeto, pelo mesmo motivo por que os fixados
+não são.
 
 ## Espectros de perfil e seus zeros
 

@@ -16,7 +16,25 @@ Cada versão publicada no GitHub traz três arquivos:
 |---|---|---|
 | `OpenQuant-<version>-macos-arm64.dmg` | macOS em Apple Silicon | arraste a aplicação para Applications |
 | `OpenQuant-<version>.msi` | Windows 10 1703 ou mais recente | um instalador padrão |
-| `OpenQuant-<version>-linux-x86_64.tar.gz` | Linux | descompacte e execute `OpenQuant/OpenQuant` |
+| `OpenQuant-<version>-linux-x86_64.tar.gz` | Linux | descompacte e execute `OpenQuant/OpenQuant`; o `OpenQuant/install.sh` acrescenta uma entrada no lançador |
+
+O ícone da aplicação — a marca da suíte, um pico branco com um vizinho azul —
+está nos três: o bundle do macOS o carrega como `OpenQuant.icns`, o
+executável do Windows o carrega nos seus recursos (verificado lendo-os de
+volta do instalador construído: as mesmas seis imagens do `.ico`, de 16 a 256
+pixels) e a entrada no menu Iniciar e em *Add or remove programs* o exibe, e
+o tarball do Linux distribui `openquant.png` com uma entrada `.desktop`. A
+própria janela toma o seu ícone do mesmo desenho em todas as plataformas.
+
+### Linux: uma entrada no lançador, para um usuário
+
+O tarball é a pasta da aplicação tal como o PyInstaller a construiu, e o
+Linux não tem bundle a que dar um ícone. O `install.sh` dentro da pasta
+escreve uma entrada `.desktop` sob `~/.local/share/applications` apontando
+para a pasta onde ela foi descompactada, e o ícone sob
+`~/.local/share/icons`, de modo que a aplicação aparece no lançador e no dock
+com o seu ícone; nada sob `/usr` é tocado, e `install.sh --remove` desfaz
+isso. Mova a pasta e execute-o de novo.
 
 ### O macOS e o atributo de quarentena
 

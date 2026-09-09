@@ -16,6 +16,7 @@ from ..chemistry import (
     rank_by_isotope_pattern,
 )
 from ..components import Component
+from ..infusion import InfusionVerdict, run_range, verdict_for
 from ..matching import match_channel
 from .settings import settings
 from ..processing import (centroid_spectrum, detect_peaks, integrate,
@@ -196,12 +197,17 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.scan_spin.setToolTip("Scan number (1 is the channel's first cycle)")
         self.rt_label = QtWidgets.QLabel("—")
         self.rt_label.setMinimumWidth(170)
+        #: says so when the active sample was read as a direct infusion, and
+        #: carries the figures that decided it on hover
+        self.infusion_label = QtWidgets.QLabel("")
+        self.infusion_label.setProperty("role", "warning")
 
         bar.addWidget(QtWidgets.QLabel("Scan:"))
         bar.addWidget(self.btn_prev)
         bar.addWidget(self.scan_spin)
         bar.addWidget(self.btn_next)
         bar.addWidget(self.rt_label)
+        bar.addWidget(self.infusion_label)
         bar.addStretch(1)
         self.bg_label = QtWidgets.QLabel("")
         self.bg_label.setProperty("role", "warning")
@@ -292,6 +298,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                              (self.sample_info, "sample-information"),
                              (self.contour_view, "contour-view"),
                              (self.chrom, "chromatograms-and-spectra"),
+                             (self.infusion_label, "direct-infusion"),
                              (self.spectrum, "chromatograms-and-spectra")):
             describe(widget, page)
         # eight tabs in a narrow dock elide into unreadable stubs; scroll
@@ -483,6 +490,11 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             "Score every LIPID MAPS candidate for this precursor by how much "
             "of the spectrum on screen its structure accounts for")
         self.act_detect = proc.addAction("Detect peaks")
+        self.act_avg_run = proc.addAction("Average whole run")
+        self.act_avg_run.setToolTip(
+            "Average every scan of the active channel into one spectrum — "
+            "what a direct infusion, which has no chromatography to select "
+            "over, is meant to be looked at as")
         self.act_exp_chrom = QtGui.QAction("Export chromatograms (CSV)…", self)
         self.act_exp_spec = QtGui.QAction("Export spectrum (CSV)…", self)
         self.act_exp_mzml = QtGui.QAction("Export sample as mzML…", self)
@@ -564,7 +576,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             "Panels": list(self.panel_actions),
             "Process": [self.act_centroid, self.act_marker, self.act_marker_clear,
                         self.act_set_bg, self.act_clear_bg, self.act_explain,
-                        self.act_detect, self.act_pin, self.act_unpin],
+                        self.act_detect, self.act_avg_run, self.act_pin,
+                        self.act_unpin],
         }
 
     # -------------------------------------------------------------- signals -- #
@@ -595,6 +608,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.act_clear_bg.triggered.connect(self._clear_background)
         self.act_explain.triggered.connect(self.explain_spectrum)
         self.act_detect.triggered.connect(self._detect_peaks)
+        self.act_avg_run.triggered.connect(self.average_whole_run)
 
         self.smooth_spin.valueChanged.connect(self._set_smoothing)
         self.baseline_spin.valueChanged.connect(self.chrom.set_baseline)
@@ -780,6 +794,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.tree.clear()
         self.refs.clear()
 
+        #: the newest infusion opened this time round, to land on afterwards
+        arrived: ChannelRef | None = None
         by_file: dict[str, QtWidgets.QTreeWidgetItem] = {}
         for entry in self.session.entries:
             if not entry.is_loaded:
@@ -793,9 +809,13 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                 by_file[entry.path] = file_item
 
             sample = entry.sample
+            verdict = self.verdict(entry)
+            instrument = sample.instrument + (", infusion" if verdict else "")
             sample_item = QtWidgets.QTreeWidgetItem(
-                file_item, [f"{entry.name}  ({sample.instrument})"]
+                file_item, [f"{entry.name}  ({instrument})"]
             )
+            if verdict:
+                sample_item.setToolTip(0, verdict.reason)
             if entry.problem:
                 # in front, where a narrow dock cannot cut it off
                 sample_item.setText(0, "⚠ " + sample_item.text(0))
@@ -803,15 +823,76 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             tic = ChannelRef(entry, None)
             self._add_leaf(sample_item, "Sample TIC (all channels)", tic,
                            checked=tic.key in checked or tic.key not in previous)
+            # an infusion's own channel comes in checked and becomes the
+            # active one; nothing else about a new sample changes
+            wanted = verdict.channel_index if verdict else None
             for channel in sample.channels:
                 ref = ChannelRef(entry, channel)
+                new = ref.key not in previous
+                on_arrival = new and channel.index == wanted
                 self._add_leaf(sample_item, channel.info.label, ref,
-                               checked=ref.key in checked)
+                               checked=ref.key in checked or on_arrival)
+                if on_arrival:
+                    arrived = ref
             sample_item.setExpanded(True)
             file_item.setExpanded(True)
         self.tree.blockSignals(False)
         self._rebuild_active_combo()
         self.refresh_chromatogram()
+        if arrived is not None:
+            self.open_as_infusion(arrived)
+
+    # -------------------------------------------------------------- infusion #
+    def verdict(self, entry: SampleEntry) -> InfusionVerdict:
+        """
+        Whether this sample is a direct infusion.
+
+        The tree asks for every sample it draws and it is rebuilt on every
+        file opened, so the measurement is the module's cached one: it reads
+        chromatograms only, but on an eighty-one channel sample that is still
+        eighty-one of them.
+        """
+        try:
+            return verdict_for(entry.sample)
+        except Exception as exc:  # a reader that cannot say is not one
+            return InfusionVerdict(
+                False, f"the run could not be read: {_first_line(exc)}")
+
+    def open_as_infusion(self, ref: ChannelRef) -> None:
+        """
+        Land on an infusion's own channel, showing the whole run at once.
+
+        An infusion has no chromatography to pick a range over, so the
+        chromatogram — which is still drawn, and is still the TIC over time —
+        has nothing to point at. The average of every scan is the spectrum,
+        and it is what Explain, the library search and a pin all then work on.
+        """
+        index = self.active_combo.findData(ref.key)
+        if index < 0:
+            return
+        self.active_combo.blockSignals(True)
+        self.active_combo.setCurrentIndex(index)
+        self.active_combo.blockSignals(False)
+        self._sync_active_ref()
+        self.average_whole_run()
+
+    def average_whole_run(self) -> None:
+        """Every scan of the active channel, averaged into one spectrum."""
+        ref = self.active_ref
+        channel = ref.channel if ref else None
+        if channel is None:
+            self._update_status("Pick an active channel first.")
+            return
+        window = run_range(channel)
+        if window is None:
+            self._update_status(f"{ref.label} has no scans to average.")
+            return
+        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
+        try:
+            self._show_average(*window,
+                               tag=" (infusion)" if self.verdict(ref.entry) else "")
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
 
     def _tree_items(self) -> dict:
         out = {}
@@ -950,6 +1031,9 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.scan_spin.blockSignals(True)
         self.scan_spin.setMaximum(max(channel.info.n_scans if channel else 1, 1))
         self.scan_spin.blockSignals(False)
+        verdict = self.verdict(self.active_ref.entry) if self.active_ref else None
+        self.infusion_label.setText("infusion" if verdict else "")
+        self.infusion_label.setToolTip(verdict.reason if verdict else "")
         if self.active_ref is not None:
             self.sample_info.show_sample(self.active_ref.sample, channel)
 
@@ -1215,7 +1299,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.chrom.mark(rt)
         self._fill_peak_table()
 
-    def _show_average(self, rt0: float, rt1: float, live: bool = False) -> None:
+    def _show_average(self, rt0: float, rt1: float, live: bool = False,
+                      tag: str = "") -> None:
         channel = self.active_ref.channel if self.active_ref else None
         if channel is None:
             return
@@ -1230,9 +1315,13 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             Trace("spec", "average spectrum", mz, intensity, "#d62728", channel)))
         if not live:
             self.spectrum.autoscale()
+        # the scan numbers are what says which part of the run was taken;
+        # a whole-run average has no other part to be told from, so the tag
+        # replaces them rather than sitting beside them
+        scans = f" ({first + 1}–{last + 1})" if not tag else ""
         self.spectrum.set_title(
-            f"{self.active_ref.label} · average of {last - first + 1} scans "
-            f"({first + 1}–{last + 1}) · RT {min(rt0, rt1):.3f}–{max(rt0, rt1):.3f} min"
+            f"{self.active_ref.label} · average of {last - first + 1} "
+            f"scans{tag}{scans} · RT {min(rt0, rt1):.3f}–{max(rt0, rt1):.3f} min"
             + (" · background subtracted" if subtracted else "")
         )
         self.rt_label.setText(f"RT {min(rt0, rt1):.3f}–{max(rt0, rt1):.3f} min")

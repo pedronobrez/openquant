@@ -64,7 +64,8 @@ sticks; *Set background* takes the selected chromatogram range as a blank
 and subtracts its average spectrum from every spectrum shown; *Explain
 spectrum* scores LIPID MAPS candidates against the spectrum (see
 [[lipid-maps]]); *Detect peaks* integrates every trace on the chromatogram
-and fills the Results tab.
+and fills the Results tab; *Average whole run* averages every scan of the
+active channel into one spectrum (see [[direct-infusion]]).
 
 ## The scan controls
 
@@ -72,7 +73,9 @@ and fills the Results tab.
 active channel's first cycle; the arrows step through them and so do the
 ← and → keys; the retention time of the scan is shown beside it. **Average
 selected range** replaces the single-scan spectrum with the average over
-the range marked on the chromatogram.
+the range marked on the chromatogram, and *Average whole run* in the
+Processing toolbar averages every scan of the active channel — which is
+what a [[direct-infusion]] is opened as.
 
 ## Mouse conventions
 

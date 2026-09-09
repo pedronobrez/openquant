@@ -1,5 +1,6 @@
-# Mass recalibration
-
+---
+title: Mass recalibration
+---
 [[mass-drift|Mass drift]] asks whether the instrument's mass axis *moved*
 during the run, and answers against the batch's own median because that is
 the only reference a run can supply for itself. Recalibration asks the other

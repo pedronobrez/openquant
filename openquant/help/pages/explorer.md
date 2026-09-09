@@ -33,6 +33,7 @@ by Ctrl+Shift+1 onwards or from the **Panels** menu:
 | Mass calc | exact masses, adducts, isotope patterns | [[mass-calculator]] |
 | Formula finder | compositions for a measured mass | [[formula-finder]] |
 | LIPID MAPS | lipids for a mass, masses for a lipid, fragments, and explaining a spectrum | [[lipid-maps]] |
+| Library | the spectrum on screen searched against an MSP or MGF spectral library | [[spectral-library]] |
 | Sample | the acquisition's own metadata | [[sample-information]] |
 
 The centre holds the chromatogram pane and, under it, the spectrum pane;

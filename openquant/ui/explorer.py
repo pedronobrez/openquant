@@ -271,6 +271,10 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.tabs.addTab(self.mass_calc, "Mass calc")
         self.tabs.addTab(self.formula_panel, "Formula finder")
         self.tabs.addTab(self.lipid_panel, "LIPID MAPS")
+        from .library_panel import LibraryPanel
+        self.library_panel = LibraryPanel()
+        self.library_panel.spectrum_source = self._library_spectrum
+        self.tabs.addTab(self.library_panel, "Library")
         for widget, page in ((self.component_list, "explorer-components-and-results"),
                              (self.results_panel, "explorer-components-and-results"),
                              (xic_tab, "manual-xic"),
@@ -618,6 +622,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
 
         self.spectrum.sigIdentifyRequested.connect(self._identify_peak)
         self.mass_calc.sigOverlay.connect(self._overlay_pattern)
+        self.library_panel.sigOverlay.connect(self._overlay_pattern)
+        self.library_panel.sigClearOverlay.connect(self.spectrum.clear_overlay)
         self.mass_calc.sigClearOverlay.connect(self.spectrum.clear_overlay)
         self.mass_calc.sigSendToFinder.connect(self._send_to_finder)
         self.formula_panel.sigSearch.connect(self._run_formula_search)
@@ -1520,6 +1526,21 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.lipid_panel.set_spectrum(mz, intensity, precursor)
         self.show_panel_named("LIPID MAPS")
         self.lipid_panel.explain_spectrum()
+
+    def _library_spectrum(self):
+        """The spectrum on screen as the library search wants it: centroided
+        sticks and the active channel's precursor, or None."""
+        current = self._current_spectrum()
+        if current is None:
+            self._update_status("Show a spectrum first.")
+            return None
+        mz, intensity = current
+        if not self.act_centroid.isChecked():
+            mz, intensity = centroid_spectrum(mz, intensity)
+        precursor = None
+        if self.active_ref is not None and self.active_ref.channel is not None:
+            precursor = self.active_ref.channel.info.precursor
+        return mz, intensity, precursor
 
     def _lipid_fragment(self, name: str, lm_id: str, route: str,
                         mz: float) -> None:

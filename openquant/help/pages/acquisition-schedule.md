@@ -54,6 +54,12 @@ cycle that follows is an **upper bound**; the dialog says so, because the
 number is going to be typed into an instrument. Type a shorter one, or the
 one for ten points across the base, as the method warrants.
 
+## Afterwards
+
+When the scheduled batch has run, [[compare-batches]] puts it against the
+one it was meant to improve on: points on the peak, the replicates' %CV,
+rows found, and where the peaks moved.
+
 ## What the file is not
 
 A plain CSV whose columns are named so that a spreadsheet maps onto the

@@ -21,7 +21,7 @@ application's **Help ▸ Manual** window and in the printed copy that
 |---|---|
 | Getting started | [[installation]], [[formats]], [[starting-a-project]], and [[workspaces]] |
 | Explorer | qualitative review: [[chromatograms-and-spectra]], the [[contour-view]], [[manual-xic]] |
-| Chemistry and annotation | the [[mass-calculator]], the [[formula-finder]], [[lipid-maps]] and the [[accurate-precursor]] |
+| Chemistry and annotation | the [[mass-calculator]], the [[formula-finder]], [[lipid-maps]], the [[spectral-library]] and the [[accurate-precursor]] |
 | Samples | the batch: [[samples-workspace]] |
 | Method | the component table: [[method-workspace]], [[internal-standards-and-qualifiers]], [[check-method]], [[suggest-from-data]] |
 | Analytics | quantitation: [[peak-review]], [[integration-parameters]], [[integration-algorithms]], [[calibration]], [[batch-qc]], the [[report]] |

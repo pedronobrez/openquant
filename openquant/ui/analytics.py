@@ -103,6 +103,12 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             "side by side: how far the areas move, and how well each one "
             "repeats itself on the internal standards and quality controls")
         bar.addWidget(self.btn_compare)
+        self.btn_batches = QtWidgets.QPushButton("Compare batches…")
+        self.btn_batches.setToolTip(
+            "A reference project against this batch, component by component: "
+            "rows found, points on the peak, the replicates' %CV, the area and "
+            "the retention time. The question a new schedule poses")
+        bar.addWidget(self.btn_batches)
         self.btn_magnify = QtWidgets.QPushButton("Magnify peak")
         self.btn_magnify.setCheckable(True)
         self.btn_magnify.setToolTip(
@@ -181,6 +187,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.btn_magnify.toggled.connect(self._set_magnified)
         self.btn_calibrate.clicked.connect(lambda: self._recalibrate())
         self.btn_compare.clicked.connect(self.compare_algorithms)
+        self.btn_batches.clicked.connect(self.compare_batches)
         self.component_filter.textChanged.connect(self._filter_components)
         self.component_tree.currentItemChanged.connect(self._on_component_changed)
         # queued: the recalculation resets the results model, which must not
@@ -719,6 +726,35 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         describe(self._comparison_dialog, "compare-algorithms")
         self._comparison_dialog.sigAdopt.connect(self._adopt_algorithm)
         self._comparison_dialog.show()
+        self._report(comparison.summary())
+
+    def compare_batches(self) -> None:
+        """A reference project against the open batch."""
+        import os
+
+        from ..batches import compare_batches, read_project, snapshot
+        from .batches_dialog import BatchesDialog
+
+        if not len(self.session.results):
+            self._report("Process the batch first; the comparison is of results.")
+            return
+        settings = QtCore.QSettings("OpenQuant", "OpenQuant")
+        start = settings.value("io/last_dir", "", type=str)
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Reference project", start, "OpenQuant project (*.oqproj *.opvproj)")
+        if not path:
+            return
+        try:
+            reference = read_project(path)
+        except Exception as exc:
+            self._report(f"Could not read {os.path.basename(path)}: {exc}")
+            return
+        comparison = compare_batches(snapshot(self.session), reference)
+        if not comparison.rows:
+            self._report("The two methods share no component by name.")
+            return
+        self._batches_dialog = BatchesDialog(comparison, self)
+        self._batches_dialog.show()
         self._report(comparison.summary())
 
     def _adopt_algorithm(self, algorithm: str) -> None:

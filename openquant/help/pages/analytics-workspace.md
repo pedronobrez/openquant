@@ -29,6 +29,7 @@ and [[mass-drift|Mass drift]].
 | **Process batch** | extract and integrate every valid component in every open sample, then fit the curves, read the concentrations and score the acceptance criteria. Rows integrated by hand in an earlier run are kept |
 | **Recalibrate** | refit every curve from the samples marked Standard and read the unknowns back off them, without reintegrating |
 | **Compare algorithms…** | integrate the batch with every algorithm and put the answers side by side — see [[compare-algorithms]] |
+| **Compare batches…** | a reference project against this batch, component by component — see [[compare-batches]] |
 | **Magnify peak** | one panel filling the pane; double-clicking a panel does the same |
 
 The status line to the right reports what was last done: how many rows

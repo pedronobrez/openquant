@@ -79,6 +79,14 @@ method of 141 components and 11 internal standards, sampled every 14.6 s.
   — against the 14.6 s the batch was acquired at with all 144 running
   unscheduled. 72 of its 141 precursors lie outside the 50–700 survey.
 
+## Two batches
+
+- The same 26 injections under the method before and after two internal
+  standards' retention times were corrected: rows found 2,607 to 2,638,
+  the standards' median %CV 101.8 to 87.7, and the two corrected standards
+  from 8 and 3 rows to 23 each — the points per peak unchanged at one,
+  since the acquisition was the same. What [[compare-batches]] is for.
+
 ## The mass axis
 
 - On the 26-injection batch, whose survey scan covers 50–700, the one

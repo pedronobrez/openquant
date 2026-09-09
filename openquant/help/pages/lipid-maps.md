@@ -86,6 +86,12 @@ unexplained ones are the honest part of the answer.
 chromatogram: it takes the spectrum of the current scan and its channel's
 precursor.
 
+## Against a library
+
+The **Library** tab beside this one asks the other question — what
+somebody recorded from the compound, rather than what its structure could
+produce — and the two are worth reading together: [[spectral-library]].
+
 ## Annotating a whole method
 
 **Annotate from LIPID MAPS…** in the Method workspace proposes a species for

@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.7.2 released. 754 tests. Public repository.**
+**Version 0.7.2 released. 769 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -73,6 +73,10 @@ openquant/
                   axis hold
   schedule.py     the scheduled acquisition the method implies, and what a
                   target cycle leaves each transition
+  library.py      MSP/MGF spectral libraries, and a spectrum searched
+                  against one: plain and reverse cosine
+  batches.py      two batches of one method side by side, the reference
+                  read from its project without opening raw files
   contour.py      the run as a retention time by m/z grid
   health.py       what the method will fail at, before it is run
   suggest.py      retention times and windows the batch can supply
@@ -294,6 +298,19 @@ UV detector, is not implemented there) — untested on real Windows.
   the real method 72 of 141 lie outside the 50–700 survey; the accurate
   mass, the annotation and the mass drift are not measurable for them. An
   acquisition with no survey at all is a skipped check, not 141 findings.
+- **A library match has two scores because impurities exist.** `library.py`
+  pairs each library peak, strongest first, to the nearest free measured
+  peak within a ppm tolerance and reports the cosine over everything both
+  spectra hold and the cosine over the library's peaks only; a high
+  reverse with a low score is the compound with company. Records with no
+  precursor are scored when a precursor filter is on and say so with an
+  empty Δ ppm — the filter did not apply, which is not the same as passing
+  it. No real library has been run through it yet; the parsers are tested
+  on the field shapes NIST, MassBank and MGF exporters write.
+- **A reference batch is read, not opened.** `batches.read_project` builds
+  a snapshot from the JSON alone, so a batch whose acquisitions moved to
+  another disk still compares. Reusing it on the real batch reproduced the
+  corrected-method gain of 2026-09-07 as a comparison rather than a script.
 - **F1 walks the widget tree.** `ui.help_window.describe(widget, page)` sets
   a dynamic property; `help_page_for` walks up from the focused widget to
   the first one that has it; the shell installs an application-wide event
@@ -482,7 +499,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-754 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+769 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

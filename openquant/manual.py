@@ -44,7 +44,8 @@ INDEX: tuple[tuple[str, tuple[str, ...]], ...] = (
         "explorer-components-and-results", "sample-information",
     )),
     ("Chemistry and annotation", (
-        "mass-calculator", "formula-finder", "lipid-maps", "accurate-precursor",
+        "mass-calculator", "formula-finder", "lipid-maps", "spectral-library",
+        "accurate-precursor",
     )),
     ("Samples", (
         "samples-workspace",
@@ -55,7 +56,8 @@ INDEX: tuple[tuple[str, tuple[str, ...]], ...] = (
     )),
     ("Analytics", (
         "analytics-workspace", "peak-review", "integration-parameters",
-        "integration-algorithms", "compare-algorithms", "signal-to-noise",
+        "integration-algorithms", "compare-algorithms", "compare-batches",
+        "signal-to-noise",
         "results-table", "calibration", "acceptance-criteria", "statistics",
         "metric-plot", "batch-qc", "mass-drift", "detection-limits-and-carryover",
         "report",

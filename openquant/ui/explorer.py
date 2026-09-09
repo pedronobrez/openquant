@@ -497,6 +497,12 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             "over, is meant to be looked at as")
         self.act_exp_chrom = QtGui.QAction("Export chromatograms (CSV)…", self)
         self.act_exp_spec = QtGui.QAction("Export spectrum (CSV)…", self)
+        self.act_exp_cmp = QtGui.QAction("Export comparison (PNG/SVG)…", self)
+        self.act_exp_cmp.setEnabled(False)
+        self.act_exp_cmp.setToolTip(
+            "Write the pinned spectra and the live one as one picture — PNG "
+            "at twice the size for print, or SVG to resize. The same drawing "
+            "goes in the report")
         self.act_exp_mzml = QtGui.QAction("Export sample as mzML…", self)
         self.act_pin = proc.addAction("Pin spectrum")
         self.act_pin.setToolTip(
@@ -568,7 +574,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
     def build_actions(self) -> dict:
         """Actions the shell adds to its own menus for this workspace."""
         return {
-            "File": [self.act_exp_chrom, self.act_exp_spec, self.act_exp_mzml],
+            "File": [self.act_exp_chrom, self.act_exp_spec, self.act_exp_cmp,
+                     self.act_exp_mzml],
             "View": [self.act_autoscale, self.act_norm, self.act_mirror,
                      self.act_stack, self.act_overview, self.act_labels,
                      self.act_apex, self.act_relative, self.act_legend,
@@ -603,6 +610,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             lambda: self._export(self.chrom, "chromatograms"))
         self.act_exp_spec.triggered.connect(
             lambda: self._export(self.spectrum, "spectrum"))
+        self.act_exp_cmp.triggered.connect(self._export_comparison)
         self.act_exp_mzml.triggered.connect(self._export_mzml)
         self.act_set_bg.triggered.connect(self._set_background)
         self.act_clear_bg.triggered.connect(self._clear_background)
@@ -1316,6 +1324,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.scan_spin.blockSignals(False)
         self.rt_label.setText(f"RT {rt:.3f} min")
         self.chrom.mark(rt)
+        self.refresh_comparison()
         self._fill_peak_table()
 
     def _show_average(self, rt0: float, rt1: float, live: bool = False,
@@ -1347,7 +1356,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         )
         self.rt_label.setText(f"RT {min(rt0, rt1):.3f}–{max(rt0, rt1):.3f} min")
         self.chrom.mark(None)
-        if not live:  # the peak table is too slow to rebuild on every mouse move
+        if not live:  # too slow to rebuild on every mouse move of a drag
+            self.refresh_comparison()
             self._fill_peak_table()
 
     def _spectrum_unreadable(self, error: Exception) -> None:
@@ -1373,6 +1383,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.spectrum.setToolTip(problem)
         self.rt_label.setText("—")
         self.chrom.mark(None)
+        self.refresh_comparison()
         self._fill_peak_table()
         self._update_status(problem)
 
@@ -1796,6 +1807,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.spectrum.set_legend_visible(True)
         self.spectrum.autoscale()
         self.act_unpin.setEnabled(True)
+        self.act_exp_cmp.setEnabled(True)
+        self.refresh_comparison()
         self._update_status(
             f"{len(pinned)} spectrum(s) pinned. The next spectrum draws over "
             f"them; Normalise puts them on one scale, Mirror draws every other "
@@ -1808,11 +1821,119 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.spectrum.set_traces([live] if live is not None else [])
         self.spectrum.autoscale()
         self.act_unpin.setEnabled(False)
+        self.act_exp_cmp.setEnabled(False)
+        self.refresh_comparison()
         self._update_status("Pinned spectra cleared.")
 
     @property
     def pinned_spectra(self) -> list[Trace]:
         return list(getattr(self, "_pinned", []))
+
+    def refresh_comparison(self) -> None:
+        """
+        Keep the session's comparison of spectra in step with this pane.
+
+        The rule is that the report prints what the pane shows: pinning a
+        spectrum starts the comparison, changing the live spectrum or either
+        of the two switches refreshes it, and unpinning drops it. The
+        alternative — a snapshot taken by a button — means a report that
+        disagrees with the window and no way of telling from either which
+        one is stale, and the argument for it (that browsing away from the
+        pinned spectrum spoils the comparison) is answered by the pane
+        showing exactly the same thing.
+
+        A comparison is a copy of the conditioned traces, so it survives the
+        live spectrum moving on, and it costs nothing at all while nothing
+        is pinned.
+        """
+        session = getattr(self, "session", None)
+        if session is None:
+            return
+        if not self.pinned_spectra:
+            session.spectra_comparison = None
+            return
+        from ..spectra_compare import from_traces
+
+        traces = self.spectrum.traces
+        if not traces:
+            session.spectra_comparison = None
+            return
+        # the live trace is named by the pane's title, the way a pin is
+        labelled = []
+        for index, trace in enumerate(traces):
+            label = (self.spectrum.title or trace.label) if index == 0 else trace.label
+            labelled.append(Trace(trace.key, label, trace.x, trace.y,
+                                  trace.colour, trace.source))
+        session.spectra_comparison = from_traces(
+            labelled, title=self._comparison_title(),
+            normalise=self.act_norm.isChecked(),
+            mirror=self.act_mirror.isChecked(),
+            centroid=self.spectrum.centroided,
+            condition=self.spectrum.condition)
+
+    def _comparison_title(self) -> str:
+        """What the picture is called: the samples it holds, once each."""
+        names = []
+        for trace in self.spectrum.traces:
+            name = (trace.label or "").split(" · ")[0].strip()
+            if name and name not in names:
+                names.append(name)
+        if len(names) > 1:
+            return " against ".join(names[:2]) + (
+                f" and {len(names) - 2} more" if len(names) > 2 else "")
+        return "Compared spectra"
+
+    def _export_comparison(self) -> None:
+        """
+        The comparison as an image, at print size rather than screen size.
+
+        PNG is written at twice the drawing's own size, which is what makes
+        the type and the sticks come out sharp on paper; SVG is the same
+        drawing as vectors for a figure that will be resized.
+        """
+        self.refresh_comparison()
+        comparison = getattr(self.session, "spectra_comparison", None)
+        if comparison is None or not comparison.stands:
+            self._update_status("Pin a spectrum first: a comparison needs two.")
+            return
+        from .help_window import describe
+
+        dialog = QtWidgets.QFileDialog(
+            self, "Export comparison",
+            os.path.join(self._last_dir(), "compared-spectra.png"),
+            "PNG image, 2× for print (*.png);;SVG image (*.svg)")
+        dialog.setAcceptMode(QtWidgets.QFileDialog.AcceptMode.AcceptSave)
+        describe(dialog, "chromatograms-and-spectra")
+        if not dialog.exec() or not dialog.selectedFiles():
+            return
+        path = dialog.selectedFiles()[0]
+        self._write_comparison(
+            path, svg="svg" in dialog.selectedNameFilter().lower())
+
+    def _write_comparison(self, path: str, svg: bool = False) -> str | None:
+        """Write the current comparison to `path`, as SVG or as a 2× PNG."""
+        comparison = getattr(self.session, "spectra_comparison", None)
+        if comparison is None:
+            return None
+        from ..spectra_compare import PRINT_SCALE, render_png, render_svg
+
+        svg = svg or path.lower().endswith(".svg")
+        wanted = ".svg" if svg else ".png"
+        if not path.lower().endswith(wanted):
+            path += wanted
+        self._remember_dir(path)
+        try:
+            if svg:
+                render_svg(comparison, path)
+            else:
+                render_png(comparison, path, scale=PRINT_SCALE)
+        except Exception as exc:                       # a full disk, a bad path
+            self._update_status(f"Could not write {path}: {exc}")
+            return None
+        self._update_status(
+            f"{len(comparison.traces)} spectra written to {path}"
+            + ("" if svg else f", at {PRINT_SCALE:g}× for print"))
+        return path
 
     def _current_spectrum(self) -> tuple[np.ndarray, np.ndarray] | None:
         traces = self.spectrum.traces
@@ -1888,10 +2009,12 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
     def _set_normalised(self, enabled: bool) -> None:
         self.chrom.set_normalised(enabled)
         self.spectrum.set_normalised(enabled)
+        self.refresh_comparison()
 
     def _set_mirror(self, enabled: bool) -> None:
         self.chrom.set_mirror(enabled)
         self.spectrum.set_mirror(enabled)
+        self.refresh_comparison()
 
     def _set_smoothing(self, sigma: float) -> None:
         self.chrom.set_smoothing(sigma)
@@ -1912,6 +2035,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
 
     def _set_centroid(self, enabled: bool) -> None:
         self.spectrum.set_centroid(enabled)
+        self.refresh_comparison()
         self._fill_peak_table()
 
     def _add_marker(self) -> None:

@@ -259,3 +259,111 @@ def test_the_page_is_not_mostly_blank(qapp, tmp_path):
                 break
     assert lowest > image.height() * 0.75, (
         f"ink stops {lowest / image.height():.0%} down a page that should be full")
+
+
+# --------------------------------------------------------------------------- #
+# the compared spectra
+# --------------------------------------------------------------------------- #
+def _comparison(mirror: bool = True):
+    """Two synthetic spectra: one mass in both, one in each alone."""
+    import numpy as np
+
+    from openquant import spectra_compare
+
+    def profile(peaks, step=0.005, width=0.012):
+        mz = np.arange(100.0, 800.0, step)
+        y = np.zeros(mz.size)
+        for centre, height in peaks:
+            y += height * np.exp(-0.5 * ((mz - centre) / width) ** 2)
+        return mz, y
+
+    a = profile([(184.0733, 100000), (703.5749, 41000)])
+    b = profile([(184.0733, 61000), (731.6062, 52000)])
+    return spectra_compare.SpectrumComparison(
+        traces=[spectra_compare.SpectrumTrace("QC01 · scan 12", *a, "#234b8c"),
+                spectra_compare.SpectrumTrace("QC02 · scan 14", *b, "#e08a1e")],
+        title="QC01 against QC02", normalise=True, mirror=mirror)
+
+
+def test_no_compared_spectra_no_section(qapp):
+    """Like the mass drift and the batch comparison: printed while it
+    stands, absent otherwise, rather than a page saying nothing."""
+    session = _session(qapp)
+    assert session.spectra_comparison is None
+    assert "Compared spectra" not in report.build_html(session)
+
+
+def test_a_comparison_of_one_spectrum_does_not_stand(qapp):
+    from openquant import spectra_compare
+
+    session = _session(qapp)
+    comparison = _comparison()
+    session.spectra_comparison = spectra_compare.SpectrumComparison(
+        traces=comparison.traces[:1], title="alone")
+    assert "Compared spectra" not in report.build_html(session)
+
+
+def test_the_compared_spectra_are_printed_with_their_picture(qapp):
+    session = _session(qapp)
+    session.spectra_comparison = _comparison()
+    document = report.build_html(session)
+    assert "Compared spectra</h2>" in document
+    # the picture travels inside the document, so an exported HTML report is
+    # one file that can be mailed
+    assert 'src="data:image/png;base64,' in document
+    for label in ("QC01 · scan 12", "QC02 · scan 14"):
+        assert label in document
+    assert "Peaks in common" in document
+    assert "184.07" in document          # the mass both spectra hold
+    assert "downwards" in document       # what Mirror did, said in words
+
+
+def test_the_picture_reaches_the_printed_page(qapp, tmp_path):
+    """
+    Qt drops what it does not understand without a word, so the assertion
+    has to be ink: the second trace prints in an orange nothing else in the
+    report uses. The page count is not the test — measured, a section of a
+    picture and two tables is 37% of a page and the slack at the end of a
+    report swallows it — but the file grows by the picture's own weight.
+    """
+    pdf = pytest.importorskip("PyQt6.QtPdf")
+    from PyQt6 import QtCore
+
+    session = _session(qapp)
+    plain = report.write_pdf(session, tmp_path / "plain.pdf", title="Plain")
+    session.spectra_comparison = _comparison()
+    with_them = report.write_pdf(session, tmp_path / "spectra.pdf",
+                                 title="With spectra")
+    assert os.path.getsize(with_them) > os.path.getsize(plain) + 50_000
+
+    def orange(path: str) -> int:
+        """
+        Orange pixels anywhere in the document.
+
+        The trace is a hair under a point wide, so at any sampled step it is
+        missed; the whole page is read at once instead, out of the image's
+        own buffer.
+        """
+        import numpy as np
+
+        from PyQt6 import QtGui
+
+        document = pdf.QPdfDocument(None)
+        document.load(path)
+        found = 0
+        for page in range(document.pageCount()):
+            image = document.render(page, QtCore.QSize(1200, 1697)).convertToFormat(
+                QtGui.QImage.Format.Format_RGB32)
+            bits = image.constBits()
+            bits.setsize(image.sizeInBytes())
+            pixels = np.frombuffer(bits, np.uint8).reshape(
+                image.height(), image.bytesPerLine() // 4, 4)
+            blue, green, red = (pixels[:, :, 0].astype(int),
+                                pixels[:, :, 1].astype(int),
+                                pixels[:, :, 2].astype(int))
+            found += int(((red > 140) & (green > 60) & (green < 175)
+                          & (blue < 100)).sum())
+        return found
+
+    assert orange(plain) == 0, "nothing else in a report is orange"
+    assert orange(with_them) > 50, "the picture did not print"

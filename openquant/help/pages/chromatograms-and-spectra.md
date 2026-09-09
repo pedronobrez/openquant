@@ -82,6 +82,29 @@ Everything else reads the live spectrum: the peak table, the
 [[formula-finder]], the [[lipid-maps]] Explain, the [[spectral-library]].
 The pinned copies are pictures, and are lost when the files are closed.
 
+### Taking the comparison away
+
+**File ▸ Export comparison (PNG/SVG)…** writes what the pane is showing as
+one picture — enabled as soon as something is pinned. PNG comes out at
+twice the drawing's own size, which is what makes the type and the sticks
+sharp when it is printed or dropped into a slide; SVG is the same drawing
+as vectors, for a figure that will be resized. Either way the picture is
+drawn again from the data rather than grabbed off the screen, so it is the
+same whatever the size of the window, and it is always drawn for paper: a
+white ground and dark axes, whatever theme the application is in. A trace
+colour that was lightened to carry on a dark window is darkened until it
+reads on white, keeping its hue, so a trace known by its colour on screen
+is the same trace on the page.
+
+The same picture goes into the [[report]], under *Compared spectra*, with
+a table of the traces and a table of the masses they have in common. What
+the report prints is what the pane shows: pinning a spectrum starts the
+comparison, changing the live spectrum or either switch refreshes it, and
+**Unpin spectra** drops it. There is nothing to keep in step by hand and
+nothing that can go stale — if the pane holds two spectra worth reporting,
+so does the report; if it does not, the report leaves the section out. It
+is not saved with the project, for the same reason the pins are not.
+
 ## Profile spectra and their zeros
 
 A profile spectrum from a `.wiff` and the same spectrum from mzML do not

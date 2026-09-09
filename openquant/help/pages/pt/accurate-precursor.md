@@ -46,6 +46,11 @@ Em dados reais a diferença decide a resposta. Uma transição escrita como
 coloca o íon em 325.1887 e a varredura de íons produto concorda dentro de
 1 ppm, o que descarta essa espécie a 41 ppm.
 
+Com [[mass-recalibration]] ligada — a correção do eixo a partir dos padrões
+que carregam uma fórmula — esta medida é reportada crua e corrigida lado a
+lado: o valor medido nunca é sobrescrito, porque a correção foi ajustada a
+partir dele.
+
 ## Onde aparece
 
 - [[annotate-from-lipid-maps]] — cada proposta diz se sua massa veio do survey

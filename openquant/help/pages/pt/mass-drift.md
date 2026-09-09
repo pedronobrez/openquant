@@ -69,11 +69,12 @@ mediana como linha cheia e ±10 ppm tracejados, a mudança ajustada como uma
 tendência tracejada. Um ponto além de ±10 ppm é desenhado na cor de aviso;
 clicar em um seleciona aquela amostra na grade de [[peak-review]].
 
-## Medido, não corrigido
+## Medido, e corrigido só a pedido
 
-Esta página reporta; ela não muda massa nenhuma. Recalibrar o eixo só vale a
-pena escrever se uma corrida mostrar algo a corrigir, e é isto que diz se
-mostra. Uma medida que a varredura de íons produto não confirmou é mantida e
+Esta página reporta; por si só ela não muda massa nenhuma. O que fazer com
+o que ela mostra é [[mass-recalibration]], cujo interruptor fica nesta mesma
+aba: ela reutiliza exatamente estas medidas, de modo que um padrão que
+falhou o teste de mesmo íon aqui também não é lock mass lá. Uma medida que a varredura de íons produto não confirmou é mantida e
 contada — uma deriva é uma deriva quer o scan confirmatório fosse forte o
 bastante quer não — e a contagem está na linha.
 

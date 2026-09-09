@@ -22,7 +22,10 @@ pôde ser extraída. A mensagem nomeia o arquivo que tem de estar ao lado do
 `.wiff` ali, nomeia também esse — um companheiro renomeado à mão
 (`name.wiff_mix1.scan` ao lado de `name_mix1.wiff`) é a maneira habitual de
 o par se desfazer, e renomeá-lo para `name_mix1.wiff.scan` é o reparo
-inteiro. Eles são lidos pelas próprias bibliotecas Clearcore2 da SCIEX, que
+inteiro — que [[checking-files]] encontra e oferece antes mesmo de o
+arquivo ser aberto. Um `.wiff2` ao lado do par é outro contêiner e não é
+lido aqui; nada se perde, pois o `.wiff` de mesmo nome contém a mesma
+aquisição. Eles são lidos pelas próprias bibliotecas Clearcore2 da SCIEX, que
 são o único software capaz de decodificar o formato e são redistribuídas
 pelo pacote de código aberto alpharaw. Como elas são feitas funcionar fora
 do Windows está descrito em [[how-wiff-is-read]].

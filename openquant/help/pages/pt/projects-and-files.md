@@ -28,6 +28,11 @@ lido de volta como *valley*, que foi o que ele executou.
 ## Dados brutos
 
 `.wiff` com seu `.wiff.scan`, e mzML. Nunca modificados. Ver [[formats]].
+O que uma pasta contém e o que daria errado nela — um companheiro que não
+está lá, um `.scan` com o nome errado, arquivos que nenhum leitor daqui
+abre — é respondido antes de qualquer coisa ser aberta por *File ▸ Check a
+folder…*; ver [[checking-files]], que é também onde o único reparo,
+renomear um `.scan` órfão, é oferecido.
 
 ## Arquivos CSV
 

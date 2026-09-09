@@ -72,6 +72,19 @@ method of 141 components and 11 internal standards, sampled every 14.6 s.
   median 14.6 s — one cycle — so every cycle time the sampling report
   recommends for that batch is an upper bound.
 
+## The mass axis
+
+- On the 26-injection batch, whose survey scan covers 50–700, the one
+  internal standard strong enough to measure — `SM(d18:1/12:0)` — held to
+  −4.0 ppm across the run with a 16 ppm spread between injections. Nine
+  others came back with spreads of 98 to 534 ppm: not the same ion twice.
+  The first version of the measurement called one of them drifting by
+  −351 ppm, which is why a spread over 25 ppm now stops a trend being
+  fitted at all.
+- Floors proposed from the same batch: 5,240 for that standard, 522 and 566
+  for the two at about a thousand counts, and 2 to 25 for the rest — which
+  is what their medians are.
+
 ## Noise
 
 - Over 846 real traces, the median had three non-zero points in sixty-one

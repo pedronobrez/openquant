@@ -18,8 +18,9 @@ the tree a few rows tall, and whether they were open is remembered.
 **Centre.** The [[peak-review]] grid: one panel per sample for the selected
 component, with the integrated area shaded.
 
-**Bottom.** Five tabs: [[results-table|Results]], [[calibration|Calibration]],
-[[statistics|Statistics]], [[metric-plot|Metric plot]] and [[batch-qc|Batch QC]].
+**Bottom.** Six tabs: [[results-table|Results]], [[calibration|Calibration]],
+[[statistics|Statistics]], [[metric-plot|Metric plot]], [[batch-qc|Batch QC]]
+and [[mass-drift|Mass drift]].
 
 ## The toolbar
 

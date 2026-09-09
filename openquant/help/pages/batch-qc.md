@@ -114,6 +114,25 @@ needs. That is a property of the acquisition schedule, and nothing in the
 processing substitutes for it — the [[report]] carries the same table under
 *Sampling*, for the conversation with whoever writes the schedule.
 
+## Suggesting the floors
+
+**Suggest floors…** proposes a **Min. response** for each internal standard
+from what it gave in this batch: the median of its area over the spiked
+injections, with the injections where every standard went at once left out
+— those are what the floor exists to catch, and a median that included them
+would be lower for it — and half of that median as the proposal, rounded to
+three figures. Each row shows the basis: the median, how many injections
+stood behind it, which were left out. Rows with fewer than six injections
+come unticked. It is a proposal: the floor is what the standard gives when
+the run is right, and whoever knows the method may put it higher or lower.
+See [[internal-standards-and-qualifiers]].
+
+## Mass drift
+
+The neighbouring tab, [[mass-drift]], asks the same question of the mass
+axis that the control charts ask of the response: did it hold from the
+first injection to the last?
+
 ## In the report
 
 The [[report]]'s *Batch quality* section carries the charts' verdicts, the

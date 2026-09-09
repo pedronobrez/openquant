@@ -51,4 +51,6 @@ rules that species out at 41 ppm.
 - [[annotate-from-lipid-maps]] — each proposal says whether its mass came
   from the survey or was written, and what window was used.
 - the [[lipid-maps]] tab's Explain — the precursor typed there is what the
-  candidates are looked up by.
+  candidates are looked up by;
+- [[mass-drift]] — the same measurement made in every injection, to see
+  whether the mass axis held through the run.

@@ -10,6 +10,8 @@ against the standard, the method check, and the CSV the method travels in.
 
 import os
 
+import pytest
+
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -69,7 +71,7 @@ def _results(entries, is_areas):
         analyte.area = 500.0
         analyte.internal_standard = "IS"
         analyte.is_area = area
-        analyte.area_ratio = 500.0 / area
+        analyte.area_ratio = 500.0 / area if area else None
         results.results += [standard, analyte]
     return results
 
@@ -150,4 +152,73 @@ def test_the_method_table_edits_the_floor():
     workspace._commit()
     assert session.method.components[0].min_response == 1500.0
     workspace.deleteLater()
+    app.processEvents()
+
+
+# --------------------------------------------------------------------------- #
+# proposing a floor from the batch
+# --------------------------------------------------------------------------- #
+def test_a_floor_is_proposed_from_the_median_with_the_failures_left_out():
+    from openquant.qc import FLOOR_FRACTION, suggest_floors
+
+    entries = _entries(10)
+    areas = [1000.0, 1040.0, 960.0, 1010.0, 990.0, 1020.0, 80.0, 1000.0, 1030.0, 970.0]
+    results = _results(entries, areas)
+    # a second standard so that the index exists and can call S06 a failure
+    method = _method(None)
+    method.components.append(Component("IS2", 710.0, 184.0, rt=6.0,
+                                       is_internal_standard=True))
+    for entry, area in zip(entries, areas):
+        row = PeakResult(entry.key, entry.name, "IS2")
+        row.area = area * 2
+        results.results.append(row)
+    method.components.append(Component("IS3", 720.0, 184.0, rt=6.0,
+                                       is_internal_standard=True))
+    for entry, area in zip(entries, areas):
+        row = PeakResult(entry.key, entry.name, "IS3")
+        row.area = area * 3
+        results.results.append(row)
+    proposals = suggest_floors(results, entries, method)
+    first = proposals[0]
+    assert first.component == "IS" and first.current is None
+    assert first.injections == 10 and first.used == 9
+    assert first.excluded == ("S06",)
+    assert first.median == pytest.approx(1000.0, abs=15)
+    assert first.proposed == pytest.approx(first.median * FLOOR_FRACTION, rel=0.01)
+    assert first.confident and first.note == ""
+
+
+def test_a_proposal_says_when_too_few_injections_stand_behind_it():
+    from openquant.qc import suggest_floors
+
+    entries = _entries(3)
+    results = _results(entries, [500.0, 520.0, 480.0])
+    proposal = suggest_floors(results, entries, _method(None))[0]
+    assert proposal.offered and not proposal.confident
+    assert "only 3 injection(s)" in proposal.note
+    none = suggest_floors(_results(entries, [0.0, 0.0, 0.0]), entries, _method(None))[0]
+    assert not none.offered and "not found" in none.note
+
+
+def test_the_dialog_writes_only_the_ticked_floors():
+    from PyQt6 import QtCore, QtWidgets
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    from openquant.qc import suggest_floors
+    from openquant.session import Session
+    from openquant.ui.floor_dialog import FloorDialog
+
+    entries = _entries(8)
+    session = Session()
+    session.entries = entries
+    session.method = _method(None)
+    session.results = _results(entries, [1000.0] * 8)
+    proposals = suggest_floors(session.results, entries, session.method)
+    dialog = FloorDialog(session, proposals)
+    assert dialog.table.item(0, 0).checkState() == QtCore.Qt.CheckState.Checked
+    dialog.table.item(0, 0).setCheckState(QtCore.Qt.CheckState.Unchecked)
+    assert dialog.apply_selected() == 0
+    assert session.method.components[0].min_response is None
+    dialog = FloorDialog(session, proposals)
+    assert dialog.apply_selected() == 1
+    assert session.method.components[0].min_response == pytest.approx(500.0)
     app.processEvents()

@@ -58,6 +58,7 @@ SECTIONS = {
     "carryover": "Carryover",
     "quality": "Batch quality",
     "sampling": "Sampling",
+    "mass": "Mass drift",
     "algorithms": "Integration algorithms",
     "results": "Results",
     "statistics": "Statistics",
@@ -647,6 +648,52 @@ def _sampling(title: str, results: ResultsSet, entries: list[SampleEntry],
     return "".join(parts)
 
 
+def _mass(title: str, drift, breaks: set[str] | None = None) -> str:
+    """Whether the mass axis moved during the run; printed only when it
+    was measured, since measuring is a minute of reading survey spectra."""
+    from .mass_drift import DRIFT_PPM, MIN_INJECTIONS
+    from .precursor import CONSENSUS_SPREAD_PPM
+
+    parts = [_heading(title, breaks)]
+    if drift.note:
+        return "".join(parts) + f'<p class="empty">{_escape(drift.note)}</p>'
+    order = ("in the order the instrument ran them" if drift.ordered else
+             f"in the order the files were opened — {drift.timed} of "
+             f"{drift.injections} injections carry an acquisition time")
+    parts.append(
+        f'<p class="meta">Each internal standard\u2019s precursor read from '
+        f"the survey scan in every injection, {order}, against the "
+        f"batch\u2019s own median; the exact mass from formula and adduct "
+        f"where the component carries them. A component drifted when the "
+        f"change fitted across the run is at least {DRIFT_PPM:g} ppm and goes "
+        f"one way (Spearman\u2019s &#961; beyond 0.5); fewer than "
+        f"{MIN_INJECTIONS} injections cannot show a trend, and a spread over "
+        f"{CONSENSUS_SPREAD_PPM:g} ppm between injections means they did not "
+        f"measure the same ion, so no trend is fitted. The index is the "
+        f"median over the standards, per injection, of each one\u2019s "
+        f"deviation \u2014 what the instrument did rather than any one "
+        f"compound.</p>")
+    trends = ([drift.index] if drift.index is not None else []) + list(drift.trends)
+    rows = []
+    for trend in trends:
+        is_index = trend.nominal == 0.0 and trend.exact is None
+        verdict = _escape(trend.note) if trend.note else "steady"
+        if trend.drifted:
+            verdict = f'<span class="bad">drift {trend.change:+.1f} ppm</span>'
+        rows.append([
+            _escape(trend.component), f"{len(trend.points)}",
+            "—" if is_index else _number(trend.median, 4),
+            _number(trend.exact, 4), _number(trend.error_ppm, 1),
+            _number(trend.spread_ppm, 1), _number(trend.change, 1),
+            _number(trend.correlation, 3), verdict])
+    parts.append(_table(
+        ["Component", "n", "Median m/z", "Exact m/z", "Error ppm", "Spread ppm",
+         "Change ppm", "\u03c1", "Verdict"],
+        rows, right={1, 2, 3, 4, 5, 6, 7}, empty="Nothing measured.",
+        widths=["20%", "5%", "12%", "12%", "9%", "9%", "9%", "7%", "17%"]))
+    return "".join(parts)
+
+
 def _algorithms(title: str, comparison, method: ProcessingMethod,
                 breaks: set[str] | None = None, most: int = 40) -> str:
     """
@@ -884,8 +931,10 @@ def build_html(session, title: str = "Batch report",
     # a comparison is only there when one was run; a section saying so on
     # every report would be a page of nothing
     comparison = getattr(session, "comparison", None)
+    drift = getattr(session, "mass_drift", None)
     order = [key for key in ALL_SECTIONS if key in sections
-             and (key != "algorithms" or comparison is not None)]
+             and (key != "algorithms" or comparison is not None)
+             and (key != "mass" or drift is not None)]
     titles = {key: f"{number}. {SECTIONS[key]}"
               for number, key in enumerate(order, start=1)}
 
@@ -917,6 +966,8 @@ def build_html(session, title: str = "Batch report",
         elif key == "sampling":
             parts.append(_sampling(name, session.results, entries, method,
                                    breaks))
+        elif key == "mass":
+            parts.append(_mass(name, drift, breaks))
         elif key == "algorithms":
             parts.append(_algorithms(name, comparison, method, breaks))
         elif key == "results":

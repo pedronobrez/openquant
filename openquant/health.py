@@ -169,7 +169,9 @@ def check_method(method: ProcessingMethod,
             "scheduled acquisition — where the baseline is exact zeros and "
             "the noise cannot be measured — is an absolute height against an "
             "arbitrary constant. Set Min. response on each standard to what "
-            "it gives when the run is right; the batch cannot derive it."))
+            "it gives when the run is right; the batch cannot derive it, "
+            "though Batch QC \u25b8 Suggest floors\u2026 proposes a starting "
+            "point from what it gave."))
 
     untimed = [c.name for c in components if not c.rt]
     if untimed:

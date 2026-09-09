@@ -48,6 +48,8 @@ class Session(QtCore.QObject):
         #: Derived from the batch and not saved with it: it is three
         #: integrations of the whole batch and is rebuilt on request.
         self.comparison = None
+        #: the last mass-drift measurement, likewise derived and not saved
+        self.mass_drift = None
         self.project_path: str | None = None
         #: something changed since the last save. Tracked here rather than in
         #: the window, because every workspace can change the session and none
@@ -92,6 +94,7 @@ class Session(QtCore.QObject):
             wiff.close()
         self.files.clear()
         self.comparison = None
+        self.mass_drift = None
         self.entries.clear()
         self.results.clear()
         self.calibrations.clear()

@@ -536,6 +536,100 @@ class BatchQC:
         return [row for row in self.precision if row.fails]
 
 
+#: the share of a standard's median response offered as its floor. Half:
+#: an injection where the standard came back at less than half of normal is
+#: one where the ratio to it has stopped meaning the same thing, and half is
+#: also where the always-out rule of the control chart already draws its line.
+FLOOR_FRACTION = 0.5
+
+
+@dataclass(frozen=True)
+class FloorProposal:
+    """A floor the batch can offer for one internal standard, with its basis."""
+
+    component: str
+    current: float | None
+    median: float | None
+    #: spiked injections where the standard was found
+    injections: int
+    #: of those, the ones left in once the failed injections were taken out
+    used: int
+    excluded: tuple[str, ...] = ()
+    proposed: float | None = None
+    note: str = ""
+
+    @property
+    def offered(self) -> bool:
+        return self.proposed is not None
+
+    @property
+    def confident(self) -> bool:
+        """Enough injections behind the median to tick it by default."""
+        return self.offered and self.used >= MIN_INJECTIONS
+
+
+def _round_to(value: float, figures: int = 3) -> float:
+    """A proposal to three significant figures: a floor is a threshold, not
+    a measurement, and 4,873.2 reads as one."""
+    if value <= 0:
+        return value
+    magnitude = int(np.floor(np.log10(value)))
+    return float(round(value, figures - 1 - magnitude))
+
+
+def suggest_floors(results: ResultsSet, entries: list[SampleEntry],
+                   method: ProcessingMethod,
+                   report: "BatchQC | None" = None) -> list[FloorProposal]:
+    """
+    A floor for each internal standard, from the batch's own responses.
+
+    The median area over the spiked injections, with the injections where
+    every standard went at once left out — those are what the floor exists
+    to catch, and a median that includes them is lower for it — and
+    FLOOR_FRACTION of that median as the proposal. It is offered as a
+    proposal: the floor is what the standard gives when the run is right,
+    which somebody who knows the method may put higher or lower.
+    """
+    if report is None:
+        report = batch_qc(results, entries, method)
+    failed = set(failed_injections(report))
+    ordered = acquisition_order(entries)
+    proposals: list[FloorProposal] = []
+    for component in method.components:
+        if not component.is_internal_standard or not component.is_valid:
+            continue
+        values: list[float] = []
+        excluded: list[str] = []
+        found = 0
+        for entry in ordered:
+            if entry.sample_type not in SPIKED_TYPES:
+                continue
+            row = results.get(entry.key, component.name)
+            if row is None or not row.found:
+                continue
+            found += 1
+            if entry.name in failed:
+                excluded.append(entry.name)
+                continue
+            values.append(float(row.area))
+        if not values:
+            proposals.append(FloorProposal(
+                component.name, component.min_response, None, found, 0,
+                tuple(excluded), None,
+                "not found in any spiked injection" if not found
+                else "found only in injections that failed"))
+            continue
+        median = float(np.median(values))
+        note = ""
+        if len(values) < MIN_INJECTIONS:
+            note = (f"only {len(values)} injection(s) behind the median; "
+                    f"{MIN_INJECTIONS} are needed to trust it")
+        proposals.append(FloorProposal(
+            component.name, component.min_response, median, found, len(values),
+            tuple(excluded), _round_to(median * FLOOR_FRACTION), note))
+    return proposals
+
+
 def failed_injections(report: "BatchQC") -> list[str]:
     """The samples where every internal standard went at once."""
     if report.index is None or not report.index.measurable:

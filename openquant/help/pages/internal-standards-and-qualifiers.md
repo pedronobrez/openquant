@@ -53,7 +53,11 @@ Once declared, three things read it:
   no floor.
 
 The floor is an area in the same units as the results table, travels in the
-CSV as `min_response`, and is saved with the project.
+CSV as `min_response`, and is saved with the project. **Suggest floors…** on
+the [[batch-qc]] page proposes one from the batch — half of each standard's
+median over the injections that were not failures, with its basis beside
+it — for somebody to accept, since a proposal from one batch is evidence
+and not the declaration.
 
 ## Qualifiers and ion ratios
 

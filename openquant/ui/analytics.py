@@ -21,6 +21,7 @@ from .acceptance_panel import AcceptancePanel
 from .calibration_panel import CalibrationPanel
 from .integration_panel import IntegrationPanel
 from .metric_plot import MetricPlotPanel
+from .mass_drift_panel import MassDriftPanel
 from .qc_panel import QualityPanel
 from .statistics_panel import StatisticsPanel
 from .peak_review import PeakReviewGrid
@@ -145,6 +146,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.statistics = StatisticsPanel(session)
         self.metrics = MetricPlotPanel(session)
         self.quality = QualityPanel(session)
+        self.mass = MassDriftPanel(session)
         self.bottom = QtWidgets.QTabWidget()
         self.bottom.setDocumentMode(True)
         self.bottom.addTab(self.results, "Results")
@@ -152,6 +154,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.bottom.addTab(self.statistics, "Statistics")
         self.bottom.addTab(self.metrics, "Metric plot")
         self.bottom.addTab(self.quality, "Batch QC")
+        self.bottom.addTab(self.mass, "Mass drift")
         right.addWidget(self.grid)
         right.addWidget(self.bottom)
         right.setStretchFactor(0, 3)
@@ -170,7 +173,8 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
                              (self.calibration, "calibration"),
                              (self.statistics, "statistics"),
                              (self.metrics, "metric-plot"),
-                             (self.quality, "batch-qc")):
+                             (self.quality, "batch-qc"),
+                             (self.mass, "mass-drift")):
             describe(widget, page)
 
         self.btn_process.clicked.connect(self.process_batch)
@@ -198,6 +202,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.acceptance.sigApplyAll.connect(self._apply_acceptance_all)
         self.metrics.sigPointActivated.connect(self._on_row_selected)
         self.quality.sigSampleActivated.connect(self.grid.select)
+        self.mass.sigSampleActivated.connect(self.grid.select)
 
         session.sigMethodChanged.connect(self.reload_components)
         session.sigSamplesChanged.connect(self.refresh_grid)

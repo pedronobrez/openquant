@@ -65,6 +65,13 @@ class QualityPanel(QtWidgets.QWidget):
             "reason. Rows integrated by hand are left alone")
         self.btn_exclude.setEnabled(False)
         bar.addWidget(self.btn_exclude)
+        self.btn_floors = QtWidgets.QPushButton("Suggest floors…")
+        self.btn_floors.setToolTip(
+            "Propose a Min. response for each internal standard from what it "
+            "gave in the injections that were not failures — half its median, "
+            "shown with its basis, written only when ticked and applied")
+        self.btn_floors.setEnabled(False)
+        bar.addWidget(self.btn_floors)
         bar.addStretch(1)
         layout.addLayout(bar)
 
@@ -142,6 +149,7 @@ class QualityPanel(QtWidgets.QWidget):
         self.component.currentTextChanged.connect(self._draw_selected)
         self.btn_refresh.clicked.connect(self.reload)
         self.btn_exclude.clicked.connect(self._exclude_failed)
+        self.btn_floors.clicked.connect(self._suggest_floors)
         self.table.cellClicked.connect(self._on_row_clicked)
         session.sigResultsChanged.connect(self.reload)
         session.sigMethodChanged.connect(self.reload)
@@ -161,6 +169,7 @@ class QualityPanel(QtWidgets.QWidget):
         self._fill_precision()
         self._fill_sampling()
         self.btn_exclude.setEnabled(bool(failed_injections(self._report)))
+        self.btn_floors.setEnabled(bool(self._report.charts))
         self._reload_components()
         self._describe()
 
@@ -193,6 +202,23 @@ class QualityPanel(QtWidgets.QWidget):
         self.session.notify_results_changed()
         self.status.setText(f"{changed:,} result(s) excluded, from "
                             f"{len(failed)} injection(s).")
+
+    def _suggest_floors(self) -> None:
+        from ..qc import suggest_floors
+        from .floor_dialog import FloorDialog
+
+        if self._report is None:
+            return
+        proposals = suggest_floors(self.session.results, self.session.entries,
+                                   self.session.method, self._report)
+        if not proposals:
+            self.status.setText("No internal standard to propose a floor for.")
+            return
+        dialog = FloorDialog(self.session, proposals, self)
+        dialog.exec()
+        if dialog.applied:
+            self.status.setText(f"{dialog.applied} floor(s) written into the "
+                                f"method; the charts read them now.")
 
     def _describe(self) -> None:
         report = self._report

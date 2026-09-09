@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.7.0 released. 731 tests. Public repository.**
+**Version 0.7.0 released. 744 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -69,6 +69,8 @@ openquant/
   qc.py           control charts through the run, drift, replicate precision
   sampling.py     points per peak, per component, and the cycle time the
                   peaks would need
+  mass_drift.py   each standard's measured mass through the run: did the
+                  axis hold
   contour.py      the run as a retention time by m/z grid
   health.py       what the method will fail at, before it is run
   suggest.py      retention times and windows the batch can supply
@@ -250,6 +252,28 @@ UV detector, is not implemented there) — untested on real Windows.
   than its floor in that injection; `health.check_method` warns of a serving
   standard with none. The batch cannot supply the number — measured, its
   precision did not track its response — which is why it is a method field.
+- **A mass "drift" of −351 ppm is not a drift.** `mass_drift.py` reads
+  every internal standard's precursor from the survey scan in every
+  injection (`precursor.measure`, once per injection) and fits the change
+  across the run against the batch's own median. On the 26-injection batch
+  the first run called one standard drifting by −351 ppm with a spread of
+  476 ppm between injections: a survey signal too weak, the ±0.25 Da window
+  catching a different neighbour each time. So `MassTrend.same_ion` gates
+  on `precursor.CONSENSUS_SPREAD_PPM` (25) — the limit the consensus already
+  uses to say samples disagree — and a trend that fails it is not judged,
+  says why, and stays out of the index. With that, the batch says what it
+  can: `SM(d18:1/12:0)`, the one standard strong enough in a 50–700 survey,
+  held to −4.0 ppm across the run with a 16 ppm spread; nine others cannot
+  be measured; no index, since fewer than three standards qualify. The
+  measurement is not saved with the project (a few seconds to repeat; three
+  on that batch) and the report carries it only while it stands.
+- **A floor is proposed, never derived.** `qc.suggest_floors` offers each
+  standard half its median area over the spiked injections with the failed
+  injections left out, to three figures, with its basis on the row; the
+  dialog (`ui.floor_dialog`) pre-ticks only rows with `MIN_INJECTIONS`
+  behind them. On the real batch that is 5,240 for the one usable standard
+  and 2–25 counts for the others — which is what their medians are, and the
+  dialog shows the median so nobody accepts a floor of 3 by mistake.
 - **F1 walks the widget tree.** `ui.help_window.describe(widget, page)` sets
   a dynamic property; `help_page_for` walks up from the focused widget to
   the first one that has it; the shell installs an application-wide event
@@ -438,7 +462,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-731 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+744 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

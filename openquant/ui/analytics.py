@@ -753,6 +753,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         if not comparison.rows:
             self._report("The two methods share no component by name.")
             return
+        self.session.batch_comparison = comparison
         self._batches_dialog = BatchesDialog(comparison, self)
         self._batches_dialog.show()
         self._report(comparison.summary())

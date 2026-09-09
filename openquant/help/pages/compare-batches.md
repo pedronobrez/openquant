@@ -28,7 +28,9 @@ since is compared as an analyte on the side that did not have it.
 | RT ref., RT now, ΔRT | the median retention time each side, and the shift — a column that has aged, or a gradient that changed |
 
 The totals above the table give the same four figures over the whole
-method, side by side. **Export CSV…** writes every row.
+method, side by side. **Export CSV…** writes every row, and while the
+comparison stands the [[report]] carries it as a *Batch comparison*
+section — the document to take to the meeting after the scheduled run.
 
 ## Reading it
 

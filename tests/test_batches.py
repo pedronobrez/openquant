@@ -131,3 +131,20 @@ def test_the_dialog_shows_the_totals_and_the_rows():
     assert "against" in dialog.windowTitle()
     dialog.close()
     app.processEvents()
+
+
+def test_the_report_carries_the_comparison_only_while_it_stands():
+    from PyQt6 import QtWidgets
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    from openquant import report
+    from openquant.session import Session
+
+    current, reference = _batch("b", 0.2), _batch("a", 0.04)
+    session = Session()
+    session.entries, session.method, session.results = (
+        current.entries, current.method, current.results)
+    assert "Batch comparison" not in report.build_html(session, sections=("batches",))
+    session.batch_comparison = compare_batches(current, reference)
+    document = report.build_html(session, sections=("batches",))
+    assert "Batch comparison" in document and "IS (IS)" in document
+    assert "Median points on the peak" in document

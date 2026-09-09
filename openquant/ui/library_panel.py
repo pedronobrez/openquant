@@ -13,8 +13,9 @@ import os
 
 from PyQt6 import QtCore, QtWidgets
 
-from ..library import (PEAK_TOLERANCE_PPM, PRECURSOR_TOLERANCE_DA, LibraryHit,
-                       SpectralLibrary, load_library)
+from ..library import (MIN_MATCHED, PEAK_TOLERANCE_PPM, PRECURSOR_TOLERANCE_DA,
+                       LibraryHit, SpectralLibrary, load_library)
+from ..lipidmaps import mass_precision
 from .help_window import describe
 
 SETTING_PATH = "library/path"
@@ -66,6 +67,20 @@ class LibraryPanel(QtWidgets.QWidget):
         self.peak_tol.setValue(PEAK_TOLERANCE_PPM)
         self.peak_tol.setSuffix(" ppm")
         form.addRow("Peaks ±", self.peak_tol)
+        self.min_matched = QtWidgets.QSpinBox()
+        self.min_matched.setRange(1, 50)
+        self.min_matched.setValue(MIN_MATCHED)
+        self.min_matched.setToolTip(
+            "A record has to land this many of its peaks to be listed. One "
+            "peak in common is a coincidence: a phosphocholine ion at 184.07 "
+            "scored 83 against a laxative whose fragment sits 13 ppm away")
+        form.addRow("Matched peaks ≥", self.min_matched)
+        self.unknown_precursor = QtWidgets.QCheckBox("Also records with no precursor")
+        self.unknown_precursor.setToolTip(
+            "A filtered search leaves out records that carry no precursor "
+            "mass — 24,000 of MassBank's 139,000 — since a filter that admits "
+            "them is not one. Tick to score them anyway; their Δ ppm is blank")
+        form.addRow("", self.unknown_precursor)
         layout.addLayout(form)
 
         self.btn_search = QtWidgets.QPushButton("Search the spectrum on screen")
@@ -139,7 +154,12 @@ class LibraryPanel(QtWidgets.QWidget):
     def set_spectrum(self, mz, intensity, precursor: float | None = None) -> None:
         self._spectrum = (mz, intensity)
         if precursor:
-            self.precursor_edit.setText(f"{precursor:.4f}")
+            # the channel's precursor is what the instrument was told, to
+            # the decimals it was typed with: 647.5 is known to ±0.05, and
+            # a filter of ±0.02 around it is asking for digits it lacks
+            self.precursor_edit.setText(f"{precursor:g}")
+            self.precursor_tol.setValue(max(self.precursor_tol.value(),
+                                            mass_precision(precursor)))
 
     def _query_precursor(self) -> float | None:
         text = self.precursor_edit.text().strip().replace(",", ".")
@@ -164,7 +184,9 @@ class LibraryPanel(QtWidgets.QWidget):
         self._hits = self.library.search(
             mz, intensity, self._query_precursor(),
             tolerance_ppm=self.peak_tol.value(),
-            precursor_tolerance=self.precursor_tol.value())
+            precursor_tolerance=self.precursor_tol.value(),
+            min_matched=self.min_matched.value(),
+            include_unknown_precursor=self.unknown_precursor.isChecked())
         self.hits.clear()
         self.pairs.clear()
         for hit in self._hits:

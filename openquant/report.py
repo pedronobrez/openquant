@@ -60,6 +60,7 @@ SECTIONS = {
     "sampling": "Sampling",
     "mass": "Mass drift",
     "algorithms": "Integration algorithms",
+    "batches": "Batch comparison",
     "results": "Results",
     "statistics": "Statistics",
 }
@@ -694,6 +695,72 @@ def _mass(title: str, drift, breaks: set[str] | None = None) -> str:
     return "".join(parts)
 
 
+def _batches(title: str, comparison, breaks: set[str] | None = None,
+             most: int = 60) -> str:
+    """
+    A reference batch against this one, printed only when one was compared.
+
+    The totals first, then the components in the order of how much their
+    median area moved, since a schedule or a method edit that changed the
+    level of a response is what a reader wants pointed at.
+    """
+    from .batches import MOVED_PERCENT
+
+    parts = [_heading(title, breaks)]
+    parts.append(
+        f'<p class="meta">{_escape(comparison.reference)} is the reference, '
+        f"read from its project; {_escape(comparison.current)} is this batch. "
+        f"Components are matched by name. Points are the points on the peak "
+        f"at or above one per cent of its height; %CV is over the rows meant "
+        f"to agree \u2014 every spiked injection for an internal standard, the "
+        f"quality controls for an analyte. A component whose median area "
+        f"moved by more than {MOVED_PERCENT:g}% is marked.</p>")
+    parts.append(f"<p>{_escape(comparison.summary())}</p>")
+    ref, cur = comparison.totals()
+
+    def figure(value, decimals=0):
+        return _number(value, decimals) if value is not None else "\u2014"
+
+    parts.append(_table(
+        ["", _escape(comparison.reference), _escape(comparison.current)],
+        [["Injections", f"{comparison.reference_injections}",
+          f"{comparison.current_injections}"],
+         ["Rows found", f"{ref['found']:,}", f"{cur['found']:,}"],
+         ["Components with a peak", f"{ref['components_found']}",
+          f"{cur['components_found']}"],
+         ["Median points on the peak", figure(ref["median_points"]),
+          figure(cur["median_points"])],
+         ["Median %CV of the replicates", figure(ref["median_precision"], 1),
+          figure(cur["median_precision"], 1)]],
+        right={1, 2}, widths=["40%", "30%", "30%"]))
+    if comparison.only_reference or comparison.only_current:
+        parts.append(f"<p>{len(comparison.only_reference)} component(s) only "
+                     f"in the reference: {_escape(', '.join(comparison.only_reference))}. "
+                     f"{len(comparison.only_current)} only in this batch: "
+                     f"{_escape(', '.join(comparison.only_current))}.</p>")
+
+    rows = sorted(comparison.rows,
+                  key=lambda r: -(abs(r.area_change) if r.area_change is not None else -1))
+    table = []
+    for row in rows[:most]:
+        name = _escape(row.component + (" (IS)" if row.is_internal_standard else ""))
+        if row.moved:
+            name = f'<span class="bad">{name}</span>'
+        r, c = row.reference, row.current
+        table.append([name, f"{r.found}/{r.rows}", f"{c.found}/{c.rows}",
+                      figure(r.median_points), figure(c.median_points),
+                      figure(r.precision, 1), figure(c.precision, 1),
+                      figure(row.area_change, 1), figure(row.rt_shift, 3)])
+    if len(rows) > most:
+        parts.append(f"<p>The {most} components that moved most, of {len(rows)}:</p>")
+    parts.append(_table(
+        ["Component", "Found (ref.)", "Found (now)", "Points (ref.)",
+         "Points (now)", "%CV (ref.)", "%CV (now)", "\u0394 area %", "\u0394RT"],
+        table, right={1, 2, 3, 4, 5, 6, 7, 8}, empty="Nothing to compare.",
+        widths=["22%", "10%", "10%", "9%", "9%", "9%", "9%", "11%", "11%"]))
+    return "".join(parts)
+
+
 def _algorithms(title: str, comparison, method: ProcessingMethod,
                 breaks: set[str] | None = None, most: int = 40) -> str:
     """
@@ -932,9 +999,11 @@ def build_html(session, title: str = "Batch report",
     # every report would be a page of nothing
     comparison = getattr(session, "comparison", None)
     drift = getattr(session, "mass_drift", None)
+    batches = getattr(session, "batch_comparison", None)
     order = [key for key in ALL_SECTIONS if key in sections
              and (key != "algorithms" or comparison is not None)
-             and (key != "mass" or drift is not None)]
+             and (key != "mass" or drift is not None)
+             and (key != "batches" or batches is not None)]
     titles = {key: f"{number}. {SECTIONS[key]}"
               for number, key in enumerate(order, start=1)}
 
@@ -970,6 +1039,8 @@ def build_html(session, title: str = "Batch report",
             parts.append(_mass(name, drift, breaks))
         elif key == "algorithms":
             parts.append(_algorithms(name, comparison, method, breaks))
+        elif key == "batches":
+            parts.append(_batches(name, batches, breaks))
         elif key == "results":
             parts.append(_results(name, session.results, method, breaks))
         elif key == "statistics":

@@ -27,12 +27,22 @@ shown on hover.
 **Search the spectrum on screen** takes the spectrum the Explorer is
 showing — centroided if it was a profile — and the active channel's
 precursor, and scores every record whose precursor sits within
-**Precursor ±** of it. Records with no precursor are scored anyway, with
-their Δ ppm shown as `—`, so the reader knows the filter could not apply to
-them rather than believing it did. Widen the precursor tolerance for a
-nominal-mass library. Measured peaks under one per cent of the base peak
-are not matched against; the baseline of a product spectrum is full of
-them.
+**Precursor ±** of it. The tolerance is at least the precision the channel's
+precursor was written with: a method value of `647.5` is known to ±0.05,
+and a filter of ±0.02 around it would be asking for digits it lacks.
+Records with no precursor are left out of a filtered search unless **Also
+records with no precursor** is ticked — measured on MassBank, 24,000 of
+139,000 records carry none, and a filter that admitted them all had every
+search dominated by them; ticked, they are scored with their Δ ppm shown
+as `—`, so the reader knows the filter could not apply to them. Measured
+peaks under one per cent of the base peak are not matched against; the
+baseline of a product spectrum is full of them.
+
+A record has to land at least **Matched peaks ≥** of its peaks to be
+listed, two by default. One peak in common is a coincidence: on the same
+batch a spectrum that was mostly the phosphocholine ion at 184.07 scored
+83 against a laxative whose fragment sits 13 ppm away, and a one-peak
+record matched on it was a perfect score for nothing.
 
 Each library peak, strongest first, is paired to the nearest measured peak
 still free within **Peaks ±** ppm, so a strong library ion is never robbed
@@ -58,6 +68,24 @@ ppm, and the share of each spectrum's base peak — and **Overlay on
 spectrum** draws the record's peaks over the spectrum pane, scaled to its
 base peak, the way the [[mass-calculator]] overlays an isotope pattern.
 **Clear overlay** removes it.
+
+## Measured on MassBank
+
+The full MassBank export in NIST format — 139,006 records, 137 MB — reads
+in five seconds and takes about 1.3 GB of memory, since every record's
+peaks are held as arrays ready to match. A filtered search answers in
+milliseconds; one with no precursor filter, which has to consider every
+record sharing two peaks with the query, in two to seven seconds.
+
+Against the product-ion spectra of a real batch, the filtered search
+returned the compound where the library had it — a C16 sphingomyelin at
+score 46 and reverse 79, a C16 ceramide at 32 and 94, a C24:1 ceramide at
+11 and 90, a C18 sphingomyelin at 48 and 96 — and nothing for the C17
+internal standards, which are not in MassBank. The scores are low and the
+reverse scores high because a product-ion scan on a TOF carries the
+precursor, its isotopes and the whole low-mass region as well as the
+fragments the record lists: on such spectra the reverse score is the one
+to read, and the plain score says how much else was there.
 
 ## What the library does not know
 

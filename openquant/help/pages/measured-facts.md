@@ -79,6 +79,18 @@ method of 141 components and 11 internal standards, sampled every 14.6 s.
   — against the 14.6 s the batch was acquired at with all 144 running
   unscheduled. 72 of its 141 precursors lie outside the 50–700 survey.
 
+## The spectral library
+
+- MassBank in NIST format, 139,006 records: read in 5 s, 1.3 GB held; a
+  filtered search in milliseconds, an unfiltered one in 2–7 s. On the
+  batch's product-ion spectra it named a C16 sphingomyelin (46 / 79), a C16
+  ceramide (32 / 94), a C24:1 ceramide (11 / 90) and a C18 sphingomyelin
+  (48 / 96) — plain and reverse scores — and nothing for the C17 standards
+  the library lacks. Before the two-peak rule, a spectrum that was mostly
+  184.07 scored 83 against a laxative on that one peak; before the
+  unknown-precursor rule, 24,000 records with no precursor dominated every
+  filtered search.
+
 ## Two batches
 
 - The same 26 injections under the method before and after two internal

@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.7.3 released. 769 tests. Public repository.**
+**Version 0.7.3 released. 772 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -305,8 +305,16 @@ UV detector, is not implemented there) — untested on real Windows.
   reverse with a low score is the compound with company. Records with no
   precursor are scored when a precursor filter is on and say so with an
   empty Δ ppm — the filter did not apply, which is not the same as passing
-  it. No real library has been run through it yet; the parsers are tested
-  on the field shapes NIST, MassBank and MGF exporters write.
+  it. Run against MassBank's 139,006 records (5 s to read, 1.3 GB held):
+  three rules came out of it. Two matched peaks minimum, because a
+  spectrum that was mostly 184.07 scored 83 against a laxative on that one
+  peak. Records without a precursor left out of a filtered search unless
+  asked, because 24,000 of them dominated every search. And the precursor
+  tolerance at least the written value's precision, since the channel says
+  `647.5`. With those, the batch's product spectra named the C16 and C18
+  sphingomyelins and the C16 and C24:1 ceramides the library holds, at
+  reverse scores of 79–96, in milliseconds; an unfiltered search walks a
+  bin index of the peaks and takes 2–7 s.
 - **A reference batch is read, not opened.** `batches.read_project` builds
   a snapshot from the JSON alone, so a batch whose acquisitions moved to
   another disk still compares. Reusing it on the real batch reproduced the
@@ -499,7 +507,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-769 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+772 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

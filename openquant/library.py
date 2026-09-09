@@ -35,6 +35,16 @@ PRECURSOR_TOLERANCE_DA = 0.02
 #: measured peaks below this share of the base peak are not matched against:
 #: the baseline of a product spectrum is full of them
 NOISE_SHARE = 0.01
+#: a record has to land this many of its peaks before it is a hit. Measured
+#: on MassBank against a real product spectrum: with one, a spectrum that is
+#: mostly one phosphocholine ion at 184.07 scored 83 against bisacodyl,
+#: whose fragment at 184.0757 is 13 ppm away — one peak in common is a
+#: coincidence, not a match, and a one-peak record matched on it is a
+#: perfect score for nothing.
+MIN_MATCHED = 2
+#: the bins of the peak index, in daltons: wide enough that a tolerance of
+#: PEAK_TOLERANCE_PPM at m/z 2000 fits inside one bin either side
+INDEX_BIN = 0.05
 
 _NUMBER = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
 
@@ -232,6 +242,54 @@ class SpectralLibrary:
     def __init__(self, entries: list[LibraryEntry] | None = None, path: str = ""):
         self.entries: list[LibraryEntry] = list(entries or [])
         self.path = path
+        # the precursors as one array, so a precursor filter is a vector
+        # comparison over the library rather than a Python loop over it
+        self._precursors = np.array(
+            [e.precursor if e.precursor is not None else np.nan for e in self.entries],
+            dtype=float)
+        # which records hold a peak in which bin, built on first use: a
+        # search with no precursor filter has 139,000 records to consider,
+        # and only the ones that share a peak with the query can score
+        self._index: dict[int, np.ndarray] | None = None
+
+    def _build_index(self) -> dict[int, np.ndarray]:
+        bins: dict[int, list[int]] = {}
+        for number, entry in enumerate(self.entries):
+            for b in np.unique(np.floor(entry.mz / INDEX_BIN).astype(np.int64)):
+                bins.setdefault(int(b), []).append(number)
+        return {b: np.array(members, dtype=np.int64) for b, members in bins.items()}
+
+    def _candidates(self, query_mz: np.ndarray, precursor: float | None,
+                    precursor_tolerance: float, include_unknown: bool,
+                    min_matched: int) -> np.ndarray:
+        """
+        The records worth scoring.
+
+        With a precursor: the records within the tolerance, plus — only when
+        asked — the ones that carry no precursor. Measured on MassBank,
+        24,000 of 139,000 records carry none, and a filter that admits them
+        all is not a filter: every search came back dominated by them.
+        Without a precursor: the records sharing at least `min_matched`
+        query peaks' bins, counted one per query peak, which is what a hit
+        needs before it can be one.
+        """
+        if precursor is not None:
+            close = np.abs(self._precursors - precursor) <= precursor_tolerance
+            if include_unknown:
+                close |= np.isnan(self._precursors)
+            return np.flatnonzero(close)
+        if self._index is None:
+            self._index = self._build_index()
+        per_peak: list[np.ndarray] = []
+        for b in np.unique(np.floor(query_mz / INDEX_BIN).astype(np.int64)):
+            members = [self._index[n] for n in (int(b) - 1, int(b), int(b) + 1)
+                       if n in self._index]
+            if members:
+                per_peak.append(np.unique(np.concatenate(members)))
+        if not per_peak:
+            return np.zeros(0, dtype=np.int64)
+        records, counts = np.unique(np.concatenate(per_peak), return_counts=True)
+        return records[counts >= max(min_matched, 1)]
 
     def __len__(self) -> int:
         return len(self.entries)
@@ -244,14 +302,18 @@ class SpectralLibrary:
                precursor: float | None = None,
                tolerance_ppm: float = PEAK_TOLERANCE_PPM,
                precursor_tolerance: float = PRECURSOR_TOLERANCE_DA,
-               top: int = 20, noise_share: float = NOISE_SHARE) -> list[LibraryHit]:
+               top: int = 20, noise_share: float = NOISE_SHARE,
+               min_matched: int = MIN_MATCHED,
+               include_unknown_precursor: bool = False) -> list[LibraryHit]:
         """
         The entries that best match a measured spectrum, best first.
 
         With a precursor, only records whose precursor sits within the
-        tolerance are scored, plus records that carry none — those are kept
-        and their `delta_ppm` is None, so the reader knows the filter could
-        not apply to them rather than believing it did.
+        tolerance are scored. Records that carry no precursor are left out
+        unless `include_unknown_precursor` asks for them, and then their
+        `delta_ppm` is None so the reader knows the filter could not apply
+        to them rather than believing it did. A record has to land
+        `min_matched` peaks to be listed at all.
         """
         mz = np.asarray(mz, dtype=float)
         intensity = np.asarray(intensity, dtype=float)
@@ -263,15 +325,15 @@ class SpectralLibrary:
         keep = intensity >= noise_share * top_i
         query_mz, query_i = mz[keep], intensity[keep] / top_i
         hits: list[LibraryHit] = []
-        for entry in self.entries:
+        for number in self._candidates(query_mz, precursor, precursor_tolerance,
+                                       include_unknown_precursor, min_matched):
+            entry = self.entries[int(number)]
             delta = None
             if precursor is not None and entry.precursor is not None:
-                if abs(entry.precursor - precursor) > precursor_tolerance:
-                    continue
                 delta = (precursor - entry.precursor) / entry.precursor * 1e6
             score, reverse, pairs = match(query_mz, query_i, entry.mz,
                                           entry.intensity, tolerance_ppm)
-            if not pairs:
+            if len(pairs) < max(min_matched, 1):
                 continue
             hits.append(LibraryHit(entry, score, reverse, tuple(pairs),
                                    entry.peaks, int(query_mz.size), delta))

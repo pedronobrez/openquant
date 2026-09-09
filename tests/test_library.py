@@ -107,14 +107,48 @@ def test_the_reverse_score_forgives_an_impurity_and_the_plain_one_does_not():
     assert hit.score < 0.8
 
 
-def test_the_precursor_filter_keeps_records_that_carry_none_and_says_so():
+def test_one_peak_in_common_is_not_a_hit_unless_asked_for():
+    """
+    Measured on MassBank: a spectrum that is mostly one ion at 184.07 scored
+    83 against a record whose fragment sits 13 ppm away, on that one peak.
+    """
+    library = SpectralLibrary(parse_msp(MSP))
+    mz = np.array([184.0733, 500.0])
+    intensity = np.array([1.0, 0.5])
+    assert library.search(mz, intensity) == []
+    loose = library.search(mz, intensity, min_matched=1)
+    assert loose and all(h.matched == 1 for h in loose)
+
+
+def test_the_search_only_scores_records_that_share_a_bin_with_the_query():
+    library = SpectralLibrary(parse_msp(MSP))
+    sm = library.entries[0]
+    assert library._index is None
+    hits = library.search(sm.mz, sm.intensity)
+    assert library._index is not None
+    assert hits[0].entry is sm
+    # the filtered search is a vector comparison and never builds the index
+    fresh = SpectralLibrary(parse_msp(MSP))
+    fresh.search(sm.mz, sm.intensity, precursor=703.575)
+    assert fresh._index is None
+
+
+def test_the_precursor_filter_leaves_out_records_that_carry_none_unless_asked():
+    """
+    Measured on MassBank: 24,000 of 139,000 records carry no precursor,
+    and a filter that admits them all had every search dominated by them.
+    """
     library = SpectralLibrary(parse_msp(MSP))
     sm = library.entries[0]
     hits = library.search(sm.mz, sm.intensity, precursor=703.575,
-                          precursor_tolerance=0.02)
+                          precursor_tolerance=0.02, min_matched=1)
     names = [h.entry.name for h in hits]
     assert "Ceramide d18:1/16:0" not in names            # 538, filtered out
-    bare = next(h for h in hits if h.entry.name == "no precursor here")
+    assert "no precursor here" not in names              # no precursor, left out
+    asked = library.search(sm.mz, sm.intensity, precursor=703.575,
+                           precursor_tolerance=0.02, min_matched=1,
+                           include_unknown_precursor=True)
+    bare = next(h for h in asked if h.entry.name == "no precursor here")
     assert bare.delta_ppm is None and bare.matched == 2
 
 
@@ -150,6 +184,9 @@ def test_the_panel_loads_searches_and_offers_the_overlay(tmp_path):
     sm = panel.library.entries[0]
     panel.spectrum_source = lambda: (sm.mz, sm.intensity * 5000, 703.5749)
     panel.search()
+    assert panel.precursor_tol.value() == pytest.approx(0.02)   # four decimals given
+    panel.set_spectrum(sm.mz, sm.intensity, 703.5)
+    assert panel.precursor_tol.value() >= 0.05                   # one decimal: ±0.05
     assert panel.hits.topLevelItemCount() >= 1
     assert panel.hits.topLevelItem(0).text(0) == "Sphingomyelin d18:1/16:0"
     assert panel.hits.topLevelItem(0).text(1) == "100"

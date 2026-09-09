@@ -24,6 +24,7 @@ leaving a hole.
 | Mass drift | only when the [[mass-drift]] tab has measured: each standard's mass through the run and whether the axis held |
 | Sampling | points per peak for every component, the cycle times the peaks would need, and how many peaks were narrower than a cycle — the *Sampling* tab of [[batch-qc]] |
 | Integration algorithms | only when [[compare-algorithms]] has been run: the totals per algorithm and the components that moved most |
+| Batch comparison | only when [[compare-batches]] has been run: the totals side by side and the components in the order of how much they moved |
 | Results | every row: sample, component, RT, area, ratio, concentration, accuracy, status and flags |
 | Statistics | the grouped summary of the [[statistics]] page, by sample type |
 

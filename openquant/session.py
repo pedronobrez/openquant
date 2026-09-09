@@ -52,6 +52,12 @@ class Session(QtCore.QObject):
         self.mass_drift = None
         #: the last comparison against a reference batch, likewise
         self.batch_comparison = None
+        #: the spectra the Explorer is holding together — a
+        #: spectra_compare.SpectrumComparison, kept in step with its spectrum
+        #: pane and dropped when the pins are cleared. Derived and not saved:
+        #: it is a copy of two traces that came off the files, and the report
+        #: prints it only while it stands.
+        self.spectra_comparison = None
         self.project_path: str | None = None
         #: something changed since the last save. Tracked here rather than in
         #: the window, because every workspace can change the session and none
@@ -99,6 +105,7 @@ class Session(QtCore.QObject):
         self.comparison = None
         self.mass_drift = None
         self.batch_comparison = None
+        self.spectra_comparison = None
         self.entries.clear()
         self.results.clear()
         self.calibrations.clear()

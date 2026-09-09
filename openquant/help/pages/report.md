@@ -23,6 +23,7 @@ leaving a hole.
 | Batch quality | the control charts' verdicts, the injection response index, drift, and the precision of the QCs — [[batch-qc]] |
 | Mass drift | only when the [[mass-drift]] tab has measured: each standard's mass through the run and whether the axis held |
 | Sampling | points per peak for every component, the cycle times the peaks would need, and how many peaks were narrower than a cycle — the *Sampling* tab of [[batch-qc]] |
+| Compared spectra | only while the Explorer is holding spectra together: the head-to-tail picture, a table of the traces, and the masses they share within 10 ppm — [[chromatograms-and-spectra]] |
 | Integration algorithms | only when [[compare-algorithms]] has been run: the totals per algorithm and the components that moved most |
 | Batch comparison | only when [[compare-batches]] has been run: the totals side by side and the components in the order of how much they moved |
 | Results | every row: sample, component, RT, area, ratio, concentration, accuracy, status and flags |
@@ -35,6 +36,22 @@ it earns.
 
 A section with nothing to show says so — *no standards, so there is nothing
 to carry over* — rather than printing an empty table.
+
+## The one picture
+
+Everything else in a report is a number in a table. *Compared spectra* is
+the exception, because two spectra head to tail are read as a shape and
+not as a list, and it is printed only while the comparison stands — pin a
+spectrum in the [[chromatograms-and-spectra]] pane and the section
+appears, unpin and it goes. The picture is drawn from the data at the
+moment the report is written, at twice the size it is printed at, and
+travels inside the document: an HTML report is still one file that can be
+mailed. Under it are the traces, each with its base peak and how many
+peaks it holds, and the masses every one of the spectra carries within 10
+ppm with the height of each as a share of its own base peak — which is the
+only way two spectra of different sizes compare in a table. A mass in one
+and not in the other is a difference, and a difference is read off the
+picture.
 
 ## The printed layout
 

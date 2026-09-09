@@ -59,6 +59,7 @@ SECTIONS = {
     "quality": "Batch quality",
     "sampling": "Sampling",
     "mass": "Mass drift",
+    "spectra": "Compared spectra",
     "algorithms": "Integration algorithms",
     "batches": "Batch comparison",
     "results": "Results",
@@ -695,6 +696,91 @@ def _mass(title: str, drift, breaks: set[str] | None = None) -> str:
     return "".join(parts)
 
 
+#: how wide the compared-spectra picture is printed, in pixels of the ninety-
+#: six dots to the inch that Qt's `width` attribute means. The body of an A4
+#: page with these margins is 177 mm, which is 669 of them, so this fills the
+#: measure with a little to spare. The image itself is rendered at twice the
+#: size and scaled down here, which is what makes it print sharp.
+IMAGE_WIDTH = 660
+
+
+def _spectra(title: str, comparison, breaks: set[str] | None = None,
+             most: int = 20) -> str:
+    """
+    The spectra the Explorer was comparing, as a picture and as two tables.
+
+    Printed only while the comparison stands — the Explorer keeps it in step
+    with its own spectrum pane and drops it when the pins are cleared, so a
+    report either shows what was on screen or does not mention it.
+
+    The picture is drawn here rather than grabbed from the window, so it is
+    the same whatever the window was; it is embedded as a data URI, which
+    QTextDocument draws as readily as a file path (measured, both work) and
+    which keeps an exported HTML report a single file that can be mailed.
+
+    This is the one section that needs Qt's painting to build its HTML — no
+    widget, but a QImage and a font. That costs nothing anywhere it can
+    happen: a comparison only exists because the Explorer made one.
+    """
+    from . import spectra_compare
+
+    height = int(round(IMAGE_WIDTH * spectra_compare.DEFAULT_HEIGHT
+                       / spectra_compare.DEFAULT_WIDTH))
+    parts = [_heading(title, breaks)]
+    parts.append(
+        f'<p class="meta">The spectra held together in the Explorer, drawn '
+        f"again for print rather than copied off the screen. "
+        f"{'Each is on its own base peak. ' if comparison.normalise else ''}"
+        f"{'Every other one is drawn downwards, head to tail; the intensity beside it is a magnitude, not a negative number. ' if comparison.mirror else ''}"
+        f"Peaks are labelled by the same picker the pane labels with, so the "
+        f"masses here are the masses that were on screen.</p>")
+    parts.append(
+        f'<p><img src="{spectra_compare.data_uri(comparison)}" '
+        f'width="{IMAGE_WIDTH}" height="{height}" /></p>')
+    # the picture carries its own title and legend, so there is no caption
+    # under it: the same words twice, four lines apart, read as a mistake
+    rows = []
+    for trace in comparison.traces:
+        base = trace.base_peak
+        span = trace.mz_range
+        peaks = comparison.peaks(trace, most=100_000, min_relative=0.01)
+        rows.append([
+            _escape(trace.label or "spectrum"),
+            _number(base[0], 4) if base else "—",
+            _number(base[1], 0) if base else "—",
+            f"{len(peaks):,}",
+            f"{span[0]:,.2f}–{span[1]:,.2f}" if span else "—"])
+    parts.append(_table(
+        ["Spectrum", "Base peak m/z", "Base peak", "Peaks", "m/z range"],
+        rows, right={1, 2, 3, 4}, empty="Nothing to compare.",
+        widths=["40%", "15%", "15%", "10%", "20%"]))
+    parts.append('<p class="foot">A spectrum is named by the pane’s title '
+                 "at the moment it was pinned — the sample, the channel "
+                 "and the scan or the averaged range it came from. Peaks are "
+                 "those at or above one per cent of the base peak.</p>")
+
+    shared = spectra_compare.shared_peaks(comparison, most=most)
+    parts.append("<h3>Peaks in common</h3>")
+    parts.append(
+        f'<p class="meta">A mass every one of these spectra holds, within '
+        f"{spectra_compare.SHARED_PPM:g} ppm, with its height in each as a "
+        f"per cent of that spectrum’s own base peak — the only way "
+        f"two spectra of different sizes compare in a table. Shared by all of "
+        f"them, not by some: a peak in one and not the other is a difference, "
+        f"and the picture is where a difference is read.</p>")
+    labels = [t.label or "spectrum" for t in comparison.traces]
+    share = max(int(60 / max(len(labels), 1)), 8)
+    parts.append(_table(
+        ["m/z", "Spread ppm"] + [_escape(name) for name in labels],
+        [[_number(peak.mz, 4), _number(peak.spread_ppm, 1)]
+         + [f"{height:,.1f}" for height in peak.heights]
+         for peak in shared],
+        right=set(range(0, 2 + len(labels))),
+        empty="No mass is in every one of these spectra.",
+        widths=["20%", "20%"] + [f"{share}%"] * len(labels)))
+    return "".join(parts)
+
+
 def _batches(title: str, comparison, breaks: set[str] | None = None,
              most: int = 60) -> str:
     """
@@ -1000,9 +1086,15 @@ def build_html(session, title: str = "Batch report",
     comparison = getattr(session, "comparison", None)
     drift = getattr(session, "mass_drift", None)
     batches = getattr(session, "batch_comparison", None)
+    # a comparison of spectra stands only while there is more than one of
+    # them: the Explorer drops it when the pins are cleared
+    spectra = getattr(session, "spectra_comparison", None)
+    if spectra is not None and not spectra.stands:
+        spectra = None
     order = [key for key in ALL_SECTIONS if key in sections
              and (key != "algorithms" or comparison is not None)
              and (key != "mass" or drift is not None)
+             and (key != "spectra" or spectra is not None)
              and (key != "batches" or batches is not None)]
     titles = {key: f"{number}. {SECTIONS[key]}"
               for number, key in enumerate(order, start=1)}
@@ -1037,6 +1129,8 @@ def build_html(session, title: str = "Batch report",
                                    breaks))
         elif key == "mass":
             parts.append(_mass(name, drift, breaks))
+        elif key == "spectra":
+            parts.append(_spectra(name, spectra, breaks))
         elif key == "algorithms":
             parts.append(_algorithms(name, comparison, method, breaks))
         elif key == "batches":

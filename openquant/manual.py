@@ -13,6 +13,15 @@ the grouping into sections is `INDEX`, here rather than in the files, so
 that the table of contents is one thing to edit and a page can be moved
 without touching its text.
 
+The manual is written in more than one language. English is the original,
+under `help/pages`; every other language is a directory beside those pages
+holding the same file names — `help/pages/pt/welcome.md` is the Portuguese
+`welcome`. Only the text is translated: the file name is the page's
+identity, so a `[[link]]` names the same page in every language and the
+renderer shows the target's title in the language being read. A page a
+language does not have yet is read from the original and shown with a note
+saying so, rather than being left out of the contents.
+
 The Markdown understood is the small, regular subset the pages use:
 headings, paragraphs, bullet and numbered lists, tables, fenced code,
 quotes, rules, and inline code, emphasis and links. Qt's own Markdown
@@ -33,6 +42,76 @@ from pathlib import Path
 from . import __version__
 
 PAGES_DIR = Path(__file__).parent / "help" / "pages"
+
+#: the languages the manual is written in. The first is the original: its
+#: pages sit in `PAGES_DIR` itself and every other language is a directory
+#: beside them holding the same file names. The file name is the page's
+#: identity, so a translated page is the same page and a `[[link]]` is the
+#: same link whatever language it is read in.
+LANGUAGES: tuple[str, ...] = ("en", "pt")
+DEFAULT_LANGUAGE = "en"
+
+#: what each language calls itself, for the switch in the window
+LANGUAGE_NAMES: dict[str, str] = {"en": "English", "pt": "Português"}
+
+#: `INDEX`'s section headings, per language. The three that name a tab of
+#: the application keep the English name in brackets, because the tab is
+#: still labelled in English: the manual is translated, the software is not.
+SECTION_TITLES: dict[str, dict[str, str]] = {
+    "pt": {
+        "Getting started": "Primeiros passos",
+        "Explorer": "Explorer",
+        "Chemistry and annotation": "Química e anotação",
+        "Samples": "Amostras (Samples)",
+        "Method": "Método (Method)",
+        "Analytics": "Análise (Analytics)",
+        "Reference": "Referência",
+    },
+}
+
+#: the handful of strings the manual writes around its pages: the contents
+#: heading and the running furniture of the printed copy, the note on a page
+#: that has not been translated yet, and the backlinks under a page.
+#: Everything else in a language is in that language's pages.
+STRINGS: dict[str, dict[str, str]] = {
+    "en": {
+        "document_title": "User manual",
+        "pdf_title": "user manual",
+        "contents": "Contents",
+        "page_of": "Page {page} of {total}",
+        "generated": "generated",
+        "intro": ("Version {version}. Every page of the application's "
+                  "built-in help, in the order of its contents. Links "
+                  "between pages are kept as links within this document."),
+        "linked_from": "Linked from",
+        "untranslated": "",
+    },
+    "pt": {
+        "document_title": "Manual do usuário",
+        "pdf_title": "manual do usuário",
+        "contents": "Sumário",
+        "page_of": "Página {page} de {total}",
+        "generated": "gerado em",
+        "intro": ("Versão {version}. Todas as páginas da ajuda integrada "
+                  "do aplicativo, na ordem do sumário. Os links entre as "
+                  "páginas continuam sendo links dentro deste documento."),
+        "linked_from": "Recebe links de",
+        "untranslated": "(esta página ainda está em inglês)",
+    },
+}
+
+
+def strings(language: str) -> dict[str, str]:
+    """The furniture strings of a language; English for one we do not have."""
+    return STRINGS.get(language, STRINGS[DEFAULT_LANGUAGE])
+
+
+def pages_dir(language: str = DEFAULT_LANGUAGE,
+              directory: Path | str = PAGES_DIR) -> Path:
+    """Where a language's pages are: the root itself for the original."""
+    directory = Path(directory)
+    return directory if language == DEFAULT_LANGUAGE else directory / language
+
 
 #: the manual's order: section heading, then the page ids under it
 INDEX: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -86,6 +165,15 @@ class Page:
     title: str
     section: str
     markdown: str
+    #: the language this page's text is in — which is not always the
+    #: language asked for: a page with no translation yet falls back
+    language: str = DEFAULT_LANGUAGE
+    #: False when the text shown is the original standing in for a
+    #: translation that does not exist yet
+    translated: bool = True
+    #: the title of the English page, so a `[[link]]` written by title
+    #: rather than by file name still resolves in a translated manual
+    english_title: str = ""
     #: the body as HTML, wiki links resolved to `help:<id>` anchors
     html: str = ""
     #: the body as plain text, for searching and for snippets
@@ -107,10 +195,19 @@ class Hit:
 class Manual:
     """Every page, in order, indexed for links and for searching."""
 
-    def __init__(self, pages: dict[str, Page]):
+    def __init__(self, pages: dict[str, Page],
+                 language: str = DEFAULT_LANGUAGE):
         self.pages = pages
+        self.language = language
+        self.strings = strings(language)
         self.order: list[str] = [pid for _section, ids in INDEX for pid in ids]
-        self._by_title = {page.title.lower(): page.id for page in pages.values()}
+        # a link may name a page by title as well as by file name; the
+        # English title answers too, so a page still under translation
+        # links the same way it did before it was translated
+        self._by_title = {page.english_title.lower(): page.id
+                          for page in pages.values() if page.english_title}
+        self._by_title.update({page.title.lower(): page.id
+                               for page in pages.values()})
         for page in pages.values():
             self._render(page)
         for page in pages.values():
@@ -130,14 +227,26 @@ class Manual:
         return page.id if page else None
 
     def section_of(self, page_id: str) -> str:
+        """The section a page is in, by its English name — sections are
+        identified the way pages are, and shown the way pages are."""
         for section, ids in INDEX:
             if page_id in ids:
                 return section
         return ""
 
+    def section_title(self, section: str) -> str:
+        return SECTION_TITLES.get(self.language, {}).get(section, section)
+
     def sections(self) -> list[tuple[str, list[Page]]]:
-        return [(section, [self.pages[pid] for pid in ids if pid in self.pages])
+        return [(self.section_title(section),
+                 [self.pages[pid] for pid in ids if pid in self.pages])
                 for section, ids in INDEX]
+
+    @property
+    def untranslated(self) -> list[str]:
+        """The pages standing in from the original for want of a translation."""
+        return [pid for pid in self.order
+                if pid in self.pages and not self.pages[pid].translated]
 
     # -- rendering --------------------------------------------------------------- #
     def _render(self, page: Page) -> None:
@@ -154,9 +263,13 @@ class Manual:
 
         body = page.markdown
         # the title is the first heading; the window draws its own
-        page.html = render_markdown(body, link)
-        page.text = plain_text(page.html)
+        rendered = render_markdown(body, link)
+        # searching and the length check see the page, not the furniture
+        page.text = plain_text(rendered)
         page.words = Counter(_WORD.findall(page.text.lower()))
+        note = "" if page.translated else self.strings.get("untranslated", "")
+        page.html = (f'<p class="untranslated">{html.escape(note)}</p>{rendered}'
+                     if note else rendered)
 
     # -- searching --------------------------------------------------------------- #
     def search(self, query: str, limit: int = 40) -> list[Hit]:
@@ -204,16 +317,17 @@ class Manual:
         """
         from .report import _STYLE, _contents, _heading
 
+        words = self.strings
         parts = ["<!DOCTYPE html><html><head><meta charset='utf-8'>",
                  f"<title>OpenQuant manual</title><style>{_STYLE}{_PRINT_STYLE}"
                  "</style></head><body>",
                  '<p class="eyebrow">OPENQUANT</p>',
-                 f"<h1>User manual</h1>"
-                 f'<p class="meta">Version {__version__}. Every page of the '
-                 f"application's built-in help, in the order of its contents. "
-                 f"Links between pages are kept as links within this document.</p>",
+                 f"<h1>{html.escape(words['document_title'])}</h1>"
+                 f'<p class="meta">'
+                 f"{html.escape(words['intro'].format(version=__version__))}</p>",
                  _contents([self.pages[pid].title for pid in self.order
-                            if pid in self.pages], contents)]
+                            if pid in self.pages], contents,
+                           heading=words["contents"])]
         for number, (section, pages) in enumerate(self.sections()):
             # the first section follows the contents on the same page: a
             # break there leaves a page holding two lines of contents
@@ -236,10 +350,12 @@ class Manual:
     REFLOWS = 12
 
     def write_pdf(self, path) -> str:
+        """The whole manual as one document, in the language it was read in."""
         from .report import print_document
-        return print_document(self.html_document, path,
-                              f"OpenQuant {__version__} — user manual",
-                              reflows=self.REFLOWS)
+        return print_document(
+            self.html_document, path,
+            f"OpenQuant {__version__} — {self.strings['pdf_title']}",
+            reflows=self.REFLOWS, strings=self.strings)
 
 
 _PRINT_STYLE = """
@@ -255,6 +371,7 @@ pre { font-family: Menlo, Consolas, "DejaVu Sans Mono", monospace;
 code { font-family: Menlo, Consolas, "DejaVu Sans Mono", monospace;
        font-size: 8pt; }
 blockquote { color: #5b6472; margin: 4pt 0 6pt 12pt; }
+p.untranslated { color: #5b6472; font-size: 8pt; margin: 0 0 6pt 0; }
 """
 
 
@@ -433,41 +550,67 @@ def plain_text(rendered: str) -> str:
 _FRONT = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.S)
 
 
-def load(directory: Path | str = PAGES_DIR) -> Manual:
-    """
-    Read every page named in `INDEX` from the directory.
+def read_page(path: Path, pid: str) -> tuple[str, str]:
+    """A page file as its title and its body.
 
     A page starts with a front matter block carrying its title; anything
     else in the block is ignored, so a page can note what it is for without
     that being shown.
     """
+    source = path.read_text(encoding="utf-8")
+    title = pid.replace("-", " ").capitalize()
+    front = _FRONT.match(source)
+    if front:
+        for line in front.group(1).splitlines():
+            key, _, value = line.partition(":")
+            if key.strip() == "title":
+                title = value.strip()
+        source = source[front.end():]
+    return title, source
+
+
+def load(directory: Path | str = PAGES_DIR,
+         language: str = DEFAULT_LANGUAGE) -> Manual:
+    """
+    Read every page named in `INDEX`, in the language asked for.
+
+    A language other than the original is a directory of the same file
+    names beside the originals. A page it does not have is read from the
+    original instead and says so: half a translated manual is more use
+    than none of one, and the alternative — hiding the pages nobody has
+    translated yet — is a manual with holes in its contents.
+    """
     directory = Path(directory)
+    folder = pages_dir(language, directory)
     pages: dict[str, Page] = {}
     for section, ids in INDEX:
         for pid in ids:
-            path = directory / f"{pid}.md"
+            original = directory / f"{pid}.md"
+            path = folder / f"{pid}.md"
+            translated = path != original and path.exists()
+            if not translated:
+                path = original
             if not path.exists():
                 continue
-            source = path.read_text(encoding="utf-8")
-            title = pid.replace("-", " ").capitalize()
-            front = _FRONT.match(source)
-            if front:
-                for line in front.group(1).splitlines():
-                    key, _, value = line.partition(":")
-                    if key.strip() == "title":
-                        title = value.strip()
-                source = source[front.end():]
-            pages[pid] = Page(id=pid, title=title, section=section,
-                              markdown=source)
-    return Manual(pages)
+            title, source = read_page(path, pid)
+            english = title
+            if translated and original.exists():
+                english = read_page(original, pid)[0]
+            pages[pid] = Page(id=pid, title=title,
+                              section=SECTION_TITLES.get(language, {})
+                              .get(section, section),
+                              markdown=source,
+                              language=language if translated else DEFAULT_LANGUAGE,
+                              translated=translated or language == DEFAULT_LANGUAGE,
+                              english_title=english)
+    return Manual(pages, language=language)
 
 
-_loaded: Manual | None = None
+_loaded: dict[str, Manual] = {}
 
 
-def manual() -> Manual:
-    """The manual, read once."""
-    global _loaded
-    if _loaded is None:
-        _loaded = load()
-    return _loaded
+def manual(language: str = DEFAULT_LANGUAGE) -> Manual:
+    """The manual in a language, read once."""
+    if language not in _loaded:
+        _loaded[language] = load(language=language)
+    return _loaded[language]

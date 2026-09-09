@@ -5,21 +5,45 @@ the printed copy built from the same pages.
 A manual that names a page which does not exist, or links to one that was
 renamed, is the kind of thing nobody notices until a reader does. The
 tests here are the reader.
+
+The translated manual is held to the same rules, and to one more: a
+translated page is the same page as its original, so it has the same file
+name and its links name the same pages. It is checked against whatever
+translations exist — the set grows a file at a time, and a test that
+needed the set to be complete would fail on every day but the last.
 """
 
 import os
+import re
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from openquant import manual as manual_module  # noqa: E402
-from openquant.manual import HOME, INDEX, PAGES_DIR, Manual, load, render_markdown  # noqa: E402
+from openquant.manual import (DEFAULT_LANGUAGE, HOME, INDEX,  # noqa: E402
+                              LANGUAGES, PAGES_DIR, SECTION_TITLES, STRINGS,
+                              Manual, load, pages_dir, read_page,
+                              render_markdown)
+
+#: every language but the original
+TRANSLATIONS = [code for code in LANGUAGES if code != DEFAULT_LANGUAGE]
+
+
+def translated_slugs(language: str) -> list[str]:
+    folder = pages_dir(language)
+    return sorted(path.stem for path in folder.glob("*.md")) \
+        if folder.is_dir() else []
 
 
 @pytest.fixture(scope="module")
 def manual() -> Manual:
     return load()
+
+
+@pytest.fixture(scope="module", params=TRANSLATIONS)
+def translated(request) -> Manual:
+    return load(language=request.param)
 
 
 def test_every_page_in_the_index_exists(manual):
@@ -97,6 +121,121 @@ def test_markdown_subset_renders_what_the_pages_use():
 
 
 # --------------------------------------------------------------------------- #
+# the manual in another language
+# --------------------------------------------------------------------------- #
+def test_every_language_declares_its_strings_and_its_sections():
+    keys = set(STRINGS[DEFAULT_LANGUAGE])
+    sections = {section for section, _ids in INDEX}
+    for code in LANGUAGES:
+        assert code in STRINGS, f"no strings for {code}"
+        assert set(STRINGS[code]) == keys, f"strings differ for {code}"
+        words = STRINGS[code]
+        assert "{page}" in words["page_of"] and "{total}" in words["page_of"]
+        assert "{version}" in words["intro"]
+        if code == DEFAULT_LANGUAGE:
+            continue
+        assert set(SECTION_TITLES.get(code, {})) == sections, \
+            f"section titles for {code} do not match the index"
+        assert words["untranslated"], f"{code} has no note for an untranslated page"
+
+
+def test_a_translation_is_the_same_pages_under_the_same_names(translated, manual):
+    slugs = translated_slugs(translated.language)
+    unknown = [pid for pid in slugs if pid not in manual.pages]
+    assert unknown == [], \
+        f"translated pages the English manual does not have: {unknown}"
+    assert set(translated.pages) == set(manual.pages), \
+        "a translated manual holds every page, translated or standing in"
+    for pid in slugs:
+        page = translated.pages[pid]
+        assert page.translated and page.language == translated.language
+        assert page.english_title == manual.pages[pid].title
+    for pid in set(manual.pages) - set(slugs):
+        assert not translated.pages[pid].translated
+
+
+def test_a_translated_page_declares_a_title_of_its_own(translated):
+    folder = pages_dir(translated.language)
+    for pid in translated_slugs(translated.language):
+        path = folder / f"{pid}.md"
+        source = path.read_text(encoding="utf-8")
+        assert source.startswith("---"), f"{path.name} has no front matter"
+        front = source.split("---", 2)[1]
+        assert "title:" in front, f"{path.name} declares no title"
+        title, _body = read_page(path, pid)
+        assert title and title[0].isupper(), f"{path.name}: {title!r}"
+    # a title is what a link written by name resolves through, and two
+    # pages answering to one title make that a coin toss
+    titles = [page.title for page in translated.pages.values()]
+    assert len(titles) == len(set(titles)), "two pages share a title"
+
+
+def test_translated_pages_are_not_stubs(translated):
+    short = [pid for pid in translated_slugs(translated.language)
+             if len(translated.pages[pid].text) < 600]
+    assert short == [], f"translated pages under six hundred characters: {short}"
+
+
+def test_every_link_in_a_translation_resolves(translated):
+    broken = {pid: page.unresolved for pid, page in translated.pages.items()
+              if page.unresolved}
+    assert broken == {}, f"links to pages that do not exist: {broken}"
+
+
+def test_a_translation_links_both_ways_and_leaves_no_island(translated):
+    for pid, page in translated.pages.items():
+        for target in page.links:
+            assert pid in translated.pages[target].backlinks
+    unlinked = [pid for pid, page in translated.pages.items()
+                if not page.backlinks and pid != HOME]
+    assert unlinked == [], f"no page links to: {unlinked}"
+
+
+def test_a_page_with_no_translation_falls_back_and_says_so(translated, manual):
+    missing = translated.untranslated
+    if not missing:
+        pytest.skip(f"every page is translated into {translated.language}")
+    page = translated.pages[missing[0]]
+    original = manual.pages[page.id]
+    assert page.markdown == original.markdown and page.title == original.title
+    assert page.language == DEFAULT_LANGUAGE
+    note = STRINGS[translated.language]["untranslated"]
+    assert note in page.html, "a page standing in for a translation says nothing"
+    assert note not in page.text, "the note is furniture, not text to search"
+
+
+def test_a_translation_shows_its_sections_in_its_own_language(translated):
+    table = SECTION_TITLES[translated.language]
+    assert [section for section, _pages in translated.sections()] == \
+        [table[section] for section, _ids in INDEX]
+    # a section is identified in English the way a page is by its file name
+    assert translated.section_of(HOME) == INDEX[0][0]
+    assert translated.pages[HOME].section == table[INDEX[0][0]]
+
+
+def test_search_reads_the_language_shown(translated):
+    slugs = translated_slugs(translated.language)
+    if not slugs:
+        pytest.skip(f"nothing is translated into {translated.language} yet")
+    for pid in slugs:
+        page = translated.pages[pid]
+        # a long plain word, so that the query is one term and the term is
+        # the whole of it: the index is built with the same tokeniser
+        words = re.findall(r"(?<![\w-])[a-z]{7,}(?![\w-])", page.text.lower())
+        assert words, f"{pid} has no word to search for"
+        found = {hit.page.id for hit in translated.search(words[0])}
+        assert pid in found, f"searching {words[0]!r} does not find {pid}"
+
+
+def test_the_printed_translation_carries_its_own_furniture(translated):
+    document = translated.html_document()
+    words = STRINGS[translated.language]
+    assert words["contents"] in document and words["document_title"] in document
+    for section in SECTION_TITLES[translated.language].values():
+        assert section in document, section
+
+
+# --------------------------------------------------------------------------- #
 # the window and the printed copy
 # --------------------------------------------------------------------------- #
 @pytest.fixture(scope="module")
@@ -157,3 +296,71 @@ def test_the_manual_prints_as_many_pages_with_ink_on_them(qapp, manual, tmp_path
 def test_the_module_level_manual_is_read_once(manual):
     first = manual_module.manual()
     assert manual_module.manual() is first
+    for code in TRANSLATIONS:
+        other = manual_module.manual(code)
+        assert other is manual_module.manual(code) and other is not first
+        assert other.language == code
+
+
+def test_a_translated_manual_prints(qapp, translated, tmp_path):
+    """The whole thing, in the language it is being read in."""
+    pdf = pytest.importorskip("PyQt6.QtPdf")
+
+    path = translated.write_pdf(tmp_path / f"manual-{translated.language}.pdf")
+    document = pdf.QPdfDocument(None)
+    document.load(path)
+    assert document.pageCount() > 1
+
+
+def test_the_window_switches_language_keeps_the_page_and_remembers(qapp):
+    from openquant.ui.help_window import SETTING_LANGUAGE, HelpWindow
+    from openquant.ui.settings import settings
+
+    if not TRANSLATIONS:
+        pytest.skip("the manual has only one language")
+    store = settings()
+    store.setValue(SETTING_LANGUAGE, DEFAULT_LANGUAGE)
+    store.sync()
+    window = HelpWindow()
+    try:
+        assert window.manual.language == DEFAULT_LANGUAGE
+        window.show_page("peak-review")
+        for code in TRANSLATIONS:
+            window.set_language(code)
+            assert window.manual.language == code
+            assert window.current_page == "peak-review"
+            assert window.language.currentData() == code
+            sections = {window.tree.topLevelItem(row).text(0)
+                        for row in range(window.tree.topLevelItemCount())}
+            assert sections == set(SECTION_TITLES[code].values())
+            assert settings().value(SETTING_LANGUAGE, type=str) == code
+        window.set_language(DEFAULT_LANGUAGE)
+        assert window.manual.language == DEFAULT_LANGUAGE
+        assert window.current_page == "peak-review"
+    finally:
+        window.close()
+        store = settings()
+        store.setValue(SETTING_LANGUAGE, DEFAULT_LANGUAGE)
+        store.sync()
+
+
+def test_a_new_window_opens_in_the_language_last_read(qapp):
+    from openquant.ui.help_window import SETTING_LANGUAGE, HelpWindow
+    from openquant.ui.settings import settings
+
+    if not TRANSLATIONS:
+        pytest.skip("the manual has only one language")
+    code = TRANSLATIONS[0]
+    store = settings()
+    store.setValue(SETTING_LANGUAGE, code)
+    store.sync()
+    try:
+        window = HelpWindow()
+        assert window.manual.language == code
+        assert window.language.currentData() == code
+        assert window.current_page == HOME
+        window.close()
+    finally:
+        store = settings()
+        store.setValue(SETTING_LANGUAGE, DEFAULT_LANGUAGE)
+        store.sync()

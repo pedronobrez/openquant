@@ -47,7 +47,10 @@ vendor = [
     if "bruker" not in dest and "thermo" not in dest.lower()
 ]
 
-# the manual: Markdown pages read at run time from next to the package
+# the manual: Markdown pages read at run time from next to the package.
+# The whole tree goes, so the translations — help/pages/pt — travel with the
+# originals; naming the directory rather than a glob is what makes that true,
+# and a bundle without them is a manual whose language switch shows English.
 vendor.append((str(Path(SPECPATH).parent / "openquant" / "help" / "pages"),
                "openquant/help/pages"))
 vendor.append((str(Path(SPECPATH).parent / "openquant" / "icon.png"), "openquant"))

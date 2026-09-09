@@ -48,6 +48,18 @@ The search box at the top of the window matches words by prefix — typing
 only when it contains every word typed. The first hit is opened with Enter,
 and the page scrolls to the first occurrence of the query.
 
+## In Portuguese
+
+The manual is also written in Brazilian Portuguese. The **English /
+Português** switch at the right of the manual window's toolbar changes the
+language of everything the manual is: the contents tree, the page shown,
+the text the search box looks through and the copy that **Export as PDF…**
+writes. The choice is remembered between sessions. A page whose translation
+has not been written yet is shown in English with a note saying so, so the
+contents never has a hole in it. The application itself — its menus,
+buttons, dialogs and column headings — stays in English, which is what the
+rest of this manual describes.
+
 ## Conventions
 
 - **Bold** names a control as it appears on screen: a button, a menu entry,

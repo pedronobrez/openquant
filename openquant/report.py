@@ -172,7 +172,8 @@ def _title_block(title: str, project: str | None, entries, method) -> str:
     )
 
 
-def _contents(titles: list[str], pages: dict[str, int] | None) -> str:
+def _contents(titles: list[str], pages: dict[str, int] | None,
+              heading: str = "Contents") -> str:
     """
     The sections, and where they are.
 
@@ -190,7 +191,7 @@ def _contents(titles: list[str], pages: dict[str, int] | None) -> str:
         cell = (f'<td class="num" width="8%">{page}</td>'
                 if pages is not None else "")
         rows.append(f'<tr{stripe}><td>{_escape(title)}</td>{cell}</tr>')
-    return ('<h2 class="plain">Contents</h2>'
+    return (f'<h2 class="plain">{_escape(heading)}</h2>'
             f'<table class="contents" width="60%" cellpadding="3" cellspacing="0">'
             f'{"".join(rows)}</table>')
 
@@ -1114,13 +1115,18 @@ def _orphan_headings(document, page_height: float) -> set[str]:
 
 
 def _furniture(painter, writer, page: int, total: int, title: str,
-               header: float, footer: float, body) -> None:
+               header: float, footer: float, body,
+               strings: dict[str, str] | None = None) -> None:
     """
     The running header and footer: what this is, and where the reader is in it.
 
     Page one carries the title block, so the running header starts on page two;
     the footer is on every page, because a page that comes loose from the
     others has to say what it belongs to.
+
+    `strings` carries the two words the footer writes, for a document that is
+    not in English — the manual is printed in whichever language it is being
+    read in. Without it the footer is English, which is what a report is.
     """
     from PyQt6 import QtCore, QtGui
 
@@ -1150,17 +1156,21 @@ def _furniture(painter, writer, page: int, total: int, title: str,
     painter.setPen(muted)
     band = QtCore.QRectF(0, top + footer * 0.34, width, footer * 0.66)
     stamp = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+    words = strings or {}
+    generated = words.get("generated", "generated")
+    numbering = words.get("page_of", "Page {page} of {total}")
     painter.drawText(band, int(QtCore.Qt.AlignmentFlag.AlignLeft
                                | QtCore.Qt.AlignmentFlag.AlignTop),
-                     f"OpenQuant {__version__} · generated {stamp}")
+                     f"OpenQuant {__version__} · {generated} {stamp}")
     painter.drawText(band, int(QtCore.Qt.AlignmentFlag.AlignRight
                                | QtCore.Qt.AlignmentFlag.AlignTop),
-                     f"Page {page} of {total}")
+                     numbering.format(page=page, total=total))
     painter.restore()
 
 
 def print_document(build, path: str | os.PathLike, title: str,
-                   reflows: int = MAX_REFLOWS) -> str:
+                   reflows: int = MAX_REFLOWS,
+                   strings: dict[str, str] | None = None) -> str:
     """
     Lay an HTML document out on A4 portrait pages and write it as a PDF.
 
@@ -1171,7 +1181,8 @@ def print_document(build, path: str | os.PathLike, title: str,
     printed through here, so the two things below that were bugs are fixed
     in one place. `reflows` is how many times a stranded heading may be
     chased: three is enough for a report, and a forty-page manual with a
-    heading every few paragraphs needs more.
+    heading every few paragraphs needs more. `strings` translates the
+    running footer for a document that is not in English.
 
     The layout is given the writer as its paint device: without one it
     measures type at the screen's ninety-six dots to the inch while the page
@@ -1228,7 +1239,7 @@ def print_document(build, path: str | os.PathLike, title: str,
                 0.0, index * body.height(), body.width(), body.height()))
             painter.restore()
             _furniture(painter, writer, index + 1, total, title, header, footer,
-                       body)
+                       body, strings)
     finally:
         painter.end()
     return path

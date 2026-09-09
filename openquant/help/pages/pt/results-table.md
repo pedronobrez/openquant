@@ -35,7 +35,7 @@ está vazia quando está.
 | **View** | *By sample* ou *By component* — por qual delas as linhas são ordenadas e agrupadas |
 | a caixa de filtro | texto livre comparado com todas as colunas |
 | **Columns…** | quais colunas são mostradas, e com quantas casas decimais |
-| **Export CSV…** | as colunas visíveis das linhas visíveis |
+| **Export CSV…** | as colunas visíveis das linhas visíveis; o lote inteiro de uma vez é [[export|the Excel workbook]] (a pasta de trabalho Excel) |
 | um cabeçalho de coluna | ordenar |
 
 ## Edição na tabela

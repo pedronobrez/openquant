@@ -36,6 +36,10 @@ rende.
 Uma seção sem nada a mostrar diz isso — *no standards, so there is nothing to
 carry over* — em vez de imprimir uma tabela vazia.
 
+Um relatório é o que se guarda. Aquilo em que se continua a trabalhar é a
+pasta de trabalho Excel com as mesmas seções — ver [[export]], que cobre
+também a lista de transições para o Skyline.
+
 ## O layout impresso
 
 A4 retrato; um bloco de título; um sumário com números de página; um cabeçalho

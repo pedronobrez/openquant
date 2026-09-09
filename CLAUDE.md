@@ -83,6 +83,9 @@ openquant/
                   figures, chromatograms only)
   folder.py       what a folder holds and what would go wrong in it,
                   from the names alone
+  xlsx.py         a dependency-free .xlsx writer; report.build_workbook
+                  fills it
+  skyline.py      the component table as a Skyline transition list
   batches.py      two batches of one method side by side, the reference
                   read from its project without opening raw files
   contour.py      the run as a retention time by m/z grid
@@ -426,6 +429,21 @@ UV detector, is not implemented there) — untested on real Windows.
   snapshot button: pinning starts the comparison, the live spectrum or a
   switch refreshes it, unpinning drops it, so the report prints what the
   Explorer shows.
+- **An `.xlsx` is a zip of XML and the failure is silent.** `xlsx.py` writes
+  one directly rather than take a dependency the installers would carry:
+  inline strings so there is no shared-strings table to keep in step,
+  numbers as numbers, `None` as an *absent* cell — not a zero, which is a
+  measurement — and dates as text. Three things Excel refuses the whole
+  workbook over without a word: a sheet name past 31 characters or holding
+  `[]:*?/\`, a `fills` list whose first two entries are not `none` and
+  `gray125`, and a duplicate sheet name — all fixed in `sheet_name` and
+  `_styles`. An omitted cell means position in the row does not identify a
+  column; the `r` reference does, which is what `tests/test_xlsx.py`'s
+  reader resolves. Verified by reading back in the suite, by `openpyxl` out
+  of repo and by macOS Quick Look; **never opened in Excel or LibreOffice**,
+  and the `export` page says so — as it says no Skyline transition list has
+  been imported into Skyline, only that its headers were read off the
+  reader that consumes them in the ProteoWizard source.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

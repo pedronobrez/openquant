@@ -49,6 +49,8 @@ As colunas de padrão interno e de qualificador são explicadas em
 - **Export schedule…** escreve a aquisição agendada que o método implica, com
   o dwell time que um ciclo alvo deixa a cada transição, ver
   [[acquisition-schedule]].
+- **Export for Skyline…** escreve o método como uma lista de transições de
+  moléculas pequenas, ver [[export]].
 
 ## Padrões do método
 

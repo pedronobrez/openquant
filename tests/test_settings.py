@@ -22,7 +22,8 @@ def test_the_suite_writes_to_its_own_ini_file():
     assert target.endswith("OpenQuant.ini")
     store = settings()
     assert store.format() == QtCore.QSettings.Format.IniFormat
-    assert store.fileName() == target
+    # Qt writes the path with forward slashes whatever the platform
+    assert os.path.normpath(store.fileName()) == os.path.normpath(target)
     store.setValue("test/marker", 1)
     store.sync()
     assert os.path.exists(target)

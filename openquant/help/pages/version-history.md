@@ -8,6 +8,7 @@ three installers described on [[installation]].
 
 | Version | Date | What came in |
 |---|---|---|
+| 0.7.3 | 2026-09-08 | the [[spectral-library]] tab of the Explorer — MSP and MGF libraries searched with the spectrum on screen, plain and reverse scores, the record overlaid; [[compare-batches]] — a reference project against the open batch, component by component, the reference read without opening a raw file |
 | 0.7.2 | 2026-09-08 | **Export schedule…** in the [[method-workspace]]: the scheduled acquisition the method implies, with the dwell a target cycle leaves each transition at the busiest moment — [[acquisition-schedule]]; [[check-method]] names the precursors no survey scan covers |
 | 0.7.1 | 2026-09-08 | **Suggest floors…** in [[batch-qc]]: a Min. response proposed per internal standard from the injections that were not failures, with its basis; the [[mass-drift]] tab and report section — every standard's precursor read from the survey in every injection, the change across the run, and the rule that a spread over 25 ppm is not the same ion twice |
 | 0.7.0 | 2026-09-08 | F1 opens the page for the panel that has the focus, and every dialog has a Help button; the *Sampling* tab of [[batch-qc]] and its report section — points per peak counted at integration, the cycle times the peaks would need, one point per peak on the batch this was written for; the response floor an internal standard declares (**Min. response**), read by the control chart, the acceptance and [[check-method]] — see [[internal-standards-and-qualifiers]] |

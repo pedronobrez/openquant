@@ -8,6 +8,7 @@ three installers described on [[installation]].
 
 | Version | Date | What came in |
 |---|---|---|
+| 0.7.1 | 2026-09-08 | **Suggest floors…** in [[batch-qc]]: a Min. response proposed per internal standard from the injections that were not failures, with its basis; the [[mass-drift]] tab and report section — every standard's precursor read from the survey in every injection, the change across the run, and the rule that a spread over 25 ppm is not the same ion twice |
 | 0.7.0 | 2026-09-08 | F1 opens the page for the panel that has the focus, and every dialog has a Help button; the *Sampling* tab of [[batch-qc]] and its report section — points per peak counted at integration, the cycle times the peaks would need, one point per peak on the batch this was written for; the response floor an internal standard declares (**Min. response**), read by the control chart, the acceptance and [[check-method]] — see [[internal-standards-and-qualifiers]] |
 | 0.6.9 | 2026-09-08 | this manual: forty-four pages linked like a vault, with search, backlinks and a printed copy from **Help ▸ Export manual as PDF…**; the orphan-heading rule of the [[report]] fixed for a heading whose next block was itself pushed to a new page |
 | 0.6.8 | 2026-09-07 | three [[integration-algorithms]] — valley, summation, Gaussian fit — with every row saying which produced its number; [[compare-algorithms]] with the one-trace view, adoption, and a report section; the fit's three-points-on-the-flanks rule, measured on a real standard |

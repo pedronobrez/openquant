@@ -55,6 +55,30 @@ centroided in profile data, and merged when closer than 0.03 Da so a
 profile's rippled top does not appear as five masses. Double-click a row to
 extract that mass as an XIC.
 
+## Comparing spectra across samples
+
+The chromatogram pane overlays as many traces as are checked; the spectrum
+pane shows one spectrum at a time, because a spectrum belongs to one scan
+of one channel of one sample. **Pin spectrum** (the Processing toolbar, or
+the spectrum's right-click menu) keeps the spectrum on screen so the next
+one draws over it: switch to another sample in the tree, another scan, or
+another channel, and the new spectrum is drawn in blue over the pinned
+ones, each in its own colour and named in the legend by the sample,
+channel and scan it came from. Several can be pinned; **Unpin spectra**
+clears them.
+
+Two switches make the comparison readable. **Normalise** puts every
+spectrum on its own base peak, which is what two samples at different
+concentrations need. **Mirror** draws every other spectrum downwards, so
+one pinned spectrum and the live one become a head-to-tail plot — the way
+a library match is usually shown, and the quickest way to see a peak
+present in one and absent from the other. With more than one pinned,
+colours do the separating and Mirror alternates.
+
+Everything else reads the live spectrum: the peak table, the
+[[formula-finder]], the [[lipid-maps]] Explain, the [[spectral-library]].
+The pinned copies are pictures, and are lost when the files are closed.
+
 ## Profile spectra and their zeros
 
 A profile spectrum from a `.wiff` and the same spectrum from mzML do not

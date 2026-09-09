@@ -411,10 +411,13 @@ class BasePlot(QtWidgets.QWidget):
         height = float(box.height())
         if pixels > 0 and height > 2 * pixels:
             head_room = max(head_room, span * pixels / (height - 2 * pixels))
+        # a mirrored trace hangs below zero with labels under its peaks, so
+        # the room above the tallest peak is given below the deepest one too
+        foot_room = head_room if y_low < 0 else 0.0
         box.setLimits(xMin=x_low, xMax=x_high,
-                      yMin=y_low, yMax=y_high + head_room,
+                      yMin=y_low - foot_room, yMax=y_high + head_room,
                       maxXRange=x_high - x_low,
-                      maxYRange=span + 2 * head_room)
+                      maxYRange=span + 2 * head_room + foot_room)
 
     def _resized(self, *_args) -> None:
         """
@@ -857,6 +860,8 @@ class SpectrumView(BasePlot):
 
     sigExtractRequested = QtCore.pyqtSignal(float, float)  # m/z range for an XIC
     sigIdentifyRequested = QtCore.pyqtSignal(float)        # send an m/z to the finder
+    sigPinRequested = QtCore.pyqtSignal()                  # keep this spectrum on screen
+    sigUnpinRequested = QtCore.pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__("m/z", "", "Intensity, cps", parent)
@@ -1106,6 +1111,11 @@ class SpectrumView(BasePlot):
         clear_markers.setEnabled(bool(self._arrows))
         clear_overlay = menu.addAction("Clear theoretical overlay")
         clear_overlay.setEnabled(self.has_overlay)
+        menu.addSeparator()
+        pin = menu.addAction("Pin this spectrum")
+        pin.setEnabled(any(t.key == "spec" for t in self._traces))
+        unpin = menu.addAction("Unpin spectra")
+        unpin.setEnabled(any(t.key.startswith("pin") for t in self._traces))
 
         chosen = menu.exec(event.globalPos())
         if chosen is extract and selection:
@@ -1118,3 +1128,7 @@ class SpectrumView(BasePlot):
             self.clear_markers()
         elif chosen is clear_overlay:
             self.clear_overlay()
+        elif chosen is pin:
+            self.sigPinRequested.emit()
+        elif chosen is unpin:
+            self.sigUnpinRequested.emit()

@@ -197,3 +197,98 @@ def test_a_spectrum_that_cannot_tell_them_apart_says_so(cholic):
                   if i.losses == ("H2O", "H2O"))
     routes = routes_for(molecule, target, [(target.mz, 100.0)])
     assert all(r.support == 0.0 for r in routes)
+
+
+# --------------------------------------------------------------------------- #
+# a structure or formula the database does not hold
+# --------------------------------------------------------------------------- #
+def test_a_formula_alone_gives_the_precursor_and_its_losses():
+    from openquant.explain import explain_formula, formula_ions
+
+    ions = formula_ions("C24H40O5", "[M-H]-")
+    descriptions = {ion.description for ion in ions}
+    # a loss ion is written as what is left, and how it got there
+    assert "C24H40O5" in descriptions and "C24H38O4 -H2O" in descriptions
+    assert "C23H36O -H2O -H2O -CO2" in descriptions       # O5 - 2 - 2
+    assert not any("-NH3" in d for d in descriptions)          # no nitrogen
+    assert len(ions) == len(descriptions)                       # no duplicates
+    intact = next(ion for ion in ions if not ion.losses)
+    assert intact.mz == pytest.approx(407.2803, abs=0.001)
+    peaks = [(407.2803, 1000.0), (389.2697, 300.0), (200.0, 100.0)]
+    explanation = explain_formula("C24H40O5", "[M-H]-", peaks, name="Cholic acid")
+    assert explanation.name == "Cholic acid"
+    assert explanation.matched == 2 and explanation.share == pytest.approx(1300 / 1400)
+    routes = {m.best_route for m in explanation.matches}
+    assert "C24H38O4 -H2O" in routes
+
+
+def test_unplaced_deuterium_offers_every_count_and_the_spectrum_picks_one():
+    from openquant.explain import D_MINUS_H, explain_formula
+
+    # a d4 cholic acid: the intact ion carries all four; a water loss may
+    # have taken one with it
+    d4 = 407.2803 + 4 * D_MINUS_H
+    peaks = [(d4, 1000.0), (d4 - 18.0106 - D_MINUS_H, 200.0)]
+    explanation = explain_formula("C24H40O5", "[M-H]-", peaks, deuterium=4)
+    assert explanation.matched == 2
+    routes = {m.best_route for m in explanation.matches}
+    assert any(r.endswith("+4D") and "-H2O" not in r for r in routes)
+    assert any("-H2O" in r and r.endswith("+3D") for r in routes)
+
+
+def test_a_drawing_of_ones_own_is_scored_like_a_record(tmp_path):
+    from openquant.explain import explain_structure, read_molfile, with_labels
+    from openquant.structure import predict
+
+    hexanol = """1-hexanol
+  test
+
+  7  6  0  0  0  0  0  0  0  0999 V2000
+    0.0000    0.0000    0.0000 C   0  0  0  0  0  0
+    1.5000    0.0000    0.0000 C   0  0  0  0  0  0
+    3.0000    0.0000    0.0000 C   0  0  0  0  0  0
+    4.5000    0.0000    0.0000 C   0  0  0  0  0  0
+    6.0000    0.0000    0.0000 C   0  0  0  0  0  0
+    7.5000    0.0000    0.0000 C   0  0  0  0  0  0
+    9.0000    0.0000    0.0000 O   0  0  0  0  0  0
+  1  2  1  0
+  2  3  1  0
+  3  4  1  0
+  4  5  1  0
+  5  6  1  0
+  6  7  1  0
+M  END
+"""
+    molecule, name = read_molfile(hexanol)
+    assert molecule is not None and name == "1-hexanol"
+    assert molecule.formula == "C6H14O"
+    ions = predict(molecule, charge=1, max_cuts=1, max_losses=1)
+    labelled = with_labels(ions, deuterium=2)
+    assert len(labelled) > len(ions)
+    assert any(ion.labels == 2 and ion.description.endswith("+2D") for ion in labelled)
+    assert all(ion.labels <= 2 for ion in labelled)
+    explanation = explain_structure(molecule, [(103.1117, 100.0)], name="1-hexanol",
+                                    charge=1)
+    assert explanation.name == "1-hexanol" and explanation.record.category == "your own"
+
+
+def test_the_panel_explains_with_a_formula():
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6 import QtWidgets
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    from openquant.ui.lipid_panel import LipidPanel
+
+    panel = LipidPanel()
+    import numpy as np
+    panel.set_spectrum(np.array([407.2803, 389.2697]), np.array([1000.0, 300.0]))
+    panel.explain_adduct.setCurrentText("[M-H]-")
+    panel.own_formula.setText("C24H40O5")
+    panel.own_name.setText("Cholic acid")
+    panel.explain_own()
+    assert panel.explain_tree.topLevelItemCount() == 1
+    assert panel.explain_tree.topLevelItem(0).text(0) == "Cholic acid"
+    assert panel.match_tree.topLevelItemCount() == 2
+    assert "no bonds to cut" in panel.status.text()
+    panel.deleteLater()
+    app.processEvents()

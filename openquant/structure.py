@@ -418,6 +418,9 @@ class PredictedIon:
     losses: tuple[str, ...] = ()
     #: other routes that reach the same mass, described the same way
     alternatives: tuple[str, ...] = ()
+    #: deuterium labels this piece is assumed to carry, when the structure
+    #: was drawn unlabelled and the labels' positions are not known
+    labels: int = 0
 
     @property
     def formula(self) -> str:
@@ -429,6 +432,8 @@ class PredictedIon:
         if self.hydrogens:
             parts.append(f"{self.hydrogens:+d}H")
         parts.extend(f"-{loss}" for loss in self.losses)
+        if self.labels:
+            parts.append(f"+{self.labels}D")
         return " ".join(parts)
 
     @property

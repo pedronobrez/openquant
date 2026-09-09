@@ -194,6 +194,7 @@ green light — except for a row that failed to integrate, which always fails.
 | Spectrum of one scan | single click on the chromatogram |
 | Step scan by scan | ← → or the ◀ ▶ buttons |
 | Average spectrum of a region | Shift + drag on the chromatogram |
+| **Pin spectrum** | keep the spectrum on screen and draw the next one over it — another sample, scan or channel — each pinned one in its own colour and named in the legend; **Normalise** puts them on their own base peaks and **Mirror** draws every other one downwards, head to tail |
 | Live preview | the spectrum follows the highlight while you drag or resize it |
 | Integration of the selection | area, height, apex and S/N in the status bar |
 | **Stack** | one pane per trace with the time axes locked together |
@@ -242,6 +243,7 @@ green light — except for a row that failed to integrate, which always fails.
 | Accurate mass from the data | before searching, each precursor is measured in the TOF MS survey scan at the time its own transition peaks, and cross-checked against the surviving precursor in the product-ion scan |
 | Annotate a whole table | **Annotate from LIPID MAPS…** in the Method workspace proposes a species for every component still named after its precursor |
 | Traceability | the LM_ID travels with the component and through the CSV |
+| **A structure or formula of your own** | under Explain: a `.mol`/`.sdf` (PubChem's download) is scored like a database record, cleavages and losses; a formula alone gives the precursor and its neutral losses; **Deuterium, unplaced** offers each fragment carrying none to all of the labels and lets the spectrum say how many it kept — for a labelled standard drawn unlabelled |
 
 Where the survey scan can measure a precursor, the search uses that mass at
 ±10 ppm. Where it cannot, the window falls back to the precursor's own

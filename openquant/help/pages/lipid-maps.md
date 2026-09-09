@@ -86,6 +86,37 @@ unexplained ones are the honest part of the answer.
 chromatogram: it takes the spectrum of the current scan and its channel's
 precursor.
 
+### A structure or formula of your own
+
+The database does not hold everything — not a deuterated bile acid bought
+as an internal standard, not a compound drawn last week. The group under
+the Explain button takes one of two things:
+
+- **A structure**, from a `.mol` or `.sdf` file (PubChem's download, a
+  drawing program's save; MDL V2000). It gets the full treatment: the
+  cleavages and the losses of the drawing, scored against the spectrum
+  exactly as a database record is. A drawing that places its labels — an
+  `M  ISO` block, or explicit D atoms, which is how a vendor's structure of
+  a d4 standard is written — needs nothing more; its fragments come out at
+  the right masses by themselves.
+- **A formula**, when there is no drawing. A formula has no bonds to cut,
+  so what can be said is the precursor ion and the ladder of small neutral
+  losses it could shed — water, ammonia, carbon monoxide and dioxide,
+  formic acid, up to three at once, each only where the formula has the
+  atoms for it. Less than a structure gives, and said to be.
+
+**Deuterium, unplaced** is for a drawing or formula of the *unlabelled*
+compound and a standard whose labels sit somewhere unknown. Each fragment
+is then offered carrying none to all of the labels, and the spectrum says
+how many it kept: a match at +2.0126 is a piece that kept two, written
+`+2D` on its route. Enumerating every placement would be honest and
+useless; enumerating the count is what the spectrum can confirm. A piece
+is never offered more labels than it has hydrogens.
+
+The result lands in the same two tables as a database candidate — the
+share of the spectrum explained, the matched peaks with their routes and
+ladders — and the unexplained peaks remain the honest half of it.
+
 ## Against a library
 
 The **Library** tab beside this one asks the other question — what

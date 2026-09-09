@@ -479,6 +479,13 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.act_exp_chrom = QtGui.QAction("Export chromatograms (CSV)…", self)
         self.act_exp_spec = QtGui.QAction("Export spectrum (CSV)…", self)
         self.act_exp_mzml = QtGui.QAction("Export sample as mzML…", self)
+        self.act_pin = proc.addAction("Pin spectrum")
+        self.act_pin.setToolTip(
+            "Keep the spectrum on screen so the next one draws over it — "
+            "another sample, scan or channel. Normalise puts them on one scale; "
+            "Mirror draws every other one downwards, head to tail")
+        self.act_unpin = proc.addAction("Unpin spectra")
+        self.act_unpin.setEnabled(False)
         self.act_exp_mzml.setToolTip(
             "Write the selected sample as open-format mzML, spectrum for "
             "spectrum, so it can be read elsewhere"
@@ -550,7 +557,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             "Panels": list(self.panel_actions),
             "Process": [self.act_centroid, self.act_marker, self.act_marker_clear,
                         self.act_set_bg, self.act_clear_bg, self.act_explain,
-                        self.act_detect],
+                        self.act_detect, self.act_pin, self.act_unpin],
         }
 
     # -------------------------------------------------------------- signals -- #
@@ -568,6 +575,10 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.act_centroid.toggled.connect(self._set_centroid)
         self.act_marker.triggered.connect(self._add_marker)
         self.act_marker_clear.triggered.connect(self._clear_markers)
+        self.act_pin.triggered.connect(self.pin_spectrum)
+        self.act_unpin.triggered.connect(self.unpin_spectra)
+        self.spectrum.sigPinRequested.connect(self.pin_spectrum)
+        self.spectrum.sigUnpinRequested.connect(self.unpin_spectra)
         self.act_exp_chrom.triggered.connect(
             lambda: self._export(self.chrom, "chromatograms"))
         self.act_exp_spec.triggered.connect(
@@ -1172,9 +1183,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         mz, intensity = channel.spectrum(self.current_scan)
         intensity, subtracted = self._apply_background(channel, mz, intensity)
         rt = channel.rt_at_scan(self.current_scan)
-        self.spectrum.set_traces(
-            [Trace("spec", "spectrum", mz, intensity, "#1f77b4", channel)]
-        )
+        self.spectrum.set_traces(self._with_pins(
+            Trace("spec", "spectrum", mz, intensity, "#1f77b4", channel)))
         self.spectrum.autoscale()
         self.spectrum.set_title(
             f"{self.active_ref.label} · scan {self.current_scan + 1}"
@@ -1195,9 +1205,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         mz, intensity = channel.spectrum_rt_range(rt0, rt1)
         intensity, subtracted = self._apply_background(channel, mz, intensity)
         first, last = channel.scans_in_range(rt0, rt1)
-        self.spectrum.set_traces(
-            [Trace("spec", "average spectrum", mz, intensity, "#d62728", channel)]
-        )
+        self.spectrum.set_traces(self._with_pins(
+            Trace("spec", "average spectrum", mz, intensity, "#d62728", channel)))
         if not live:
             self.spectrum.autoscale()
         self.spectrum.set_title(
@@ -1560,6 +1569,58 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
     def _send_to_finder(self, mz: float, adduct: str) -> None:
         self.formula_panel.set_target(mz, adduct)
         self.tabs.setCurrentWidget(self.formula_panel)
+
+    # -- pinned spectra --------------------------------------------------------- #
+    #: colours for the spectra held for comparison; the live one stays blue
+    PIN_COLOURS = ("#e08a1e", "#2ca02c", "#9467bd", "#8c564b", "#17becf", "#7f7f7f")
+
+    def _with_pins(self, current: Trace) -> list[Trace]:
+        """The live spectrum first, then whatever was pinned: the first trace
+        is what every panel reads, and Mirror flips the odd ones."""
+        return [current] + list(getattr(self, "_pinned", []))
+
+    def pin_spectrum(self) -> None:
+        """
+        Hold the spectrum on screen so the next one draws over it.
+
+        The comparison a chromatogram overlay gives for free — sample against
+        blank, injection against injection — needs the spectrum pane to keep
+        one while another is shown. The pinned copy carries the pane's title
+        as its legend entry, so the sample, channel and scan it came from
+        stay readable after the live spectrum has moved on.
+        """
+        traces = self.spectrum.traces
+        live = next((t for t in traces if t.key == "spec"), None)
+        if live is None:
+            self._update_status("Show a spectrum first.")
+            return
+        pinned = getattr(self, "_pinned", [])
+        colour = self.PIN_COLOURS[len(pinned) % len(self.PIN_COLOURS)]
+        label = self.spectrum.title or live.label
+        pinned.append(Trace(f"pin{len(pinned) + 1}", label, live.x.copy(),
+                            live.y.copy(), colour, live.source))
+        self._pinned = pinned
+        self.spectrum.set_traces(self._with_pins(live))
+        self.spectrum.set_legend_visible(True)
+        self.spectrum.autoscale()
+        self.act_unpin.setEnabled(True)
+        self._update_status(
+            f"{len(pinned)} spectrum(s) pinned. The next spectrum draws over "
+            f"them; Normalise puts them on one scale, Mirror draws every other "
+            f"one downwards.")
+
+    def unpin_spectra(self) -> None:
+        self._pinned = []
+        traces = self.spectrum.traces
+        live = next((t for t in traces if t.key == "spec"), None)
+        self.spectrum.set_traces([live] if live is not None else [])
+        self.spectrum.autoscale()
+        self.act_unpin.setEnabled(False)
+        self._update_status("Pinned spectra cleared.")
+
+    @property
+    def pinned_spectra(self) -> list[Trace]:
+        return list(getattr(self, "_pinned", []))
 
     def _current_spectrum(self) -> tuple[np.ndarray, np.ndarray] | None:
         traces = self.spectrum.traces

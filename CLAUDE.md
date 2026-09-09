@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.7.4 released. 772 tests. Public repository.**
+**Version 0.7.4 released. 777 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -319,6 +319,24 @@ UV detector, is not implemented there) — untested on real Windows.
   a snapshot from the JSON alone, so a batch whose acquisitions moved to
   another disk still compares. Reusing it on the real batch reproduced the
   corrected-method gain of 2026-09-07 as a comparison rather than a script.
+- **Unplaced deuterium is enumerated by count, not by position.**
+  `explain.with_labels` offers every predicted ion carrying 0 to n labels
+  (`PredictedIon.labels`, written `+kD`), never more than the piece has
+  hydrogens; the spectrum then says how many a fragment kept. A drawing
+  that places its labels — PubChem's cholic acid-d4 carries an `M  ISO`
+  block, and `structure._isotopes` reads it — needs n = 0 and gets the same
+  intact mass (411.3054 checked both ways). `explain_structure` takes a
+  molfile of one's own through the same scoring as a database record;
+  `explain_formula` takes a formula alone and offers the precursor and up
+  to three neutral losses, each only where the formula has the atoms, and
+  says that a formula has no bonds to cut. Loss ions are written as what is
+  left and how it got there: `C24H38O4 -H2O`.
+- **Pinned spectra are traces after the live one.** `explorer.pin_spectrum`
+  copies the live trace (`key == "spec"`) with the pane's title as its
+  label and appends it; `_with_pins` keeps the live one first, so every
+  panel that reads `traces[0]` still reads the live spectrum and the base
+  plot's Mirror — which flips odd-indexed traces — draws one pin head to
+  tail with it. Normalise is per trace, which is what two samples need.
 - **F1 walks the widget tree.** `ui.help_window.describe(widget, page)` sets
   a dynamic property; `help_page_for` walks up from the focused widget to
   the first one that has it; the shell installs an application-wide event
@@ -507,7 +525,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-772 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+777 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

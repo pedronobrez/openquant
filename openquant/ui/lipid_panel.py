@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from PyQt6 import QtCore, QtWidgets
 
 from .. import lipidmaps
@@ -212,6 +214,40 @@ class LipidPanel(QtWidgets.QWidget):
         self.btn_explain.setProperty("primary", True)
         explain_layout.addWidget(self.btn_explain)
 
+        own = QtWidgets.QGroupBox("Or a structure or formula of your own")
+        own.setToolTip(
+            "For a compound the database does not hold — a labelled internal "
+            "standard, a bile acid, anything drawn or written down. A "
+            "structure gives cleavages and losses; a formula gives the "
+            "precursor and its losses only")
+        own_layout = QtWidgets.QFormLayout(own)
+        own_layout.setContentsMargins(8, 4, 8, 6)
+        structure_row = QtWidgets.QHBoxLayout()
+        self.btn_own_structure = QtWidgets.QPushButton("Load .mol / .sdf…")
+        self.own_structure_label = QtWidgets.QLabel("none")
+        self.own_structure_label.setProperty("role", "caption")
+        structure_row.addWidget(self.btn_own_structure)
+        structure_row.addWidget(self.own_structure_label, 1)
+        own_layout.addRow("Structure:", structure_row)
+        self.own_formula = QtWidgets.QLineEdit()
+        self.own_formula.setPlaceholderText("C24H40O5 — used when no structure is loaded")
+        own_layout.addRow("Formula:", self.own_formula)
+        self.own_name = QtWidgets.QLineEdit()
+        self.own_name.setPlaceholderText("Cholic acid-d4")
+        own_layout.addRow("Name:", self.own_name)
+        self.own_deuterium = QtWidgets.QSpinBox()
+        self.own_deuterium.setRange(0, 30)
+        self.own_deuterium.setToolTip(
+            "Labels the drawing does not place. A fragment is then offered "
+            "carrying none to all of them, and the spectrum says how many it "
+            "kept. A drawing that places them (an M ISO block, or D atoms) "
+            "needs 0 here")
+        own_layout.addRow("Deuterium, unplaced:", self.own_deuterium)
+        self.btn_explain_own = QtWidgets.QPushButton("Explain with this")
+        own_layout.addRow(self.btn_explain_own)
+        explain_layout.addWidget(own)
+        self._own_molecule = None
+
         self.explain_tree = QtWidgets.QTreeWidget()
         self.explain_tree.setHeaderLabels(["Candidate", "Explains", "Peaks",
                                            "Formula"])
@@ -284,6 +320,8 @@ class LipidPanel(QtWidgets.QWidget):
         self.frag_tree.itemDoubleClicked.connect(self._fragment_activated)
         self.btn_explain.clicked.connect(self.explain_spectrum)
         self.explain_precursor.returnPressed.connect(self.explain_spectrum)
+        self.btn_own_structure.clicked.connect(self._load_own_structure)
+        self.btn_explain_own.clicked.connect(self.explain_own)
         self.explain_tree.currentItemChanged.connect(self._show_explanation)
         self.refresh_availability()
 
@@ -618,6 +656,69 @@ class LipidPanel(QtWidgets.QWidget):
         ranked = rank_candidates(database, precursor, peaks, adduct=adduct,
                                  tolerance=PRECURSOR_MATCH_DA, unit="Da",
                                  charge=charge)
+        self._show_ranked(ranked, precursor, adduct)
+
+    def _load_own_structure(self) -> None:
+        from ..explain import read_molfile
+
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Load a structure", "", "Structures (*.mol *.sdf *.mdl);;All files (*)")
+        if not path:
+            return
+        try:
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                molecule, name = read_molfile(handle.read())
+        except OSError as exc:
+            self._report(f"Could not read the file: {exc}")
+            return
+        if molecule is None:
+            self._report("That file is not a V2000 molblock this can read; "
+                         "save it as MDL molfile V2000 (PubChem's download is).")
+            self.own_structure_label.setText("none")
+            self._own_molecule = None
+            return
+        self._own_molecule = molecule
+        self.own_structure_label.setText(f"{molecule.formula} from {os.path.basename(path)}")
+        if name and not self.own_name.text():
+            self.own_name.setText(name)
+        if not self.own_formula.text():
+            self.own_formula.setText(molecule.formula)
+
+    def explain_own(self) -> None:
+        """Score a structure or formula the database does not hold."""
+        from ..explain import explain_formula, explain_structure
+
+        peaks = getattr(self, "_peaks", None)
+        if not peaks:
+            self._report("Show a spectrum first — Process ▸ Explain spectrum "
+                         "takes the one on screen.")
+            return
+        adduct = self.explain_adduct.currentText()
+        charge = 1 if "+" in adduct else -1
+        name = self.own_name.text().strip()
+        deuterium = self.own_deuterium.value()
+        if self._own_molecule is not None:
+            explanation = explain_structure(self._own_molecule, peaks, name=name,
+                                            charge=charge, deuterium=deuterium)
+            basis = "cleavages and losses of the drawing"
+        else:
+            formula = self.own_formula.text().strip()
+            if not formula:
+                self._report("Load a structure or type a formula.")
+                return
+            explanation = explain_formula(formula, adduct, peaks, name=name,
+                                          deuterium=deuterium)
+            if not explanation.record.exact_mass:
+                self._report(f"\u201c{formula}\u201d is not a formula this can read.")
+                return
+            basis = "the precursor and its neutral losses — a formula has no bonds to cut"
+        self._show_ranked([explanation], None, adduct)
+        labelled = f", {deuterium} unplaced label(s)" if deuterium else ""
+        self._report(f"{explanation.name}: {explanation.share * 100:.1f}% of the "
+                     f"spectrum from {basis}{labelled}; {explanation.matched} "
+                     f"peak(s) matched, {len(explanation.unexplained(peaks))} not.")
+
+    def _show_ranked(self, ranked, precursor, adduct) -> None:
         self.explain_tree.clear()
         self.match_tree.clear()
         for explanation in ranked:
@@ -634,6 +735,8 @@ class LipidPanel(QtWidgets.QWidget):
                                  | QtCore.Qt.AlignmentFlag.AlignVCenter)
         if ranked:
             self.explain_tree.setCurrentItem(self.explain_tree.topLevelItem(0))
+            if precursor is None:
+                return
             top = ranked[0]
             close = [e for e in ranked[1:] if top.share - e.share < 0.05]
             tie = (f" {len(close)} other(s) explain it about as well."

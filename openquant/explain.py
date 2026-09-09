@@ -19,12 +19,13 @@ the honest part of the answer, so they are reported too.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
 from .lipidmaps import LipidDatabase, LipidRecord
-from .structure import NEUTRAL_LOSSES, PredictedIon, Structure, predict
+from .structure import (NEUTRAL_LOSSES, PredictedIon, Structure, parse_molblock,
+                        predict)
 
 #: how close a predicted mass has to be to a measured one, in ppm. A TripleTOF
 #: holds a few ppm on a strong product ion and rather less on a weak one.
@@ -223,6 +224,193 @@ def explain(record: LipidRecord, peaks, charge: int = 1,
     explained = sum(m.intensity for m in matches)
     return Explanation(record=record, matches=matches, explained=explained,
                        total=total, considered=len(peaks))
+
+
+# --------------------------------------------------------------------------- #
+# a structure, or a formula, that is not in the database
+# --------------------------------------------------------------------------- #
+#: what a deuterium adds over the hydrogen it replaces
+D_MINUS_H = 2.01410177785 - 1.00782503223
+
+#: the losses a formula alone can be asked about, up to this many at once.
+#: One more than a structure gets, because a structure has cleavages as well
+#: and a formula has only these.
+FORMULA_LOSSES = 3
+
+
+def with_labels(ions: list[PredictedIon], deuterium: int,
+                at_least: int = 0) -> list[PredictedIon]:
+    """
+    The same ions carrying 0 to `deuterium` labels, when the structure was
+    drawn unlabelled and nobody knows which hydrogens are heavy.
+
+    A d4 bile acid bought as a standard is drawn by its vendor with four
+    heavy hydrogens somewhere on the steroid; a fragment keeps between none
+    and all of them. Enumerating every placement would be honest and
+    useless; enumerating the count is what the spectrum can actually
+    confirm — the ion at +2.0126 is a piece that kept two. A piece cannot
+    keep more labels than it has hydrogens.
+    """
+    if deuterium <= 0:
+        return list(ions)
+    out: list[PredictedIon] = []
+    for ion in ions:
+        hydrogens = _hydrogen_count(ion.fragment.formula) + ion.hydrogens
+        most = min(deuterium, max(hydrogens, 0))
+        for k in range(at_least, most + 1):
+            shift = k * D_MINUS_H / abs(ion.charge or 1)
+            out.append(replace(ion, mz=ion.mz + shift, labels=k))
+    return out
+
+
+def _hydrogen_count(formula: str) -> int:
+    from .chemistry import FormulaError, parse_formula
+
+    try:
+        counts = parse_formula(formula)
+    except FormulaError:
+        return 0
+    return counts.get("H", 0) + counts.get("D", 0)
+
+
+def custom_record(name: str, formula: str, molecule: Structure | None = None
+                  ) -> LipidRecord:
+    """A record for a structure or formula the database does not hold."""
+    from .chemistry import FormulaError, monoisotopic_mass, parse_formula
+
+    try:
+        mass = monoisotopic_mass(parse_formula(formula)) if formula else 0.0
+    except FormulaError:
+        mass = 0.0
+    return LipidRecord(lm_id="", name=name or formula or "your structure",
+                       abbrev=name or formula, formula=formula, exact_mass=mass,
+                       category="your own",
+                       structure=molecule.to_compact() if molecule else None)
+
+
+def explain_structure(molecule: Structure, peaks, name: str = "",
+                      charge: int = 1, tolerance_ppm: float = TOLERANCE_PPM,
+                      max_cuts: int = 1, max_losses: int = 2,
+                      deuterium: int = 0) -> Explanation:
+    """
+    What a structure of one's own accounts for — a molfile from PubChem, a
+    vendor's drawing, anything the database lacks.
+
+    `deuterium` is the number of labels the drawing does not place; a
+    drawing that places them (an `M  ISO` block, or explicit D atoms) needs
+    none, and its fragments come out with the right masses by themselves.
+    """
+    record = custom_record(name, molecule.formula, molecule)
+    ions = with_labels(predict(molecule, charge=charge, max_cuts=max_cuts,
+                               max_losses=max_losses), deuterium)
+    matches = match_peaks(peaks, ions, tolerance_ppm)
+    matches = [
+        PeakMatch(mz=m.mz, intensity=m.intensity, ion=m.ion,
+                  route=routes_for(molecule, m.ion, peaks, tolerance_ppm)[0])
+        for m in matches
+    ]
+    total = sum(height for _mz, height in peaks)
+    explained = sum(m.intensity for m in matches)
+    return Explanation(record=record, matches=matches, explained=explained,
+                       total=total, considered=len(peaks))
+
+
+def formula_ions(formula: str, adduct_name: str, deuterium: int = 0,
+                 max_losses: int = FORMULA_LOSSES) -> list[PredictedIon]:
+    """
+    The ions a formula alone allows: the intact ion and its small neutral
+    losses, up to `max_losses` at once, each loss only where the formula has
+    the atoms for it.
+
+    A formula has no bonds to cut, so this is what can be said without a
+    drawing: the precursor, and the ladder of waters, ammonias and carbon
+    dioxides it could shed. The intact ion carries every label; a loss ion
+    may have shed some of them with the leaving group.
+    """
+    from .chemistry import (ADDUCTS_BY_NAME, FormulaError, format_formula,
+                            monoisotopic_mass, parse_formula)
+    from .structure import Fragment, _loss_combinations
+
+    adduct = ADDUCTS_BY_NAME.get(adduct_name)
+    if adduct is None:
+        return []
+    try:
+        counts = parse_formula(formula)
+    except FormulaError:
+        return []
+    counts = dict(counts)
+    if deuterium:
+        counts["D"] = counts.get("D", 0) + deuterium
+        counts["H"] = counts.get("H", 0) - deuterium
+        if counts["H"] < 0:
+            return []
+    charge = adduct.charge
+    ions: list[PredictedIon] = []
+    whole = Fragment(atoms=frozenset(), formula=format_formula(counts),
+                     mass=monoisotopic_mass(counts), cuts=())
+    ions.append(PredictedIon(fragment=whole, mz=adduct.mz(whole.mass),
+                             charge=charge, hydrogens=0, labels=deuterium))
+    for combo in _loss_combinations(max_losses):
+        if not combo:
+            continue
+        remaining = dict(counts)
+        possible = True
+        for loss in combo:
+            for element, n in parse_formula(NEUTRAL_LOSSES[loss]).items():
+                remaining[element] = remaining.get(element, 0) - n
+                if remaining[element] < 0:
+                    possible = False
+        if not possible:
+            continue
+        piece = Fragment(atoms=frozenset(), formula=format_formula(
+            {k: v for k, v in remaining.items() if v > 0}),
+            mass=monoisotopic_mass({k: v for k, v in remaining.items() if v > 0}),
+            cuts=())
+        base = PredictedIon(fragment=piece, mz=adduct.mz(piece.mass),
+                            charge=charge, hydrogens=0, losses=tuple(combo))
+        if deuterium:
+            # the labels are already in the formula; a loss may have taken
+            # some with it, so the ion is offered with the full count down
+            # to the count minus the hydrogens the losses could carry
+            shed = sum(_hydrogen_count(NEUTRAL_LOSSES[loss]) for loss in combo)
+            for kept in range(max(deuterium - shed, 0), deuterium + 1):
+                lost = deuterium - kept
+                ions.append(replace(base, mz=base.mz - lost * D_MINUS_H / abs(charge),
+                                    labels=kept))
+        else:
+            ions.append(base)
+    return ions
+
+
+def explain_formula(formula: str, adduct_name: str, peaks, name: str = "",
+                    deuterium: int = 0, tolerance_ppm: float = TOLERANCE_PPM,
+                    max_losses: int = FORMULA_LOSSES) -> Explanation:
+    """What a formula alone accounts for: the precursor and its losses."""
+    ions = formula_ions(formula, adduct_name, deuterium, max_losses)
+    record = custom_record(name, formula)
+    matches = match_peaks(peaks, ions, tolerance_ppm)
+    matches = [
+        PeakMatch(mz=m.mz, intensity=m.intensity, ion=m.ion,
+                  route=routes_for(None, m.ion, peaks, tolerance_ppm)[0])
+        for m in matches
+    ]
+    total = sum(height for _mz, height in peaks)
+    explained = sum(m.intensity for m in matches)
+    return Explanation(record=record, matches=matches, explained=explained,
+                       total=total, considered=len(peaks))
+
+
+def read_molfile(text: str) -> tuple[Structure | None, str]:
+    """
+    A structure from a `.mol` or `.sdf` file's text, and its name.
+
+    The first record of an SDF; the name is the file's first line, which is
+    where every drawing program and PubChem put it.
+    """
+    block = text.split("$$$$")[0]
+    lines = block.splitlines()
+    name = lines[0].strip() if lines else ""
+    return parse_molblock(block), name
 
 
 def significant_peaks(mz, intensity, noise_share: float = NOISE_SHARE,

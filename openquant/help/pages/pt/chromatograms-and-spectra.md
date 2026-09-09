@@ -54,6 +54,9 @@ perfil, e fundidos quando mais próximos que 0.03 Da, de modo que o topo ondulad
 de um perfil não apareça como cinco massas. Dê duplo clique numa linha para
 extrair aquela massa como um XIC.
 
+*Average whole run*, na barra de ferramentas Processing, promedia todos os
+scans do canal ativo — que é como uma [[direct-infusion]] é aberta.
+
 ## Comparando espectros entre amostras
 
 O painel do cromatograma sobrepõe tantos traços quantos estiverem marcados; o

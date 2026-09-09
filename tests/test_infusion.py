@@ -352,7 +352,7 @@ def test_what_explain_and_the_library_read_is_that_average():
     assert intensity.max() != pytest.approx(channel.spectrum(0)[1].max())
 
     explorer.act_centroid.setChecked(False)
-    mz, intensity, precursor = explorer._library_spectrum()
+    mz, intensity, precursor, _context = explorer._library_spectrum()
     assert precursor == pytest.approx(430.34)
     # centroided sticks of the average: the base peak is the average's
     assert intensity.max() == pytest.approx(expected.max(), rel=1e-6)

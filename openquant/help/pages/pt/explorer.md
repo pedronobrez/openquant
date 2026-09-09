@@ -68,6 +68,11 @@ todo espectro mostrado; *Explain spectrum* pontua candidatos do LIPID MAPS
 contra o espectro (ver [[lipid-maps]]); *Detect peaks* integra todos os
 traços do cromatograma e preenche a aba Results.
 
+Onde nada elui — uma infusão pulverizada por um minuto, cada scan igual ao
+anterior — a corrida inteira é promediada num único espectro, e é com ele
+que o painel abre; *Average whole run* faz o mesmo em qualquer canal. Ver
+[[direct-infusion]].
+
 ## Os controles de scan
 
 **Scan** é o número do scan cujo espectro é mostrado, sendo 1 o primeiro

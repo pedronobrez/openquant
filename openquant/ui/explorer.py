@@ -1272,6 +1272,23 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         return np.clip(intensity - interpolated, 0.0, None), True
 
     # ---------------------------------------------------------------- spectrum #
+    def _recalibrate_mz(self, mz):
+        """
+        The spectrum's m/z axis with this injection's correction applied.
+
+        Returns the axis and the words for the title. The title has to say so:
+        a mass axis that has been moved and does not admit it is the one thing
+        worse than a mass axis that is wrong.
+        """
+        entry = self.active_ref.entry if self.active_ref else None
+        correction = (self.session.correction_for(entry.key)
+                      if entry is not None else None)
+        if correction is None or mz.size == 0:
+            return mz, ""
+        middle = float(np.median(mz))
+        return (correction.apply(mz),
+                f" · recalibrated {float(correction.ppm_at(middle)):+.1f} ppm")
+
     def _show_scan(self, scan: int) -> None:
         channel = self.active_ref.channel if self.active_ref else None
         if channel is None:
@@ -1284,6 +1301,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             return
         intensity, subtracted = self._apply_background(channel, mz, intensity)
         rt = channel.rt_at_scan(self.current_scan)
+        mz, recalibrated = self._recalibrate_mz(mz)
         self.spectrum.set_traces(self._with_pins(
             Trace("spec", "spectrum", mz, intensity, "#1f77b4", channel)))
         self.spectrum.autoscale()
@@ -1291,6 +1309,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             f"{self.active_ref.label} · scan {self.current_scan + 1}"
             f"/{channel.info.n_scans} · RT {rt:.3f} min"
             + (" · background subtracted" if subtracted else "")
+            + recalibrated
         )
         self.scan_spin.blockSignals(True)
         self.scan_spin.setValue(self.current_scan + 1)
@@ -1311,6 +1330,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             return
         intensity, subtracted = self._apply_background(channel, mz, intensity)
         first, last = channel.scans_in_range(rt0, rt1)
+        mz, recalibrated = self._recalibrate_mz(mz)
         self.spectrum.set_traces(self._with_pins(
             Trace("spec", "average spectrum", mz, intensity, "#d62728", channel)))
         if not live:
@@ -1323,6 +1343,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             f"{self.active_ref.label} · average of {last - first + 1} "
             f"scans{tag}{scans} · RT {min(rt0, rt1):.3f}–{max(rt0, rt1):.3f} min"
             + (" · background subtracted" if subtracted else "")
+            + recalibrated
         )
         self.rt_label.setText(f"RT {min(rt0, rt1):.3f}–{max(rt0, rt1):.3f} min")
         self.chrom.mark(None)
@@ -1473,6 +1494,12 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                             component: Component) -> Result:
         mz_lo, mz_hi = component.mass_window()
         mz_text = f"{(mz_lo + mz_hi) / 2:.4f}"
+        # the window moves, the reader's arithmetic does not — see
+        # quantify.extract_xic
+        correction = self.session.correction_for(ref.entry.key)
+        if correction is not None:
+            mz_lo, mz_hi = (float(correction.undo(mz_lo)),
+                            float(correction.undo(mz_hi)))
 
         def empty(note: str) -> Result:
             return Result(

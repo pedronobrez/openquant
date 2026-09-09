@@ -55,6 +55,12 @@ class PrecursorMeasurement:
     #: the same precursor read off its own product-ion spectrum, where Q1 has
     #: already removed every co-eluting ion
     product_mz: float | None = None
+    #: the recalibration applied at this mass, in ppm, when a correction was
+    #: handed in. `measured` always stays what the instrument read: the
+    #: correction is fitted from these measurements, so writing it back over
+    #: them would be circular, and a corrected number that could not be
+    #: compared with its raw one could not be reviewed.
+    correction_ppm: float | None = None
     note: str = ""
 
     @property
@@ -80,6 +86,18 @@ class PrecursorMeasurement:
     def corroborated(self) -> bool:
         agreement = self.agreement_ppm
         return agreement is not None and abs(agreement) <= AGREEMENT_PPM
+
+    @property
+    def corrected(self) -> float | None:
+        """The measurement with the injection's recalibration applied."""
+        if self.measured is None or self.correction_ppm is None:
+            return None
+        return self.measured * (1.0 + self.correction_ppm * 1e-6)
+
+    @property
+    def reported(self) -> float | None:
+        """Corrected where a correction stands, and raw where none does."""
+        return self.corrected if self.corrected is not None else self.measured
 
     @property
     def error_mda(self) -> float | None:
@@ -217,8 +235,18 @@ def _anchor_rt(entry: SampleEntry, component: Component) -> float | None:
 def measure(entry: SampleEntry, component: Component,
             method: ProcessingMethod | None = None,
             window: float = SEARCH_WINDOW,
-            min_intensity: float = MIN_INTENSITY) -> PrecursorMeasurement:
-    """Find the precursor in one sample's survey scan and read its mass."""
+            min_intensity: float = MIN_INTENSITY,
+            correction=None) -> PrecursorMeasurement:
+    """
+    Find the precursor in one sample's survey scan and read its mass.
+
+    `correction` is a `recalibrate.MassCorrection` for this injection, or
+    None. It never moves the search — the window is a quarter of a dalton
+    and the correction is parts per million, so shifting it would change
+    nothing but the story — and it never touches `measured`. It fills in
+    `correction_ppm`, from which `corrected` follows, so the raw and the
+    recalibrated number sit side by side.
+    """
     result = PrecursorMeasurement(
         component=component.name, sample_key=entry.key,
         sample_name=entry.name, nominal=component.precursor,
@@ -301,6 +329,8 @@ def measure(entry: SampleEntry, component: Component,
     result.intensity = height
     result.product_mz = _surviving_precursor(entry, component, start, end,
                                              apex_rt, window)
+    if correction is not None and correction.usable:
+        result.correction_ppm = float(correction.ppm_at(result.measured))
     if result.product_mz is not None and not result.corroborated:
         result.note = (f"survey and product-ion scans differ by "
                        f"{result.agreement_ppm:+.0f} ppm")

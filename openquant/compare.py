@@ -272,7 +272,8 @@ def _delta(algorithm: str, reference: ResultsSet, other: ResultsSet,
 def compare_algorithms(entries: list[SampleEntry], method: ProcessingMethod,
                        cache: XicCache | None = None,
                        algorithms: tuple[str, ...] = ALGORITHMS,
-                       progress=None) -> Comparison | None:
+                       progress=None,
+                       corrections: dict | None = None) -> Comparison | None:
     """
     Integrate the batch once per algorithm and compare the answers.
 
@@ -285,6 +286,9 @@ def compare_algorithms(entries: list[SampleEntry], method: ProcessingMethod,
     `progress(done, total)` is called as the rows go by; returning False
     stops the comparison, which then comes back as None rather than as a
     comparison of unequal runs.
+
+    `corrections` is passed to every run alike, so what is compared stays the
+    arithmetic and nothing else — the point of the exercise.
     """
     reference = method.defaults.algorithm
     algorithms = tuple(dict.fromkeys((reference, *algorithms)))
@@ -306,7 +310,7 @@ def compare_algorithms(entries: list[SampleEntry], method: ProcessingMethod,
             return True
 
         run = process(loaded, with_algorithm(method, algorithm), cache,
-                      progress=report)
+                      progress=report, corrections=corrections)
         if cancelled:
             return None
         curves = build_calibrations(run, loaded, method)

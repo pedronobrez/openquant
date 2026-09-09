@@ -650,7 +650,8 @@ def _sampling(title: str, results: ResultsSet, entries: list[SampleEntry],
     return "".join(parts)
 
 
-def _mass(title: str, drift, breaks: set[str] | None = None) -> str:
+def _mass(title: str, drift, breaks: set[str] | None = None,
+          corrections: dict | None = None, applied: bool = False) -> str:
     """Whether the mass axis moved during the run; printed only when it
     was measured, since measuring is a minute of reading survey spectra."""
     from .mass_drift import DRIFT_PPM, MIN_INJECTIONS
@@ -693,6 +694,55 @@ def _mass(title: str, drift, breaks: set[str] | None = None) -> str:
          "Change ppm", "\u03c1", "Verdict"],
         rows, right={1, 2, 3, 4, 5, 6, 7}, empty="Nothing measured.",
         widths=["20%", "5%", "12%", "12%", "9%", "9%", "9%", "7%", "17%"]))
+    parts.append(_corrections(corrections, applied))
+    return "".join(parts)
+
+
+def _corrections(corrections: dict | None, applied: bool) -> str:
+    """
+    The recalibration fitted from the lock masses, while a fit stands.
+
+    Printed under the drift because it is the same measurement asked a
+    different question, and left out entirely when nothing has been fitted:
+    a table of dashes says less than no table at all.
+    """
+    from .recalibrate import (MIN_MASS_SPAN, MIN_SLOPE_LOCK_MASSES,
+                              describe)
+
+    if not corrections:
+        return ""
+    parts = [f'<h3>Mass recalibration</h3><p class="meta">'
+             f"A lock mass is an internal standard carrying a formula and an "
+             f"adduct \u2014 the written precursor is not accurate enough to "
+             f"correct towards \u2014 whose measured ion held together across "
+             f"the run. Each injection gets the median of its lock masses\u2019 "
+             f"errors, sign flipped; a linear term is fitted only where "
+             f"{MIN_SLOPE_LOCK_MASSES} or more of them span "
+             f"{MIN_MASS_SPAN:,.0f} Da and leave-one-out prediction of a "
+             f"held-out lock mass says it helps. The correction moves the extraction "
+             f"window, never the reader\u2019s arithmetic. "
+             f"{_escape(describe(corrections))}. "
+             + ("The results in this report were produced with it applied."
+                if applied else
+                "It is <b>not</b> applied: the results in this report are the "
+                "masses as the instrument read them.")
+             + "</p>"]
+    rows = []
+    for correction in corrections.values():
+        rows.append([
+            _escape(correction.sample_name), f"{len(correction.lock_masses)}",
+            _number(correction.offset_ppm if correction.usable else None, 1),
+            _number(correction.slope_ppm_per_da * 1000
+                    if correction.linear else None, 2),
+            _number(correction.median_before, 1),
+            _number(correction.median_after, 1),
+            _number(correction.worst_after, 1),
+            _escape(correction.verdict)])
+    parts.append(_table(
+        ["Injection", "Lock masses", "Offset ppm", "Slope ppm/kDa",
+         "Median before", "Median after", "Worst after", "Verdict"],
+        rows, right={1, 2, 3, 4, 5, 6}, empty="Nothing fitted.",
+        widths=["18%", "8%", "9%", "10%", "11%", "10%", "10%", "24%"]))
     return "".join(parts)
 
 
@@ -1037,7 +1087,9 @@ def build_html(session, title: str = "Batch report",
             parts.append(_sampling(name, session.results, entries, method,
                                    breaks))
         elif key == "mass":
-            parts.append(_mass(name, drift, breaks))
+            parts.append(_mass(name, drift, breaks,
+                                getattr(session, "mass_corrections", None),
+                                bool(getattr(session, "recalibrate", False))))
         elif key == "algorithms":
             parts.append(_algorithms(name, comparison, method, breaks))
         elif key == "batches":

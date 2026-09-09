@@ -82,6 +82,10 @@ class PeakResult:
     #: the peak rather than its feet. None on rows integrated before this
     #: was counted.
     points: int | None = None
+    #: the mass recalibration applied to the extraction window, in ppm at
+    #: this component's mass. None when the switch was off or the injection
+    #: had no lock mass — which is not the same as a correction of zero.
+    recalibrated_ppm: float | None = None
     #: internal standard this component is reported against, and its response
     internal_standard: str = ""
     is_area: float | None = None
@@ -222,12 +226,23 @@ def condition(x: np.ndarray, y: np.ndarray,
 
 def extract_xic(entry: SampleEntry, component: Component,
                 method: ProcessingMethod,
-                cache: XicCache | None = None) -> tuple[np.ndarray, np.ndarray, object]:
+                cache: XicCache | None = None,
+                correction=None) -> tuple[np.ndarray, np.ndarray, object]:
     """
     The chromatogram of one component in one sample, already conditioned.
 
     Returns the trace and the channel it came from, so callers can label the
     panel with the experiment that was actually used.
+
+    `correction` is a `recalibrate.MassCorrection` for this injection, or
+    None. It moves the **window**, never the data: the component's mass
+    window is written where the ion belongs, the file holds the ion where the
+    instrument read it, so the reader is asked for `correction.undo` of the
+    window and then sums exactly the points it would have summed anyway. The
+    vendor's extraction arithmetic is untouched — a corrected axis is a
+    different question from a different sum, and conflating them would repeat
+    the mistake CLAUDE.md records about substituting our arithmetic for the
+    instrument's.
     """
     empty = (np.zeros(0), np.zeros(0), None)
     if not entry.is_loaded:
@@ -237,6 +252,9 @@ def extract_xic(entry: SampleEntry, component: Component,
         return empty
     params = method.integration_for(component)
     mz_lo, mz_hi = component.mass_window()
+    if correction is not None and correction.usable:
+        mz_lo, mz_hi = (float(correction.undo(mz_lo)),
+                        float(correction.undo(mz_hi)))
     key = (entry.key, channel.index, round(mz_lo, 6), round(mz_hi, 6),
            params.cache_key())
     if cache is not None:
@@ -257,7 +275,8 @@ def _first_line(error: BaseException) -> str:
 
 def integrate_component(entry: SampleEntry, component: Component,
                         method: ProcessingMethod,
-                        cache: XicCache | None = None) -> PeakResult:
+                        cache: XicCache | None = None,
+                        correction=None) -> PeakResult:
     """
     Integrate one component in one sample.
 
@@ -272,8 +291,10 @@ def integrate_component(entry: SampleEntry, component: Component,
         expected_rt=component.rt, rt=component.rt or 0.0,
     )
 
+    if correction is not None and correction.usable:
+        result.recalibrated_ppm = float(correction.ppm_at(component.target_mz))
     try:
-        x, y, channel = extract_xic(entry, component, method, cache)
+        x, y, channel = extract_xic(entry, component, method, cache, correction)
     except Exception as exc:
         # a .wiff whose .wiff.scan is not beside it opens, lists its
         # channels and throws on the first extraction; the row says so
@@ -394,7 +415,8 @@ def measured_noise(x: np.ndarray, y: np.ndarray,
 def integrate_manually(entry: SampleEntry, component: Component,
                        method: ProcessingMethod, start: float, end: float,
                        previous: PeakResult | None = None,
-                       cache: XicCache | None = None) -> PeakResult:
+                       cache: XicCache | None = None,
+                       correction=None) -> PeakResult:
     """
     Integrate exactly the stretch the operator marked on a chromatogram.
 
@@ -406,7 +428,9 @@ def integrate_manually(entry: SampleEntry, component: Component,
         sample_key=entry.key, sample_name=entry.name, component=component.name,
         group=component.group, mz=(mz_lo + mz_hi) / 2, expected_rt=component.rt,
     )
-    x, y, channel = extract_xic(entry, component, method, cache)
+    if correction is not None and correction.usable:
+        result.recalibrated_ppm = float(correction.ppm_at(component.target_mz))
+    x, y, channel = extract_xic(entry, component, method, cache, correction)
     if channel is None or x.size == 0:
         result.note = "no data"
         return result
@@ -678,7 +702,8 @@ def process(entries: list[SampleEntry], method: ProcessingMethod,
             cache: XicCache | None = None, progress=None,
             previous: ResultsSet | None = None,
             keep_manual: bool = True,
-            only: list[str] | None = None) -> ResultsSet:
+            only: list[str] | None = None,
+            corrections: dict | None = None) -> ResultsSet:
     """
     Run the method over the batch.
 
@@ -686,6 +711,11 @@ def process(entries: list[SampleEntry], method: ProcessingMethod,
     the operator integrated by hand is carried across untouched, so adjusting a
     parameter does not silently undo their work. `only` limits the run to named
     components, which is what makes re-tuning one analyte cheap.
+
+    `corrections` maps a sample key to a `recalibrate.MassCorrection`. Absent
+    — which is the default and what a project saved before this existed asks
+    for — every window is exactly the one the method wrote, and the numbers
+    are the ones that project has always given.
     """
     components = [c for c in method.components if c.is_valid]
     if only is not None:
@@ -704,8 +734,9 @@ def process(entries: list[SampleEntry], method: ProcessingMethod,
             if keep_manual and kept is not None and kept.manual:
                 out.results.append(kept)
             else:
-                out.results.append(
-                    integrate_component(entry, component, method, cache))
+                out.results.append(integrate_component(
+                    entry, component, method, cache,
+                    (corrections or {}).get(entry.key)))
             done += 1
             if progress is not None and progress(done, total) is False:
                 break

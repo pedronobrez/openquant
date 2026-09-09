@@ -1595,8 +1595,17 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.lipid_panel.explain_spectrum()
 
     def _library_spectrum(self):
-        """The spectrum on screen as the library search wants it: centroided
-        sticks and the active channel's precursor, or None."""
+        """
+        The spectrum on screen as the library panel wants it.
+
+        Centroided sticks, the active channel's precursor, and a mapping of
+        where they came from. The last is for the panel's *Add spectrum to
+        library…*: a record has to say which file, sample, channel and scans
+        it was made from, and the Explorer is the only place that knows. The
+        pane's own title already reads "sample · channel · average of n scans
+        (a–b) · RT x–y", which is exactly the provenance a record wants, so
+        it is passed as written rather than assembled a second time here.
+        """
         current = self._current_spectrum()
         if current is None:
             self._update_status("Show a spectrum first.")
@@ -1605,9 +1614,18 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         if not self.act_centroid.isChecked():
             mz, intensity = centroid_spectrum(mz, intensity)
         precursor = None
-        if self.active_ref is not None and self.active_ref.channel is not None:
-            precursor = self.active_ref.channel.info.precursor
-        return mz, intensity, precursor
+        context = {"title": self.spectrum.title}
+        if self.active_ref is not None:
+            context["file"] = self.active_ref.filename
+            context["sample"] = self.active_ref.alias
+            channel = self.active_ref.channel
+            if channel is not None:
+                info = channel.info
+                precursor = info.precursor
+                context["channel"] = info.label
+                context["polarity"] = info.polarity
+                context["collision_energy"] = info.collision_energy
+        return mz, intensity, precursor, context
 
     def _lipid_fragment(self, name: str, lm_id: str, route: str,
                         mz: float) -> None:

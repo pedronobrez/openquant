@@ -75,6 +75,14 @@ openquant/
                   target cycle leaves each transition
   library.py      MSP/MGF spectral libraries, and a spectrum searched
                   against one: plain and reverse cosine
+  recalibrate.py  a per-injection mass correction from the standards that
+                  carry a formula, reusing mass_drift's measurements
+  spectra_compare.py  the pinned spectra as data, drawn for paper: PNG,
+                  SVG, and the report's picture
+  infusion.py     is this sample a direct infusion (two flatness
+                  figures, chromatograms only)
+  folder.py       what a folder holds and what would go wrong in it,
+                  from the names alone
   batches.py      two batches of one method side by side, the reference
                   read from its project without opening raw files
   contour.py      the run as a retention time by m/z grid
@@ -96,7 +104,8 @@ openquant/
   ui/             shell.py owns the window; explorer / analytics /
                   method_workspace / samples_workspace are the four tabs;
                   help_window.py is Help ▸ Manual; settings.py the one
-                  settings constructor
+                  settings constructor;
+                  help/pages/pt/ the Portuguese manual, same slugs
 packaging/        PyInstaller spec, DMG script, WiX source, wine/ shim; icons/ is the
                   suite's mark (the two co-eluting peaks), drawn by OpenDIAL's
                   tools/make_icon.py through packaging/make_icon.py and committed —
@@ -335,6 +344,88 @@ UV detector, is not implemented there) — untested on real Windows.
   to three neutral losses, each only where the formula has the atoms, and
   says that a formula has no bonds to cut. Loss ions are written as what is
   left and how it got there: `C24H38O4 -H2O`.
+- **A translated page is the same page, not another one.** `help/pages/pt/<slug>.md`
+  carries the same file name as its English original, because the file name
+  is the page's identity: `[[link]]`s keep the English slugs in every
+  language and the renderer shows the target's title in the language being
+  read. A slug with no translation is read from the English file and shown
+  with a note rather than left out; the note lives in `Page.html` and not
+  in `Page.text`, so search and the six-hundred-character rule measure the
+  page and not the furniture. `INDEX` stays English and is translated
+  through `SECTION_TITLES`; `report.print_document` takes a `strings` dict
+  for the printed manual's furniture. Only the manual is translated — the
+  application's menus and dialogs stay in English, which is what the pages
+  describe — and every new English page needs its Portuguese links added,
+  or `tests/test_manual.py` reports it as an island in the Portuguese manual.
+- **A folder's problems are in its names, and `folder.py` reads only names.**
+  `check_files` touches the disk through `listdir`, `exists` and `access`
+  alone — everything worth warning about before an open is visible without
+  decoding anything. Which stray `.scan` belongs to which `.wiff` cannot be
+  known from outside the files, so `guess_owner` takes the longest run of
+  characters shared at the front and the back, and the pairing is called a
+  guess everywhere it appears; `apply_rename` refuses to write over a file
+  that is there. Found by rendering the dialog rather than reading it: a
+  `QTableWidgetItem` background is not drawn under the application's
+  stylesheet, and a table of sentences needs `ElideNone` with
+  `resizeRowsToContents`.
+- **A record of one's own is a floor, a ceiling and a provenance.**
+  `library.entry_from_spectrum` takes centroids only — a profile spectrum
+  describes the instrument's peak shape, not the compound — drops peaks
+  under `OWN_MIN_RELATIVE` (1%) and keeps at most `OWN_MAX_PEAKS` = 200.
+  `write_msp` appends, giving a file that does not end in a blank line the
+  separator it lacks. The Explorer's `spectrum_source` hook grew a fourth
+  element (file, sample, channel, polarity, collision energy), read by
+  length so the three-value form still works. Measured on the 26-injection
+  batch: 14 records from injection 01 read back within 5·10⁻⁶ Da; injection
+  02 put the right record first 14 of 14 times at reverse 45–96, every
+  other record at most 42. The bile-acid infusions were on an unmounted
+  drive; that measurement is still owed.
+- **An infusion is flat twice, and one flatness is not enough.**
+  `infusion.is_infusion` needs the fraction of the sample's TIC at or above
+  half its maximum *and* the same on the strongest product-ion channel both
+  at `FLAT_FRACTION` (0.75), from chromatograms only — the verdict holds
+  without the `.wiff.scan` and reads the same through either reader. Over
+  39 chromatographic acquisitions none flagged and the smaller figure never
+  passed 0.098: a column equilibration reaches 0.267 on the total but 0.006
+  on its channel, a blank 0.295 on its channel but 0.049 on the total. Three
+  rules measured and dropped: the scan-to-scan cosine reads 0.85–0.99 on the
+  product channels of ordinary gradients, the TIC's CV has no margin against
+  a blank, and `detect_peaks` finds three peaks in a flat trace with 3%
+  noise. The infusion side was on the unmounted drive, so the margin claimed
+  is the chromatographic one, and a wrong verdict only changes what is shown
+  first.
+- **A correction the size of its own uncertainty is still worth having, and
+  still has to say so.** `recalibrate.py` fits a per-injection offset from
+  the standards' measured precursors against their formula masses, reusing
+  `mass_drift`'s measurements; a trend failing `same_ion` is not a lock
+  mass, and the *written* precursor is refused as a reference (`647.5` is
+  good to 800 ppm). On the 26-injection batch as it ships there is no lock
+  mass — no standard carries a formula — and every injection reads "left as
+  measured". Given the one formula that can be looked up: one lock mass,
+  offset only, in 25 of 26 injections, median +4.8 ppm with a 16.1 ppm
+  spread; the other components' errors within 25 ppm went from a median
+  −8.7 to −3.3 ppm, smaller on 43 of 66. A linear term needs **four** lock
+  masses: leave-one-out on three fits a line through two points, which is
+  exact and predicts nothing, and a synthetic outlier pulled the offset
+  from −5.2 to −49 ppm before the floor was raised. Where it reaches
+  quantitation it moves the window, never the reader's arithmetic — and a
+  5 ppm shift still moved 1,769 of 2,593 areas by a median 1.3% over
+  ±20 ppm windows. Hence `session.recalibrate`, off by default, saved with
+  the project, with a test that the switch off is identical row by row.
+- **A picture in the report is drawn for paper, not grabbed off the screen.**
+  `spectra_compare.py` holds the compared spectra as data and renders them
+  with a QPainter of its own at `PRINT_SCALE = 2` — a genuine re-render
+  (the title's ink goes from 9 rows to 19), chosen over pyqtgraph's
+  ImageExporter, which takes its aspect from the widget and took 70 ms
+  against 14. A trace colour lightened for a dark window is darkened until
+  it clears 3:1 on white; a profile trace is thinned to the lowest and
+  highest point per pixel column (an SVG of two TOF spectra went from
+  3.8 MB to 94 KB and a one-point spike survives); `QTextDocument` draws an
+  `<img>` from a path, a `file://` URL, a resource and a `data:` URI alike,
+  and the data URI keeps an exported HTML report one file. There is no
+  snapshot button: pinning starts the comparison, the live spectrum or a
+  switch refreshes it, unpinning drops it, so the report prints what the
+  Explorer shows.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

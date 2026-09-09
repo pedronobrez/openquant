@@ -150,6 +150,7 @@ injection comes back as `kUnknown`.
 | **Response floor** | **Min. response** on an internal standard: what it has to give before a ratio to it means anything. The batch cannot derive it and S/N cannot stand in for it on a scheduled acquisition, so the method declares it; the control chart, the acceptance of every row normalised against the standard, and **Check method** all read it |
 | **Suggest floors** | in Batch QC: a proposed **Min. response** per internal standard — half its median over the injections that were not failures, with the basis on the row — written only when ticked and applied |
 | **Mass drift** | a sixth tab: every internal standard's precursor read from the survey scan in every injection, in run order, against the batch's own median; the change across the run, and an index over the standards for what the instrument did rather than any one compound. Injections that did not measure the same ion — a spread over 25 ppm — are said not to, rather than fitted. Measured on request, not saved |
+| **Mass recalibration** | lock masses from the internal standards that carry a formula, fitted per injection: an offset, or a linear term where four or more span the range and leave-one-out says it helps; residuals before and after on every injection, applied to spectra, accurate-mass measurements and extraction windows behind one switch, off by default. On the batch this was written for it is dormant — no standard carries a formula — and given the one that can be looked up the correction is the size of its own 16 ppm spread |
 | **Batch QC** | control charts of the internal standards against the order the instrument injected, taken from the acquisition times. The centre is the median and the spread the median absolute deviation, so one bad injection cannot widen the limits meant to catch it; an injection is called out only when it is both beyond 3σ and at least 20% from the centre, and a run is called drifting only when the fitted change is at least 20% and goes one way. Plus the %CV of the quality controls |
 | **Report** | `File ▸ Export report…` writes the whole batch — summary, samples, method, calibration, limits, carryover, per-component results and statistics — as A4 portrait PDF to hand over or HTML to keep. Numbered sections, a contents list with page numbers, and a heading row that repeats on every page. Built from the session rather than from the screen, so it holds what was measured and not what happened to be on show |
 
@@ -188,6 +189,7 @@ green light — except for a row that failed to integrate, which always fails.
 
 | Feature | How |
 |---|---|
+| **Check a folder** | `File ▸ Check a folder…`, and before files are added: what the folder holds and what would go wrong in it, from the names alone — a `.wiff` with no `.wiff.scan` beside it (which otherwise opens and looks whole until the first spectrum), a `.scan` that belongs to no `.wiff` there with the rename offered after a confirmation naming both files, `.wiff2` and other vendors' formats that will be passed over, files already open or not there. Nothing is opened by the check and nothing is renamed without being asked |
 | Open several `.wiff` files and overlay them | `File ▸ Open .wiff` (multi-select) |
 | TIC of the whole sample | the “Sample TIC” node in the tree |
 | TIC or BPC per channel | check the channels and pick `TIC`/`BPC` |
@@ -197,6 +199,8 @@ green light — except for a row that failed to integrate, which always fails.
 | Step scan by scan | ← → or the ◀ ▶ buttons |
 | Average spectrum of a region | Shift + drag on the chromatogram |
 | **Pin spectrum** | keep the spectrum on screen and draw the next one over it — another sample, scan or channel — each pinned one in its own colour and named in the legend; **Normalise** puts them on their own base peaks and **Mirror** draws every other one downwards, head to tail |
+| **Export comparison** | the pinned spectra and the live one as one picture — PNG at twice the size for print, SVG to resize — drawn again for paper rather than grabbed off the screen; the same picture goes into the report under *Compared spectra*, with the traces and the masses they share within 10 ppm |
+| **Direct infusion** | a sample with no chromatography is recognised when it is opened — both the sample's total ion chromatogram and its strongest product-ion channel flat, measured against 39 chromatographic runs — marked in the tree, its strongest product-ion channel made active, and the average of every scan shown at once, which is what Explain, the library search and a pin then read. **Average whole run** does the same on any channel |
 | Live preview | the spectrum follows the highlight while you drag or resize it |
 | Integration of the selection | area, height, apex and S/N in the status bar |
 | **Stack** | one pane per trace with the time axes locked together |
@@ -240,6 +244,7 @@ green light — except for a row that failed to integrate, which always fails.
 |---|---|
 | Local LIPID MAPS index | one 21 MB download becomes a 1.3 MB index of 49,969 curated structures; lookups need no network and take under a millisecond |
 | **Library** | the spectrum on screen searched against an MSP (NIST, MassBank, MoNA, GNPS) or MGF library, within a precursor tolerance: the cosine over both spectra and the reverse cosine over the library's peaks alone, so a co-eluting impurity is visible as a high reverse with a low score; the matched peaks, and the record overlaid on the spectrum |
+| **Your own library** | the spectrum on screen written into an MSP of your own — name, precursor, adduct, formula, collision energy, and a comment naming the file, sample and scans it was averaged over — appended to a file chosen once, and searchable the moment it is written. Centroids only, peaks under 1% of the base peak dropped, at most 200 kept. Measured: records written from one injection put themselves first for 14 of 14 compounds when a different injection was searched against them, at reverse scores of 45–96, with every other compound's record at most 42 |
 | Candidates for a mass | **LIPID MAPS** tab, or right-click a spectrum peak → *Find formula for this peak* |
 | Species, then structures | results group by species, with the isomers that share it underneath — a mass cannot separate them |
 | Accurate mass from the data | before searching, each precursor is measured in the TOF MS survey scan at the time its own transition peaks, and cross-checked against the surviving precursor in the product-ion scan |
@@ -314,6 +319,12 @@ it — with a search box that matches by prefix. **Help ▸ Export manual as
 PDF…** prints the whole set as one A4 document. The pages are Markdown under
 `openquant/help/pages`, and a test fails the build on a link to a page that
 does not exist.
+
+The manual exists in **English and Brazilian Portuguese**: the switch is in
+the manual's toolbar and remembered, and the search and the PDF follow the
+language shown. A page not yet translated is shown in English with a note.
+The application's own menus and dialogs stay in English, which is what the
+pages describe.
 
 ## Installation
 

@@ -37,7 +37,8 @@ PAGES_DIR = Path(__file__).parent / "help" / "pages"
 #: the manual's order: section heading, then the page ids under it
 INDEX: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Getting started", (
-        "welcome", "installation", "formats", "starting-a-project", "workspaces",
+        "welcome", "installation", "formats", "checking-files",
+        "starting-a-project", "workspaces",
     )),
     ("Explorer", (
         "explorer", "chromatograms-and-spectra", "contour-view", "manual-xic",

@@ -20,7 +20,10 @@ names the file that has to be beside the `.wiff` and, when the folder
 holds a `.scan` that belongs to no `.wiff` there, names that too — a
 companion renamed by hand (`name.wiff_mix1.scan` next to `name_mix1.wiff`)
 is the usual way the pair comes apart, and renaming it to
-`name_mix1.wiff.scan` is the whole repair. They are read through SCIEX's own Clearcore2 libraries, which are
+`name_mix1.wiff.scan` is the whole repair — which [[checking-files]] finds
+and offers before the file is opened at all. A `.wiff2` beside the pair is
+a different container and is not read here; nothing is lost, since the
+`.wiff` of the same name holds the same acquisition. They are read through SCIEX's own Clearcore2 libraries, which are
 the only software able to decode the format and are redistributed by the
 open-source package alpharaw. How they are made to work off Windows is
 described in [[how-wiff-is-read]].

@@ -40,7 +40,8 @@ INDEX: tuple[tuple[str, tuple[str, ...]], ...] = (
         "welcome", "installation", "formats", "starting-a-project", "workspaces",
     )),
     ("Explorer", (
-        "explorer", "chromatograms-and-spectra", "contour-view", "manual-xic",
+        "explorer", "chromatograms-and-spectra", "direct-infusion",
+        "contour-view", "manual-xic",
         "explorer-components-and-results", "sample-information",
     )),
     ("Chemistry and annotation", (

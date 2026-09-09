@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .components import Component
+from .infusion import verdict_for
 from .matching import match_channel
 from .method import ProcessingMethod
 from .processing import centroid_mz, detect_peaks
@@ -185,10 +186,25 @@ def _anchor_rt(entry: SampleEntry, component: Component) -> float | None:
     survey search to an arbitrary time, where it would dutifully measure
     whatever ion happened to be co-eluting. If the transition shows nothing,
     there is nothing to annotate.
+
+    A direct infusion is the case where all of that is the wrong question.
+    There is no peak, and a retention time copied into the method from a
+    chromatographic one points outside a run that lasts a minute — which used
+    to leave the measurement either refused for want of an anchor or taken
+    over three scans of a run whose every scan is the same. The middle of the
+    run stands for all of it, and `measure` then averages the whole run.
     """
+    channel = match_channel(entry.sample, component)
+    if verdict_for(entry.sample):
+        # an infusion has no peak to anchor on and no retention time worth
+        # believing — the compound is there from the first scan to the last —
+        # so the middle of the run stands for all of it
+        times = channel.rt if channel is not None else np.zeros(0)
+        if times.size == 0:
+            return None
+        return float(times[times.size // 2])
     if component.rt is not None:
         return component.rt
-    channel = match_channel(entry.sample, component)
     if channel is None:
         return None
     x, y = channel.tic()
@@ -230,14 +246,16 @@ def measure(entry: SampleEntry, component: Component,
         return result
 
     # Narrow to the component's expected window when it has one, so a bigger
-    # peak elsewhere in the run cannot claim the measurement.
+    # peak elsewhere in the run cannot claim the measurement. An infusion has
+    # no such window: every scan is the same spectrum, and all of them count.
+    infused = bool(verdict_for(entry.sample))
     mask = np.ones(x.size, dtype=bool)
-    rt_window = component.rt_window()
+    rt_window = None if infused else component.rt_window()
     if rt_window is not None:
         inside = (x >= rt_window[0]) & (x <= rt_window[1])
         if inside.sum() >= 3:
             mask = inside
-    elif anchor is not None:
+    elif anchor is not None and not infused:
         inside = np.abs(x - anchor) <= 0.3
         if inside.sum() >= 3:
             mask = inside
@@ -247,8 +265,14 @@ def measure(entry: SampleEntry, component: Component,
         result.note = "precursor not seen in the survey scan"
         return result
 
-    peaks = detect_peaks(times, response, min_relative=0.2, min_snr=3.0)
-    if peaks:
+    peaks = [] if infused else detect_peaks(times, response, min_relative=0.2,
+                                            min_snr=3.0)
+    if infused:
+        # the whole run is the measurement, which is what makes an infusion
+        # worth measuring at all: every scan of it averages into one spectrum
+        apex_rt = anchor
+        start, end = float(times[0]), float(times[-1])
+    elif peaks:
         apex_rt, start, end = peaks[0].apex_rt, peaks[0].start_rt, peaks[0].end_rt
     else:
         apex_rt = float(times[int(np.argmax(response))])

@@ -36,7 +36,10 @@ runs can be told apart.
 The spectrum of one scan of the active channel, or the average over a
 selected range. Product-ion channels show what survived fragmentation of
 their precursor; the survey channel (TOF MS) shows everything eluting at
-that moment.
+that moment. Where there is nothing eluting at all — an infusion sprayed
+for a minute, every scan the same — the whole run averages into one
+spectrum instead, and that is what the pane opens on: see
+[[direct-infusion]].
 
 | Gesture | Effect |
 |---|---|

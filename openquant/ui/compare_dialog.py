@@ -285,7 +285,8 @@ class ComparisonDialog(QtWidgets.QDialog):
         if component is None or entry is None:
             return
         x, y, _channel = extract_xic(entry, component, self.session.method,
-                                     self.session.cache)
+                                     self.session.cache,
+                                     self.session.correction_for(sample_key))
         if x.size == 0:
             return
         plot.plot(x, y, pen=pg.mkPen(theme.foreground(), width=1.2), name="trace")

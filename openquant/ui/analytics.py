@@ -334,10 +334,13 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
                     component=component.name, group=component.group,
                     expected_rt=component.rt, note="not processed",
                 )
-            x, y, _channel = extract_xic(entry, component, method, self.session.cache)
+            correction = self.session.correction_for(entry.key)
+            x, y, _channel = extract_xic(entry, component, method,
+                                         self.session.cache, correction)
             is_trace = None
             if standard is not None:
-                sx, sy, _ = extract_xic(entry, standard, method, self.session.cache)
+                sx, sy, _ = extract_xic(entry, standard, method,
+                                        self.session.cache, correction)
                 if sx.size:
                     is_trace = (sx, sy)
             items.append((result, x, y, expected, is_trace))
@@ -380,11 +383,14 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
                 component=component.name, group=component.group,
                 expected_rt=component.rt, note="not processed",
             )
-        x, y, _channel = extract_xic(entry, component, method, self.session.cache)
+        correction = self.session.correction_for(entry.key)
+        x, y, _channel = extract_xic(entry, component, method,
+                                     self.session.cache, correction)
         standard = method.internal_standard_for(component)
         is_trace = None
         if standard is not None:
-            sx, sy, _ = extract_xic(entry, standard, method, self.session.cache)
+            sx, sy, _ = extract_xic(entry, standard, method,
+                                    self.session.cache, correction)
             if sx.size:
                 is_trace = (sx, sy)
         return (result, x, y, component.rt_window(), is_trace)
@@ -535,7 +541,8 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             return
         results = process(self.session.loaded_entries, self.session.method,
                           self.session.cache, previous=self.session.results,
-                          keep_manual=True, only=names)
+                          keep_manual=True, only=names,
+                          corrections=self.session.corrections_in_force())
         self.session.results = results
         self._recalibrate()
 
@@ -547,7 +554,8 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             return
         previous = self.session.results.get(sample_key, component.name)
         result = integrate_manually(entry, component, self.session.method,
-                                    start, end, previous, self.session.cache)
+                                    start, end, previous, self.session.cache,
+                                    self.session.correction_for(sample_key))
         self.session.results.replace(result)
         self._relink()
         self._recalibrate()
@@ -614,7 +622,8 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             return
         from ..quantify import integrate_component
         result = integrate_component(entry, component, self.session.method,
-                                     self.session.cache)
+                                     self.session.cache,
+                                     self.session.correction_for(sample_key))
         self.session.results.replace(result)
         self._relink()
         self._recalibrate()
@@ -681,7 +690,8 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             QtWidgets.QApplication.processEvents()
             return not dialog.wasCanceled()
 
-        results = process(loaded, method, self.session.cache, report)
+        results = process(loaded, method, self.session.cache, report,
+                          corrections=self.session.corrections_in_force())
         dialog.setValue(total)
         self.session.results = results
         self._recalibrate()
@@ -716,8 +726,9 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             QtWidgets.QApplication.processEvents()
             return not dialog.wasCanceled()
 
-        comparison = compare_algorithms(loaded, method, self.session.cache,
-                                        progress=report)
+        comparison = compare_algorithms(
+            loaded, method, self.session.cache, progress=report,
+            corrections=self.session.corrections_in_force())
         dialog.reset()
         if comparison is None:
             self._report("Comparison cancelled.")
@@ -775,7 +786,8 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         loaded = self.session.loaded_entries
         if loaded and self.session.results.results:
             results = process(loaded, method, self.session.cache,
-                              previous=self.session.results, keep_manual=True)
+                              previous=self.session.results, keep_manual=True,
+                              corrections=self.session.corrections_in_force())
             self.session.results = results
             self._recalibrate()
         else:

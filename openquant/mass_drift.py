@@ -16,8 +16,9 @@ itself to well under a ppm. Where a component carries a formula and an
 adduct the exact mass is known too, and the median's error against it is
 reported alongside — an offset, which is a different finding from a drift.
 
-Measured, not corrected. Recalibrating the axis is only worth writing if
-this shows something to correct, and this says whether it does.
+Measured, not corrected. What to do about it is `recalibrate.py`, which
+reuses exactly these measurements: a trend that fails `same_ion` is not a
+lock mass, and a trend with no formula has nothing to be corrected towards.
 """
 
 from __future__ import annotations
@@ -59,6 +60,10 @@ class MassPoint:
     ppm: float
     intensity: float = 0.0
     corroborated: bool = True
+    #: the sample's key, which is unique where its name need not be. Empty on
+    #: the index, whose points are a median over components rather than one
+    #: injection's measurement of one of them.
+    key: str = ""
 
 
 @dataclass
@@ -187,7 +192,8 @@ def mass_trend(component: Component,
             mz=float(m.measured),
             ppm=(float(m.measured) - trend.median) / trend.median * 1e6,
             intensity=m.intensity,
-            corroborated=m.product_mz is None or m.corroborated))
+            corroborated=m.product_mz is None or m.corroborated,
+            key=entry.key))
     trend.unconfirmed = sum(1 for point in trend.points if not point.corroborated)
     if len(found) < MIN_INJECTIONS:
         trend.note = (f"measured in {len(found)} injection(s); "

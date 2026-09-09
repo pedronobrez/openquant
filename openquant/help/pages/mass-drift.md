@@ -67,13 +67,14 @@ median as a solid line and ±10 ppm dashed, the fitted change as a dashed
 trend. A point beyond ±10 ppm is drawn in the warning colour; clicking one
 selects that sample in the [[peak-review]] grid.
 
-## Measured, not corrected
+## Measured, then corrected only on request
 
-This page reports; it changes no mass. Recalibrating the axis is only worth
-writing if a run shows something to correct, and this is what says whether
-one does. A measurement the product-ion scan did not confirm is kept and
-counted — a drift is a drift whether or not the confirming scan was strong
-enough — and the count is on the row.
+This page reports; on its own it changes no mass. What to do about what it
+shows is [[mass-recalibration]], whose switch sits on this same tab: it
+reuses exactly these measurements, so a standard that failed the same-ion
+test here is not a lock mass there either. A measurement the product-ion
+scan did not confirm is kept and counted — a drift is a drift whether or not
+the confirming scan was strong enough — and the count is on the row.
 
 The measurement is not saved with the project; it is a minute to repeat.
 While it stands, the [[report]] carries a *Mass drift* section with the

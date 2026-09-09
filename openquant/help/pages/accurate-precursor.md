@@ -53,4 +53,8 @@ rules that species out at 41 ppm.
 - the [[lipid-maps]] tab's Explain — the precursor typed there is what the
   candidates are looked up by;
 - [[mass-drift]] — the same measurement made in every injection, to see
-  whether the mass axis held through the run.
+  whether the mass axis held through the run;
+- [[mass-recalibration]] — correcting the axis from the standards that carry
+  a formula. With it on, this measurement is reported raw and corrected side
+  by side: the measured value is never overwritten, because the correction
+  was fitted from it.

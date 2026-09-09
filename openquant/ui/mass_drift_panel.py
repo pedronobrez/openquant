@@ -15,6 +15,8 @@ from PyQt6 import QtCore, QtWidgets
 
 from . import theme
 from ..mass_drift import DRIFT_PPM, MassDrift, MassTrend, mass_drift
+from ..recalibrate import describe as describe_corrections
+from ..recalibrate import fit_batch
 from ..session import Session
 
 TREND_PEN = "#e08a1e"
@@ -47,6 +49,16 @@ class MassDriftPanel(QtWidgets.QWidget):
             "fit the change. Takes a minute on a real batch, which is why it "
             "waits to be asked")
         bar.addWidget(self.btn_measure)
+        self.recalibrate = QtWidgets.QCheckBox(
+            "Recalibrate m/z from the internal standards")
+        self.recalibrate.setToolTip(
+            "Correct every mass by the offset the lock masses show in that "
+            "injection. A lock mass is an internal standard carrying a "
+            "formula and an adduct — the written precursor is not accurate "
+            "enough to correct towards — whose measured ion held together "
+            "across the run. The correction moves the extraction window, "
+            "never the instrument's own arithmetic.")
+        bar.addWidget(self.recalibrate)
         bar.addStretch(1)
         layout.addLayout(bar)
 
@@ -78,7 +90,22 @@ class MassDriftPanel(QtWidgets.QWidget):
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setToolTip("Click a row to chart that component")
         body.addWidget(self.table)
-        body.setSizes([480, 260])
+
+        self.corrections = QtWidgets.QTableWidget(0, 8)
+        self.corrections.setHorizontalHeaderLabels(
+            ["Injection", "Lock masses", "Offset ppm", "Slope ppm/kDa",
+             "Median before", "Median after", "Worst after", "Verdict"])
+        self.corrections.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.corrections.verticalHeader().setDefaultSectionSize(20)
+        self.corrections.horizontalHeader().setStretchLastSection(True)
+        self.corrections.setToolTip(
+            "The correction fitted for each injection, and what the lock "
+            "masses' own residuals were before and after it. One lock mass "
+            "leaves no residual to show: the offset takes it to zero by "
+            "construction, which is why the verdict names the count.")
+        body.addWidget(self.corrections)
+        body.setSizes([380, 220])
         layout.addWidget(body, 1)
 
         self.status = QtWidgets.QLabel("Not measured yet — press Measure.")
@@ -86,10 +113,21 @@ class MassDriftPanel(QtWidgets.QWidget):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
+        self.correction_status = QtWidgets.QLabel(describe_corrections({}))
+        self.correction_status.setProperty("role", "caption")
+        self.correction_status.setWordWrap(True)
+        layout.addWidget(self.correction_status)
+
         self.component.currentTextChanged.connect(self._draw_selected)
         self.btn_measure.clicked.connect(self.measure)
+        self.recalibrate.toggled.connect(self._on_recalibrate_toggled)
         self.table.cellClicked.connect(self._on_row_clicked)
         session.sigSamplesChanged.connect(self._invalidate)
+
+        from .help_window import describe
+        describe(self.corrections, "mass-recalibration")
+        describe(self.recalibrate, "mass-recalibration")
+        self._sync_switch()
 
     # -- measuring ------------------------------------------------------------ #
     def measure(self) -> None:
@@ -119,21 +157,47 @@ class MassDriftPanel(QtWidgets.QWidget):
             self.status.setText("Measurement cancelled.")
             return
         self.session.mass_drift = result
+        # the fit is free once the measurement exists, and a checkbox with
+        # nothing behind it would be a switch that does nothing without
+        # saying why
+        self.session.mass_corrections = fit_batch(self.session, result)
+        self.session.cache.clear()
         self.reload()
 
     def _invalidate(self) -> None:
         self.session.mass_drift = None
+        self.session.mass_corrections = {}
+        self.session.cache.clear()
         self.reload()
+
+    # -- the switch ----------------------------------------------------------- #
+    def _sync_switch(self) -> None:
+        self.recalibrate.blockSignals(True)
+        self.recalibrate.setChecked(bool(self.session.recalibrate))
+        self.recalibrate.blockSignals(False)
+        usable = any(c.usable for c in self.session.mass_corrections.values())
+        self.recalibrate.setEnabled(usable or self.session.recalibrate)
+
+    def _on_recalibrate_toggled(self, on: bool) -> None:
+        self.session.set_recalibrate(on)
+        if self.session.results.results:
+            self.correction_status.setText(
+                describe_corrections(self.session.mass_corrections)
+                + " · process the batch again for the results to follow")
 
     # -- content -------------------------------------------------------------- #
     def reload(self) -> None:
         drift = self.session.mass_drift
         self._clear()
+        self._sync_switch()
+        self.correction_status.setText(
+            describe_corrections(self.session.mass_corrections))
         if drift is None:
             self.status.setText("Not measured yet — press Measure.")
             self.component.clear()
             return
         self._fill_table()
+        self._fill_corrections()
         previous = self.component.currentText()
         self.component.blockSignals(True)
         self.component.clear()
@@ -236,9 +300,39 @@ class MassDriftPanel(QtWidgets.QWidget):
         self._lines.clear()
         self._keys = []
 
+    def _fill_corrections(self) -> None:
+        """One row per injection, in the order the batch is held."""
+        corrections = self.session.mass_corrections
+        rows = [corrections[e.key] for e in self.session.entries
+                if e.key in corrections]
+        self.corrections.setRowCount(len(rows))
+
+        def number(value, decimals=1):
+            return "—" if value is None else f"{value:,.{decimals}f}"
+
+        for row, correction in enumerate(rows):
+            cells = [correction.sample_name, f"{len(correction.lock_masses)}",
+                     number(correction.offset_ppm) if correction.usable else "—",
+                     number(correction.slope_ppm_per_da * 1000, 2)
+                     if correction.linear else "—",
+                     number(correction.median_before),
+                     number(correction.median_after),
+                     number(correction.worst_after),
+                     correction.verdict]
+            for column, text in enumerate(cells):
+                item = QtWidgets.QTableWidgetItem(text)
+                if column in (1, 2, 3, 4, 5, 6):
+                    item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight
+                                          | QtCore.Qt.AlignmentFlag.AlignVCenter)
+                if column == 7 and not correction.usable:
+                    item.setForeground(pg.mkColor(theme.axis()))
+                self.corrections.setItem(row, column, item)
+        self.corrections.setColumnWidth(0, 180)
+
     def _clear(self) -> None:
         self._clear_plot()
         self.table.setRowCount(0)
+        self.corrections.setRowCount(0)
 
     # -- linking -------------------------------------------------------------- #
     def _on_row_clicked(self, row: int, _column: int) -> None:

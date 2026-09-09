@@ -50,6 +50,14 @@ class Session(QtCore.QObject):
         self.comparison = None
         #: the last mass-drift measurement, likewise derived and not saved
         self.mass_drift = None
+        #: the mass recalibration fitted from the internal standards, keyed by
+        #: sample key. Derived from the drift measurement and not saved: a few
+        #: seconds to repeat, and a correction stored without the measurement
+        #: behind it could not be reviewed.
+        self.mass_corrections: dict = {}
+        #: whether that correction is applied. Saved with the project, because
+        #: it changes the numbers and a project has to reopen as it was left.
+        self.recalibrate = False
         #: the last comparison against a reference batch, likewise
         self.batch_comparison = None
         self.project_path: str | None = None
@@ -98,6 +106,7 @@ class Session(QtCore.QObject):
         self.files.clear()
         self.comparison = None
         self.mass_drift = None
+        self.mass_corrections = {}
         self.batch_comparison = None
         self.entries.clear()
         self.results.clear()
@@ -111,6 +120,39 @@ class Session(QtCore.QObject):
     @property
     def loaded_entries(self) -> list[SampleEntry]:
         return [e for e in self.entries if e.is_loaded]
+
+    # -- mass recalibration ------------------------------------------------------ #
+    def correction_for(self, sample_key: str):
+        """
+        The mass correction to apply in one injection, or None.
+
+        None whenever the switch is off, nothing has been fitted, or that
+        injection had no lock mass — three different reasons for the same
+        answer, which is that the masses stand as the instrument read them.
+        """
+        if not self.recalibrate:
+            return None
+        correction = self.mass_corrections.get(sample_key)
+        if correction is None or not correction.usable:
+            return None
+        return correction
+
+    def corrections_in_force(self) -> dict:
+        """Every correction that would be applied right now, keyed by sample."""
+        if not self.recalibrate:
+            return {}
+        return {key: correction
+                for key, correction in self.mass_corrections.items()
+                if correction.usable}
+
+    def set_recalibrate(self, on: bool) -> None:
+        """Turn the correction on or off; conditioned traces are cached."""
+        on = bool(on)
+        if on == self.recalibrate:
+            return
+        self.recalibrate = on
+        self.cache.clear()
+        self._mark_dirty()
 
     def entry_by_key(self, key: str) -> SampleEntry | None:
         for entry in self.entries:
@@ -166,6 +208,7 @@ class Session(QtCore.QObject):
             "results": self.results.to_list(),
             "calibrations": {name: curve.to_dict()
                              for name, curve in self.calibrations.items()},
+            "recalibrate": self.recalibrate,
         }
 
     def save_project(self, path: str) -> None:
@@ -212,6 +255,9 @@ class Session(QtCore.QObject):
             name: Calibration.from_dict(row)
             for name, row in (data.get("calibrations") or {}).items()
         }
+        # absent in every project written before this existed, which is
+        # exactly the answer those projects want
+        self.recalibrate = bool(data.get("recalibrate", False))
         self.project_path = path
         self.sigMethodChanged.emit()
         self.sigSamplesChanged.emit()

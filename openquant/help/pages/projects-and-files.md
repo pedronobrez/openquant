@@ -27,6 +27,11 @@ as *valley*, which is what it ran.
 ## Raw data
 
 `.wiff` with its `.wiff.scan`, and mzML. Never modified. See [[formats]].
+What a folder holds and what would go wrong in it — a companion that is
+not there, a `.scan` under the wrong name, files no reader here can open —
+is answered before anything is opened by *File ▸ Check a folder…*; see
+[[checking-files]], which is also where the one repair, renaming a stray
+`.scan`, is offered.
 
 ## CSV files
 

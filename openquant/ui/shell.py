@@ -218,6 +218,11 @@ class MainShell(QtWidgets.QMainWindow):
         file_menu.addSeparator()
         self.act_open = file_menu.addAction("Add data files…")
         self.act_open.setShortcut(QtGui.QKeySequence.StandardKey.Open)
+        self.act_check_folder = file_menu.addAction("Check a folder…")
+        self.act_check_folder.setToolTip(
+            "What a folder holds and what would go wrong — a .wiff without "
+            "its .wiff.scan, a .scan under the wrong name, files no reader "
+            "here can open — before anything is opened")
         self.act_close = file_menu.addAction("Close all")
         self.act_report = file_menu.addAction("Export report…")
         self.act_report.setToolTip(
@@ -254,26 +259,76 @@ class MainShell(QtWidgets.QMainWindow):
             self.export_manual)
 
         self.act_new_project.triggered.connect(self.new_project)
-        self.act_open.triggered.connect(self.open_files)
+        # both signals carry a checked flag, which is not a list of paths
+        self.act_open.triggered.connect(lambda: self.open_files())
+        self.act_check_folder.triggered.connect(self.check_folder)
         self.act_close.triggered.connect(self.close_all)
         self.act_open_project.triggered.connect(self.open_project)
         self.act_save_project.triggered.connect(self.save_project)
         self.act_save_project_as.triggered.connect(self.save_project_as)
         self.act_report.triggered.connect(self.export_report)
-        self.samples.btn_open.clicked.connect(self.open_files)
+        self.samples.btn_open.clicked.connect(lambda: self.open_files())
 
     # -- files --------------------------------------------------------------- #
     def _last_dir(self) -> str:
         return self.settings.value("io/last_dir", "", type=str)
 
-    def open_files(self) -> None:
-        paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
-            self, "Add data files", self._last_dir(),
-            raw.FILE_FILTER)
-        for path in paths:
+    def open_files(self, paths=None) -> None:
+        """
+        Add data files, a folder's worth of them, or both.
+
+        The file dialog cannot return a folder — `check_folder` is where one
+        comes from — but everything after the choosing takes either.
+        """
+        if paths is None:
+            paths, _ = QtWidgets.QFileDialog.getOpenFileNames(
+                self, "Add data files", self._last_dir(), raw.FILE_FILTER)
+        paths = list(paths)
+        if not paths:
+            return
+        first = paths[0]
+        self.settings.setValue(
+            "io/last_dir",
+            first if os.path.isdir(first) else os.path.dirname(first))
+        for path in self.check_paths(paths):
             self.load_file(path)
-        if paths:
-            self.settings.setValue("io/last_dir", os.path.dirname(paths[0]))
+
+    def check_paths(self, paths, always_show: bool = False) -> list[str]:
+        """
+        Look the files over before opening any; return the ones to open.
+
+        A `.wiff` without its `.wiff.scan` opens and looks whole, a `.wiff2`
+        is a container nothing here reads, and a file added twice becomes a
+        second copy of every sample in it. All three are visible from the
+        names alone, which is cheaper than opening the files and, in the
+        first case, is the only warning that arrives before the work does.
+        An empty list means the person cancelled.
+        """
+        from ..folder import check_files
+        from .folder_dialog import FolderDialog
+
+        open_paths = [entry.path for entry in self.session.entries]
+        report = check_files(paths, open_paths)
+        if not report.findings and not always_show:
+            return report.paths
+        dialog = FolderDialog(report, self, open_paths=open_paths)
+        chosen = dialog.paths() if dialog.exec() else []
+        if dialog.renamed:
+            self.statusBar().showMessage(
+                f"Renamed {len(dialog.renamed)} file(s); "
+                f"{os.path.basename(dialog.renamed[-1])} last")
+        dialog.deleteLater()
+        return chosen
+
+    def check_folder(self) -> None:
+        """File ▸ Check a folder…: the check on its own, before any opening."""
+        folder = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Check a folder", self._last_dir())
+        if not folder:
+            return
+        self.settings.setValue("io/last_dir", folder)
+        for path in self.check_paths([folder], always_show=True):
+            self.load_file(path)
 
     def load_file(self, path: str) -> None:
         opened = None

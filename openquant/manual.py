@@ -63,7 +63,7 @@ INDEX: tuple[tuple[str, tuple[str, ...]], ...] = (
         "report",
     )),
     ("Reference", (
-        "projects-and-files", "command-line", "keyboard-shortcuts",
+        "projects-and-files", "export", "command-line", "keyboard-shortcuts",
         "how-wiff-is-read", "measured-facts", "design-principles",
         "troubleshooting", "glossary", "version-history",
     )),

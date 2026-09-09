@@ -40,6 +40,8 @@ The internal-standard and qualifier columns are explained in
   [[annotate-from-lipid-maps]] is for.
 - **Import CSV…** and **Export CSV…** read and write the table as a
   spreadsheet, see below.
+- **Export for Skyline…** writes the method as a small-molecule transition
+  list, see [[export]].
 - **Suggest from data…** proposes retention times and window widths from the
   open injections, see [[suggest-from-data]].
 - **Check method** reads the method against itself and the open files,

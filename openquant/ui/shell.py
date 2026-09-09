@@ -143,6 +143,36 @@ class MainShell(QtWidgets.QMainWindow):
         size = os.path.getsize(path) / 1024
         self.statusBar().showMessage(f"Report written to {path} ({size:,.0f} KB)")
 
+    def export_workbook(self) -> None:
+        """
+        Write the batch out as a spreadsheet, one sheet per section.
+
+        The report is what you keep; this is what you carry on working in.
+        It is fast — no layout pass — so there is no wait cursor here.
+        """
+        from ..report import export_workbook
+
+        if not self.session.has_content:
+            self.statusBar().showMessage(
+                "Open a batch or build a method before exporting one.")
+            return
+        stem = (os.path.splitext(os.path.basename(self.session.project_path))[0]
+                if self.session.project_path else "batch")
+        path, _chosen = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Export workbook",
+            os.path.join(self._last_dir(), f"{stem}.xlsx"), "Excel (*.xlsx)")
+        if not path:
+            return
+        self.settings.setValue("io/last_dir", os.path.dirname(path))
+        try:
+            written = export_workbook(self.session, path)
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "Export failed", str(exc))
+            return
+        size = os.path.getsize(written) / 1024
+        self.statusBar().showMessage(
+            f"Workbook written to {written} ({size:,.0f} KB)")
+
     # -- help ---------------------------------------------------------------- #
     def context_page(self) -> str:
         """The manual page for what has the focus, or for the workspace shown."""
@@ -223,6 +253,10 @@ class MainShell(QtWidgets.QMainWindow):
         self.act_report.setToolTip(
             "A document of the whole batch — method, calibration, results and "
             "statistics — to print or to hand over")
+        self.act_workbook = file_menu.addAction("Export workbook (Excel)…")
+        self.act_workbook.setToolTip(
+            "The same batch as a spreadsheet — one sheet per section, every "
+            "number a number — to carry on working in")
         file_menu.addSeparator()
         for action in self.explorer.build_actions()["File"]:
             file_menu.addAction(action)
@@ -260,6 +294,7 @@ class MainShell(QtWidgets.QMainWindow):
         self.act_save_project.triggered.connect(self.save_project)
         self.act_save_project_as.triggered.connect(self.save_project_as)
         self.act_report.triggered.connect(self.export_report)
+        self.act_workbook.triggered.connect(self.export_workbook)
         self.samples.btn_open.clicked.connect(self.open_files)
 
     # -- files --------------------------------------------------------------- #

@@ -39,6 +39,7 @@ from .qc import (ALWAYS_OUT_PERCENT, CV_PERCENT, DRIFT_CORRELATION,
                  DRIFT_PERCENT, MIN_SNR, OUTLIER_SIGMA, OUT_PERCENT,
                  batch_qc)
 from .validation import all_detection_limits, carryover
+from .xlsx import Sheet, write_xlsx
 
 #: the statuses a row can carry. Matched without regard to case: the results
 #: capitalise them and an earlier version of this counted them in lower case,
@@ -1055,6 +1056,283 @@ def write_html(session, path: str | os.PathLike, **kwargs) -> str:
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(build_html(session, **kwargs))
     return path
+
+
+# --------------------------------------------------------------------------- #
+# the workbook
+# --------------------------------------------------------------------------- #
+#: the sheets, in the order they are put in the book, with the tab names
+#: they carry. A section with nothing in it is left out entirely rather
+#: than written as an empty tab.
+WORKBOOK_SHEETS = {
+    "results": "Results",
+    "calibration": "Calibration",
+    "statistics": "Statistics",
+    "quality": "Batch QC",
+    "method": "Method",
+    "samples": "Samples",
+}
+ALL_WORKBOOK_SHEETS = tuple(WORKBOOK_SHEETS)
+
+
+def _yes(value) -> str:
+    """A column of yes and blank, not of yes and no: the exception shows."""
+    return "yes" if value else ""
+
+
+def _slope_intercept(curve) -> tuple[float | None, float | None]:
+    """
+    The two numbers somebody wants out of a curve, where it has them.
+
+    A quadratic has neither, and inventing them from its first two
+    coefficients would be a straight line the curve is not. The equation
+    column carries it instead.
+    """
+    coefficients = list(curve.coefficients or [])
+    if len(coefficients) == 2:
+        return coefficients[0], coefficients[1]
+    if len(coefficients) == 1:
+        return coefficients[0], 0.0
+    return None, None
+
+
+def _sheet_results(session) -> Sheet | None:
+    """
+    Every integrated row, one per line — which is the point of the sheet.
+
+    The report's own results section is grouped by component with the
+    exceptions written underneath, because twelve columns do not fit an A4
+    page. A spreadsheet has no page, so nothing here is moved into a
+    footnote: the flags, the note and the exclusion are columns like any
+    other, and the rows can be sorted and filtered on them.
+    """
+    rows = []
+    by_key = {entry.key: entry for entry in session.entries}
+    for result in session.results:
+        entry = by_key.get(result.sample_key)
+        component = session.method.by_name(result.component)
+        rows.append([
+            result.sample_name,
+            entry.sample_type if entry else "",
+            entry.sample_group if entry else "",
+            result.component,
+            result.group or (component.group if component else ""),
+            result.channel,
+            result.mz or None,
+            result.rt if result.found else None,
+            result.expected_rt,
+            result.rt_delta,
+            result.area if result.found else None,
+            result.height or None,
+            result.width or None,
+            result.snr,
+            result.points,
+            result.algorithm,
+            result.internal_standard,
+            result.area_ratio,
+            result.calculated_concentration,
+            result.accuracy,
+            result.status,
+            _yes(result.used),
+            _yes(result.manual),
+            "; ".join(result.flags),
+            result.note,
+        ])
+    if not rows:
+        return None
+    return Sheet(
+        WORKBOOK_SHEETS["results"],
+        ["Sample", "Sample type", "Sample group", "Component",
+         "Component group", "Channel", "m/z", "RT", "Expected RT", "Δ RT",
+         "Area", "Height", "Width", "S/N", "Points", "Algorithm",
+         "Internal standard", "Ratio to IS", "Concentration", "Accuracy %",
+         "Status", "Used", "By hand", "Flags", "Note"],
+        rows,
+        widths=[22, 14, 14, 24, 18, 20, 11, 9, 11, 8, 13, 13, 9, 10, 8, 11,
+                22, 12, 14, 11, 9, 7, 8, 30, 30],
+        formats=[None, None, None, None, None, None, "mass", "time", "time",
+                 "time", "area", "area", "time", "area", "integer", None,
+                 None, None, None, "percent", None, None, None, None, None])
+
+
+def _sheet_calibration(session) -> Sheet | None:
+    internal = {c.name for c in session.method.components
+                if c.is_internal_standard}
+    rows = []
+    for name in sorted(session.calibrations):
+        curve = session.calibrations[name]
+        if curve is None or not curve.is_fitted:
+            continue
+        slope, intercept = _slope_intercept(curve)
+        rows.append([
+            name, _yes(name in internal), curve.regression, curve.weighting,
+            curve.equation, slope, intercept, curve.r2, curve.r,
+            len(curve.used_points), len(curve.points), curve.note,
+        ])
+    if not rows:
+        return None
+    return Sheet(
+        WORKBOOK_SHEETS["calibration"],
+        ["Component", "Internal standard", "Model", "Weighting", "Equation",
+         "Slope", "Intercept", "r²", "r", "Points used", "Points", "Note"],
+        rows,
+        widths=[24, 16, 12, 11, 30, 14, 14, 10, 10, 11, 8, 26])
+
+
+def _sheet_statistics(session, grouping: str) -> Sheet | None:
+    try:
+        summary = summarise(session.results, session.entries, session.method,
+                            grouping, "response")
+    except Exception:                       # a workbook must still be written
+        return None
+    rows = [[row.component, row.group, row.used, row.total, row.mean,
+             row.standard_deviation, row.percent_cv, row.accuracy]
+            for row in summary]
+    if not rows:
+        return None
+    return Sheet(
+        WORKBOOK_SHEETS["statistics"],
+        ["Component", "Group", "n used", "n", "Mean", "SD", "%CV",
+         "Accuracy %"],
+        rows,
+        widths=[26, 20, 9, 7, 16, 16, 10, 12],
+        formats=[None, None, "integer", "integer", None, None, "percent",
+                 "percent"])
+
+
+def _sheet_quality(session) -> Sheet | None:
+    """
+    One row per control chart, plus the response index where it stands.
+
+    The index is a chart of its own in `qc`, and it goes in the same sheet
+    under the component name it already carries, so that a reader sorting
+    by the drift column sees it against the standards it was built from.
+    """
+    try:
+        quality = batch_qc(session.results, session.entries, session.method)
+    except Exception:                       # a workbook must still be written
+        return None
+    charts = list(quality.charts)
+    if quality.index is not None and quality.index.measurable:
+        charts.append(quality.index)
+    rows = []
+    for chart in charts:
+        rows.append([
+            chart.component, len(chart.injections), chart.centre, chart.sigma,
+            chart.snr, chart.floor, chart.drift, chart.correlation,
+            len(chart.out), len(chart.warned),
+            _yes(chart.drifted), _yes(chart.unusable),
+            _yes(chart.measurable and chart.quantifiable),
+            chart.note,
+        ])
+    if not rows:
+        return None
+    return Sheet(
+        WORKBOOK_SHEETS["quality"],
+        ["Component", "n", "Centre", "Spread", "S/N", "Floor", "Drift %",
+         "ρ", "Outside limits", "Beyond 2σ", "Drifted", "Cannot normalise",
+         "Quantifiable", "Note"],
+        rows,
+        widths=[26, 7, 15, 15, 10, 14, 10, 9, 14, 11, 10, 16, 13, 34],
+        formats=[None, "integer", "area", "area", "area", "area", "percent",
+                 None, "integer", "integer", None, None, None, None])
+
+
+def _sheet_method(session) -> Sheet | None:
+    rows = []
+    for component in session.method.components:
+        role = ("internal standard" if component.is_internal_standard else
+                (f"qualifier of {component.qualifier_of}"
+                 if component.qualifier_of else ""))
+        rows.append([
+            component.name, component.group, component.precursor or None,
+            component.fragment, component.rt, component.rt_halfwidth,
+            component.tolerance, component.unit, component.formula,
+            component.adduct, _yes(component.is_internal_standard),
+            component.internal_standard, role, component.response,
+            component.concentration_unit, component.min_response,
+            component.regression, component.weighting, component.lm_id,
+        ])
+    if not rows:
+        return None
+    return Sheet(
+        WORKBOOK_SHEETS["method"],
+        ["Component", "Group", "Precursor", "Fragment", "RT", "± RT",
+         "Tolerance", "Unit", "Formula", "Adduct", "IS", "Internal standard",
+         "Role", "Response", "Concentration unit", "Min. response",
+         "Regression", "Weighting", "LIPID MAPS"],
+        rows,
+        widths=[26, 18, 12, 12, 9, 8, 10, 7, 16, 12, 6, 22, 20, 14, 18, 14,
+                12, 11, 14],
+        formats=[None, None, "mass", "mass", "time", "time", None, None,
+                 None, None, None, None, None, None, None, "area", None,
+                 None, None])
+
+
+def _sheet_samples(session) -> Sheet | None:
+    rows = []
+    for entry in session.entries:
+        rows.append([
+            entry.name, entry.filename, entry.sample_index, entry.sample_type,
+            entry.sample_group, entry.actual_concentration,
+            entry.dilution_factor, entry.comment, entry.problem,
+        ])
+    if not rows:
+        return None
+    return Sheet(
+        WORKBOOK_SHEETS["samples"],
+        ["Sample", "File", "Index", "Type", "Group", "Concentration",
+         "Dilution", "Comment", "Problem"],
+        rows,
+        widths=[24, 30, 7, 16, 16, 14, 10, 30, 30],
+        formats=[None, None, "integer", None, None, None, None, None, None])
+
+
+def build_workbook(session, grouping: str = GROUP_BY_SAMPLE_TYPE,
+                   sheets: tuple[str, ...] = ALL_WORKBOOK_SHEETS) -> list[Sheet]:
+    """
+    The batch as sheets of typed cells: one sheet per section.
+
+    This is not the report in another wrapper. A report is read; a workbook
+    is worked on, so nothing is rounded into a string, nothing is moved into
+    a footnote, and no exception is summarised away — every result is a row
+    with its flags and its note beside it. The two share their arithmetic
+    (`summarise`, `batch_qc`) rather than their formatting, because a number
+    turned into text for an A4 page is no longer a number.
+
+    Sections with nothing in them are left out, so a book of a method and
+    nothing else is two sheets rather than six, four of them empty.
+    """
+    builders = {
+        "results": lambda: _sheet_results(session),
+        "calibration": lambda: _sheet_calibration(session),
+        "statistics": lambda: _sheet_statistics(session, grouping),
+        "quality": lambda: _sheet_quality(session),
+        "method": lambda: _sheet_method(session),
+        "samples": lambda: _sheet_samples(session),
+    }
+    built = []
+    for key in ALL_WORKBOOK_SHEETS:
+        if key not in sheets:
+            continue
+        sheet = builders[key]()
+        if sheet is not None and not sheet.is_empty:
+            built.append(sheet)
+    return built
+
+
+def export_workbook(session, path: str | os.PathLike, **kwargs) -> str:
+    """
+    Write the batch out as an `.xlsx`, and return the path written.
+
+    A session with nothing in it raises rather than writing a workbook of
+    no sheets, which is a file no spreadsheet will open.
+    """
+    sheets = build_workbook(session, **kwargs)
+    if not sheets:
+        raise ValueError("there is nothing to export: no method, no samples "
+                         "and no results")
+    return write_xlsx(str(path), sheets)
 
 
 # --------------------------------------------------------------------------- #

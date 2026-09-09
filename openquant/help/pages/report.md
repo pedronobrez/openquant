@@ -63,3 +63,7 @@ the HTML.
 
 The same printing machinery produces this manual's PDF, from
 **Help ▸ Export manual as PDF…**.
+
+A report is what you keep. What you carry on working in is the Excel
+workbook of the same sections — see [[export]], which also covers the
+Skyline transition list.

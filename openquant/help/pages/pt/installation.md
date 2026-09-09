@@ -1,0 +1,103 @@
+---
+title: Instalação
+---
+O OpenQuant é desenvolvido e usado no macOS, Apple Silicon incluído. A suíte
+de testes e a aplicação iniciam em Linux e Windows na integração contínua, e
+instaladores são construídos para os três; a leitura de um `.wiff` só foi
+verificada no macOS, porque esse caminho carrega as montagens .NET da SCIEX
+e as outras duas plataformas são verificadas apenas até "as montagens
+carregam". Ver [[how-wiff-is-read]].
+
+## Instaladores
+
+Cada versão publicada no GitHub traz três arquivos:
+
+| Arquivo | Plataforma | Observações |
+|---|---|---|
+| `OpenQuant-<version>-macos-arm64.dmg` | macOS em Apple Silicon | arraste a aplicação para Applications |
+| `OpenQuant-<version>.msi` | Windows 10 1703 ou mais recente | um instalador padrão |
+| `OpenQuant-<version>-linux-x86_64.tar.gz` | Linux | descompacte e execute `OpenQuant/OpenQuant` |
+
+### O macOS e o atributo de quarentena
+
+A imagem de disco não é assinada. Não é isso que faz o macOS reclamar: o
+Gatekeeper reage ao atributo `com.apple.quarantine`, que é anexado por
+aquilo que baixa o arquivo — um navegador, o Mail, o AirDrop — e não por
+aquilo que o constrói. Ou clique com o botão direito na aplicação e escolha
+**Open** uma vez, ou limpe o atributo:
+
+```
+xattr -dr com.apple.quarantine /Applications/OpenQuant.app
+```
+
+O Apple Silicon insiste em *alguma* assinatura, ou o binário não inicia; a
+assinatura ad-hoc que a build aplica é suficiente.
+
+### Windows: 10 1703 ou mais recente, e não sob o Wine
+
+O `Qt6Core.dll` do wheel do PyQt6 importa dezoito símbolos `ucnv_*` de
+`icuuc.dll`, a biblioteca de conversores da ICU, e o wheel não distribui ICU
+própria porque o Windows fornece uma em `System32` desde aquela versão. Wine
+e CrossOver não implementam nenhuma das duas, de modo que a aplicação para
+na importação com *"DLL load failed while importing QtCore: Module not
+found"*, o que parece um instalador quebrado e não é. Uma biblioteca de
+stub que satisfaz aqueles dezoito símbolos existe no repositório de código
+sob `packaging/wine/` e deliberadamente **não** está no instalador: em uma
+máquina Windows real, um `icuuc.dll` local à aplicação seria encontrado
+antes do genuíno.
+
+O instalador foi construído e iniciado em um runner Windows do GitHub, e a
+build do Windows leu uma aquisição real sob o CrossOver com o stub no lugar,
+dando os mesmos números que a build do macOS. Ele não foi instalado em uma
+máquina Windows física pelos autores; ver [[troubleshooting]] se ele se
+comportar mal ali.
+
+## A partir do código-fonte
+
+```
+git clone https://github.com/pedronobrez/openquant
+cd openquant
+python3 -m pip install -r requirements.txt
+python3 -m openquant.bootstrap --install
+python3 run.py
+```
+
+Os requisitos são numpy, PyQt6, pyqtgraph, alpharaw (que carrega as
+montagens Clearcore2 da SCIEX), pythonnet e certifi. Python 3.11 ou mais
+recente.
+
+O comando de bootstrap é necessário uma única vez, e apenas quando a máquina
+não tem runtime .NET 8: ele baixa o script `dotnet-install` da Microsoft e
+instala um runtime de cerca de 30 MB em `~/.dotnet`. Ele também busca no
+NuGet as montagens de compatibilidade que o .NET Core não distribui e de que
+o Clearcore2 precisa (`System.Configuration.ConfigurationManager` e suas
+dependências), guardando-as em cache sob o diretório home da aplicação. Sem
+um runtime, arquivos mzML ainda abrem; arquivos `.wiff` reportam que as
+bibliotecas da SCIEX estão indisponíveis.
+
+## Onde as coisas ficam
+
+| O quê | Onde |
+|---|---|
+| o runtime .NET | `~/.dotnet` |
+| montagens baixadas, o índice do LIPID MAPS | `~/.openquant` (substituível pela variável de ambiente `OPENPEAKVIEW_HOME`) |
+| preferências: geometria da janela, última pasta, painéis recolhidos, o aviso inicial | o armazenamento de configurações da plataforma, sob `OpenQuant/OpenQuant` |
+| projetos | onde quer que tenham sido salvos: arquivos `.oqproj`, ver [[projects-and-files]] |
+
+## LIPID MAPS
+
+O banco de dados de lipídios não é distribuído junto. O primeiro uso da aba
+**LIPID MAPS** no Explorer oferece baixá-lo: um arquivo de 21 MB de
+lipidmaps.org vira um índice local de 1.3 MB com 49,969 estruturas
+curadas, depois do que as consultas não precisam de rede. Ver [[lipid-maps]].
+
+## Verificar uma instalação
+
+```
+OpenQuant --selftest file.wiff
+```
+
+reporta a versão, a plataforma, se o índice do LIPID MAPS está instalado, se
+as bibliotecas da SCIEX carregam e onde o runtime .NET foi encontrado, e
+então abre cada arquivo nomeado e imprime o que foi lido. Ver
+[[command-line]].

@@ -73,12 +73,18 @@ class MethodWorkspace(QtWidgets.QWidget):
             "Read the method against itself, and against the files that are "
             "open: components that share a transition, internal standards "
             "with no retention time, windows the sampling cannot resolve")
+        self.btn_schedule = QtWidgets.QPushButton("Export schedule…")
+        self.btn_schedule.setToolTip(
+            "The scheduled acquisition the method implies — every component "
+            "with a retention time, over its window — with the dwell a target "
+            "cycle leaves each transition at the busiest moment of the run")
         self.btn_annotate = QtWidgets.QPushButton("Annotate from LIPID MAPS…")
         self.btn_annotate.setToolTip(
             "Propose a lipid species for every component still named after its "
             "precursor mass")
         for widget in (self.btn_add, self.btn_remove, self.btn_generate,
                        self.btn_import, self.btn_export, self.btn_check,
+                       self.btn_schedule,
                        self.btn_suggest, self.btn_annotate):
             bar.addWidget(widget)
         bar.addStretch(1)
@@ -140,6 +146,7 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.btn_import.clicked.connect(self._import)
         self.btn_export.clicked.connect(self._export)
         self.btn_check.clicked.connect(self.check_method)
+        self.btn_schedule.clicked.connect(self.export_schedule)
         self.btn_suggest.clicked.connect(self.suggest_from_data)
         self.btn_annotate.clicked.connect(self._annotate)
         self.table.itemChanged.connect(self._on_edit)
@@ -472,6 +479,13 @@ class MethodWorkspace(QtWidgets.QWidget):
         if path:
             save_components(path, components)
             self._report(f"Exported to {path}")
+
+    def export_schedule(self) -> None:
+        from .schedule_dialog import ScheduleDialog
+
+        dialog = ScheduleDialog(self.session, self)
+        if dialog.exec() and dialog.saved_path:
+            self._report(f"Schedule written to {dialog.saved_path}")
 
     def _annotate(self) -> None:
         """Name the unnamed components from their precursor masses."""

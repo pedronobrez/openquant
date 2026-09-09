@@ -72,6 +72,13 @@ method of 141 components and 11 internal standards, sampled every 14.6 s.
   median 14.6 s — one cycle — so every cycle time the sampling report
   recommends for that batch is an upper bound.
 
+## The schedule
+
+- The real method scheduled over its windows: 59 transitions with a time,
+  at most 24 acquired at once, and a 3 s cycle still leaving 120 ms of dwell
+  — against the 14.6 s the batch was acquired at with all 144 running
+  unscheduled. 72 of its 141 precursors lie outside the 50–700 survey.
+
 ## The mass axis
 
 - On the 26-injection batch, whose survey scan covers 50–700, the one

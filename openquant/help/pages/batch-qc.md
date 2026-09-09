@@ -112,7 +112,9 @@ On the batch this was written for: one scan every 14.6 s, **a median of one
 point on the peak**, 129 of 139 components typically under the three a fit
 needs. That is a property of the acquisition schedule, and nothing in the
 processing substitutes for it — the [[report]] carries the same table under
-*Sampling*, for the conversation with whoever writes the schedule.
+*Sampling*, and **Export schedule…** in the Method workspace turns the
+method into the table the instrument needs, with the cycle from here as
+its starting point: [[acquisition-schedule]].
 
 ## Suggesting the floors
 

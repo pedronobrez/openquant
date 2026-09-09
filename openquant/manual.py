@@ -51,7 +51,7 @@ INDEX: tuple[tuple[str, tuple[str, ...]], ...] = (
     )),
     ("Method", (
         "method-workspace", "internal-standards-and-qualifiers", "check-method",
-        "suggest-from-data", "annotate-from-lipid-maps",
+        "suggest-from-data", "annotate-from-lipid-maps", "acquisition-schedule",
     )),
     ("Analytics", (
         "analytics-workspace", "peak-review", "integration-parameters",

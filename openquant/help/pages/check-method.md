@@ -15,6 +15,7 @@ results, which is later and harder.
 | internal standard without a time | serious | a standard with no retention time is searched over the whole run, and takes the largest peak anywhere in it; every component it normalises inherits that. The count of components it carries is given |
 | internal standard without a response floor | warning | a standard that serves components declares no **Min. response**, so the quality charts and the acceptance fall back to a signal-to-noise of ten — which on a scheduled acquisition is an absolute height against an arbitrary constant. See [[internal-standards-and-qualifiers]] |
 | no retention time | warning | the component's window is the whole run, so the largest peak in the run is the component whatever it is |
+| precursor outside the survey scan | warning | with files open: components whose precursor no survey scan covers, and the ranges the surveys do cover. The accurate mass, the LIPID MAPS annotation and the [[mass-drift]] cannot be measured for them; the transition itself is unaffected. An acquisition with no survey scan at all is reported under the skipped checks instead |
 | window too narrow | warning | at the sampling interval measured from the open files, the ±window holds fewer than eight points; below five the detector declines outright |
 
 Severities: a **serious** finding will produce wrong numbers; a **warning**

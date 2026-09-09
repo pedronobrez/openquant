@@ -46,6 +46,9 @@ The internal-standard and qualifier columns are explained in
   see [[check-method]].
 - **Annotate from LIPID MAPS…** proposes species names, see
   [[annotate-from-lipid-maps]].
+- **Export schedule…** writes the scheduled acquisition the method implies,
+  with the dwell a target cycle leaves each transition, see
+  [[acquisition-schedule]].
 
 ## Method defaults
 

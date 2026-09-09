@@ -200,7 +200,43 @@ def check_method(method: ProcessingMethod,
             f"Fewer than {COMFORTABLE_POINTS} scans fall inside it. A peak "
             f"cannot be placed, let alone integrated, on that few points; "
             f"widen the window or accept that the area is an estimate."))
+
+    outside, ranges = _outside_survey(components, entries)
+    if not ranges:
+        health.skipped.append(
+            "whether the survey scan covers each precursor — this acquisition "
+            "has no survey scan, so the accurate mass, LIPID MAPS annotation "
+            "and mass drift are not available for any component")
+    elif outside:
+        health.findings.append(Finding(
+            "precursor outside the survey scan", WARNING,
+            f"{len(outside)} components have a precursor no survey scan covers",
+            sorted(outside),
+            f"The survey scans cover {', '.join(ranges)}. The accurate mass, "
+            f"the LIPID MAPS annotation and the mass drift cannot be measured "
+            f"for these; the transition itself is unaffected."))
     return health
+
+
+def _outside_survey(components: list[Component],
+                    entries: list[SampleEntry]) -> tuple[list[str], list[str]]:
+    """
+    Components whose precursor no survey scan covers, and the ranges the
+    survey scans do cover — empty when the acquisition has none.
+    """
+    from .precursor import survey_channel
+
+    loaded = [e for e in entries if e.is_loaded]
+    if not loaded:
+        return [], []
+    sample = loaded[0].sample
+    ranges = sorted({f"{c.info.start_mass:.0f}\u2013{c.info.end_mass:.0f}"
+                     for c in sample.channels if c.info.is_ms1})
+    if not ranges:
+        return [], []
+    outside = [c.name for c in components
+               if c.precursor > 0 and survey_channel(sample, c.precursor, c.rt) is None]
+    return outside, ranges
 
 
 def _narrow_windows(components: list[Component], method: ProcessingMethod,

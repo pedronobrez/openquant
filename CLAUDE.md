@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.7.1 released. 744 tests. Public repository.**
+**Version 0.7.1 released. 754 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -71,6 +71,8 @@ openquant/
                   peaks would need
   mass_drift.py   each standard's measured mass through the run: did the
                   axis hold
+  schedule.py     the scheduled acquisition the method implies, and what a
+                  target cycle leaves each transition
   contour.py      the run as a retention time by m/z grid
   health.py       what the method will fail at, before it is run
   suggest.py      retention times and windows the batch can supply
@@ -274,6 +276,24 @@ UV detector, is not implemented there) — untested on real Windows.
   behind them. On the real batch that is 5,240 for the one usable standard
   and 2–25 counts for the others — which is what their medians are, and the
   dialog shows the median so nobody accepts a floor of 3 by mistake.
+- **The schedule is where the sampling finding lands.** `schedule.py`
+  takes every component with a retention time over its window, counts how
+  many are acquired at once at the busiest moment (a sweep over window
+  starts and ends, ends first at a tie), and turns a target cycle into the
+  dwell each gets there — or, under the dwell floor, into the shortest cycle
+  the busiest moment allows. On the real method: 59 transitions scheduled,
+  82 left out for having no time, at most 24 at once at 4.70 min, and a
+  cycle of 3 s still leaves 120 ms of dwell — against the 14.6 s the batch
+  was acquired at with all 144 transitions running unscheduled the whole
+  run. The starting cycle comes from `sampling.py`'s median width and is
+  labelled an upper bound when the batch's peaks were narrower than a
+  cycle, since it is going to be typed into an instrument. The CSV's
+  columns are named to map onto the vendor's table; it is not claimed to
+  import into Analyst, whose detection window is one method-wide setting.
+- **`check_method` now says which precursors the survey cannot see.** On
+  the real method 72 of 141 lie outside the 50–700 survey; the accurate
+  mass, the annotation and the mass drift are not measurable for them. An
+  acquisition with no survey at all is a skipped check, not 141 findings.
 - **F1 walks the widget tree.** `ui.help_window.describe(widget, page)` sets
   a dynamic property; `help_page_for` walks up from the focused widget to
   the first one that has it; the shell installs an application-wide event
@@ -462,7 +482,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-744 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+754 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

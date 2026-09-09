@@ -57,6 +57,13 @@ ticked: there is no uncertainty in them, only the arithmetic of the cycle
 time. Why eight, and what happens below five, is on
 [[integration-parameters]].
 
+## Into a schedule
+
+The windows this dialog widens are the windows [[acquisition-schedule]]
+acquires over: a wider window is more points on the peak and, at the same
+time, more transitions acquired at once. The schedule dialog says what that
+does to the dwell.
+
 ## After applying
 
 The method changes; the batch is not reprocessed until **Process batch** is

@@ -9,7 +9,9 @@ across every sample at once, calibration curves and grouped statistics.
 
 Developed and used on **macOS (Apple Silicon included)**. The suite and the
 application both start on Linux and Windows in CI, and installers are built
-for all three. Reading a `.wiff` has only ever been done on macOS, though:
+for all three, each carrying the application icon — the Linux tarball
+includes an `install.sh` that adds a launcher entry. Reading a `.wiff` has
+only ever been done on macOS, though:
 that path loads SCIEX's .NET assemblies, and CI can only report that the
 runtime and the assemblies come up, not that a real acquisition opens.
 

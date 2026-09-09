@@ -31,6 +31,12 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of OpenQuant is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
+    <!-- the executable carries the icon for Explorer and the taskbar; the
+         Start menu entry and Add or remove programs are told separately.
+         SourceFile resolves against this file's directory. -->
+    <Icon Id="OpenQuantIcon" SourceFile="icons\OpenQuant.ico" />
+    <Property Id="ARPPRODUCTICON" Value="OpenQuantIcon" />
+
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="INSTALLFOLDER" Name="OpenQuant" />
     </StandardDirectory>
@@ -57,7 +63,8 @@
         <Shortcut Id="OpenQuantShortcut"
                   Name="OpenQuant"
                   Target="[INSTALLFOLDER]OpenQuant.exe"
-                  WorkingDirectory="INSTALLFOLDER" />
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="OpenQuantIcon" />
         <RemoveFolder Id="RemoveShortcutFolder" Directory="ShortcutFolder"
                       On="uninstall" />
         <RegistryValue Root="HKCU" Key="Software\OpenQuant"

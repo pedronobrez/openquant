@@ -59,3 +59,43 @@ def test_the_wine_shim_stays_out_of_the_installer():
     if built.is_dir():
         found = [p for p in built.rglob("icuuc*") if p.is_file()]
         assert not found, f"an ICU shim reached the build: {found}"
+
+
+# -- the icon reaches every platform ---------------------------------------- #
+ICONS = ROOT / "packaging" / "icons"
+LINUX = ROOT / "packaging" / "linux"
+SPEC = (ROOT / "packaging" / "openquant.spec").read_text()
+
+
+def test_the_bundle_icon_exists_in_every_form_the_builds_need():
+    assert (ICONS / "OpenQuant.icns").is_file()          # macOS bundle
+    assert (ICONS / "OpenQuant.ico").is_file()           # Windows executable
+    assert (ICONS / "OpenQuant.iconset" / "icon_256x256.png").is_file()  # Linux launcher
+    assert (ROOT / "openquant" / "icon.png").is_file()   # the window, everywhere
+    assert "icon=ICON" in SPEC
+
+
+def test_the_windows_installer_names_the_icon_for_the_shortcut_and_the_programs_list():
+    root = ET.parse(WXS).getroot()
+    ns = {"w": "http://wixtoolset.org/schemas/v4/wxs"}
+    icon = root.find(".//w:Icon", ns)
+    assert icon is not None and icon.get("Id") == "OpenQuantIcon"
+    assert (WXS.parent / icon.get("SourceFile").replace("\\", "/")).is_file()
+    arp = root.find(".//w:Property[@Id='ARPPRODUCTICON']", ns)
+    assert arp is not None and arp.get("Value") == "OpenQuantIcon"
+    shortcut = root.find(".//w:Shortcut", ns)
+    assert shortcut.get("Icon") == "OpenQuantIcon"
+
+
+def test_the_linux_launcher_entry_is_complete_and_travels_with_the_tarball():
+    desktop = (LINUX / "openquant.desktop").read_text()
+    keys = dict(line.split("=", 1) for line in desktop.splitlines() if "=" in line)
+    assert keys["Type"] == "Application" and keys["Name"] == "OpenQuant"
+    assert keys["Exec"].startswith("INSTALLDIR/OpenQuant") and keys["Icon"] == "openquant"
+    install = LINUX / "install.sh"
+    assert install.stat().st_mode & 0o111, "install.sh is not executable"
+    script = install.read_text()
+    assert "INSTALLDIR" in script and "openquant.png" in script and "--remove" in script
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert "packaging/linux/openquant.desktop" in workflow
+    assert "icon_256x256.png dist/OpenQuant/openquant.png" in workflow

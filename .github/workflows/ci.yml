@@ -257,6 +257,11 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           version=$(python -c "import openquant; print(openquant.__version__)")
+          # the launcher entry and its icon travel in the folder; install.sh
+          # registers them for the user without touching /usr
+          cp packaging/linux/openquant.desktop packaging/linux/install.sh dist/OpenQuant/
+          cp packaging/icons/OpenQuant.iconset/icon_256x256.png dist/OpenQuant/openquant.png
+          chmod +x dist/OpenQuant/install.sh
           tar -C dist -czf "dist/OpenQuant-$version-linux-x86_64.tar.gz" OpenQuant
 
       # WiX built a 36 KB installer once and called it a success, because a

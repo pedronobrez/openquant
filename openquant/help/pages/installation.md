@@ -16,7 +16,25 @@ Every release on GitHub carries three files:
 |---|---|---|
 | `OpenQuant-<version>-macos-arm64.dmg` | macOS on Apple Silicon | drag the application to Applications |
 | `OpenQuant-<version>.msi` | Windows 10 1703 or newer | a standard installer |
-| `OpenQuant-<version>-linux-x86_64.tar.gz` | Linux | unpack and run `OpenQuant/OpenQuant` |
+| `OpenQuant-<version>-linux-x86_64.tar.gz` | Linux | unpack and run `OpenQuant/OpenQuant`; `OpenQuant/install.sh` adds a launcher entry |
+
+The application icon — the suite's mark, a white peak with a blue neighbour —
+is on all three: the macOS bundle carries it as `OpenQuant.icns`, the Windows
+executable carries it in its resources (checked by reading them back from
+the built installer: the same six images as the `.ico`, 16 to 256 pixels)
+and the Start menu entry and *Add or remove programs* name it, and the Linux
+tarball ships `openquant.png` with a `.desktop` entry. The window itself
+takes its icon from the same drawing on every platform.
+
+### Linux: a launcher entry, for one user
+
+The tarball is the application folder as PyInstaller built it, and Linux has
+no bundle to give an icon to. `install.sh` inside the folder writes a
+`.desktop` entry under `~/.local/share/applications` pointing at the folder
+where it was unpacked, and the icon under `~/.local/share/icons`, so the
+application appears in the launcher and the dock with its icon; nothing
+under `/usr` is touched, and `install.sh --remove` undoes it. Move the
+folder and run it again.
 
 ### macOS and the quarantine flag
 

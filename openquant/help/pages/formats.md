@@ -7,7 +7,20 @@ Two formats are read: SCIEX `.wiff` and mzML. One is written: mzML.
 
 A SCIEX acquisition is two files, `name.wiff` and `name.wiff.scan`, and
 both are needed — the first holds the method and the index, the second the
-spectra. They are read through SCIEX's own Clearcore2 libraries, which are
+spectra. The `.wiff` alone opens: the sample list, the method, the total
+ion chromatogram of every channel and the acquisition parameters are in
+it, and the tree fills as if nothing were wrong. What is not in it is the
+scan data, so the first spectrum asked for fails — and with it every
+extracted ion chromatogram, the base peak chromatogram, the contour and
+the quantitation, which all read the scans. OpenQuant tries one spectrum
+when the file is opened and, if it fails, says so at once: a warning when
+the file is added, a *⚠* in front of the sample in the tree, with the reason on hover, the reason in the spectrum pane's title where a spectrum would be,
+and a note on any result row that could not be extracted. The message
+names the file that has to be beside the `.wiff` and, when the folder
+holds a `.scan` that belongs to no `.wiff` there, names that too — a
+companion renamed by hand (`name.wiff_mix1.scan` next to `name_mix1.wiff`)
+is the usual way the pair comes apart, and renaming it to
+`name_mix1.wiff.scan` is the whole repair. They are read through SCIEX's own Clearcore2 libraries, which are
 the only software able to decode the format and are redistributed by the
 open-source package alpharaw. How they are made to work off Windows is
 described in [[how-wiff-is-read]].

@@ -15,6 +15,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 from .. import raw
 from ..session import LEGACY_PROJECT_SUFFIX, PROJECT_SUFFIX, Session
 from . import style, theme
+from .settings import settings
 from .analytics import AnalyticsWorkspace
 from .explorer import ExplorerWorkspace
 from .method_workspace import MethodWorkspace
@@ -31,7 +32,7 @@ class MainShell(QtWidgets.QMainWindow):
         super().__init__()
         self.setWindowTitle("OpenQuant")
         self.resize(1650, 1000)
-        self.settings = QtCore.QSettings("OpenQuant", "OpenQuant")
+        self.settings = settings()
 
         self.session = Session(self)
 
@@ -275,14 +276,25 @@ class MainShell(QtWidgets.QMainWindow):
             self.settings.setValue("io/last_dir", os.path.dirname(paths[0]))
 
     def load_file(self, path: str) -> None:
+        opened = None
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
         try:
-            self.session.open_file(path)
+            opened = self.session.open_file(path)
         except Exception as exc:  # pragma: no cover - depends on the file
             QtWidgets.QMessageBox.critical(
                 self, "Could not open", f"{os.path.basename(path)}\n\n{exc}")
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
+        if opened is not None:
+            # a .wiff without its .wiff.scan opens and draws its chromatograms;
+            # the first sign that its spectra cannot be read should not be an
+            # empty pane half an hour later
+            problems = dict.fromkeys(
+                e.problem for e in self.session.entries
+                if e.path == opened.path and e.problem)
+            if problems:
+                QtWidgets.QMessageBox.warning(
+                    self, "Spectra cannot be read", "\n\n".join(problems))
 
     def close_all(self) -> None:
         # close_all drops the batch and the project link, so unsaved work would

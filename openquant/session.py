@@ -85,7 +85,8 @@ class Session(QtCore.QObject):
             sample = wiff.sample(index)
             self.entries.append(
                 SampleEntry(path=wiff.path, sample_index=index,
-                            name=sample.name, sample=sample)
+                            name=sample.name, sample=sample,
+                            problem=sample.problem or "")
             )
         shorten_names(self.entries)
         self.sigSamplesChanged.emit()

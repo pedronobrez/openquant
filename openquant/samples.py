@@ -41,6 +41,9 @@ class SampleEntry:
     sample_group: str = ""
     #: live wiff Sample; set when the file is open, never serialised
     sample: object | None = field(default=None, repr=False, compare=False)
+    #: why the sample's spectra cannot be read — a `.wiff.scan` not beside
+    #: its `.wiff` — set when the file is opened; empty when they can
+    problem: str = field(default="", compare=False)
 
     @property
     def key(self) -> str:

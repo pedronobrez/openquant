@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.7.5 released. 777 tests. Public repository.**
+**Version 0.7.5 released. 790 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -95,7 +95,8 @@ openquant/
   app.py          CLI: --selftest, --digest
   ui/             shell.py owns the window; explorer / analytics /
                   method_workspace / samples_workspace are the four tabs;
-                  help_window.py is Help ▸ Manual
+                  help_window.py is Help ▸ Manual; settings.py the one
+                  settings constructor
 packaging/        PyInstaller spec, DMG script, WiX source, wine/ shim; icons/ is the
                   suite's mark (the two co-eluting peaks), drawn by OpenDIAL's
                   tools/make_icon.py through packaging/make_icon.py and committed —
@@ -543,7 +544,16 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-777 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+790 tests, one skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+
+`ui/settings.py` is the one place a settings object is made, and
+`tests/conftest.py` sets `OPENQUANT_SETTINGS` before any widget exists so
+the suite writes an INI file of its own. Before that every test that
+loaded a library or closed the shell wrote into the person's real
+preferences — a pytest temporary path was the remembered spectral
+library on this machine — because the native store on macOS ignores
+`setPath` and `setDefaultFormat` applies only to the no-argument
+constructor. A test that needs a settings object asks the factory.
 
 `tests/conftest.py` collects and flushes Qt's deferred deletions after every
 test. Without it the suite segfaults on Linux in a different place on every

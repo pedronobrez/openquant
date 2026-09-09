@@ -112,7 +112,9 @@ def test_the_fold_state_survives_a_restart(qapp, tmp_path):
 def test_the_panels_start_folded_so_the_list_has_room(qapp):
     from openquant.ui.analytics import AnalyticsWorkspace
 
-    settings = QtCore.QSettings("OpenQuant", "OpenQuant")
+    from openquant.ui.settings import settings as make_settings
+
+    settings = make_settings()   # the suite's own INI file, never the real store
     settings.remove("analytics/integration_open")
     settings.remove("analytics/acceptance_open")
 

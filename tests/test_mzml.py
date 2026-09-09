@@ -90,6 +90,11 @@ def test_the_channels_come_back(written):
     assert ms2.info.end_mass == pytest.approx(550.0)
 
 
+def test_an_mzml_has_nothing_beside_it_to_go_missing(written):
+    """A .wiff without its .wiff.scan has a problem; one file cannot."""
+    assert mzml.MzmlFile(written).sample(0).problem is None
+
+
 def test_the_spectra_come_back_unchanged(written):
     sample = mzml.MzmlFile(written).sample(0)
     for index, source in enumerate((_ms1(), _ms2())):

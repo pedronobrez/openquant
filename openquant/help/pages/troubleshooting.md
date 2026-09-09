@@ -9,7 +9,7 @@ not, this table is the next place to look.
 | Symptom | Look at |
 |---|---|
 | A `.wiff` will not open; *SCIEX libraries: unavailable* | run `OpenQuant --selftest file.wiff` for the reason. From source, `python3 -m openquant.bootstrap --install` fetches the .NET runtime and the assemblies. See [[how-wiff-is-read]] |
-| *the .wiff.scan file is missing* | the acquisition is two files and both must be beside each other |
+| The chromatogram opens but the spectrum pane stays empty — nothing scan by scan, nothing for a selected range — and an XIC or *Extract and integrate all* gives nothing | the `.wiff.scan` is not beside the `.wiff`, or carries another name. The sample is marked *⚠* in the tree, with the reason on hover, and the pane's title says which file is missing, naming any `.scan` in the folder that belongs to no `.wiff` there; rename it to `name.wiff.scan` and open the file again. See [[formats]] |
 | Windows: *DLL load failed while importing QtCore* | the machine is older than Windows 10 1703, or the build is running under Wine — see [[installation]] |
 | macOS: *"OpenQuant" cannot be opened* | the quarantine flag; right-click and Open, or `xattr -dr com.apple.quarantine /Applications/OpenQuant.app` |
 | A project opens with files listed as missing | they moved; put them back or add them again from the same place, then reprocess. See [[starting-a-project]] |

@@ -17,6 +17,7 @@ from ..library import (MIN_MATCHED, PEAK_TOLERANCE_PPM, PRECURSOR_TOLERANCE_DA,
                        LibraryHit, SpectralLibrary, load_library)
 from ..lipidmaps import mass_precision
 from .help_window import describe
+from .settings import settings
 
 SETTING_PATH = "library/path"
 
@@ -33,7 +34,7 @@ class LibraryPanel(QtWidgets.QWidget):
         self._spectrum = None
         #: set by the Explorer: returns (mz, intensity, precursor) on screen
         self.spectrum_source = None
-        self.settings = QtCore.QSettings("OpenQuant", "OpenQuant")
+        self.settings = settings()
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)

@@ -17,6 +17,7 @@ from ..chemistry import (
 )
 from ..components import Component
 from ..matching import match_channel
+from .settings import settings
 from ..processing import (centroid_spectrum, detect_peaks, integrate,
                           signal_to_noise)
 from ..samples import SampleEntry
@@ -38,6 +39,12 @@ ROLE_REF = QtCore.Qt.ItemDataRole.UserRole
 #: bumped whenever the toolbars are rearranged, so Qt throws away a layout
 #: saved by a version that had them somewhere else
 LAYOUT_VERSION = 2
+
+
+def _first_line(error: BaseException) -> str:
+    """A .NET exception is a page; the first line is the message."""
+    text = str(error).strip()
+    return text.splitlines()[0] if text else type(error).__name__
 
 
 class ChannelRef:
@@ -106,7 +113,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.setWindowFlags(QtCore.Qt.WindowType.Widget)
 
         self.session = session
-        self.settings = QtCore.QSettings("OpenQuant", "OpenQuant")
+        self.settings = settings()
         self.refs: dict[str, ChannelRef] = {}
         self.xic_defs: list[dict] = []
         self.active_ref: ChannelRef | None = None
@@ -789,6 +796,10 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             sample_item = QtWidgets.QTreeWidgetItem(
                 file_item, [f"{entry.name}  ({sample.instrument})"]
             )
+            if entry.problem:
+                # in front, where a narrow dock cannot cut it off
+                sample_item.setText(0, "⚠ " + sample_item.text(0))
+                sample_item.setToolTip(0, entry.problem)
             tic = ChannelRef(entry, None)
             self._add_leaf(sample_item, "Sample TIC (all channels)", tic,
                            checked=tic.key in checked or tic.key not in previous)
@@ -820,6 +831,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             QtCore.Qt.CheckState.Checked if checked else QtCore.Qt.CheckState.Unchecked,
         )
         item.setData(0, ROLE_REF, ref.key)
+        if ref.entry.problem:
+            item.setToolTip(0, ref.entry.problem)
         self.refs[ref.key] = ref
 
     def clear_views(self) -> None:
@@ -999,7 +1012,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                                     mz_range=mz_range, progress=tick)
         except Exception as exc:
             progress.close()
-            self._update_status(f"Contour failed: {exc}")
+            self._update_status(ref.entry.problem or f"Contour failed: {_first_line(exc)}")
             return
         progress.close()
         self._contour_cache[key] = contour
@@ -1180,7 +1193,11 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         if channel is None:
             return
         self.current_scan = int(np.clip(scan, 0, max(channel.info.n_scans - 1, 0)))
-        mz, intensity = channel.spectrum(self.current_scan)
+        try:
+            mz, intensity = channel.spectrum(self.current_scan)
+        except Exception as exc:
+            self._spectrum_unreadable(exc)
+            return
         intensity, subtracted = self._apply_background(channel, mz, intensity)
         rt = channel.rt_at_scan(self.current_scan)
         self.spectrum.set_traces(self._with_pins(
@@ -1202,7 +1219,11 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         channel = self.active_ref.channel if self.active_ref else None
         if channel is None:
             return
-        mz, intensity = channel.spectrum_rt_range(rt0, rt1)
+        try:
+            mz, intensity = channel.spectrum_rt_range(rt0, rt1)
+        except Exception as exc:
+            self._spectrum_unreadable(exc)
+            return
         intensity, subtracted = self._apply_background(channel, mz, intensity)
         first, last = channel.scans_in_range(rt0, rt1)
         self.spectrum.set_traces(self._with_pins(
@@ -1218,6 +1239,32 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.chrom.mark(None)
         if not live:  # the peak table is too slow to rebuild on every mouse move
             self._fill_peak_table()
+
+    def _spectrum_unreadable(self, error: Exception) -> None:
+        """
+        Say, where the spectrum would be, why there is none.
+
+        A .wiff whose .wiff.scan is not beside it opens, draws its
+        chromatograms and throws on the first spectrum. Left to Qt the
+        exception went to a console nobody has and the pane stayed as it
+        was: nothing scan by scan, nothing for a selected range, and no
+        word why — found on a folder where one companion had been renamed
+        by hand. The title of the pane is where the eye already is, and
+        the entry's own diagnosis names the file that is missing.
+        """
+        problem = self.active_ref.entry.problem if self.active_ref else ""
+        if not problem:
+            text = str(error).strip()
+            problem = ("the spectrum could not be read: "
+                       + (text.splitlines()[0] if text else type(error).__name__))
+        self.spectrum.set_traces(list(self.pinned_spectra))
+        # the pane's title is one line: the diagnosis, not the advice
+        self.spectrum.set_title(problem.split(";")[0].split(". ")[0])
+        self.spectrum.setToolTip(problem)
+        self.rt_label.setText("—")
+        self.chrom.mark(None)
+        self._fill_peak_table()
+        self._update_status(problem)
 
     def _average_selection(self) -> None:
         selection = self.chrom.selected_range()
@@ -1294,10 +1341,16 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         if not targets:
             self._update_status("Pick an active channel before extracting an XIC.")
             return
+        unreadable: list[str] = []
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
         try:
             for ref in targets:
-                x, y = ref.channel.xic_range(mz_lo, mz_hi)
+                try:
+                    x, y = ref.channel.xic_range(mz_lo, mz_hi)
+                except Exception as exc:
+                    unreadable.append(ref.entry.problem
+                                      or f"{ref.label}: {_first_line(exc)}")
+                    continue
                 if x.size == 0:
                     continue
                 key = f"xic|{ref.key}|{mz_lo:.5f}|{mz_hi:.5f}"
@@ -1311,6 +1364,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
         self.refresh_chromatogram()
+        if unreadable:
+            self._update_status(unreadable[0])
 
     def _remove_selected_xic(self) -> None:
         row = self.xic_list.currentRow()
@@ -1338,7 +1393,10 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                 snr=0.0, note=note,
             )
 
-        x, y = channel.xic_range(mz_lo, mz_hi)
+        try:
+            x, y = channel.xic_range(mz_lo, mz_hi)
+        except Exception as exc:
+            return empty(ref.entry.problem or _first_line(exc))
         if x.size == 0:
             return empty("no data")
 

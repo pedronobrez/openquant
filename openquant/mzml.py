@@ -459,6 +459,11 @@ class MzmlSample:
         return self._tic
 
     @property
+    def problem(self) -> str | None:
+        """An mzML is one file: nothing is beside it to go missing."""
+        return None
+
+    @property
     def acquisition_time(self) -> str:
         return self._file.start_time or ""
 

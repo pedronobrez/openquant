@@ -18,6 +18,15 @@ method of 141 components and 11 internal standards, sampled every 14.6 s.
   peaks with areas to nine decimals. All 405 channel hashes differ from one
   another, so those were five different acquisitions rather than one read
   five times.
+- **Without the `.wiff.scan`, the `.wiff` opens and looks whole.** Measured
+  on a ZenoTOF 7600 infusion file whose companion had been renamed by
+  hand: the sample list, the metadata, the method parameters and the total
+  ion chromatogram of every channel read normally; the base peak
+  chromatogram, every extracted ion chromatogram and every spectrum
+  failed, Clearcore2 reporting a missing 'scan' file for the spectra and a
+  missing assembly (`OFX.Core.Contracts`) for the chromatograms. Nothing
+  in the file itself says the companion is absent; only reading a scan
+  does, which is why one is read when the file is opened.
 - **Formats agree, except in one place.** Exported to mzML and read back:
   spectra, channel chromatograms, the run's TIC (577 points) and integrated
   areas identical; extracted ion chromatograms differ by a median 0.58% of

@@ -12,7 +12,8 @@ from __future__ import annotations
 import os
 
 #: what can be opened, by extension. A .wiff needs its .wiff.scan beside it;
-#: the reader says so itself if it is missing.
+#: without it the file still opens — the chromatograms are in the .wiff —
+#: and the sample's `problem` says why its spectra cannot be read.
 FORMATS = {
     ".wiff": "SCIEX",
     ".mzml": "mzML",

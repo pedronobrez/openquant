@@ -7,6 +7,7 @@ from PyQt6 import QtCore, QtWidgets
 from ..calibration import fit as fit_curve
 from ..calibration import remove_outliers
 from ..components import Component, IntegrationParams
+from .settings import settings
 from ..quantify import (
     PeakResult,
     apply_calibrations,
@@ -138,7 +139,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         left_layout.addWidget(self.acceptance)
         # folded to start with: expanded they leave the component list a few
         # rows tall, and they are only wanted while a setting is being changed
-        self.settings = QtCore.QSettings("OpenQuant", "OpenQuant")
+        self.settings = settings()
         self.integration.restore(self.settings, "analytics/integration_open")
         self.acceptance.restore(self.settings, "analytics/acceptance_open")
         self.integration.toggled.connect(self._save_sections)
@@ -738,8 +739,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         if not len(self.session.results):
             self._report("Process the batch first; the comparison is of results.")
             return
-        settings = QtCore.QSettings("OpenQuant", "OpenQuant")
-        start = settings.value("io/last_dir", "", type=str)
+        start = settings().value("io/last_dir", "", type=str)
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, "Reference project", start, "OpenQuant project (*.oqproj *.opvproj)")
         if not path:

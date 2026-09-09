@@ -243,6 +243,62 @@ class Channel:
 
 
 # --------------------------------------------------------------------------- #
+#: the sample has not yet tried to read a spectrum
+_UNPROBED = object()
+
+
+def scan_file_of(path: str | os.PathLike) -> str:
+    """The companion a `.wiff` needs beside it: `name.wiff.scan`."""
+    return str(path) + ".scan"
+
+
+def stray_scan_files(path: str | os.PathLike) -> list[str]:
+    """
+    `.scan` files in the folder that belong to no `.wiff` there.
+
+    A companion renamed by hand — `name.wiff_mix1.scan` where the `.wiff`
+    became `name_mix1.wiff` — is the ordinary way the pair comes apart, and
+    the stray is the file the reader needs, under the wrong name.
+    """
+    folder = os.path.dirname(os.path.abspath(str(path)))
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return []
+    wiffs = {n.lower() for n in names if n.lower().endswith(".wiff")}
+    return sorted(n for n in names
+                  if n.lower().endswith(".scan") and n[:-5].lower() not in wiffs)
+
+
+def scan_problem(path: str | os.PathLike, error: BaseException) -> str:
+    """
+    What to tell someone whose spectra cannot be read, from the file that
+    failed and the error Clearcore2 raised.
+
+    The chromatograms and the method come from the `.wiff`, so the file
+    opens and looks whole; the spectra, and with them every extracted ion
+    chromatogram, come from the `.wiff.scan`. Without it the reader throws
+    on the first spectrum, and a message deep in a .NET stack is not what
+    a person at the instrument needs — the name of the file that is
+    missing is, and the name of the one that may be it.
+    """
+    name = os.path.basename(str(path))
+    companion = os.path.basename(scan_file_of(path))
+    text = str(error).strip()
+    first = text.splitlines()[0] if text else type(error).__name__
+    if os.path.exists(scan_file_of(path)):
+        return (f"the spectra of {name} cannot be read although {companion} "
+                f"is beside it — Clearcore2 said: {first}")
+    message = f"the spectra of {name} cannot be read: {companion} is not beside it"
+    strays = stray_scan_files(path)
+    if strays:
+        message += (f"; the folder holds {', '.join(strays)}, which belongs to "
+                    f"no .wiff there — renamed to {companion} it may be the one")
+    return (message + ". The chromatograms open without it; the spectra, the "
+            "extracted ion chromatograms and the quantitation do not.")
+
+
+# --------------------------------------------------------------------------- #
 class Sample:
     """One injection inside the wiff file."""
 
@@ -257,6 +313,27 @@ class Sample:
         self.channels: list[Channel] = [
             Channel(self, i) for i in range(int(self._ms.ExperimentCount))
         ]
+        self._problem = _UNPROBED
+
+    @property
+    def problem(self) -> str | None:
+        """
+        Why the spectra cannot be read, or None when they can.
+
+        Probed once, on the first scan of the first experiment: the `.wiff`
+        alone gives the method, the totals and the chromatograms, and the
+        first sign that the `.wiff.scan` is not beside it is a spectrum
+        that throws. Asking here lets the file say so when it is opened,
+        not when the first spectrum is clicked for.
+        """
+        if self._problem is _UNPROBED:
+            self._problem = None
+            if self.channels:
+                try:
+                    self.channels[0]._exp.GetMassSpectrum(0)
+                except Exception as exc:
+                    self._problem = scan_problem(self._wiff.path, exc)
+        return self._problem
 
     def tic(self) -> tuple[np.ndarray, np.ndarray]:
         """TIC of the whole sample (sum over all experiments)."""

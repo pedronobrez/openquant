@@ -250,6 +250,11 @@ def extract_xic(entry: SampleEntry, component: Component,
     return x, y, channel
 
 
+def _first_line(error: BaseException) -> str:
+    text = str(error).strip()
+    return f"could not be read: {text.splitlines()[0] if text else type(error).__name__}"
+
+
 def integrate_component(entry: SampleEntry, component: Component,
                         method: ProcessingMethod,
                         cache: XicCache | None = None) -> PeakResult:
@@ -267,7 +272,14 @@ def integrate_component(entry: SampleEntry, component: Component,
         expected_rt=component.rt, rt=component.rt or 0.0,
     )
 
-    x, y, channel = extract_xic(entry, component, method, cache)
+    try:
+        x, y, channel = extract_xic(entry, component, method, cache)
+    except Exception as exc:
+        # a .wiff whose .wiff.scan is not beside it opens, lists its
+        # channels and throws on the first extraction; the row says so
+        # rather than the batch stopping on it
+        result.note = entry.problem or _first_line(exc)
+        return result
     if channel is None:
         result.note = "no matching channel"
         return result

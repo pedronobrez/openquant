@@ -20,12 +20,23 @@ about what a test does — only about what it leaves behind.
 
 import gc
 import os
+import tempfile
 
 import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6 import QtCore, QtWidgets
+
+# Every settings object the suite constructs would otherwise write to the
+# person's real preferences: a test of the library panel left a pytest
+# temporary path as the remembered library, and a test that closes the
+# shell saves its window layout over the real one. The native store on
+# macOS ignores setPath and setDefaultFormat applies only to the
+# no-argument constructor, so ui.settings reads this variable instead —
+# set before any widget exists, and inherited by a subprocess.
+os.environ["OPENQUANT_SETTINGS"] = os.path.join(
+    tempfile.mkdtemp(prefix="openquant-test-settings-"), "OpenQuant.ini")
 
 
 @pytest.fixture(autouse=True)

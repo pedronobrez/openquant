@@ -390,3 +390,134 @@ def load_library(path: str | os.PathLike) -> SpectralLibrary:
     else:
         entries = parse_msp(text, source)
     return SpectralLibrary(entries, path)
+
+
+# --------------------------------------------------------------------------- #
+# a library of one's own
+# --------------------------------------------------------------------------- #
+#: peaks under this share of the base peak are not written into a record of
+#: one's own. A product spectrum on a TOF carries hundreds of baseline points
+#: for every fragment, and a record made of them matches everything
+OWN_MIN_RELATIVE = 0.01
+#: at most this many peaks, strongest first. A record is a fingerprint, not
+#: an archive of the scan
+OWN_MAX_PEAKS = 200
+#: the fields written before the peaks, in the order NIST and MassBank write
+#: them. `Num Peaks` is last because `parse_msp` reads what follows as peaks
+_HEAD_FIELDS = ("PrecursorMZ", "Precursor_type", "Formula")
+
+
+def _one_line(value: str) -> str:
+    """A field is one line: a newline inside it would end the record."""
+    return " ".join(str(value).split())
+
+
+def entry_from_spectrum(name: str, mz, intensity, precursor: float | None = None,
+                        precursor_type: str = "", formula: str = "",
+                        collision_energy: float | None = None,
+                        comment: str = "",
+                        min_relative: float = OWN_MIN_RELATIVE,
+                        max_peaks: int = OWN_MAX_PEAKS) -> LibraryEntry:
+    """
+    A record built from a measured spectrum.
+
+    The peaks are taken as given and must already be **centroids**: a profile
+    spectrum has some tens of points across every ion, and a record made of
+    them describes the instrument's peak shape rather than the compound. The
+    Explorer centroids before it hands the spectrum over
+    (`processing.centroid_spectrum`), which is where that happens.
+
+    What is left is a floor and a ceiling. Peaks under `min_relative` of the
+    base peak are dropped — the baseline of a product scan is thousands of
+    them, and a record carrying them matches anything — and at most
+    `max_peaks` of what survives is kept, strongest first. Intensities are
+    stored relative to the base peak, as every library format holds them and
+    as `parse_msp` reads them back.
+    """
+    name = _one_line(name)
+    if not name:
+        raise ValueError("a record needs a name")
+    mz = np.asarray(mz, dtype=float)
+    intensity = np.asarray(intensity, dtype=float)
+    if mz.size != intensity.size:
+        raise ValueError("the mass and intensity arrays differ in length")
+    finite = np.isfinite(mz) & np.isfinite(intensity) & (intensity > 0)
+    mz, intensity = mz[finite], intensity[finite]
+    top = float(intensity.max()) if intensity.size else 0.0
+    if top <= 0:
+        raise ValueError("the spectrum has no peaks to write")
+    keep = np.flatnonzero(intensity >= min_relative * top)
+    if keep.size > max_peaks:
+        keep = keep[np.argsort(-intensity[keep])[:max_peaks]]
+    keep = keep[np.argsort(mz[keep])]
+    fields: dict[str, str] = {}
+    if collision_energy is not None:
+        fields["Collision_energy"] = f"{float(collision_energy):g}"
+    if comment:
+        fields["Comment"] = _one_line(comment)
+    return LibraryEntry(
+        name=name,
+        precursor=None if precursor is None else float(precursor),
+        precursor_type=_one_line(precursor_type),
+        formula=_one_line(formula),
+        mz=mz[keep],
+        intensity=intensity[keep] / top,
+        fields=fields,
+    )
+
+
+def format_msp(entries: list[LibraryEntry]) -> str:
+    """The records as NIST-style MSP text, a blank line between them."""
+    out: list[str] = []
+    for entry in entries:
+        written = {
+            "PrecursorMZ": "" if entry.precursor is None else f"{entry.precursor:.4f}",
+            "Precursor_type": entry.precursor_type,
+            "Formula": entry.formula,
+        }
+        out.append(f"Name: {_one_line(entry.name)}")
+        for key in _HEAD_FIELDS:
+            if written[key]:
+                out.append(f"{key}: {written[key]}")
+        for key, value in entry.fields.items():
+            if str(value).strip():
+                out.append(f"{_one_line(key)}: {_one_line(value)}")
+        out.append(f"Num Peaks: {entry.peaks}")
+        for m, i in zip(entry.mz, entry.intensity):
+            # intensities as a percentage of the base peak, which is what
+            # `parse_msp` normalises away again on the way back in
+            out.append(f"{m:.5f} {i * 100:.6g}")
+        out.append("")
+    return "\n".join(out) + ("\n" if out else "")
+
+
+def write_msp(entries: list[LibraryEntry], path: str | os.PathLike,
+              append: bool = False) -> int:
+    """
+    Write records to an `.msp` file and return how many were written.
+
+    `append` is the ordinary case for a library of one's own: every infusion
+    is one more record in the same file. A record ends at a blank line, so a
+    file that does not end in one is given the separator it lacks before the
+    next record starts — otherwise the two run together into one.
+    """
+    path = str(path)
+    text = format_msp(entries)
+    mode = "a" if append and os.path.exists(path) else "w"
+    prefix = ""
+    if mode == "a":
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            existing = handle.read()
+        if existing and not existing.endswith("\n\n"):
+            prefix = "\n" if existing.endswith("\n") else "\n\n"
+    with open(path, mode, encoding="utf-8", newline="\n") as handle:
+        handle.write(prefix + text)
+    return len(entries)
+
+
+def count_records(path: str | os.PathLike) -> int:
+    """How many records a library file holds, without keeping them."""
+    try:
+        return len(load_library(path))
+    except OSError:
+        return 0

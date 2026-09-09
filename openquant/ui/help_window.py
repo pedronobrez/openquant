@@ -6,6 +6,11 @@ box that turns the tree into a list of hits while there is something in
 it. Links between pages work the way a browser's do, with back and
 forward, and every page ends with the pages that link to it — the manual
 can be read from either end of any link.
+
+The switch at the right of the toolbar changes the language the manual is
+read in — the tree, the page, what the search looks through and what the
+PDF is printed from — and is remembered. The application around it stays
+in English: only the manual is translated.
 """
 
 from __future__ import annotations
@@ -15,10 +20,15 @@ import html
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from . import theme
+from .settings import settings
 from .. import manual as manual_module
-from ..manual import HOME, SCHEME, Manual, Page
+from ..manual import (DEFAULT_LANGUAGE, HOME, LANGUAGE_NAMES, LANGUAGES,
+                      SCHEME, Manual, Page)
 
 ROLE_ID = QtCore.Qt.ItemDataRole.UserRole
+
+#: where the language the manual is read in is remembered
+SETTING_LANGUAGE = "help/language"
 
 #: the dynamic property a widget carries to say which page describes it.
 #: F1 walks up from the focused widget to the first one that has it, so a
@@ -97,6 +107,7 @@ def _stylesheet() -> str:
     p.crumb {{ color: {muted}; font-size: 9pt; margin: 0 0 2pt 0; }}
     p.backlinks {{ color: {muted}; font-size: 9.5pt; margin: 14pt 0 0 0;
                    border-top: 1px solid {rule}; padding-top: 6pt; }}
+    p.untranslated {{ color: {muted}; font-size: 9pt; margin: 0 0 8pt 0; }}
     """
 
 
@@ -105,7 +116,10 @@ class HelpWindow(QtWidgets.QMainWindow):
 
     def __init__(self, parent=None, manual: Manual | None = None):
         super().__init__(parent)
-        self.manual = manual or manual_module.manual()
+        self.settings = settings()
+        # a manual handed in brings its own language; otherwise the one
+        # remembered, and English for a language that has since gone
+        self.manual = manual or manual_module.manual(self._remembered())
         self.setWindowTitle("OpenQuant manual")
         self.setWindowFlag(QtCore.Qt.WindowType.Window, True)
         self.resize(1180, 780)
@@ -128,6 +142,15 @@ class HelpWindow(QtWidgets.QMainWindow):
         bar.addWidget(self.search)
         self.act_pdf = bar.addAction("Export as PDF…")
         self.act_pdf.setToolTip("The whole manual as one A4 document")
+        bar.addSeparator()
+        self.language = QtWidgets.QComboBox()
+        for code in LANGUAGES:
+            self.language.addItem(LANGUAGE_NAMES.get(code, code), code)
+        self.language.setCurrentIndex(max(self.language.findData(
+            self.manual.language), 0))
+        self.language.setToolTip(
+            "The language of the manual. The application itself is in English.")
+        bar.addWidget(self.language)
 
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         self.side = QtWidgets.QStackedWidget()
@@ -161,10 +184,46 @@ class HelpWindow(QtWidgets.QMainWindow):
         self.act_forward.triggered.connect(self.forward)
         self.act_home.triggered.connect(lambda: self.show_page(HOME))
         self.act_pdf.triggered.connect(self.export_pdf)
+        self.language.currentIndexChanged.connect(self._language_changed)
         QtGui.QShortcut(QtGui.QKeySequence.StandardKey.Find, self,
                         activated=lambda: (self.search.setFocus(),
                                            self.search.selectAll()))
         self.show_page(HOME)
+
+    # -- language ---------------------------------------------------------------- #
+    def _remembered(self) -> str:
+        code = str(self.settings.value(SETTING_LANGUAGE, DEFAULT_LANGUAGE,
+                                       type=str) or DEFAULT_LANGUAGE)
+        return code if code in LANGUAGES else DEFAULT_LANGUAGE
+
+    def set_language(self, code: str) -> None:
+        """
+        Read the manual in another language, staying on the page.
+
+        The page is the same page in either language — the file name is its
+        identity — so the reader is put back where they were rather than at
+        the contents, and a search in progress is run again over the text
+        that is now being shown.
+        """
+        if code not in LANGUAGES or code == self.manual.language:
+            return
+        self.manual = manual_module.manual(code)
+        self.settings.setValue(SETTING_LANGUAGE, code)
+        index = self.language.findData(code)
+        if index >= 0 and index != self.language.currentIndex():
+            self.language.blockSignals(True)
+            self.language.setCurrentIndex(index)
+            self.language.blockSignals(False)
+        self._fill_tree()
+        self.show_page(self._current or HOME, remember=False)
+        query = self.search.text().strip()
+        if query:
+            self._search(query)
+
+    def _language_changed(self, index: int) -> None:
+        code = self.language.itemData(index)
+        if code:
+            self.set_language(str(code))
 
     # -- contents ---------------------------------------------------------------- #
     def _fill_tree(self) -> None:
@@ -231,7 +290,8 @@ class HelpWindow(QtWidgets.QMainWindow):
             links = ", ".join(
                 f'<a href="{SCHEME}{pid}">{html.escape(self.manual.pages[pid].title)}</a>'
                 for pid in page.backlinks)
-            parts.append(f'<p class="backlinks">Linked from: {links}</p>')
+            label = html.escape(self.manual.strings["linked_from"])
+            parts.append(f'<p class="backlinks">{label}: {links}</p>')
         return "".join(parts)
 
     def _link_clicked(self, url: QtCore.QUrl) -> None:
@@ -290,8 +350,12 @@ class HelpWindow(QtWidgets.QMainWindow):
 
     # -- printing ---------------------------------------------------------------- #
     def export_pdf(self) -> None:
+        # the language shown is the language printed
+        suffix = ("" if self.manual.language == DEFAULT_LANGUAGE
+                  else f"-{self.manual.language}")
         path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, "Export the manual", "OpenQuant-manual.pdf", "PDF (*.pdf)")
+            self, "Export the manual", f"OpenQuant-manual{suffix}.pdf",
+            "PDF (*.pdf)")
         if not path:
             return
         if not path.lower().endswith(".pdf"):

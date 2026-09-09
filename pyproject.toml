@@ -30,4 +30,4 @@ version = { attr = "openquant.__version__" }
 include = ["openquant*"]
 
 [tool.setuptools.package-data]
-openquant = ["help/pages/*.md"]
+openquant = ["help/pages/*.md", "icon.png"]

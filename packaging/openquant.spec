@@ -25,6 +25,11 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 MACOS = sys.platform == "darwin"
 WINDOWS = sys.platform.startswith("win")
 
+# the suite's mark, drawn by OpenDIAL's generator through packaging/make_icon.py and committed
+# here so a build needs nothing from the other repository; .icns for the bundle, .ico for Windows
+ICONS = Path(SPECPATH) / "icons"
+ICON = str(ICONS / ("OpenQuant.ico" if WINDOWS else "OpenQuant.icns")) if (ICONS / "OpenQuant.icns").is_file() else None
+
 # read rather than repeat: a version written here as well as in the package
 # is a version that will disagree with itself at the first bump
 VERSION = re.search(
@@ -45,6 +50,7 @@ vendor = [
 # the manual: Markdown pages read at run time from next to the package
 vendor.append((str(Path(SPECPATH).parent / "openquant" / "help" / "pages"),
                "openquant/help/pages"))
+vendor.append((str(Path(SPECPATH).parent / "openquant" / "icon.png"), "openquant"))
 
 hidden = [
     "clr_loader",
@@ -86,7 +92,7 @@ executable = EXE(
     # costs nothing, and is what a locally built app gets anyway
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon=ICON,
 )
 
 collection = COLLECT(
@@ -102,7 +108,7 @@ if MACOS:
     app = BUNDLE(
         collection,
         name="OpenQuant.app",
-        icon=None,
+        icon=ICON,
         bundle_identifier="org.openquant.app",
         info_plist={
             "CFBundleName": "OpenQuant",

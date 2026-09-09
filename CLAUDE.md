@@ -96,7 +96,10 @@ openquant/
   ui/             shell.py owns the window; explorer / analytics /
                   method_workspace / samples_workspace are the four tabs;
                   help_window.py is Help ▸ Manual
-packaging/        PyInstaller spec, DMG script, WiX source, wine/ shim
+packaging/        PyInstaller spec, DMG script, WiX source, wine/ shim; icons/ is the
+                  suite's mark (the two co-eluting peaks), drawn by OpenDIAL's
+                  tools/make_icon.py through packaging/make_icon.py and committed —
+                  rerun it when the shared mark changes
 ```
 
 ### The reader protocol
@@ -331,6 +334,21 @@ UV detector, is not implemented there) — untested on real Windows.
   to three neutral losses, each only where the formula has the atoms, and
   says that a formula has no bonds to cut. Loss ions are written as what is
   left and how it got there: `C24H38O4 -H2O`.
+- **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
+  the metadata and every channel's TIC are in the `.wiff`; the scans are
+  not, so the first spectrum throws, and so do BPC, XIC, the contour and
+  the quantitation. Found on an infusion folder where one companion had
+  been renamed by hand (`name.wiff_mix1.scan` beside `name_mix1.wiff`):
+  the Explorer drew the chromatogram, and every attempt at a spectrum left
+  the pane as it was, with the .NET exception on a console nobody has —
+  PyQt6 printed it and carried on. `wiff.Sample.problem` reads one scan
+  when the sample is opened and, on failure, `scan_problem` names the
+  companion and any stray `.scan` in the folder; `SampleEntry.problem`
+  carries it (never saved), the shell warns on open, the tree marks the
+  sample, `_spectrum_unreadable` writes it where the spectrum would be,
+  and an XIC or an integration reports it as the row's note. The probe is
+  the only way to know: nothing in the `.wiff` says the companion is
+  absent.
 - **Pinned spectra are traces after the live one.** `explorer.pin_spectrum`
   copies the live trace (`key == "spec"`) with the pane's title as its
   label and appends it; `_with_pins` keeps the live one first, so every

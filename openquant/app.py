@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from PyQt6 import QtCore, QtWidgets
+from PyQt6 import QtCore, QtGui, QtWidgets
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,6 +31,12 @@ def main(argv: list[str] | None = None) -> int:
 
     app = QtWidgets.QApplication(sys.argv[:1])
     app.setApplicationName("OpenQuant")
+    # the suite's mark, drawn beside OpenDIAL's (packaging/make_icon.py); the bundle carries the
+    # .icns for the dock, this is the window's own
+    from pathlib import Path
+    icon = Path(__file__).with_name("icon.png")
+    if icon.is_file():
+        app.setWindowIcon(QtGui.QIcon(str(icon)))
 
     from .ui import style
     from .ui.theme import apply_defaults

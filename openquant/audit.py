@@ -60,6 +60,10 @@ METHOD_REPORT = "Method report"
 #: separate kind of number: a height in one averaged spectrum, not an
 #: integrated peak, and the trail has to say which the rows are.
 INFUSION_QUANTITATION = "Infusion quantitation"
+#: records written into the analyst's own spectral library. The library is a
+#: file of its own and not part of the project, so the trail is the only
+#: place the project says a batch of its spectra was written into one
+OWN_LIBRARY = "Own library"
 PROJECT_SAVED = "Project saved"
 
 EVENTS: tuple[str, ...] = (
@@ -70,7 +74,7 @@ EVENTS: tuple[str, ...] = (
     SAMPLE_EDITED,
     PROCESSED, REPROCESSED,
     RECALIBRATION, INFUSION_REPORT, METHOD_REPORT, INFUSION_QUANTITATION,
-    PROJECT_SAVED,
+    OWN_LIBRARY, PROJECT_SAVED,
 )
 
 #: the columns of the trail, in the order the panel, the report and the CSV

@@ -302,6 +302,9 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         from .library_panel import LibraryPanel
         self.library_panel = LibraryPanel()
         self.library_panel.spectrum_source = self._library_spectrum
+        # for *Rewrite from files…*: which folders the open acquisitions came
+        # from, and whether their masses are being corrected
+        self.library_panel.session = self.session
         self.tabs.addTab(self.library_panel, "Library")
         for widget, page in ((self.component_list, "explorer-components-and-results"),
                              (self.results_panel, "explorer-components-and-results"),

@@ -174,6 +174,19 @@ out of the comparison as well as out of the document. **Export CSV…** writes
 the whole table, every column, selection or no selection: a summary with rows
 left out is not the thing it claims to be.
 
+**Add all to library** writes one record per row into your own library —
+the MSP *Add spectrum to library…* appends to, see [[spectral-library]]. The
+table has already averaged, centroided and identified every row, so a record
+is those very numbers with a name and a provenance on them: the compound the
+row proposes, the adduct and formula it identified, the channel's collision
+energy and activation, the day the file says it was acquired, and a comment
+naming the acquisition, the channel and the scans averaged. A row whose
+compound could not be proposed is skipped and named; so is a row already in
+the file from the same acquisition and channel, which is the key that stops
+the same measurement being written twice — press it again after opening two
+more infusions and only those two are added. The line under the table says
+what was written and what was not: *7 record(s) written, 2 skipped: …*.
+
 The summary line under the table is the one sentence the table adds up to —
 *3 compound(s) in 9 infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm;
 34 of 458 predicted ion(s) found across 7; 4 with an own record above 60 in

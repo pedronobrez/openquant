@@ -221,6 +221,121 @@ calcula a massa real do íon a partir deles, mede o Δ ppm contra ela, e recusa
 o registro a uma varredura da polaridade oposta. Um registro seu é o único
 registro de biblioteca do qual se pode ter certeza de que os traz.
 
+### Uma pasta inteira de uma vez
+
+Uma pasta de infusões são nove espectros, e acrescentá-los um a um pelo
+Explorer significa nove diálogos. A aba **Infusions** já tirou a média,
+centroidou e identificou cada um deles, de modo que **Add all to library**
+naquela aba ([[infusion-report]]) escreve um registro por linha no mesmo MSP
+— o arquivo escolhido uma vez, ao qual se acrescenta, pedido na primeira vez
+se ainda não estiver definido.
+
+Cada registro toma o nome do composto que a linha propõe, o aduto e a
+fórmula do que a linha identificou, a energia de colisão e a ativação do
+canal, o `Acquired` do arquivo, e os picos exatamente dos números sobre os
+quais a tabela foi medida. Nada é lido de novo e nada é centroidado duas
+vezes.
+
+Dois tipos de linha não produzem registro, e ambos dizem isso na linha
+abaixo da tabela em vez de serem contados em silêncio:
+
+- **uma linha cujo composto não pôde ser proposto.** O composto é a parte do
+  nome do arquivo antes do primeiro separador, e um registro que ninguém
+  consegue encontrar pelo nome outra vez não é um registro.
+- **uma linha que já está no arquivo.** A chave é a **procedência no
+  comentário do registro: o arquivo de aquisição e o canal dentro dele**.
+  Não o composto e não o nome — o mesmo frasco infundido duas vezes são duas
+  medições e pertence ao arquivo duas vezes, ao passo que o mesmo canal do
+  mesmo arquivo escrito duas vezes é uma medição anotada duas vezes, o que
+  transforma um histórico num gráfico de nada. Assim, apertar o botão de
+  novo depois de acrescentar mais dois arquivos acrescenta esses dois
+  arquivos e nada mais.
+
+A linha diz *7 record(s) written, 2 skipped: …* com cada linha ignorada
+nomeada e a razão ao lado.
+
+### Reescrever a partir dos arquivos
+
+Uma biblioteca sua é escrita um registro por vez ao longo de meses, e um
+registro escrito em março carrega o que a versão de março escrevia: sem
+`Acquired`, sem `Base_peak_intensity`, sem fórmula, um precursor digitado
+com duas casas. As aquisições em geral ainda estão em disco, de modo que o
+registro não precisa continuar assim. **Rewrite from files…**, ao lado de
+**History…**, lê todo registro cujo comentário nomeia um arquivo que ele
+consegue encontrar, tira de novo a média dos mesmos scans do mesmo canal,
+centroida com o mesmo piso e o mesmo teto, e reescreve o registro no lugar
+com tudo o que esta versão escreve — inclusive um `PrecursorMZ` que
+concorda com a própria fórmula do registro em vez de com o que foi digitado.
+
+Onde os arquivos são procurados: nas pastas de onde as aquisições abertas
+foram abertas, na última pasta de onde algo foi lido, e na pasta da própria
+biblioteca. Um comentário nomeia um arquivo e nunca um caminho, porque um
+caminho deixa de ser verdadeiro no instante em que a aquisição é copiada
+para qualquer lugar.
+
+**Um registro cujo arquivo sumiu é mantido exatamente como está**, listado
+pelo nome com a razão, e o mesmo vale para um cujo comentário não nomeia
+aquisição nenhuma — registros de outra pessoa no mesmo arquivo, por
+exemplo. O espectro de um registro assim é a última cópia daquela medição, e
+perdê-la numa arrumação é a única coisa aqui que não se pode desfazer.
+
+**A biblioteca como estava é copiada para `<nome>.msp.bak` antes**, antes de
+qualquer coisa ser sobrescrita, e a linha de resumo diz isso. Nada é escrito
+quando não havia nada a reescrever.
+
+Onde a [[mass-recalibration]] está ligada e a aquisição é uma das abertas, o
+registro é reescrito no eixo de massa **corrigido** e seu comentário passa a
+dizer `recalibrated −5.2 ppm`: um eixo de massa que foi movido e não admite
+isso é pior do que um que está errado.
+
+### Medido numa pasta de nove infusões
+
+As nove infusões de ácidos biliares no ZenoTOF — três compostos, modo
+positivo, um canal de íons-produto cada — medidas na aba Infusions e depois
+escritas num único aperto:
+
+| | |
+|---|---|
+| linhas medidas | 9, em 35 s |
+| **Add all to library** | **9 registros escritos, nenhum ignorado, em 0,01 s** |
+| apertado de novo | 0 escritos, 9 ignorados, cada um *already in the file from …* |
+| o arquivo | 19 KB, 9 registros |
+| **Rewrite from files…** | **9 de 9 reescritos em 39 s** |
+| picos depois da reescrita | **idênticos, cada valor de cada registro** |
+| demais campos depois da reescrita | inalterados, 9 de 9 |
+
+O Add all não custa nada porque a tabela já havia feito o trabalho; a
+reescrita custa 39 segundos porque tira de novo a média de nove corridas
+inteiras, que são os mesmos 35 segundos que a medição levou da primeira vez.
+Os picos serem idênticos é o objetivo da comparação: o registro é escrito a
+partir dos picos que a aba escolheu, e a reescrita os escolhe do mesmo modo
+a partir dos mesmos scans, de forma que uma diferença significaria que um
+dos dois não estava lendo o que dizia ler.
+
+Com os três compostos na tabela de componentes, sete dos nove registros
+carregam fórmula e aduto — `C24H36D4O5` como `[M+NH4]+` para o ácido
+cólico-d4, com as quatro marcações recolocadas a partir do nome — e o
+`PrecursorMZ` deles é escrito como **430,34651**, o que aquele íon pesa, e
+não como o `430,35` que o método digitou. Nenhum dos nove discorda de si
+mesmo.
+
+Os outros dois são o par chamado `CA-d4_…TESTEARTIGO`, cujo canal isola
+**839,56** e não 430,35 (veja [[infusion-report]]). Nenhum aduto da fórmula
+alcança essa massa, de modo que esses dois registros são escritos **sem
+fórmula e sem aduto nenhum** — apenas a medição, o precursor que o
+instrumento recebeu e a procedência dizendo de que arquivo e de que canal
+vieram. Esse é o resultado pretendido: o nome do arquivo diz ácido
+cólico-d4 e a aquisição diz outra coisa, e um registro que carregasse a
+fórmula assim mesmo poria o nome do composto num espectro de outro íon. O
+pico base deles é de 109 contagens, o que o `Base_peak_intensity` do
+registro diz em voz alta.
+
+Depois uma aquisição foi posta fora de alcance — a mesma pasta com aquele
+`.wiff` de fora — e a biblioteca reescrita de novo: **8 reescritos, 1
+mantido**, listado como *CA-d4 (CA-d4_TOFMSMS_EAD_12CE_44DP_13KE_TESTEARTIGO.wiff
+is not on disk)*, e esse registro voltou com seus picos e cada um de seus
+campos idênticos ao que eram.
+
 ### Medido em três padrões infundidos
 
 As aquisições para as quais isto foi escrito: ácido cólico-d4, ácido

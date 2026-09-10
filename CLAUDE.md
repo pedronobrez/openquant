@@ -575,6 +575,23 @@ UV detector, is not implemented there) — untested on real Windows.
   channel; the instrument acquired the masses as written, so there the
   name is the mistake. What the 13 bought was formulas: 125 → 138 of 141,
   11 of 11 standards with a lock-mass candidate.
+- **A label floor is a fraction of the view, and the pool has to follow it.**
+  A peak needs `LABEL_MIN_RELATIVE` (2%) of the tallest peak *in view* to
+  be named, and `SpectrumView`'s `LabelThresholdHandle` — PeakView's
+  triangle, drawn in the space the left axis reserves once `tickTextOffset`
+  is raised by twelve pixels — lets that be dragged; stored as a fraction,
+  so it survives a zoom, a Normalise and the next spectrum. The trap:
+  `POOL_MIN_RELATIVE` was 0.2% of the base peak of the *whole spectrum*
+  while the floor is measured against the view, so zoomed into a quiet
+  stretch dragging the floor down changed nothing (57 labels at 2% and at
+  0.5% over eighteen 100 Da windows of a real survey); `_pool_floor` holds
+  the pool at a tenth of the floor, and those windows give 57, 95, 95.
+  Filling the pool walks every point (255,000 on an infusion average, half
+  a second), so a drag reads the pool as it stands and refills on release.
+  Measured: the CA-d4 precursor itself, m/z 430.3197 at 1.49% of the base
+  peak, is unnamed at 2% and named at 0.5%; on a full-range survey the
+  floor changes nothing, because the region budget runs out first.
+  `SpectrumComparison.label_floor` carries it to the print.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

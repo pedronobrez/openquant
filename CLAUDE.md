@@ -660,6 +660,24 @@ UV detector, is not implemented there) — untested on real Windows.
   spectra agree at 100%. `structure.suppress_hydrogens` folds a molfile's
   explicit hydrogens into their atoms; that alone took what the drawing
   explains from 21% to 59%.
+- **When the mass and the name disagree by a whole dalton, the name is the
+  thing to fix.** `chemistry.names_for_mass` reads the shorthand backwards:
+  the written name's own class (chains within ±4 carbons and ±3 double
+  bonds, a hydroxyl on or off, the base's `d`/`t`/`m`, at most two chains
+  changed), ranked by how little of the name each changes, then LIPID MAPS
+  as a second list marked as another class; the repair dialog's *Rename
+  to* column writes the name and formula, keeps every number, and records
+  `Name renamed`. A whole-dalton row's decimals belong to the wrong
+  compound, so the search matches the nominal mass (`NAME_MASS_TOLERANCE`
+  0.5 Da): `LacCER(d18:1/18:1(9Z))` written 886.6407 against 888.6407 gets
+  `LacCER(d18:1/18:2)` at −17.7 ppm, 204 names over four formulas, because
+  a mass fixes the composition and never the chain split. The other two
+  rows are answered by silence: a chain is 14 Da, a double bond 2, a
+  hydroxyl 16, so nothing reaches a mass one *odd* dalton away —
+  `LacCER(d18:0/18:1)` is a typed digit — and `C18:1 Cer` at 464.4 is out
+  by a hundred. Renaming and reprocessing left 78 of 78 rows identical.
+  The mass is asked about the totals before the chains are split: a
+  triacylglycerol took 13 s the naive way, 0.06 s this way.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

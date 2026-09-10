@@ -369,3 +369,10 @@ a library match does not make.
 A library of your own accumulates one record per verification of the same
 standard. **History…**, beside the record count, reads those records back as
 a control chart of the standard over time — see [[standard-history]].
+
+## From a script
+
+`api.Library.open(msp)`, `.search(spectrum)` and `.add(spectrum, name)` do
+all of this without the window, taking the precursor and the polarity off
+the spectrum and centroiding it before a record is written — see
+[[python-api]].

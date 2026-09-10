@@ -85,3 +85,10 @@ para o único ponto em que os dois discordam, em quanto discordam e por que a
 regra simples é a que foi distribuída. Todo o resto das listas de recursos
 dos dois programas do fabricante está aqui, e os [[design-principles]] dizem
 o que foi escolhido quando os dois não podiam coexistir.
+
+## Sem a janela
+
+Tudo o que a aplicação faz pode ser escrito em script: veja a [[python-api]]
+para as versões de dez linhas de um lote reprocessado e exportado, de um
+espectro explicado e de uma biblioteca buscada, e a [[command-line]] para o
+que a própria aplicação responde na linha de comando.

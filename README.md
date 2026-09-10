@@ -363,6 +363,35 @@ or open files directly:
 python3 run.py demo_QC01.wiff demo_STD_L1.wiff
 ```
 
+## From Python
+
+`openquant.api` is a documented, stable surface over the same code the
+window runs — open a file, quantify a batch, explain a spectrum, search a
+library, write a report, with no Qt in any signature and no window
+anywhere:
+
+```python
+from openquant import api
+
+batch = api.Batch.from_project("Sphingolipids.oqproj")
+rows = batch.process()
+print(f"{len(batch.samples)} injections, {len(batch.components)} components, "
+      f"{len(rows)} rows, {len(rows.found)} with a peak, "
+      f"{len(batch.calibrate())} curves fitted")
+rows.table().to_csv("sphingolipids.csv")
+batch.export_xlsx("sphingolipids.xlsx")
+batch.report("sphingolipids.pdf")
+batch.close()
+```
+
+`api.VERSION` versions the promise: the names in `api.__all__`, their
+methods and their keyword names keep meaning what they mean, and the
+dataclasses returned gain fields rather than losing them. Everything
+underneath is an internal and may move. The manual's **Python API** page
+has the other two ten-line scripts — a folder of infusions explained and
+filed into a library of your own, and a spectrum searched against one —
+each with what it printed and how long it took.
+
 ## Compound list
 
 The **Compounds** tab reads a CSV with these columns (only `name` and

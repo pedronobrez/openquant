@@ -258,3 +258,10 @@ própria biblioteca, e o [[standard-history]] lê os registros acumulados de
 um composto como um gráfico de controle: o cosseno contra o primeiro
 registro, o pico base em ppm a partir dele, e a altura do pico base, ao
 longo dos dias em que foram adquiridos.
+
+## A pasta inteira a partir de um script
+
+`api.infusion_report(folder, "infusions.pdf")` escreve este documento para
+cada infusão de um arquivo ou de uma pasta sem abrir a aplicação, e devolve
+uma linha por seção para que os números possam ser lidos sem abrir o PDF —
+veja a [[python-api]].

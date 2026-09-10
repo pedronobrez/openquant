@@ -252,3 +252,10 @@ own library, and [[standard-history]] reads the accumulated records of one
 compound back as a control chart: the cosine against the first record, the
 base peak's ppm from it, and the base peak's height, over the days they
 were acquired.
+
+## The whole folder from a script
+
+`api.infusion_report(folder, "infusions.pdf")` writes this document for
+every infusion in a file or a folder without opening the application, and
+returns one row per section so the numbers can be read without opening the
+PDF — see [[python-api]].

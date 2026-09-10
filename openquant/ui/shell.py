@@ -302,6 +302,12 @@ class MainShell(QtWidgets.QMainWindow):
             "The per-compound infusion report for every acquisition in a "
             "folder that reads as a direct infusion — read one file at a "
             "time and closed again, adding nothing to what is open here")
+        self.act_new_standard = file_menu.addAction("New standard…")
+        self.act_new_standard.setToolTip(
+            "A bottle into the method: name it, give the lot and the "
+            "infusion, and it writes the component, the record in your own "
+            "library and with it the newest entry of that standard’s "
+            "history — one audit entry naming all three")
         self.act_close = file_menu.addAction("Close all")
         self.act_report = file_menu.addAction("Export report…")
         self.act_report.setToolTip(
@@ -350,6 +356,7 @@ class MainShell(QtWidgets.QMainWindow):
         # both signals carry a checked flag, which is not a list of paths
         self.act_open.triggered.connect(lambda: self.open_files())
         self.act_check_folder.triggered.connect(self.check_folder)
+        self.act_new_standard.triggered.connect(self.new_standard)
         self.act_infusion_folder.triggered.connect(self.report_infusion_folder)
         self.act_close.triggered.connect(self.close_all)
         self.act_open_project.triggered.connect(self.open_project)
@@ -453,6 +460,31 @@ class MainShell(QtWidgets.QMainWindow):
             self.statusBar().showMessage(result.line())
             self._offer_folder(result, folder)
         dialog.deleteLater()
+
+    def new_standard(self):
+        """
+        File ▸ New standard…: a vial into the method, the library and the
+        history.
+
+        The dialog does the reading and the writing; this only opens it and
+        refreshes the two panels that show what it wrote — the Infusions tab,
+        whose Use-in-method offer is now one component shorter, and the
+        Explorer's Library tab, whose own-library count is one record longer.
+        """
+        from .new_standard_dialog import NewStandardDialog
+
+        dialog = NewStandardDialog(self.session, self)
+        dialog.exec()
+        if dialog.component is not None or dialog.record is not None:
+            self.statusBar().showMessage(dialog.status.text())
+            self.refresh_standards()
+        dialog.deleteLater()
+        return dialog
+
+    def refresh_standards(self) -> None:
+        """The panels a new standard changes, told that it changed."""
+        self.analytics.infusions.reload()
+        self.explorer.library_panel.refresh_own()
 
     def _offer_folder(self, result, folder: str) -> None:
         """Say what was written, and offer to open where it was written."""

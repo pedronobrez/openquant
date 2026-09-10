@@ -93,6 +93,10 @@ class Provenance:
     #: the name of the record in the analyst's own library that this
     #: spectrum matched, where one was searched and one was found
     record: str = ""
+    #: the bottle the standard was infused from, where somebody typed one.
+    #: The one field here that is not in the acquisition: a component made
+    #: from a vial is only traceable to that vial if the vial is named.
+    lot: str = ""
 
     @property
     def text(self) -> str:
@@ -115,6 +119,8 @@ class Provenance:
             said.append(f"acquired {self.acquired}")
         if self.record:
             said.append(f"own record “{self.record}”")
+        if self.lot:
+            said.append(f"lot {self.lot}")
         head = f"From the infusion {self.sample}" if self.sample else \
             "From an infusion"
         return f"{head}: " + "; ".join(said) if said else head
@@ -139,10 +145,12 @@ class Provenance:
             said.append(f"acquired {self.acquired}")
         if self.record:
             said.append(f"record “{self.record}”")
+        if self.lot:
+            said.append(f"lot {self.lot}")
         return ", ".join(said)
 
 
-def provenance_of(report, acquired: str = "") -> Provenance:
+def provenance_of(report, acquired: str = "", lot: str = "") -> Provenance:
     """The provenance of one infusion report, read defensively."""
     hit = getattr(report, "hit", None)
     entry = getattr(hit, "entry", None)
@@ -155,6 +163,7 @@ def provenance_of(report, acquired: str = "") -> Provenance:
         energy=None if energy is None else float(energy),
         acquired=str(acquired or ""),
         record=str(getattr(entry, "name", "") or ""),
+        lot=str(lot or ""),
     )
 
 
@@ -239,9 +248,10 @@ class Identification:
         return said
 
 
-def _labelled(formula: str, labels: int) -> tuple[str, int]:
+def formula_with_labels(formula: str, labels: int) -> tuple[str, int]:
     """
-    A formula with `labels` of its hydrogens replaced by deuterium.
+    A formula with `labels` of its hydrogens replaced by deuterium, and how
+    many were placed.
 
     A d4 standard is bought, named and filed as `CA-d4` and the formula
     written beside it is nearly always the unlabelled one — no component
@@ -284,7 +294,7 @@ def _formula_from(report, method=None) -> tuple[str, int, str]:
             if declared:
                 break
             _stem, declared = chemistry.split_labels(written)
-        formula, labels = _labelled(formula, declared)
+        formula, labels = formula_with_labels(formula, declared)
         return formula, labels, source
 
     explanation = getattr(report, "explanation", None)
@@ -298,8 +308,8 @@ def _formula_from(report, method=None) -> tuple[str, int, str]:
         return with_labels(existing.formula, "the component table")
     named = resolve_name(compound) if compound else None
     if named is not None and getattr(named, "formula", ""):
-        formula, labels = _labelled(named.formula,
-                                    int(getattr(named, "labels", 0) or 0))
+        formula, labels = formula_with_labels(
+            named.formula, int(getattr(named, "labels", 0) or 0))
         return formula, labels, getattr(named, "source", "") or "the name"
     return "", 0, ""
 
@@ -490,7 +500,7 @@ def report_of(row_or_report):
 
 def component_from_infusion(row_or_report, as_internal_standard: bool = True,
                             fragment=BASE_PEAK, acquired: str = "",
-                            method=None) -> Component | None:
+                            method=None, lot: str = "") -> Component | None:
     """
     One infusion as a component of the method.
 
@@ -534,7 +544,7 @@ def component_from_infusion(row_or_report, as_internal_standard: bool = True,
         formula=identification.formula,
         adduct=identification.adduct,
         is_internal_standard=bool(as_internal_standard),
-        provenance=provenance_of(report, acquired).text,
+        provenance=provenance_of(report, acquired, lot).text,
     )
 
 
@@ -778,7 +788,7 @@ class Plan:
 
 
 def plan_for(row_or_report, method, as_internal_standard: bool = True,
-             fragment=BASE_PEAK, acquired: str = "") -> Plan:
+             fragment=BASE_PEAK, acquired: str = "", lot: str = "") -> Plan:
     """
     What one infusion would write into `method`, without writing it.
 
@@ -790,10 +800,10 @@ def plan_for(row_or_report, method, as_internal_standard: bool = True,
     """
     report = report_of(row_or_report)
     identification = identify(report, method)
-    provenance = provenance_of(report, acquired)
+    provenance = provenance_of(report, acquired, lot)
     proposed = component_from_infusion(
         report, as_internal_standard=as_internal_standard, fragment=fragment,
-        acquired=acquired, method=method)
+        acquired=acquired, method=method, lot=lot)
     name = str(getattr(report, "compound", "")
                or getattr(report, "sample", "") or "").strip()
     existing = component_named(method, name)

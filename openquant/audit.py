@@ -64,6 +64,10 @@ INFUSION_QUANTITATION = "Infusion quantitation"
 #: file of its own and not part of the project, so the trail is the only
 #: place the project says a batch of its spectra was written into one
 OWN_LIBRARY = "Own library"
+#: a standard entered from its bottle: one component, one record of one's
+#: own, and with it the newest entry of that standard's history — one entry
+#: naming all three, because they are one act. See ui/new_standard_dialog.py
+NEW_STANDARD = "New standard"
 PROJECT_SAVED = "Project saved"
 
 EVENTS: tuple[str, ...] = (
@@ -74,7 +78,7 @@ EVENTS: tuple[str, ...] = (
     SAMPLE_EDITED,
     PROCESSED, REPROCESSED,
     RECALIBRATION, INFUSION_REPORT, METHOD_REPORT, INFUSION_QUANTITATION,
-    OWN_LIBRARY, PROJECT_SAVED,
+    OWN_LIBRARY, NEW_STANDARD, PROJECT_SAVED,
 )
 
 #: the columns of the trail, in the order the panel, the report and the CSV

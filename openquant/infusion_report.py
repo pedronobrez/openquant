@@ -2300,8 +2300,6 @@ def _headless_explanation(session, report: InfusionReport, entry=None,
     be run twice — once on the corrected axis and once on the axis as
     measured — which is the before and after the mass-axis paragraph prints.
     """
-    from .explain import explain_formula, formula_ions, significant_peaks
-
     method = getattr(session, "method", None)
     component = component_for(method, report.compound)
     if component is None:
@@ -2313,7 +2311,28 @@ def _headless_explanation(session, report: InfusionReport, entry=None,
     adduct, why = _headless_adduct(component, report, formula, entry)
     if not adduct:
         return None, "", why
-    if not formula_ions(component.formula, adduct):
+    return _explained(report, component.name, component.formula, deuterium,
+                      adduct, why, shown=formula, clause=labelled,
+                      sticks=sticks)
+
+
+def _explained(report: InfusionReport, name: str, formula: str,
+               deuterium: int, adduct: str, why: str, shown: str = "",
+               clause: str = "", sticks=None):
+    """
+    The prediction, the basis sentence and the purity, once the formula, the
+    adduct and the label count are settled.
+
+    The half of `_headless_explanation` that does not care where those three
+    came from — the component table, or a dialog where somebody typed them.
+    `formula` is the compound's own, unlabelled, because that is the pair
+    `explain_formula` wants: the labels are handed over as a count and
+    enumerated over the fragments rather than placed. `shown` is the same
+    formula with them folded in, for the sentence a reader sees.
+    """
+    from .explain import explain_formula, formula_ions, significant_peaks
+
+    if not formula_ions(formula, adduct):
         return None, "", f"{adduct} is not an adduct this program knows"
     sticks = _sticks(report) if sticks is None else sticks
     if sticks is None:
@@ -2321,18 +2340,69 @@ def _headless_explanation(session, report: InfusionReport, entry=None,
     peaks = significant_peaks(*sticks)
     if not peaks:
         return None, "", "no peak above the noise share to explain"
-    explanation = explain_formula(component.formula, adduct, peaks,
-                                  name=component.name, deuterium=deuterium)
-    basis = f"the formula {formula} as {adduct}, {why}{labelled}"
+    explanation = explain_formula(formula, adduct, peaks, name=name,
+                                  deuterium=deuterium)
+    basis = f"the formula {shown or formula} as {adduct}, {why}{clause}"
     # the isotopic purity is asked here rather than by the caller, because
     # this is the one place holding the composition, the adduct and the label
     # count at once — on this path the report carries none of the three. The
-    # component's *own* formula goes over with the labels declared beside it,
-    # the same pair `explain_formula` was given: `formula` above already has
+    # compound's *own* formula goes over with the labels declared beside it,
+    # the same pair `explain_formula` was given: `shown` above already has
     # them folded in, and handing over both would count every label twice
-    _measure_purity(report, formula=component.formula, adduct=adduct,
+    _measure_purity(report, formula=formula, adduct=adduct,
                     deuterium=deuterium)
     return explanation, basis, ""
+
+
+def explain_as(report: InfusionReport, name: str, formula: str,
+               adduct: str = "", deuterium: int = 0, entry=None):
+    """
+    This spectrum explained as a compound the method does not carry yet.
+
+    `_headless_explanation` asks the component table, by name, and refuses
+    where the table does not hold the compound: guessing a formula for a
+    file name would be inventing the denominator of "n of m". A standard
+    being entered from its bottle is the one case where that refusal is
+    wrong — the formula is not a guess there, it was typed or resolved from
+    the name the analyst wrote, and the labels are a field of their own
+    rather than something read off a suffix. So the same three are taken
+    directly here and go through the same prediction, the same purity
+    measurement and the same basis sentence.
+
+    `formula` is the compound's own, unlabelled; `deuterium` is the count of
+    unplaced labels. `adduct` is what the caller has already identified —
+    left empty, it is read off the channel's written precursor the way the
+    component table's path reads it. Returns `(explanation, basis, note)`,
+    with the explanation None and the note saying why where there is none.
+    """
+    from .components import Component
+
+    formula = str(formula or "").strip()
+    name = str(name or "") or report.compound
+    if not formula:
+        return None, "", f"{name or 'this compound'} carries no formula"
+    deuterium = int(deuterium or 0)
+    shown, placed = _with_labels(formula, deuterium)
+    component = Component(name=name, formula=formula,
+                          adduct=str(adduct or ""))
+    adduct, why = _headless_adduct(component, report, shown, entry,
+                                   source="as this standard was entered",
+                                   carries="you expected")
+    if not adduct:
+        return None, "", why
+    clause = (f", with the {placed} unplaced label(s) declared beside it"
+              if placed else "")
+    return _explained(report, name, formula, deuterium, adduct, why,
+                      shown=shown, clause=clause)
+
+
+def _with_labels(formula: str, labels: int) -> tuple[str, int]:
+    """`standards.formula_with_labels`, imported where it is used: the two
+    modules must fold labels into a formula the same way or the sentence
+    under the table and the component written from it disagree."""
+    from .standards import formula_with_labels
+
+    return formula_with_labels(formula, labels)
 
 
 def _headless_labels(component, report: InfusionReport):
@@ -2360,7 +2430,10 @@ def _headless_labels(component, report: InfusionReport):
 
 
 def _headless_adduct(component, report: InfusionReport,
-                     formula: str = "", entry=None) -> tuple[str, str]:
+                     formula: str = "", entry=None,
+                     source: str = "from the component table",
+                     carries: str = "the component table carries"
+                     ) -> tuple[str, str]:
     """
     The adduct to explain this infusion's formula with, and where it came from.
 
@@ -2377,6 +2450,13 @@ def _headless_adduct(component, report: InfusionReport,
     A declared adduct that the survey contradicts still wins here — it is
     what the analyst said the channel was — but the evidence beside it says
     the survey disagreed, which is the whole point of measuring.
+
+    `source` and `carries` are how the sentence names where the declared
+    adduct came from. They are parameters because this is called with a
+    component that is not in any table — the New standard dialog's, built
+    from what the analyst ticked — and a basis line saying "from the
+    component table" about a compound the method has never carried is a
+    sentence nobody can check.
     """
     from .chemistry import adducts_matching, identify_adduct
 
@@ -2399,12 +2479,12 @@ def _headless_adduct(component, report: InfusionReport,
                     if m.within and m.name == declared]
             if fits:
                 report.adduct = declared
-                return declared, "from the component table"
+                return declared, source
             if choice.adduct is not None:
                 report.adduct = choice.adduct.name
                 return choice.adduct.name, (
                     f"read off the written precursor — {choice.reason}, "
-                    f"not the {declared} the component table carries")
+                    f"not the {declared} {carries}")
             return "", (f"{component.name} is written {declared}, and "
                         f"{choice.reason}")
         if choice.adduct is not None:
@@ -2413,7 +2493,7 @@ def _headless_adduct(component, report: InfusionReport,
         return "", (f"{component.name} carries no adduct and {choice.reason}")
     if declared:
         report.adduct = declared
-        return declared, "from the component table"
+        return declared, source
     return "", f"{component.name} carries no adduct"
 
 

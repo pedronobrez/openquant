@@ -167,6 +167,17 @@ ordenado pela ordem em que o arquivo o guarda, sua intensidade fica fora
 daquele gráfico, e as duas coisas são ditas no gráfico em vez de passarem em
 silêncio.
 
+Um terceiro campo é escrito pelo [[new-standard]] e por mais nada: o **lote**,
+no comentário do registro. Ele não é uma medida e nenhuma aquisição o contém,
+e é justamente por isso que precisa ser digitado quando o padrão é
+cadastrado — um histórico que atravessa uma troca de frasco são dois
+históricos desenhados como um só, e o lote é a única coisa que diz onde está
+a emenda.
+
+Um padrão cadastrado por aquele diálogo tem a sua primeira entrada de
+histórico no instante em que é criado, porque a entrada *é* o registro: esta
+página é a biblioteca relida, e nada escreve um histórico à parte.
+
 ## O que foi medido
 
 Nove infusões de ácidos biliares no ZenoTOF, escritas em uma biblioteca

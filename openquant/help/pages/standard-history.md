@@ -127,3 +127,9 @@ same two rules — fifty ppm for *the same ion*, twenty per cent for *the
 same response* — are applied to a whole tray at once by
 [[compare-infusions]], which reads a reference day out of its project file
 instead of out of a library, and needs nothing to have been added to one.
+
+It also compares a series only with itself. Which of a standard's series is
+worth keeping at all — which collision energy and activation identifies it,
+which quantifies it and which belongs in a record — is a different question
+from whether one of them has moved, and [[collision-energy]] is where it is
+asked, of the infusions rather than of the records.

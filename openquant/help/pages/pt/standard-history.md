@@ -131,3 +131,9 @@ cento para *a mesma resposta* — são aplicadas a uma bandeja inteira de uma
 vez pelo [[compare-infusions]], que lê um dia de referência do arquivo de
 projeto em vez de uma biblioteca, e não precisa que nada tenha sido
 acrescentado a uma.
+
+Ele também compara uma série apenas consigo mesma. Qual das séries de um
+padrão vale a pena manter — qual energia de colisão e ativação o identifica,
+qual o quantifica e qual pertence a um registro — é uma pergunta diferente
+de se uma delas se deslocou, e a [[collision-energy]] é onde ela é feita,
+das infusões e não dos registros.

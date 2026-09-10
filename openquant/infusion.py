@@ -17,11 +17,14 @@ The verdict is two figures of the same shape, and nothing else:
     the product-ion channel carrying the most signal, or the survey when the
     method has no product scan.
 
-That "maximum" is the **99th percentile** of the scans, not the largest of
-them. See *The spike that inverted the two populations* below: the largest
-scan is one scan, and on three of nine real infusions it was two to four
-times the median and dragged both figures to 0.002 – 0.006, under every
-chromatographic run measured.
+That "maximum" is the **99th percentile** of the scans that are left after
+the first `SETTLING_SECONDS` of acquisition, not the largest of them. See
+*The spike that inverted the two populations* below: the largest scan is one
+scan, and on three of nine real infusions it was two to four times the median
+and dragged both figures to 0.002 – 0.006, under every chromatographic run
+measured. The settling window is the same finding on a short run, where one
+per cent of the scans is one scan again — see *Short runs* below, and
+`MIN_JUDGED_SCANS`, which is where the verdict says it cannot tell.
 
 A peak is by definition narrow against the run it sits in, so a run with a
 peak in it spends most of its scans well under half the apex; a spray that
@@ -67,38 +70,161 @@ widest margin measured is 0.895 at the 99.2nd percentile and 99 is the round
 number next to it. Going lower costs margin from the other end, because
 setting aside a real peak's apex lifts the chromatographic figures too.
 
-**Below about a hundred scans the 99th percentile is the largest scan again**,
-so a single spike can still call a short infusion chromatographic. `MIN_SCANS`
-is 8, and this is a stated gap rather than a fixed one: the shortest infusion
-to hand has 146 scans, and the default whenever anything is unclear is "not an
-infusion", which is what the application did before this module existed.
+Short runs: the settling window and the floor
+---------------------------------------------
+
+The paragraph that used to stand here said that below about a hundred scans
+the 99th percentile is the largest scan again, and left it as a stated gap.
+It was then measured, by truncating all forty-eight acquisitions to their
+first 20, 30, 50, 75 and 100 scans and reading both figures off the shortened
+run. The gap is real, it is wider than "about a hundred", and it has a second
+half nobody had looked for.
+
+**Where the 99th percentile breaks** — the smaller of the two figures, worst
+and best of each population. A file appears at a length only if it has that
+many scans, which is why the twenty-six 14.6-minute runs (61 scans each) drop
+out past 50:
+
+| first N scans | files | infusions (9) | chromatographic |
+|---|---|---|---|
+| 20 | 48 | **0.0500** – 1.0000 | 0.0000 – 0.9500 (39) |
+| 30 | 48 | **0.0333** – 1.0000 | 0.0345 – 0.9667 (39) |
+| 50 | 48 | **0.0200** – 1.0000 | 0.0204 – 0.6735 (39) |
+| 75 | 22 | **0.3333** – 1.0000 | 0.0270 – 0.8919 (13) |
+| 100 | 22 | 0.9900 – 1.0000 | 0.0202 – 0.9394 (13) |
+| the whole run | 48 | 0.9937 – 1.0000 | 0.0143 – 0.1148 (39) |
+
+The break is the same three spiked infusions as before, for the same reason:
+`np.percentile` interpolates, so at 50 scans the 99th percentile sits about
+half way from the second largest scan to the largest and a 4.4× transient
+takes the reference with it. The populations are inverted again — margin
+−0.900 at 20 scans, −0.654 at 50 — and it holds to 80 scans, not to 100.
+
+**And the second half.** Every one of those lengths also has a
+chromatographic run reading 0.93 – 1.00, because a gradient cut off before
+anything elutes is flat, and flat is the whole of what these two figures
+measure. At 20 scans the current rule calls seven of forty-eight wrong: three
+infusions read as chromatographic, and **four chromatographic runs read as
+infusions**.
+
+**The rule.** Every candidate was scored by its margin — worst infusion minus
+worst chromatographic run, both on the smaller figure — at every length:
+
+| reference | 20 | 30 | 50 | 75 | 100 | whole run |
+|---|---|---|---|---|---|---|
+| 99th percentile (before) | −0.900 | −0.933 | −0.654 | −0.559 | +0.051 | +0.879 |
+| largest scan, first second dropped | 0.000 | 0.000 | +0.521 | +0.384 | +0.418 | **−0.096** |
+| median of the top ⌈1%⌉+2 scans | +0.050 | 0.000 | +0.082 | +0.054 | +0.051 | +0.879 |
+| the same, first second dropped | 0.000 | 0.000 | +0.104 | +0.069 | +0.061 | +0.877 |
+| **99th percentile, first second dropped** | 0.000 | 0.000 | **+0.313** | **+0.110** | **+0.061** | **+0.877** |
+
+So the simplest honest rule is the one that wins: keep the percentile and
+drop the first `SETTLING_SECONDS` of acquisition, which is where the
+transient is — scan 1, 0.0084 min, at a quarter-second cycle. The two
+alternatives were measured and both fail somewhere. Dropping the first second
+*alone*, with the largest scan back as the reference, fails at full length:
+`DCA-d4_TOFMSMS_Mix1` carries two more bursts at 1.08 and 1.10 min, which no
+settling window reaches, and it reads **0.0043**. And the median of the top
+⌈1% of n⌉+2 scans — a reference tied to the run's length, which is the other
+obvious way to make the top robust — survives one spike anywhere but not
+three: on that same file truncated to 300 scans, where all three bursts are
+in and k is 5, the median of the top five *is* a burst and the file reads
+**0.0100**.
+
+With the first second dropped the infusion side stops moving with the length
+at all — 1.0000 at every truncation from 20 scans to 250, 0.9936 on the whole
+run:
+
+| first N scans | infusions (9) | chromatographic |
+|---|---|---|
+| 20 | 1.0000 – 1.0000 | 0.0000 – 1.0000 (39) |
+| 30 | 1.0000 – 1.0000 | 0.0357 – 1.0000 (39) |
+| 50 | 1.0000 – 1.0000 | 0.0208 – 0.6875 (39) |
+| 75 | 1.0000 – 1.0000 | 0.0274 – 0.8904 (13) |
+| 100 | 1.0000 – 1.0000 | 0.0211 – 0.9388 (13) |
+| the whole run | 0.9936 – 1.0000 | 0.0145 – 0.1167 (39) |
+
+**The floor.** The right-hand column is the part no reference statistic
+fixes, and it is why `MIN_JUDGED_SCANS` exists. `260904_EICs_Isabela_S001`'s
+total ion chromatogram is empty until 8.9 minutes in. Truncated to its first
+100 scans it reads **1.0000 on the sample total and 0.9388 on its strongest
+channel** — an infusion's signature exactly, on a gradient. No statistic on a
+chromatogram separates those, because there is nothing there to separate:
+both are a flat line. Read scan by scan that file is flat to 107 scans
+(4.08 min), not flat from 108 to 153, flat again from 154 to 234
+(5.84 – 8.93 min), and never after 235.
+
+So **0.75 does not separate the two populations at any length below 240
+scans**. That is the measured floor and it is above the shortest real
+infusion, which has 146 scans, so putting the floor there would refuse a
+genuine call. The floor goes where the rest of the measurement supports it:
+**apart from that one file, no chromatographic run of the thirty-nine reads
+flat past 35 scans**, and the shortest infusion has 146, so
+`MIN_JUDGED_SCANS` is **120** — clear of 35 by a wide margin and 26 scans
+below 146. S001's second stretch is above 120 and no floor that keeps the
+146-scan infusion can reach it; that is stated rather than fixed.
+
+The floor gates the flat answer only, never the other one. A run that shows
+structure is chromatographic at any length — that is a positive finding, and
+it is what keeps the twenty-six 61-scan runs reading "chromatographic" with
+their figures rather than "too short to tell". A run that shows none is an
+infusion only when there is enough of it for "none" to mean something. With
+that, and the settling window (**wrong** is a verdict of the other kind, not
+a refusal):
+
+| first N scans | files | before: inf / chrom / **wrong** | after: inf / chrom / **wrong** / too short |
+|---|---|---|---|
+| 20 | 48 | 6 / 35 / **7** | 0 / 35 / **0** / 13 |
+| 30 | 48 | 6 / 35 / **7** | 0 / 35 / **0** / 13 |
+| 50 | 48 | 6 / 39 / **3** | 0 / 39 / **0** / 9 |
+| 75 | 22 | 7 / 12 / **3** | 0 / 12 / **0** / 10 |
+| 100 | 22 | 9 / 12 / **1** | 0 / 12 / **0** / 10 |
+| 120 | 22 | 9 / 13 / **0** | 9 / 13 / **0** / 0 |
+| 200 | 21 | 8 / 12 / **1** | 8 / 12 / **1** / 0 |
+| the whole run | 48 | 9 / 39 / **0** | 9 / 39 / **0** / 0 |
+
+The floor is bought with a real loss and it is on that table: a genuine
+infusion of fewer than 120 scans reads 1.0000 on both figures and is refused
+anyway. None of the nine to hand is that short. The single row where the new
+rule is still wrong is 200 scans, and it is S001 inside its flat stretch —
+the case the floor cannot reach. At ten scans the settling window cannot be
+taken at all (fewer than `MIN_SCANS` would be left) and the three spiked
+infusions read chromatographic; below the floor nothing is called an infusion
+anyway, so nothing turns on it.
 
 Measured
 --------
 
 Forty-eight acquisitions, everything to hand, read through `openquant.raw`,
-with the reference at the 99th percentile:
+whole runs, with the reference at the 99th percentile of the scans left after
+the settling window:
 
 | acquisition set | n | `above_half` | `channel_above_half` |
 |---|---|---|---|
-| `/Volumes/NOBRE/Cyborg/Bileomics/*` — ZenoTOF 7600, 0.6 – 2.0 min, product-ion infusions of bile-acid standards, negative | 9 | 0.9937 – 1.0000 | 0.9937 – 1.0000 |
-| `260904_EICs_Isabela_*` — TripleTOF 5600, 21.4 min, 81 channels, MRM-HR | 5 | 0.019 – 0.057 | 0.029 – 0.097 |
-| `20.02.21_Esfing_Zeca_Unicamp_*` — TripleTOF 5600, 14.6 min, 144 channels | 26 | 0.033 – 0.426 | 0.016 – 0.377 |
-| `260406-Teste-*` — ZenoTOF 7600, 24.0 min, 25 channels, DIA | 8 | 0.031 – 0.361 | 0.014 – 0.059 |
+| `/Volumes/NOBRE/Cyborg/Bileomics/*` — ZenoTOF 7600, 0.6 – 2.0 min, 146 – 473 scans, product-ion infusions of bile-acid standards, negative | 9 | 0.9936 – 1.0000 | 0.9936 – 1.0000 |
+| `260904_EICs_Isabela_*` — TripleTOF 5600, 21.4 min, 577 scans, 81 channels, MRM-HR | 5 | 0.019 – 0.057 | 0.030 – 0.097 |
+| `20.02.21_Esfing_Zeca_Unicamp_*` — TripleTOF 5600, 14.6 min, 61 scans, 144 channels | 26 | 0.033 – 0.433 | 0.017 – 0.383 |
+| `260406-Teste-*` — ZenoTOF 7600, 24.0 min, 482 – 490 scans, 25 channels, DIA | 8 | 0.031 – 0.364 | 0.015 – 0.060 |
 
 **Nothing is miscalled: 9 infusions and 39 chromatographic runs, 48 of 48.**
 The runs with the least chromatography in them are still caught by the second
 figure rather than the first. `260406-Teste-Eq01` is a column equilibration
 with no injection at all — solvent spraying for 24 minutes, the nearest thing
-in the set to an infusion — and measures 0.361 on the sample total against
-0.059 on its strongest channel. `20.02.21_Esfing_Zeca_Unicamp_08`, at 0.377 on
-its strongest channel, measures 0.049 on the sample total. Across the
-thirty-nine the smaller of the two figures never exceeds **0.1148**, and across
-the nine infusions it never falls below **0.9937**. `FLAT_FRACTION = 0.75`
-therefore sits 0.635 above the worst chromatographic run and 0.244 below the
-worst infusion, inside a gap of 0.879. The maximum-margin cut would be 0.554;
+in the set to an infusion — and measures 0.364 on the sample total against
+0.060 on its strongest channel. `20.02.21_Esfing_Zeca_Unicamp_08`, at 0.383 on
+its strongest channel, measures 0.050 on the sample total. Across the
+thirty-nine the smaller of the two figures never exceeds **0.1167**, and across
+the nine infusions it never falls below **0.9936**. `FLAT_FRACTION = 0.75`
+therefore sits 0.633 above the worst chromatographic run and 0.244 below the
+worst infusion, inside a gap of 0.877. The maximum-margin cut would be 0.555;
 0.75 is kept because it is already inside the gap, it is the figure the manual
 states, and moving it would change verdicts on nothing measured.
+
+The same forty-eight without the settling window — that is, the rule as it
+stood before short runs were measured — give 0.9937 – 1.0000 and a
+chromatographic worst of 0.1148, a gap of 0.879. Dropping a second off the
+front of every trace therefore costs 0.002 of margin on whole runs and buys
+everything in the section above.
 
 Three other candidate rules were measured and are not used:
 
@@ -142,8 +268,8 @@ import numpy as np
 
 #: how much of a run has to sit at or above half its maximum total ion current
 #: before it is called flat. Measured on both populations: the worst
-#: chromatographic acquisition reaches 0.1148 on the smaller of the two
-#: figures and the worst infusion 0.9937, so this sits inside a gap of 0.879.
+#: chromatographic acquisition reaches 0.1167 on the smaller of the two
+#: figures and the worst infusion 0.9936, so this sits inside a gap of 0.877.
 FLAT_FRACTION = 0.75
 
 #: the reference height every figure is taken against, as a percentile of the
@@ -153,8 +279,28 @@ FLAT_FRACTION = 0.75
 #: measurement behind this particular percentile.
 REFERENCE_PERCENTILE = 99.0
 
+#: how much of the front of a trace is left out of both the reference and the
+#: count. The spray transient that inverted the two populations is at scan 1,
+#: 0.0084 min into the run; a percentile only sets it aside while there are
+#: enough scans for one per cent to be more than one of them, which below
+#: about a hundred scans it is not. Measured, dropping the first second takes
+#: the worst infusion from 0.0200 to 1.0000 at fifty scans and costs 0.002 of
+#: margin on whole runs. Not applied when it would leave fewer than
+#: `MIN_SCANS`.
+SETTLING_SECONDS = 1.0
+
 #: below this there is not enough of a run to say anything about its shape
 MIN_SCANS = 8
+
+#: how long a run has to be before *flatness* is evidence of a spray. A
+#: gradient cut off before anything elutes is flat too, and no statistic on a
+#: chromatogram tells the two apart: `260904_EICs_Isabela_S001` truncated to
+#: its first 100 scans reads 1.0000 on the sample total and 0.9388 on its
+#: strongest channel. Apart from that one file no chromatographic run of the
+#: thirty-nine reads flat past 35 scans, and the shortest infusion measured
+#: has 146 — so this sits between them. It gates the flat answer only: a run
+#: showing structure is chromatographic at any length.
+MIN_JUDGED_SCANS = 120
 
 
 @dataclass(frozen=True)
@@ -174,6 +320,10 @@ class InfusionVerdict:
     channel_above_half: float = 0.0
     #: index of that channel, -1 when there is none
     channel_index: int = -1
+    #: the run was flat on both figures but too short for that to be
+    #: evidence — see `MIN_JUDGED_SCANS`. Still `infusion = False`: the
+    #: default whenever anything cannot be decided is "not an infusion".
+    too_short: bool = False
 
     def __bool__(self) -> bool:
         return self.infusion
@@ -189,6 +339,10 @@ def above_half_fraction(y, percentile: float = REFERENCE_PERCENTILE) -> float:
     the largest scan is the reference against 0.994 – 1.000 when the 99th
     percentile is. Every scan is still counted; only the height they are
     counted against changes.
+
+    This is the measure on a trace as given. `flat_fraction` is the one the
+    verdict reads, and it drops the settling window first — a percentile is
+    a share of the scans, and on a short run that share is one scan.
     """
     y = np.asarray(y, dtype=float)
     if y.size == 0:
@@ -198,6 +352,32 @@ def above_half_fraction(y, percentile: float = REFERENCE_PERCENTILE) -> float:
     if top <= 0:
         return 0.0
     return float(np.mean(y >= 0.5 * top))
+
+
+def after_settling(x, y, seconds: float = SETTLING_SECONDS):
+    """
+    The trace with the first `seconds` of acquisition left out.
+
+    A percentile sets aside a *share* of the scans, so on a short run the
+    99th of them is the largest again and one spray transient decides the
+    answer. The transient is not just anywhere in the run, though: on all
+    three files that carry one it is at scan 1, 0.0084 min in. Leaving out a fixed piece of the front rather than a
+    share of the whole is what makes the measure stop moving with the run's
+    length — measured, 1.0000 on every infusion from twenty scans upwards.
+
+    Refuses to cut when fewer than `MIN_SCANS` would be left, which is the
+    only case where the window could be most of the run.
+    """
+    x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+    if seconds <= 0 or x.size == 0:
+        return x, y
+    keep = x >= x[0] + seconds / 60.0
+    return (x[keep], y[keep]) if int(keep.sum()) >= MIN_SCANS else (x, y)
+
+
+def flat_fraction(x, y, percentile: float = REFERENCE_PERCENTILE) -> float:
+    """`above_half_fraction` of what is left after the settling window."""
+    return above_half_fraction(after_settling(x, y)[1], percentile)
 
 
 def strongest_channel(sample):
@@ -257,17 +437,17 @@ def is_infusion(sample) -> InfusionVerdict:
     if x.size < MIN_SCANS:
         return InfusionVerdict(
             False, f"only {x.size} scan(s) — too short a run to tell",
-            n_scans=int(x.size))
+            n_scans=int(x.size), too_short=True)
 
     length = float(x[-1] - x[0])
-    flat = above_half_fraction(y)
+    flat = flat_fraction(x, y)
     channel = strongest_channel(sample)
     if channel is None:
         return InfusionVerdict(False, "the sample has no channels",
                                n_scans=int(x.size), length_min=length,
                                above_half=flat)
     try:
-        channel_flat = above_half_fraction(channel.tic()[1])
+        channel_flat = flat_fraction(*channel.tic())
     except Exception:
         channel_flat = 0.0
     figures = dict(n_scans=int(x.size), length_min=length, above_half=flat,
@@ -276,6 +456,20 @@ def is_infusion(sample) -> InfusionVerdict:
 
     limit = f"{FLAT_FRACTION * 100:.0f}%"
     if flat >= FLAT_FRACTION and channel_flat >= FLAT_FRACTION:
+        if x.size < MIN_JUDGED_SCANS:
+            # flat, but a run cut off before anything eluted is flat too, and
+            # nothing on a chromatogram tells those apart. The default when
+            # anything cannot be decided is "not an infusion".
+            return InfusionVerdict(
+                False,
+                f"flat throughout — {flat * 100:.0f}% of the run and "
+                f"{channel_flat * 100:.0f}% of its strongest channel sit at "
+                f"or above half the maximum — but {x.size} scans is under "
+                f"the {MIN_JUDGED_SCANS} a flat run needs before flatness "
+                f"means anything, since a run that stopped before anything "
+                f"eluted looks the same: too short to tell, so not an "
+                f"infusion",
+                too_short=True, **figures)
         return InfusionVerdict(
             True,
             f"the signal never falls away: {flat * 100:.0f}% of the run and "

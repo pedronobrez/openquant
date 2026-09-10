@@ -38,3 +38,6 @@ NOTES.local.md
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Onde estao os dados reais neste computador: caminhos de terceiros, nunca versionados
+tests/real/data.local.json

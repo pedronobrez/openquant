@@ -51,6 +51,9 @@ As colunas de padrão interno e de qualificador são explicadas em
 - **Fill formulas from names** lê a notação abreviada de lipídios que os
   nomes já carregam e preenche com ela as células Formula vazias, ver
   abaixo.
+- **Repair precursors…** é a saída daquilo que aquele recusa: onde uma
+  fórmula e o precursor escrito ao lado dela discordam, ele oferece a massa
+  da fórmula para o precursor, linha por linha, ver abaixo.
 - **Export schedule…** escreve a aquisição agendada que o método implica, com
   o dwell time que um ciclo alvo deixa a cada transição, ver
   [[acquisition-schedule]].
@@ -91,9 +94,100 @@ diálogo dá as contagens e lista, nome por nome, o que foi recusado e por quê
 — e quais padrões internos continuam sem fórmula, e portanto sem lock mass.
 
 No método contra o qual isto foi escrito: 125 de 141 componentes e 10 de 11
-padrões internos, em milissegundos; as 16 recusas foram todas o precursor
-escrito estar errado, e não o nome. A [[mass-recalibration]] carrega os
-números.
+padrões internos, em milissegundos. Treze das 16 recusas eram o precursor
+escrito, digitado com menos casas do que merecia; as outras três erram por um
+dalton inteiro ou mais, e nesse lote o instrumento havia adquirido a massa
+como ela estava escrita, o que põe o *nome* em questão. O *Repair
+precursors…*, abaixo, é onde qualquer um dos dois se resolve. A
+[[mass-recalibration]] carrega os números.
+
+## Repair precursors from formulas
+
+Uma recusa deixa um impasse: a fórmula e o precursor não podem estar os dois
+certos, e o *Fill formulas from names* deliberadamente se recusa a adivinhar
+qual. O **Repair precursors…** — oferecido também no diálogo das recusas — é
+onde isso se resolve, à mão. Ele lista todo componente cuja fórmula
+contradiz o seu precursor, pelos dois caminhos: a que o método já carrega, e
+a que o nome implica e o preenchimento recusou escrever.
+
+Cada linha mostra o nome, o precursor como está escrito, a massa que a
+fórmula dá através do aduto da linha, a diferença em mDa e em ppm, a janela
+de extração antes e depois, e uma nota. O **Apply** escreve a fórmula *e* o
+precursor das linhas marcadas, uma entrada de [[audit-trail|auditoria]] para
+cada — `precursor 484.465 → 484.4724`, com a fórmula na nota. Uma linha não
+marcada não é tocada, e nenhuma linha que não foi listada tampouco.
+
+A marcação é o argumento do diálogo:
+
+- **abaixo de meio dalton, marcada.** Isso é um mesmo composto escrito com
+  menos casas — `484.465` para 484.4724, uma massa digitada com uma casa
+  decimal — e tomar a da fórmula é aritmética.
+- **meio dalton ou mais, oferecida desmarcada.** Isso são dois compostos
+  diferentes: um hidrogênio, uma dupla ligação, um dígito perdido. Qual dos
+  dois, o nome ou a massa, é o engano não é algo que a aritmética resolva, e
+  a linha diz isso em vez de decidir.
+
+### O que um precursor de fato move
+
+Duas coisas, e a menor delas é a óbvia:
+
+- a **janela de extração**, mas só onde a linha não tem fragmento. Uma linha
+  que nomeia um extrai pelo fragmento, e por isso a janela fica exatamente
+  onde estava; o diálogo mostra as duas janelas para que isso se veja em vez
+  de se supor.
+- **qual canal de aquisição é lido.** O canal é escolhido pelo precursor,
+  dentro de 0,7 Da do precursor do próprio canal. Um reparo maior que isso
+  leva o componente para outro canal — ou para fora de todo canal de íons
+  produto, e nesse caso ele recai sobre a varredura de survey e relata um
+  número que não é o composto.
+
+Portanto processe o lote de novo em seguida, e rode o [[check-method]] de
+novo também.
+
+### Medido, no lote de 26 injeções
+
+Dezesseis componentes recusados; treze abaixo de meio dalton, três inteiros.
+Aplicando os treze:
+
+| | |
+|---|---|
+| componentes reparados | 13 de 16 |
+| quanto a massa escrita errava | 3,0 a 260 mDa, −235 a +392 ppm |
+| canal de aquisição alterado | nenhum — todos ficaram dentro de 0,7 Da |
+| janelas de extração movidas | nenhuma — todas as 141 linhas têm fragmento |
+| linhas com pico, antes → depois | idênticas, componente por componente |
+| área mediana, antes → depois | idêntica, componente por componente |
+| linhas que se moveram | 0 de 338, a maior diferença de área 0,000 |
+
+Esse é o resultado honesto: neste lote os treze reparos não movem um único
+número. O que eles compram é a fórmula ao lado deles. O método passa de 125
+fórmulas para 138 de 141, e de 10 dos seus 11 padrões internos com fórmula
+para os 11 — o último padrão sem uma lock mass possível para a
+[[mass-recalibration]] era o `dHCer(d18:0/12:0)`, a linha 15 ppm fora. Oito
+dos treze precursores reparados ficam dentro do survey de 50–700, que é onde
+uma lock mass pode sequer ser medida; se alguma delas é forte o bastante para
+ser medida é outra pergunta, e a [[mass-drift]] a responde.
+
+O achado *formula against precursor* do [[check-method]] não muda aqui, e não
+poderia: ele lê uma fórmula que a tabela já carrega, e o *Fill formulas from
+names* recusa escrever as dezesseis. O diálogo das recusas é onde elas são
+relatadas neste lote; o achado é o que uma fórmula digitada ou importada
+produz.
+
+As três linhas de um dalton inteiro são a razão de as demais serem
+oferecidas desmarcadas. Aplicadas, contra um lote adquirido com as massas
+como foram escritas:
+
+| Componente | Escrito → reparado | O que o reparo fez |
+|---|---|---|
+| `C18:1 Cer` | 464,4 → 564,5350 | deixou o canal adquirido de 464,6 por canal nenhum; recaiu sobre o survey, e 22 linhas com pico de mediana 9 contagens viraram 10 linhas de mediana 55 — um número que não é o composto |
+| `LacCER(d18:1/18:1(9Z))` | 886,6407 → 888,6407 | o mesmo: 888,64 nunca foi adquirido, 886,6 foi; 21 linhas de mediana 2 viraram 25 de mediana 32, tiradas do survey |
+| `LacCER(d18:0/18:1)` | 889,6563 → 890,6563 | caiu num canal real — o que o próprio `LacCER(d18:1/18:0)` do método já usa, com a mesma fórmula e o mesmo fragmento. 16 linhas de mediana 2 viraram 25 de mediana 4, indistinguíveis do seu isômero |
+
+Cada uma delas diz a mesma coisa: o instrumento adquiriu a massa como ela
+estava escrita, então a massa escrita é aquela sob a qual estão os dados e o
+*nome* é o que pede correção. Nenhuma aritmética poderia saber disso, e é
+por isso que nada ali vem marcado.
 
 ## Padrões do método
 

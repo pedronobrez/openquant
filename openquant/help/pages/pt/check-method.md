@@ -14,7 +14,7 @@ que é mais tarde e mais difícil.
 | missing internal standard | serious | um componente nomeia um padrão que nenhum componente carrega, ou um que não está marcado como IS |
 | internal standard without a time | serious | um padrão sem tempo de retenção é buscado ao longo de toda a corrida, e toma o maior pico em qualquer lugar dela; cada componente que ele normaliza herda isso. A contagem de componentes que ele carrega é dada |
 | internal standard without a response floor | warning | um padrão que serve componentes não declara nenhuma **Min. response**, de modo que as cartas de qualidade e a aceitação recaem sobre um sinal/ruído de dez — o que, numa aquisição agendada, é uma altura absoluta contra uma constante arbitrária. Veja [[internal-standards-and-qualifiers]] |
-| formula against precursor | serious | a **Formula** de um componente e o seu **Precursor** estão mais distantes do que a última casa decimal escrita desse precursor permite. Um dos dois está errado, e eles fazem trabalhos diferentes: o precursor constrói a janela de extração, a fórmula é a massa verdadeira em direção à qual a [[mass-recalibration|recalibração]] corrige |
+| formula against precursor | serious | a **Formula** de um componente e o seu **Precursor** estão mais distantes do que a última casa decimal escrita desse precursor permite. Um dos dois está errado, e eles fazem trabalhos diferentes: o precursor escolhe o canal de aquisição e, onde nenhum fragmento está escrito, constrói a janela de extração; a fórmula é a massa verdadeira em direção à qual a [[mass-recalibration|recalibração]] corrige. O *Repair precursors…* da [[method-workspace]] lista esses casos com as duas massas e escreve a da fórmula onde uma linha for marcada |
 | internal standard without a formula | warning | o padrão não pode ser uma lock mass. Sem uma fórmula e um aduto nada diz onde a massa dele deveria estar, e o precursor escrito não pode substituí-la — um digitado com uma única casa decimal é bom até algumas centenas de partes por milhão, cem vezes o erro que está sendo corrigido. O *Fill formulas from names* no [[method-workspace]] deriva uma onde quer que o nome seja notação abreviada de lipídios |
 | no retention time | warning | a janela do componente é a corrida inteira, de modo que o maior pico da corrida é o componente, seja ele qual for |
 | precursor outside the survey scan | warning | com arquivos abertos: componentes cujo precursor nenhuma varredura de survey cobre, e as faixas que os surveys de fato cobrem. A massa exata, a anotação do LIPID MAPS e a [[mass-drift]] não podem ser medidas para eles; a transição em si não é afetada. Uma aquisição sem nenhuma varredura de survey é reportada sob as verificações puladas |
@@ -43,9 +43,29 @@ que "passa" com metade das verificações não executadas não passou.
 - Um padrão sem fórmula ganha uma do *Fill formulas from names* onde o nome
   dele diz do que ele é feito; os demais são digitados.
 - Uma fórmula que discorda do seu precursor é uma pergunta que só quem
-  escreveu o método pode responder — qual dos dois está certo. No lote contra
-  o qual isto foi desenvolvido era o precursor: o `dHCer(d18:0/12:0)`
-  carregava 484.465 contra os 484.4724 da sua própria fórmula, 15 ppm fora.
+  escreveu o método pode responder — qual dos dois está certo. O *Repair
+  precursors…* da [[method-workspace]] põe a pergunta linha por linha, com as
+  duas massas, a diferença em mDa e em ppm e a janela de extração antes e
+  depois, e escreve a massa da fórmula no precursor onde a linha for marcada.
+  Ele marca por você as linhas abaixo de meio dalton e deixa as demais para
+  você, porque abaixo de meio dalton é um mesmo composto escrito com menos
+  casas e acima disso são dois compostos diferentes. No lote contra o qual
+  isto foi desenvolvido a discordância foi relatada pelo *Fill formulas from
+  names*, e não por esta verificação — a verificação lê uma fórmula que a
+  tabela já carrega, e o preenchimento se recusa a escrever uma que não pode
+  confirmar — e 13 dessas 16 recusas eram o precursor escrito com menos casas
+  do que merecia: o `dHCer(d18:0/12:0)`
+  carregava 484.465 contra os 484.4724 da sua própria fórmula, 15 ppm fora, e
+  o `C25:0-Ceramide` carregava 664.4 contra 664.6602, 392 ppm fora. Reparar
+  esses treze não mudou nenhum resultado do lote — toda linha carrega um
+  fragmento, então nenhuma janela se moveu, e todo precursor reparado ficou
+  dentro dos 0,7 Da que escolhem o canal de aquisição — e levou o método de 125
+  fórmulas para 138 de 141, e de 10 dos seus 11 padrões internos com fórmula
+  para os 11. Os outros três erravam
+  por um dalton inteiro ou mais, e repará-los tirou dois deles de todo canal
+  adquirido e os pôs sobre a varredura de survey; a [[method-workspace]] tem
+  os números. Uma discordância de um dalton inteiro é uma pergunta sobre o
+  *nome* tantas vezes quanto sobre a massa.
 
 A verificação corre sobre o método tal como está, de modo que pode ser executada
 de novo após cada correção. Os mesmos achados aparecem no início da seção de

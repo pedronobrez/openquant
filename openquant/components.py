@@ -19,15 +19,20 @@ own last decimal: a formula that disagrees is reported and dropped, because a
 wrong formula is a wrong lock mass, which is worse than no lock mass.
 
 On the real 141-component method: 125 filled and 10 of its 11 internal
-standards, in milliseconds and without opening a file; all 16 refusals turned
-out to be the written precursor being wrong rather than the name.
+standards, in milliseconds and without opening a file. Thirteen of the 16
+refusals were the written precursor typed to fewer places than it deserved,
+and `precursor_repairs` below is how those are corrected — deliberately, one
+row at a time. The other three are a whole dalton or more out, and the batch
+says the instrument acquired the mass as written, which puts the *name* in
+question instead: a repair there would take the component off the channel its
+data is on.
 """
 
 from __future__ import annotations
 
 import csv
 import os
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields, replace
 
 from .chemistry import (ADDUCTS_BY_NAME, FormulaError, formulas_from_name,
                         monoisotopic_mass, parse_formula)
@@ -463,6 +468,207 @@ def formula_disagreement(component: Component) -> FormulaProposal | None:
     if not proposal.checkable or proposal.agrees:
         return None
     return proposal
+
+
+# --------------------------------------------------------------------------- #
+# repairing the precursor from the formula
+# --------------------------------------------------------------------------- #
+#: how far apart the two masses have to be before the disagreement stops
+#: being about how a number was written down. Under this a written precursor
+#: is a rounding, a truncation or a typed decimal and the formula is simply
+#: the same compound to more places; at or past it the two are different
+#: compounds — a hydrogen, a double bond, a dropped digit — and which of them
+#: the instrument actually acquired is not something arithmetic can settle.
+#: On the real method every refusal is either under 0.27 Da or a whole
+#: number out — two rows at exactly 1.0000 and 2.0000 Da, one at 100 Da from
+#: a dropped digit. Nothing lands in between, which is why half a dalton can
+#: divide the two without adjudicating anything.
+WHOLE_DALTON = 0.5
+
+
+@dataclass(frozen=True)
+class PrecursorRepair:
+    """
+    A written precursor its own formula contradicts, and the repair offered.
+
+    The repair is deliberately a *proposal*: `fill_formulas` refuses to touch
+    a precursor precisely because it is what the formula was checked against,
+    and nothing here changes that. What this adds is the other way out of the
+    stand-off — when the formula is right, the written mass is the thing to
+    correct — and it is only ever taken row by row, by hand, on record.
+    """
+
+    proposal: FormulaProposal
+
+    @property
+    def component(self) -> Component:
+        return self.proposal.component
+
+    @property
+    def formula(self) -> str:
+        return self.proposal.formula
+
+    @property
+    def source(self) -> str:
+        return self.proposal.source
+
+    @property
+    def written(self) -> float:
+        return self.proposal.written
+
+    @property
+    def theoretical(self) -> float:
+        return self.proposal.theoretical
+
+    @property
+    def difference(self) -> float:
+        return self.proposal.difference
+
+    @property
+    def error_ppm(self) -> float | None:
+        return self.proposal.error_ppm
+
+    @property
+    def whole_dalton(self) -> bool:
+        """Is this a different compound rather than a differently typed one?"""
+        return abs(self.difference) >= WHOLE_DALTON
+
+    @property
+    def offered(self) -> bool:
+        """
+        Whether the row is ticked when the dialog opens.
+
+        A sub-dalton difference is the same compound written down to fewer
+        places and the repair is arithmetic. A whole dalton is not: it is a
+        hydrogen, a double bond or a dropped digit, and only the person who
+        wrote the method knows whether the name or the mass is the typo. Those
+        rows are offered unticked: they can be applied, but somebody has to
+        say so.
+        """
+        return not self.whole_dalton
+
+    @property
+    def writes_formula(self) -> bool:
+        """Does applying this fill an empty Formula cell as well?"""
+        return not self.component.formula
+
+    @property
+    def repaired(self) -> Component:
+        """The component as it would be, without touching the one there is."""
+        return replace(self.component, formula=self.formula,
+                       precursor=self.theoretical)
+
+    @property
+    def window_before(self) -> tuple[float, float]:
+        return self.component.mass_window()
+
+    @property
+    def window_after(self) -> tuple[float, float]:
+        return self.repaired.mass_window()
+
+    @property
+    def moves_window(self) -> bool:
+        """
+        Whether the extraction window itself moves.
+
+        It does only where the row has no fragment. A row that names one
+        extracts on the fragment (`Component.target_mz`), so the window stays
+        exactly where it was and the precursor does its work earlier, in
+        `matching.match_channel`, which picks the acquisition channel whose
+        own precursor is nearest within `PRECURSOR_MATCH_DA`. Moving a
+        precursor by more than that changes which channel is read — or leaves
+        the component with none — and that is a larger change than the window,
+        not a smaller one.
+        """
+        return self.window_before != self.window_after
+
+    @property
+    def note(self) -> str:
+        """
+        Why this row is offered the way it is, in one line.
+
+        Short on purpose, and short about the ordinary case in particular: a
+        note that says the same sentence on sixteen rows is furniture. What
+        the row carries is what is unusual about *it* — the size of the
+        disagreement, whether the window moves with the repair, and whether
+        the Formula cell is filled in as well.
+        """
+        if self.whole_dalton:
+            said = (f"{abs(self.difference):.4f} Da apart: a different "
+                    f"compound or a typed digit — say which")
+        else:
+            said = "the same compound, fewer places"
+        if self.moves_window:
+            said += "; the window moves with it"
+        elif self.component.fragment is not None:
+            said += "; the window is the fragment's and stays"
+        if self.writes_formula:
+            said += "; Formula filled in too"
+        return said
+
+    @property
+    def audit_before(self) -> str:
+        """The precursor as the method had it, written as the method wrote it."""
+        return f"{self.written:.10g}"
+
+    @property
+    def audit_after(self) -> str:
+        """
+        The precursor as it now is, to four decimals.
+
+        Four because that is what the dialog showed and what a mass is
+        legible to; the component itself keeps every digit the formula gives.
+        A trail records what was on screen, not a serialisation.
+        """
+        return f"{self.theoretical:.4f}"
+
+    @property
+    def audit_note(self) -> str:
+        """The note the audit entry carries."""
+        said = f"from formula {self.formula}, {self.source}"
+        if self.error_ppm is not None:
+            said += f", {self.error_ppm:+,.1f} ppm"
+        if self.whole_dalton:
+            said += "; a whole-dalton repair, accepted by hand"
+        return said
+
+    def apply(self) -> Component:
+        """
+        Write the formula and the precursor into the component.
+
+        The only place in this module that moves a precursor. Both fields are
+        written together on purpose: a precursor taken from a formula and the
+        formula it was taken from are one statement, and a row carrying the
+        first without the second cannot be checked again afterwards.
+        """
+        self.component.formula = self.formula
+        self.component.precursor = self.theoretical
+        return self.component
+
+
+def precursor_repairs(components: list[Component],
+                      database=None) -> list[PrecursorRepair]:
+    """
+    Every component whose formula and written precursor contradict each other.
+
+    Both ways in are covered: a formula the method already carries
+    (`formula_disagreement`) and one the name implies that `fill_formulas`
+    refused to write (`propose_formula`). A component that agrees, that has no
+    readable name and no formula, or that has nothing to check against, is not
+    a repair and does not appear.
+    """
+    repairs: list[PrecursorRepair] = []
+    for component in components:
+        if component.formula:
+            proposal = formula_disagreement(component)
+        else:
+            proposal = propose_formula(component, database)
+            if proposal is not None and proposal.agrees:
+                proposal = None
+        if proposal is None or not proposal.checkable:
+            continue
+        repairs.append(PrecursorRepair(proposal))
+    return repairs
 
 
 # --------------------------------------------------------------------------- #

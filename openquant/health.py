@@ -185,10 +185,17 @@ def check_method(method: ProcessingMethod,
             f"precursor",
             sorted(d.component.name for d in disagreeing),
             f"One of the two is wrong, and they are used for different "
-            f"things: the precursor is what the extraction window is built "
-            f"from, the formula is the true mass the mass recalibration "
-            f"corrects towards. Each is further apart than the written "
-            f"precursor's own last decimal allows. {detail}."))
+            f"things: the precursor is what picks the acquisition channel "
+            f"and, with no fragment written, what the extraction window is "
+            f"built from; the formula is the true mass the mass "
+            f"recalibration corrects towards. Each is further apart than the "
+            f"written precursor's own last decimal allows. Method workspace "
+            f"\u25b8 Repair precursors\u2026 lists them with both masses and "
+            f"writes the formula's where a row is ticked \u2014 ticked "
+            f"already where the two are under half a dalton apart, which is "
+            f"one compound written to fewer places, and left for the person "
+            f"to decide where they are a whole dalton or more apart, which is "
+            f"two different compounds. {detail}."))
 
     unlocked = sorted(name for name in internal
                       if not next((c for c in components if c.name == name),

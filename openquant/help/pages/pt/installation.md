@@ -26,6 +26,20 @@ pixels) e a entrada no menu Iniciar e em *Add or remove programs* o exibe, e
 o tarball do Linux distribui `openquant.png` com uma entrada `.desktop`. A
 própria janela toma o seu ícone do mesmo desenho em todas as plataformas.
 
+### macOS 26 e o ícone Liquid Glass
+
+No macOS 26 um `.icns` clássico é apenas colocado dentro da moldura de vidro
+do sistema e mantém as cores seja qual for a aparência escolhida — por isso,
+com o estilo de ícones *Clear* ou *Tinted* ligado, todos os ícones ficaram
+translúcidos e este continuou azul. A partir da 0.7.8 o bundle carrega
+também um ícone em camadas: o documento do Icon Composer
+`packaging/icons/OpenQuant.icon` (um preenchimento azul, o pico branco e o
+seu vizinho como camadas de vidro) compilado pelo `actool` do Xcode 26 em
+`Assets.car` e nomeado por `CFBundleIconName`, de modo que o Dock e o Finder
+o desenham no estilo escolhido. O `.icns` permanece para o macOS 15 e
+anteriores, que ignoram a chave mais nova. O log do build diz se o ícone em
+camadas foi compilado; uma máquina sem Xcode 26 envia só o `.icns`.
+
 ### Linux: uma entrada no lançador, para um usuário
 
 O tarball é a pasta da aplicação tal como o PyInstaller a construiu, e o

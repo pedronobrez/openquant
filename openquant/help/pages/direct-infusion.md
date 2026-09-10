@@ -145,6 +145,99 @@ that matters), the coefficient of variation of the total ion chromatogram
 (no margin against a blank, and it punishes spray drift), and the absence of
 a detected peak (a flat trace with 3% noise still yields three).
 
+## Scans a spray lost
+
+An electrospray is not steady for the whole of a run. It arcs, a droplet
+reaches the cone, the needle wets: the total ion current leaves the level it
+was holding for a scan or a few and comes back. Those scans are not what the
+compound looks like, and averaging them in with the rest raises the answer.
+
+So a whole-run average leaves them out, and says how many and where. A scan
+is **unstable** when its total ion current departs from the running median of
+its **21 neighbouring scans** by more than **50%**, and the scans after it stay
+unstable until the current is back inside **25%**. Everything else is
+averaged. The pane's title, the [[infusion-report]]'s header, the Infusions
+tab's *Scans* column and the comment on a record written to a library of your
+own all carry the same line:
+
+> 473 scans, 464 averaged; 9 left out: 0.008 min; 1.069–1.099 min, 8 scans
+
+A single scan is named by its time and a stretch is given by its ends. Where
+nothing was left out the title reads *average of N scans* exactly as before.
+
+**Process ▸ Include unstable scans** averages the run as it came off the
+instrument. It is off by default and remembered between sessions; with it on,
+the report says how many unstable scans were kept and where they were, so a
+document made either way says which it is.
+
+### The figures behind it
+
+Measured on the nine real infusions. Every scan's departure from its own
+running median was read off, and the two populations do not overlap: the
+widest departure of a spray that never faltered is **0.316** (a CID run whose
+spray wanders), and the smallest departure inside a real burst is **0.870**.
+The count of excluded scans is the same at every threshold from 0.35 to 0.85,
+so 50% is the middle of a plateau rather than a fitted value. The window is 21
+scans because a running median survives a disturbance up to half its width and
+the longest measured is eight scans: at 11 scans the burst decides its own
+baseline and six scans are found, at 15 eight, and from 21 upwards nine and it
+stops moving.
+
+The base peak was measured beside the total and is not used. It is four to
+eight times the noisier — on the six infusions with no burst at all it departs
+from its own running median by up to 0.585 where the total never passes 0.164
+— so any threshold on it that catches a burst also catches ordinary scans of a
+steady spray, and every scan it flags on the files that do burst the total
+flags too.
+
+The recovery band is what catches the scans in the middle of a burst that are
+neither the spike nor the spray: one real burst runs 0.01, 0.03, 0.64, 2.57,
+0.63, 0.13, 0.74, 4.68 of its level over eight scans, and three of those never
+pass 50% on their own. What it does *not* buy is a tail — on every burst and
+every transient measured, the scan after the last excluded one is already
+within 13% of the level, so a spray here comes back inside one scan.
+
+The first second of acquisition is **not** dropped. The settling window
+described above exists because a percentile sets aside a share of the scans;
+this measures each scan against its neighbours instead, and the transient at
+scan 1 comes out at 4.5, 5.1 and 5.0 times its own baseline on the three files
+that carry one — thirteen times the widest ordinary departure. Dropping four
+scans of every run to catch what is already caught would throw away data no
+measurement objects to.
+
+### What it does to the answer
+
+Three of the nine files lose anything at all; six come back **byte for byte
+the reader's own average**, because a mask that excludes nothing asks the
+reader for the whole run in one call and does not touch what comes back.
+
+| | scans left out | of the run's ion current | base peak |
+|---|---|---|---|
+| CA-d4 CID | 1 | 0.61% | −0.62% |
+| TDCA-d4 CID | 1 | 1.66% | −1.99% |
+| DCA-d4 CID | 9 | 2.78% | **−2.90%** |
+| the other six | 0 | — | 0.00% |
+
+What changes is the height, not the shape: scored as a record of your own
+against the same average taken the old way, the worst of the three comes back
+at **99.999**. That is the point of it. A spectrum is the same compound either
+way, and the [[standard-history]] chart holds the same standard's base peak
+to 4.5% between thirds of one run — so a burst worth 2.9% of it is over half
+that, and it is a burst rather than the compound.
+
+The mask reads one chromatogram, which is 3 ms a file. Averaging the surviving
+stretches is no slower than averaging the whole run: on those nine, 15.0 s
+against 19.4 s, because there are fewer scans in it.
+
+### On a run that is not an infusion
+
+The rule is applied only where the sample reads as an infusion. A
+chromatographic peak departs from its neighbours much further than any spray
+does — that is what a peak is — so on a twenty-minute gradient the same
+arithmetic leaves out the only scans worth keeping. **Average whole run** is
+offered on any channel, so the verdict above is the gate: on anything not read
+as an infusion, every scan is averaged.
+
 ## What changes
 
 For a sample read as an infusion:
@@ -154,8 +247,10 @@ For a sample read as an infusion:
 - its strongest product-ion channel comes in checked and becomes the
   **active channel**, instead of the survey the Explorer would otherwise
   land on;
-- the spectrum pane opens on the average of every scan, titled *average of
-  N scans (infusion)*, and **infusion** appears beside the retention time;
+- the spectrum pane opens on the average of every scan the spray was
+  steady for, titled *average of N scans (infusion)* — or, where scans
+  were left out, *N scans, M averaged; K left out: …* — and **infusion**
+  appears beside the retention time;
 - everything downstream sees that average, because it is the live spectrum:
   background subtraction, *Explain spectrum*, the library search, the peak
   table, *Pin spectrum* and the CSV export.

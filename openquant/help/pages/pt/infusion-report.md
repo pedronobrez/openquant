@@ -27,6 +27,15 @@ tem um único canal de íons produto e mais nada — o precursor é lido do
 próprio espectro de íons produto promediado, e o relatório diz isso com todas
 as letras.
 
+*Scans averaged* é a linha que a [[direct-infusion]] descreve: quantos scans a
+aquisição tem, quantos entraram na média e para onde foi o resto — *473 scans,
+464 averaged; 9 left out: 0.008 min; 1.069–1.099 min, 8 scans*. Esses são os
+scans em que a pulverização falhou, e um relatório que os deixou de fora diz
+isso no cabeçalho e outra vez numa frase do veredito. Com o **Process ▸
+Include unstable scans** ligado, os mesmos dois lugares dizem, em vez disso,
+que eles foram mantidos a pedido, de modo que um documento diz de qual média
+ele é.
+
 **O espectro promediado**, desenhado para o papel no piso de rótulos em que o
 painel foi deixado, de modo que as massas impressas são as massas que
 estavam na tela — veja [[chromatograms-and-spectra]] para o piso e para como
@@ -73,6 +82,11 @@ foi feita não ganha frase nenhuma:
 - **"Collision energy differs from the record's (22 against 45 eV)"** — um
   espectro tirado em outra energia tem outros fragmentos, de modo que uma
   pontuação baixa ali é a energia e não necessariamente o composto.
+- **"9 scan(s) of 473 were left out of the average: …"**, com os tempos, por
+  que cada um saiu e o quanto o resto da corrida se repete. Ela vem por
+  último porque não é uma verificação sobre o composto: é um fato sobre o
+  espectro em que as verificações acima foram feitas. Uma corrida cuja
+  pulverização nunca falhou não ganha frase nenhuma.
 
 Não há aprovação, não há reprovação e não há selo. Se o frasco contém o que
 deveria conter é um juízo feito a partir de evidências por alguém que sabe o
@@ -99,7 +113,8 @@ aba que ninguém deixa aberta. A contagem de linhas aparece no próprio nome da
 aba depois que ela mede.
 
 Cada linha traz o composto e a amostra, o modo e a energia de colisão, quantos
-scans foram promediados, o pico base, o precursor como o método o escreveu e
+scans foram promediados — *464 of 473* onde a pulverização perdeu alguns, com
+a linha inteira ao pairar o cursor — o pico base, o precursor como o método o escreveu e
 como foi medido de volta com o seu erro em ppm e a sua altura, os íons
 encontrados dentre os previstos, o melhor registro da sua própria biblioteca
 com as duas pontuações e a energia de colisão do registro contra a desta

@@ -715,6 +715,22 @@ UV detector, is not implemented there) — untested on real Windows.
   history said so with scores of 8 and 0 and *not the same ion* past
   `SAME_PEAK_PPM` (50). Six infusions cut into thirds give the floor: score
   98.7–100, base peak within 0.4 ppm, height within 4.5%.
+- **A pinned spectrum is saved as its recipe, never as its points.**
+  `spectra_compare.SpectrumRecipe` — sample key, channel index, scan or RT
+  range, whole-run flag, the background window where one was subtracted —
+  goes into the project under `view` (format 5, with the label floor, the
+  pane's Normalise/Mirror/Centroid and the live spectrum's own recipe); an
+  older project opens with defaults. Measured on two CA-d4 infusions pinned
+  as whole-run averages: 544,216 points, 20 MB as JSON arrays against a
+  3,016-byte project, reopened byte-identical in 5.9 s (the files take
+  3.2 s to open), the comparison standing and the report's *Compared
+  spectra* printing at once. Restoring waits for `sigViewRestored`, emitted
+  by `load_project` after the samples are open; the pins are rebuilt before
+  the live spectrum, because `_with_pins` reads the list as it stands; a
+  pin is re-read with its own background window and its own injection's
+  mass correction. A pin whose file is gone stays listed as "not
+  available: file missing". Saving the view is part of saving the project
+  (`Session.view_source`): no separate command, no audit entry.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

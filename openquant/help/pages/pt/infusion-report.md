@@ -56,7 +56,11 @@ painel foi deixado, de modo que as massas impressas são as massas que
 estavam na tela — veja [[chromatograms-and-spectra]] para o piso e para como
 os rótulos são posicionados. Abaixo dele, os vinte e cinco picos mais
 intensos acima desse piso, com as suas intensidades e a sua fração do pico
-base.
+base, e uma frase dizendo qual foi o **piso de ruído** medido desta aquisição
+— as duas estimativas, a que foi adotada e o que promediar a corrida comprou.
+Veja [[signal-to-noise]]; é a esse piso que o portão do precursor, os picos
+não explicados e um registro seu são todos submetidos, então o número a que
+foram submetidos é impresso junto e não deixado para ser adivinhado.
 
 **A explicação estrutural**, quando alguma foi rodada na aba [[lipid-maps]] —
 um registro curado, um desenho próprio, ou uma fórmula e as suas perdas. Cada
@@ -119,9 +123,14 @@ uma medida.
 foi feita não ganha frase nenhuma:
 
 - **"Precursor confirmed at +20.7 ppm…"**, ou **"Precursor not confirmed:
-  …"** com o motivo. Uma janela que contém menos de cem contagens não é uma
-  massa: é reportada como pouco demais para medir, com a altura que foi
-  encontrada, em vez de virar um centroide tirado sobre ruído.
+  …"** com o motivo. Uma janela que contém menos do que o piso de ruído medido
+  da própria aquisição não é uma massa: é reportada como pouco demais para
+  medir, com a altura que foi encontrada, em vez de virar um centroide tirado
+  sobre ruído. O piso era de cem contagens, fizesse o instrumento o que
+  fizesse; agora é medido da média — de 0,068 a 4,27 contagens nas nove
+  infusões daqui — e a frase diz contra qual dos dois recusou. O que supera o
+  piso é um pico que está realmente ali; se ele é o composto, quem diz é o ppm
+  ao lado, que é outra pergunta e ganha outro número.
 - **"8 of the 56 ions predicted for … were found"** — o denominador é quantos
   íons a previsão ofereceu, para que o leitor veja do que a contagem é uma
   fração, e o pico não explicado mais intenso é nomeado ao lado.
@@ -245,7 +254,7 @@ registro feito da corrida CID:
 | | CID, 45 eV, 473 scans | EAD, 22 eV, 146 scans |
 |---|---|---|
 | pico base | 359,2870 | 377,3015 |
-| precursor 430,35 no espectro de íons produto | 84 contagens, 1,49% — pouco demais | 430,3489 a 9.415 contagens, **+20,7 ppm** |
+| precursor 430,35 no espectro de íons produto | 430,3196 a 84 contagens, 1,49%, **−70,7 ppm** (piso 1,43) | 430,3489 a 9.415 contagens, **+20,7 ppm** |
 | íons encontrados, de 56 previstos | 2 — 24,2% da intensidade | 8 — 63,6% |
 | contra o registro CID | 100 / 100, o seu próprio registro | **29 / 39**, 22 de 200 picos |
 | energia de colisão contra a do registro | igual | **22 contra 45 eV** |
@@ -278,12 +287,12 @@ figuras cabeça-cauda que cinco infusões de um composto produzem.
 
 | | precursor encontrado | íons dentre os previstos | registro próprio |
 |---|---|---|---|
-| CA-d4 CID 45 eV | 84 contagens — pouco demais | 2 de 56 | 100, o dele mesmo |
+| CA-d4 CID 45 eV | 430,3196, −70,7 ppm, 84 contagens | 2 de 56 | 100, o dele mesmo |
 | CA-d4 EAD 22 eV | 430,3489, **+20,7 ppm** | 8 de 56 | **29** a 45 eV |
 | CA-d4 EAD 12 eV | 430,3488, +20,4 ppm | 3 de 56 | **6** a 45 eV |
-| DCA-d4 CID 40 eV | 33 contagens — pouco demais | 3 de 41 | 99, o dele mesmo |
+| DCA-d4 CID 40 eV | 414,3275, −30,1 ppm, 33 contagens | 3 de 41 | 99, o dele mesmo |
 | DCA-d4 EAD 22 eV | 414,3525, +30,3 ppm | 8 de 41 | **33** a 40 eV |
-| TDCA-d4 CID 30 eV | 504,3273, +14,6 ppm, 124 contagens | 5 de 104 | 100, o dele |
+| TDCA-d4 CID 30 eV | 504,3273, +14,4 ppm, 123 contagens | 5 de 104 | 100, o dele |
 | TDCA-d4 EAD 22 eV | 504,3325, +24,9 ppm | 5 de 104 | **61** a 30 eV |
 
 *3 compound(s) in 9 infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm;
@@ -295,8 +304,14 @@ Quatro coisas nessa tabela merecem ser lidas em vez de puladas:
   `CA-d4_TOFMSMS_EAD_12CE_…_TESTEARTIGO` e a sua gêmea de 22 eV carregam o
   nome CA-d4 e não são aquisições de CA-d4: o método delas mira **839,56**
   sobre 100–1000, o pico base é 839,23, nove e dezessete contagens ficam na
-  janela do precursor, nenhum registro da biblioteca chega a ±0,02 Da de
-  839,56. A célula de explicação delas agora diz a coisa abertamente —
+  janela do precursor — cento e trinta vezes os seus pisos de ruído medidos de
+  0,068 e 0,13 contagens, de modo que ambas agora são medidas, a **−43 ppm** —
+  e nenhum registro da biblioteca chega a ±0,02 Da de 839,56. Esses dois
+  arquivos são também onde o limite do próprio piso aparece: as regiões vazias
+  deles são a ponta de massa alta de um eixo que não contém nada, então o piso
+  fica em um quinze avos de contagem enquanto o fundo químico tem picos de uma
+  centena, e um pico acima do piso é um pico acima do fundo e não o
+  composto. A célula de explicação delas agora diz a coisa abertamente —
   *839.56 is none of the adducts of C24H36D4O5 within ±0.05 Da — closest
   [M+K]+ at 451.2758* — em vez de reportar zero íons de trinta e um, o que
   era verdade e deixava o leitor descobrir por quê. O *across 7* na linha
@@ -308,14 +323,28 @@ Quatro coisas nessa tabela merecem ser lidas em vez de puladas:
   proposta. A coluna *Isolated* agora diz isso antes de qualquer coisa ser
   medida, e o que os dois arquivos de fato são está na seção *Quando o nome e
   o método discordam*, abaixo.
-- **o precursor sobrevive às ativações suaves e não às duras.** Todas as
-  corridas EAD mediram o seu precursor; duas das três CID tinham pouco demais
-  sobrando para chamar de massa. Isso é um achado comum sobre energia de
-  colisão, e a célula diz *only 84 counts survive* em vez de reportar um
-  centroide sobre ruído.
-- **os erros têm todos o mesmo sinal**, de +14,6 a +30,3 ppm. Um deles, o
-  DCA-d4 a +30,3, passa dos 25 ppm que a linha conta e está na página do
-  mesmo jeito: a contagem é uma frase, não um veredito.
+- **o precursor sobrevive às ativações suaves, e o que sobra dele sob as duras
+  não é o precursor.** Toda corrida EAD de um composto mediu o seu precursor,
+  de +20,4 a +30,3 ppm. As três corridas CID também têm algo na janela — 84,
+  33 e 123 contagens — e contra um piso fixo de cem as duas primeiras eram
+  recusadas como *pouco demais para medir*. Contra o piso que a aquisição de
+  fato tem, 1,43 e 0,75 contagens, elas são 59 e 45 vezes o fundo e estão
+  claramente ali; então são medidas, e saem em **−70,7 e −30,1 ppm**, ou seja
+  a 0,030 e 0,012 Da da massa escrita. A altura diz que há um pico e o ppm diz
+  que ele não é o precursor, e a frase nessas linhas agora diz **"Precursor
+  found but not confirmed at −70,7 ppm, past the 25 ppm that says the same
+  ion"** — *confirmado* é uma afirmação sobre identidade e a linha de resumo
+  sempre a reservou para 25 ppm, então a frase teve de parar onde a contagem
+  para. Medir quatro precursores a mais desse jeito portanto não acrescentou
+  **nenhum** aos quatro dentro de 25 ppm: a contagem da linha de resumo não
+  mudou, e o que mudou é que a página agora diz o que há na janela em vez de
+  se recusar a olhar.
+- **os erros confirmados têm todos o mesmo sinal**, de +14,4 a +24,9 ppm — e
+  os dois que o piso medido passou a deixar entrar nesta tabela têm o outro,
+  −30,1 e −70,7 (e as duas linhas que não estão nela, −43), o que é uma
+  segunda razão para lê-los como algo na janela e não como o precursor. Um dos positivos, o DCA-d4 a +30,3, passa dos 25 ppm que a
+  linha conta e está na página do mesmo jeito: a contagem é uma frase, não um
+  veredito.
 - **uma fórmula acha de dois a oito íons, e quais depende da ativação.** Uma
   fórmula oferece o precursor, a forma que os seus fragmentos carregam e as
   perdas neutras dela, e mais nada; o resto destes espectros são clivagens de
@@ -449,7 +478,7 @@ lidos, nada excluído, um PDF de 48 páginas em 32 s** numa máquina ociosa, com
 890 MB de pico de memória; `--per-compound` dá três documentos, 46 páginas, 28,0 s. Cada linha é
 a que a aba Infusions mediu com os nove arquivos abertos — 2 de 56 íons sob
 CID e 8 de 56 sob EAD para o CA-d4, 29 e 6 e 61 contra os registros próprios,
-+14,6 a +30,3 ppm onde o precursor sobreviveu — que é justamente o ponto: o
++14,4 a +30,3 ppm onde o precursor sobreviveu — que é justamente o ponto: o
 caminho da pasta e o caminho do lote aberto são a mesma medida, e concordam
 dígito por dígito.
 

@@ -338,7 +338,8 @@ def measure(entry: SampleEntry, component: Component,
 
 
 def in_spectrum(mz, intensity, target: float,
-                window: float = SEARCH_WINDOW) -> tuple[float, float] | None:
+                window: float = SEARCH_WINDOW,
+                floor: float | None = None) -> tuple[float, float] | None:
     """
     The strongest thing within `window` of `target` in a spectrum already
     read: its accurate mass and its height.
@@ -354,10 +355,18 @@ def in_spectrum(mz, intensity, target: float,
     whether there was anything there to centroid: at 45 eV a bile-acid
     precursor leaves 84 counts of nothing in particular inside its own window,
     and a caller that cannot see the height reports that as a mass 70 ppm out.
-    `MIN_INTENSITY` is the floor `measure` holds the survey scan to, and it is
-    the floor a caller wants here.
 
-    Returns None when the window holds nothing at all.
+    `floor` is the height below which what is in the window is noise rather
+    than a measurement, and the window is then reported as holding nothing.
+    A caller that has measured its own — `infusion.noise_floor`, which reads
+    it off the acquisition — should hand it in; `MIN_INTENSITY` is the fixed
+    one `measure` holds the survey scan to, and it is a statement about one
+    scan of a TripleTOF rather than about every instrument. None applies no
+    gate at all, which is what a caller wanting the height whatever it is
+    needs.
+
+    Returns None when the window holds nothing at all, or nothing above the
+    floor where one is given.
     """
     mz = np.asarray(mz, dtype=float)
     intensity = np.asarray(intensity, dtype=float)
@@ -368,7 +377,10 @@ def in_spectrum(mz, intensity, target: float,
         return None
     local = int(np.argmax(intensity[inside]))
     absolute = int(np.nonzero(inside)[0][local])
-    return centroid_mz(mz, intensity, absolute), float(intensity[absolute])
+    height = float(intensity[absolute])
+    if floor is not None and height < float(floor):
+        return None
+    return centroid_mz(mz, intensity, absolute), height
 
 
 def _surviving_precursor(entry: SampleEntry, component: Component,

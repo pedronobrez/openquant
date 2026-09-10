@@ -66,6 +66,125 @@ a sua resposta. Por isso o método o declara: **Min. response** no padrão, lido
 pelas cartas, pela aceitação e pela verificação do método. Ver
 [[internal-standards-and-qualifiers]] e [[batch-qc]].
 
+## O piso de ruído de uma infusão
+
+Tudo acima trata de um cromatograma. Uma [[direct-infusion]] não tem nenhum: o
+que se olha é a média de todas as varreduras da corrida, e *ruído* ali quer
+dizer a altura abaixo da qual um pico dessa média é fundo e não medida. Esse
+piso era de cem contagens, fixo, porque foi escrito para uma única varredura de
+survey de um TripleTOF. Uma média de quatrocentas varreduras de um ZenoTOF não
+é aquela varredura, e nas nove infusões de ácidos biliares em mãos o **pico
+base do espectro promediado inteiro é de 109 contagens em uma delas** — ou
+seja, o piso fixo era quase o topo do espectro.
+
+Agora ele é medido da própria aquisição, de duas maneiras, e as duas são
+impressas.
+
+**(a) As regiões vazias do eixo de massa da média.** Todo centroide igual ou
+acima de um décimo de por cento do pico base é encontrado e meio dalton de cada
+lado dele é deixado de fora; o que sobra fica entre os agrupamentos isotópicos
+e longe de todo pico. A mediana, o desvio absoluto mediano e o percentil 99 dos
+pontos medidos ali descrevem o fundo, e o percentil 99 dos *máximos locais*
+entre eles é a altura que um **pico** de ruído alcança. É desse último número
+que o piso é tirado, porque o que o piso barra é o ponto mais alto de uma
+janela e não um ponto sorteado ao acaso: um percentil de pontos isolados
+deixaria passar quase todo o fundo. Pontos exatamente iguais a zero ficam de
+fora, de modo que um arquivo cujos zeros suprimidos foram restaurados e outro
+cujos zeros não foram dão a mesma resposta.
+
+**(b) A dispersão entre varreduras de uma janela silenciosa.** A janela de meio
+dalton mais silenciosa que não contém pico algum — meio dalton porque é o que a
+busca do precursor alcança de cada lado de um alvo — é extraída ao longo da
+corrida inteira, a mesma janela em cada varredura, e toma-se o desvio padrão da
+sua intensidade somada entre varreduras. Promediar n varreduras divide o ruído
+pela raiz de n, então esse desvio padrão é dividido por ela, e os dois números
+são reportados: o que uma varredura faz e o que a promediação comprou.
+
+O piso é o maior dos dois. Onde nenhum dos dois pode ser medido, as cem
+contagens fixas ficam de pé e o registro diz isso; onde a medida sai **abaixo**
+das cem fixas — que é toda aquisição medida até aqui — a medida é usada e o
+relatório também diz isso, porque uma constante maior do que o espectro que ela
+barra não é margem de segurança.
+
+### O que ele mede
+
+Nove infusões de íons produto de padrões de ácidos biliares num ZenoTOF 7600,
+modo positivo, sem varredura de survey, de 146 a 473 varreduras cada,
+promediadas inteiras:
+
+| | |
+|---|---|
+| pico base da média | 109 – 12.271 contagens |
+| (a), as regiões vazias | 0,068 – 3,53 contagens |
+| (b), a dispersão, escalada para a média | 0,026 – 0,36 contagens |
+| o piso adotado | **0,068 – 3,53 contagens**, (a) em nove de nove |
+| quanto uma varredura dispersava, antes da média | 0,45 – 5,05 contagens |
+| o piso fixo que ele substitui | 100 contagens |
+
+A promediação é onde as duas estimativas se separam. Em
+`CA-d4_TOFMSMS_Mix1`, 473 varreduras, a janela de meio dalton de uma varredura
+se move em 5,05 contagens e a média de 473 delas em 5,05 / √473 = 0,23; as
+regiões vazias dessa mesma média alcançam 0,96. A estimativa (a) só enxerga o
+que sobrou depois da promediação, e a (b) lê a promediação em si — que é por
+que as duas ficam no registro e a maior é adotada.
+
+Doze aquisições cromatográficas como contraste, em outro instrumento e num
+gradiente real: um TripleTOF 5600, o canal de íons produto mais forte de cada
+uma promediado sobre os limites do seu próprio pico maior. Onze das doze são
+medidas, com (a) de 0,69 a 20,1 contagens contra (b) de 0,23 a 3,25 — (a) o
+maior em onze de onze, como era nas infusões. A mais alta delas promedia as
+treze varreduras de um pico de 567.000 contagens e sai em **20,1 contagens**:
+trezentas vezes o piso da infusão mais silenciosa, pela razão simples de que
+uma média de treze varreduras não é uma média de quatrocentas. As cem fixas
+ainda eram cinco vezes rigorosas demais ali.
+
+A décima segunda é onde o recurso de reserva aparece, num arquivo real e não
+num teste. O canal de íons produto mais forte dela tem um pico de 352 contagens
+sobre três varreduras; a média dessas três tem 167 pontos medidos em 412 e
+nenhuma região vazia larga o bastante para medir, então nenhuma das duas
+estimativas pode ser feita e **as cem contagens fixas ficam de pé**, com o
+motivo impresso ao lado. Uma aquisição silenciosa e uma aquisição que não
+contém nada não são a mesma coisa, e só uma das duas ganha uma medida.
+
+### Onde o piso se aplica
+
+- o precursor lido de um espectro promediado de íons produto, no
+  [[infusion-report]] e no [[accurate-precursor]] — uma janela que contém menos
+  que o piso é reportada como pouco demais para medir, com a altura que foi
+  encontrada;
+- a lista de **picos não explicados** do relatório: um pico abaixo do piso é
+  fundo, e não algo que a explicação deixou de dar conta;
+- um registro escrito na sua própria biblioteca a partir de uma infusão, que
+  passa a obedecer ao piso além do seu um por cento do pico base — ver
+  [[spectral-library]];
+- o piso de rótulos do painel de uma infusão, que começa no maior entre os 2% do
+  desenho e o piso de ruído, com a linha de status dizendo qual dos dois foi.
+
+O piso é medido sobre **a mesma média que quem pergunta está olhando**, e é
+por isso que dois deles podem divergir num mesmo arquivo. O painel do Explorer
+promedia a corrida inteira; o [[infusion-report]] promedia o trecho estável do
+spray (*Scans que a pulverização perdeu*, em [[direct-infusion]]), então as
+varreduras que um spray instável contribuiu ficam fora da média dele e também
+fora do piso dele. Nas nove
+infusões os pisos da corrida inteira vão de 0,068 a 3,53 contagens e os do
+relatório de 0,068 a 4,27 — iguais nas seis corridas que a máscara não mexeu,
+e maiores nas três que ela aparou, porque jogar varreduras fora é jogar fora
+parte da promediação. Isso é a resposta estar certa e não os números
+discordarem: um piso que descrevesse um espectro diferente do que foi impresso
+seria o piso errado.
+
+### O que ele não diz
+
+O piso é um número só para um espectro inteiro, e um fundo não é o mesmo em
+toda massa: nas duas aquisições das nove que não contêm nada, as regiões vazias
+são a ponta de massa alta onde o detector não viu nada, então o piso sai em
+0,07 e 0,13 contagens e os picos do fundo químico — uma centena de contagens
+dele — ficam muito acima. **Um pico acima do piso é um pico acima do fundo, não
+o composto.** O que diz se ele é o composto é a sua massa: nesses dois arquivos
+o íon na janela do precursor supera o piso em duas ordens de grandeza e fica a
+43 ppm do precursor escrito, e são as partes por milhão que respondem à
+pergunta.
+
 ## Aceitação
 
 Um critério de aceitação sobre S/N que não pode ser avaliado marca a linha com

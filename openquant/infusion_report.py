@@ -77,9 +77,9 @@ from . import spectra_compare
 from . import unexplained as _unexplained
 from .components import Component
 from .explain import Explanation
-from .infusion import (InfusionVerdict, ScanMask, average_stable, mask_for,
-                       run_range, stable_scans, strongest_channel,
-                       verdict_for)
+from .infusion import (InfusionVerdict, NoiseFloor, ScanMask, average_stable,
+                       format_counts, mask_for, noise_floor_for, run_range,
+                       stable_scans, strongest_channel, verdict_for)
 from .library import PEAK_TOLERANCE_PPM, LibraryHit, match
 from .report import (IMAGE_WIDTH, _escape, _heading, _number, _table,
                      picture_palette, print_document, style_for)
@@ -708,6 +708,10 @@ class InfusionReport:
     #: why there is no survivor, when there is not: a window that held
     #: nothing, or one that held too little to be a measurement
     survivor_note: str = ""
+    #: the noise floor of this average, measured off the acquisition by
+    #: `infusion.noise_floor`. None where it could not be measured at all,
+    #: and `floor` then falls back to the fixed `precursor.MIN_INTENSITY`.
+    noise_floor: NoiseFloor | None = None
     # -- what the survey says about the adduct -------------------------------- #
     #: the formula the adduct was weighed against, labels included
     formula: str = ""
@@ -817,12 +821,37 @@ class InfusionReport:
         trace = self.trace
         return trace.base_peak if trace is not None else None
 
+    @property
+    def floor(self) -> float:
+        """
+        The height below which a peak of this average is noise.
+
+        The measured one where there is a measurement, and the fixed
+        `precursor.MIN_INTENSITY` where there is not. Read defensively: a
+        report built by an older caller carries no measurement and still has
+        to answer.
+        """
+        fixed = _precursor.MIN_INTENSITY
+        value = getattr(self.noise_floor, "value", None)
+        try:
+            return float(value) if value is not None else fixed
+        except (TypeError, ValueError):
+            return fixed
+
     def unexplained(self, most: int = UNEXPLAINED_LISTED
                     ) -> list[tuple[float, float]]:
-        """The intense peaks the explanation does not account for."""
+        """
+        The intense peaks the explanation does not account for.
+
+        Peaks under the measured noise floor are left out rather than listed:
+        an explanation is not answerable for the background, and a list of
+        unexplained noise reads as an explanation that failed.
+        """
         if self.explanation is None:
             return []
-        return self.explanation.unexplained(self.peaks(most=PEAKS_LISTED))[:most]
+        floor = self.floor
+        left = self.explanation.unexplained(self.peaks(most=PEAKS_LISTED))
+        return [p for p in left if float(p[1]) >= floor][:most]
 
     def annotations(self, most: int = UNEXPLAINED_LISTED) -> list:
         """
@@ -985,7 +1014,7 @@ class InfusionReport:
                    if self.written_precursor else "the written precursor")
         measurement = self.measurement
         if measurement is not None and measurement.found:
-            said = [f"Precursor confirmed at {measurement.error_ppm:+.1f} ppm: "
+            said = [f"{_confirms(measurement.error_ppm)}: "
                     f"the survey scan puts {written} at "
                     f"{measurement.measured:.4f}."]
             agreement = measurement.agreement_ppm
@@ -1005,7 +1034,7 @@ class InfusionReport:
             return said
         if self.survivor is not None:
             error = self.error_ppm()
-            return [f"Precursor confirmed at {error:+.1f} ppm in the "
+            return [f"{_confirms(error)} in the "
                     f"product-ion scan itself: {written} survives "
                     f"fragmentation at {self.survivor[0]:.4f}, "
                     f"{self.survivor[1]:,.0f} counts. This acquisition has no "
@@ -1325,6 +1354,19 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
         title=f"{report.title} — averaged over the whole run",
         centroid=centroid, label_floor=label_floor)
 
+    # what the acquisition says is noise, measured off it rather than fixed:
+    # the average of hundreds of scans has neither the units nor the noise of
+    # the single survey scan `precursor.MIN_INTENSITY` was written for. The
+    # spectrum printed here is the one measured, spray mask included, and the
+    # scan count goes with it: what averaging bought is the root of the scans
+    # actually in the average, not of the scans in the range.
+    try:
+        report.noise_floor = noise_floor_for(
+            channel, spectrum=(mz, intensity),
+            scans=report.scans_averaged() or None)
+    except Exception:                       # a reader that cannot say
+        report.noise_floor = None
+
     # the accurate precursor. The survey first, because it is the independent
     # measurement; the averaged product-ion spectrum only where there is no
     # survey to read — nine real infusions to hand have no survey at all.
@@ -1510,38 +1552,47 @@ def _survivor(report: InfusionReport, mz, intensity) -> None:
     """
     The precursor in the averaged product-ion spectrum, where there is one.
 
-    Held to `precursor.MIN_INTENSITY`, the same floor `measure` holds the
-    survey scan to. Without it the window is a stretch of axis like any other
-    and its tallest point is noise: measured on a real CID infusion of cholic
-    acid-d4 at 45 eV, the ±0.25 Da window around the written 430.35 holds 84
-    counts — 1.5% of the base peak — and centroiding them reports the
-    precursor 70 ppm out of place. A precursor that does not survive its own
-    collision energy is an ordinary finding, and saying so is better than
-    measuring what is left.
+    Held to the noise floor **measured off this acquisition**
+    (`infusion.noise_floor`), and to the fixed `precursor.MIN_INTENSITY` only
+    where nothing could be measured. Without a floor the window is a stretch
+    of axis like any other and its tallest point is noise: measured on a real
+    CID infusion of cholic acid-d4 at 45 eV, the ±0.25 Da window around the
+    written 430.35 holds 84 counts and centroiding them reports the precursor
+    70 ppm out of place. With a floor of 100 the same 84 counts are refused
+    — and on that file the measured floor is 0.96 counts, so the 84 are
+    eighty-eight times the background and the refusal was the constant
+    talking, not the acquisition. A precursor that does not survive its own
+    collision energy is still an ordinary finding; which of the two it is now
+    comes from the file.
     """
     target = float(report.written_precursor or 0.0)
     if not target:
         return
-    found = _precursor.in_spectrum(mz, intensity, target)
-    floor = _precursor.MIN_INTENSITY
-    if found is None:
+    floor = report.floor
+    found = _precursor.in_spectrum(mz, intensity, target, floor=floor)
+    if found is not None:
+        report.survivor = found
+        return
+    # nothing cleared the floor: what *was* there is the message, so it is
+    # read again without the gate
+    seen = _precursor.in_spectrum(mz, intensity, target)
+    if seen is None:
         report.survivor_note = (
             f"nothing at all sits within ±{_precursor.SEARCH_WINDOW:g} Da of "
             f"{target:g} in the averaged product-ion spectrum")
         return
-    mass, height = found
-    if height < floor:
-        base = report.base_peak()
-        share = (f", {height / base[1] * 100:.2f}% of the base peak"
-                 if base and base[1] else "")
-        report.survivor_note = (
-            f"too little of the precursor survives this collision energy to "
-            f"measure a mass — at most {height:,.0f} counts{share} within "
-            f"±{_precursor.SEARCH_WINDOW:g} Da of {target:g}, under the "
-            f"{floor:,.0f} counts below which a centroid is noise rather "
-            f"than a measurement")
-        return
-    report.survivor = (mass, height)
+    height = seen[1]
+    base = report.base_peak()
+    share = (f", {height / base[1] * 100:.2f}% of the base peak"
+             if base and base[1] else "")
+    measured = getattr(report.noise_floor, "measured", False)
+    how = ("the measured noise floor of" if measured
+           else "the fixed floor of")
+    report.survivor_note = (
+        f"too little of the precursor survives this collision energy to "
+        f"measure a mass — at most {format_counts(height)} counts{share} "
+        f"within ±{_precursor.SEARCH_WINDOW:g} Da of {target:g}, below "
+        f"{how} {format_counts(floor)} counts")
 
 
 def _compared(report: InfusionReport, mine, other_entry,
@@ -1713,6 +1764,29 @@ def infusions_open(source) -> "list[tuple[SampleEntry, object]]":
 #: of the same ion; a fourth number for the same question would be one too
 #: many. It counts a row for a sentence — nothing is decided on it.
 CONFIRMED_PPM = _precursor.CONSENSUS_SPREAD_PPM
+
+
+def _confirms(error: float | None) -> str:
+    """
+    The opening of the precursor sentence: *confirmed* only within
+    `CONFIRMED_PPM`, and *found but not confirmed* past it.
+
+    The height gate and the mass are two different questions and the noise
+    floor only answers the first. Measuring the floor off the acquisition
+    rather than fixing it at a hundred counts is what made that separation
+    visible: on the real bile-acid infusions four windows that the constant
+    had refused outright now hold a measurable peak, and all four measure
+    −30 to −70 ppm from the written mass. Something is there; it is not the
+    precursor. The summary line already counted a row only within
+    `CONFIRMED_PPM`, so a sentence saying *confirmed* at −70 ppm disagreed
+    with the count above it.
+    """
+    if error is None:
+        return "Precursor confirmed"
+    if abs(error) <= CONFIRMED_PPM:
+        return f"Precursor confirmed at {error:+.1f} ppm"
+    return (f"Precursor found but not confirmed at {error:+.1f} ppm, past "
+            f"the {CONFIRMED_PPM:g} ppm that says the same ion")
 
 #: the library score the summary line counts a record at. Again a figure the
 #: sentence is written with and not a threshold anything passes: a record of
@@ -2590,8 +2664,8 @@ def _precursor_reason(report: InfusionReport) -> str:
     if note.startswith("too little"):
         # the height it did find is the part that fits, and the part worth
         # seeing: the whole sentence is on the report and in the tooltip
-        found = re.search(r"at most ([\d,]+) counts", note)
-        return (f"under {_precursor.MIN_INTENSITY:,.0f} counts"
+        found = re.search(r"at most ([\d,.]+) counts", note)
+        return (f"under {format_counts(report.floor)} counts"
                 if found is None else
                 f"only {found.group(1)} counts survive")
     measurement = report.measurement
@@ -2889,6 +2963,17 @@ def _verdict(report: InfusionReport, breaks: set[str] | None = None) -> str:
     return "".join(parts)
 
 
+def _floor_sentence(report: InfusionReport) -> str:
+    """The noise floor, in one sentence, for the foot of the spectrum."""
+    floor = getattr(report, "noise_floor", None)
+    if floor is None:
+        return ""
+    try:
+        return floor.describe()
+    except Exception:
+        return ""
+
+
 def _mass_axis_block(report: InfusionReport,
                      breaks: set[str] | None = None) -> str:
     """
@@ -3026,7 +3111,8 @@ def _spectrum_block(report: InfusionReport,
              f'so this is the whole of the run. Peaks are labelled at '
              f'{report.label_floor:.2%} of the tallest in view, which is where '
              f'the label floor stood in the Explorer, so the masses printed '
-             f'here are the masses that were on screen.</p>']
+             f'here are the masses that were on screen. '
+             + _escape(_floor_sentence(report)) + '</p>']
     rows = []
     top = base[1] if base else 0.0
     for mz, height in peaks:

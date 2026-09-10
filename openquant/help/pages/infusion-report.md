@@ -53,7 +53,12 @@ they were kept on request, so a document says which average it is of.
 left at, so the masses printed are the masses that were on screen — see
 [[chromatograms-and-spectra]] for the floor and how labels are placed. Under
 it, the twenty-five strongest peaks above that floor with their intensities
-and their share of the base peak.
+and their share of the base peak, and one sentence saying what this
+acquisition's **noise floor** was measured to be — the two estimates, the one
+that was taken and what averaging the run bought. See
+[[signal-to-noise]]; the floor is what the precursor gate, the unexplained
+peaks and a record of your own are all held to, so the number they were held
+to is printed with them rather than left to be guessed at.
 
 **The structural explanation**, when one was run in the [[lipid-maps]] tab —
 a curated record, a drawing of one's own, or a formula and its losses. Every
@@ -114,9 +119,16 @@ naming convention is not a measurement.
 gets no sentence:
 
 - **"Precursor confirmed at +20.7 ppm…"**, or **"Precursor not confirmed:
-  …"** with the reason. A window that holds less than a hundred counts is not
-  a mass: it is reported as too little to measure, with the height that was
-  found, rather than as a centroid taken over noise.
+  …"** with the reason. A window holding less than this acquisition's own
+  measured noise floor is not a mass: it is reported as too little to measure,
+  with the height that was found, rather than as a centroid taken over noise.
+  The floor used to be a hundred counts whatever the instrument had done; it
+  is now measured off the average — 0.068 to 4.27 counts on the nine
+  infusions here — and the sentence names which of the two it refused
+  against. What
+  clears the floor is a peak that is really there; whether it is the compound
+  is the ppm beside it, which is a different question and gets a different
+  number.
 - **"8 of the 56 ions predicted for … were found"** — the denominator is how
   many ions the prediction offered, so the reader can see what the count is a
   share of, and the strongest unexplained peak is named beside it.
@@ -237,7 +249,7 @@ made from the CID run:
 | | CID, 45 eV, 473 scans | EAD, 22 eV, 146 scans |
 |---|---|---|
 | base peak | 359.2870 | 377.3015 |
-| precursor 430.35 in the product-ion spectrum | 84 counts, 1.49% — too little | 430.3489 at 9,415 counts, **+20.7 ppm** |
+| precursor 430.35 in the product-ion spectrum | 430.3196 at 84 counts, 1.49%, **−70.7 ppm** (floor 1.43) | 430.3489 at 9,415 counts, **+20.7 ppm** |
 | ions found, of 56 predicted | 2 — 24.2% of the intensity | 8 — 63.6% |
 | against the CID record | 100 / 100, its own record | **29 / 39**, 22 of 200 peaks |
 | collision energy against the record | same | **22 against 45 eV** |
@@ -270,12 +282,12 @@ head-to-tail pictures that five infusions of one compound make.
 
 | | precursor found | ions of predicted | own record |
 |---|---|---|---|
-| CA-d4 CID 45 eV | 84 counts — too little | 2 of 56 | 100, its own |
+| CA-d4 CID 45 eV | 430.3196, −70.7 ppm, 84 counts | 2 of 56 | 100, its own |
 | CA-d4 EAD 22 eV | 430.3489, **+20.7 ppm** | 8 of 56 | **29** at 45 eV |
 | CA-d4 EAD 12 eV | 430.3488, +20.4 ppm | 3 of 56 | **6** at 45 eV |
-| DCA-d4 CID 40 eV | 33 counts — too little | 3 of 41 | 99, its own |
+| DCA-d4 CID 40 eV | 414.3275, −30.1 ppm, 33 counts | 3 of 41 | 99, its own |
 | DCA-d4 EAD 22 eV | 414.3525, +30.3 ppm | 8 of 41 | **33** at 40 eV |
-| TDCA-d4 CID 30 eV | 504.3273, +14.6 ppm, 124 counts | 5 of 104 | 100, its own |
+| TDCA-d4 CID 30 eV | 504.3273, +14.4 ppm, 123 counts | 5 of 104 | 100, its own |
 | TDCA-d4 EAD 22 eV | 504.3325, +24.9 ppm | 5 of 104 | **61** at 30 eV |
 
 *3 compound(s) in 9 infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm;
@@ -286,9 +298,15 @@ Four things in that table are worth reading rather than skipping:
 - **the two rows not in it.** `CA-d4_TOFMSMS_EAD_12CE_…_TESTEARTIGO` and its
   22 eV twin carry the CA-d4 name and are not CA-d4 acquisitions: their method
   targets **839.56** over 100–1000, their base peak is 839.23, nine and
-  seventeen counts sit in the precursor window, and no record of the library
-  comes within ±0.02 Da of 839.56. Their explanation cell now says the thing
-  outright — *839.56 is none of the adducts of C24H36D4O5 within ±0.05 Da —
+  seventeen counts sit in the precursor window — a hundred and thirty times
+  their measured noise floors of 0.068 and 0.13 counts, so both are now
+  measured, at **−43 ppm** — and no record of the library comes within
+  ±0.02 Da of 839.56. Those two files are also where the floor's own limit
+  shows: their empty regions are the high-mass end of an axis that holds
+  nothing, so the floor is a fifteenth of a count while the chemical
+  background peaks at a hundred, and a peak above the floor is a peak above
+  the background rather than the compound. Their explanation cell now says
+  the thing outright — *839.56 is none of the adducts of C24H36D4O5 within ±0.05 Da —
   closest [M+K]+ at 451.2758* — rather than reporting nought ions of
   thirty-one, which was true and left the reader to work out why. The
   *across 7* in the line above is those two rows: an infusion nothing was
@@ -299,14 +317,29 @@ Four things in that table are worth reading rather than skipping:
   never anything but a proposal. The *Isolated* column now says it before
   anything is measured, and what the two files actually are is the section
   *When the name and the method disagree*, below.
-- **the precursor survives the soft activations and not the hard ones.** Every
-  EAD run measured its precursor; two of the three CID runs had too little
-  left to call a mass. That is an ordinary finding about collision energy, and
-  the cell says *only 84 counts survive* rather than reporting a centroid over
-  noise.
-- **the errors are all the same sign**, +14.6 to +30.3 ppm. One of them,
-  DCA-d4 at +30.3, is past the 25 ppm the line counts and is on the page all
-  the same: the count is a sentence, not a verdict.
+- **the precursor survives the soft activations, and what is left of it under
+  the hard ones is not the precursor.** Every EAD run of a compound measured
+  its precursor, at +20.4 to +30.3 ppm. The three CID runs each hold something
+  in the window too — 84, 33 and 123 counts — and against a fixed floor of a
+  hundred the first two were refused as *too little to measure*. Against the
+  floor this acquisition actually has, 1.43 and 0.75 counts, they are 59 and
+  45 times the background and plainly there; so they are measured, and they
+  come out at **−70.7 and −30.1 ppm**, which is 0.030 and 0.012 Da from the
+  written mass. The height says a peak is there and the ppm says it is not the
+  precursor, and the sentence on those rows now reads **"Precursor found but
+  not confirmed at −70.7 ppm, past the 25 ppm that says the same ion"** —
+  *confirmed* is a claim about identity and the summary line always reserved
+  it for 25 ppm, so the sentence had to stop where the count does. Measuring
+  four more precursors this way therefore added **none** to the four within
+  25 ppm: the count on the summary line is unchanged, and what changed is
+  that the page now says what is in the window instead of refusing to look.
+- **the confirmed errors are all the same sign**, +14.4 to +24.9 ppm — and
+  the two the measured floor newly let through in this table are the other
+  one, −30.1 and −70.7 (and the two rows not in it, −43), which is a second
+  reason to read them as something in the window rather than as the
+  precursor. One of the positives, DCA-d4 at +30.3, is past the 25 ppm the
+  line counts and is on the page all the same: the count is a sentence, not
+  a verdict.
 - **a formula finds two to eight ions, and which ones depends on the
   activation.** A formula offers the precursor, the form its fragments carry
   and their neutral losses, and nothing else; the rest of these spectra is
@@ -437,7 +470,7 @@ library and the three formulas as a components CSV: **9 files read, nothing
 skipped, one 48-page PDF in 32 s** on an otherwise idle machine at 890 MB
 peak memory; `--per-compound` gives three documents, 46 pages, 28.0 s. Every row is the one the Infusions
 tab measured with the nine files open — 2 of 56 ions under CID and 8 of 56
-under EAD for CA-d4, 29 and 6 and 61 against the own records, +14.6 to
+under EAD for CA-d4, 29 and 6 and 61 against the own records, +14.4 to
 +30.3 ppm where the precursor survived — which is the point: the folder route
 and the open-batch route are the same measurement, and they agree to the
 digit.

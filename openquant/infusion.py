@@ -266,6 +266,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .processing import (NOISE_PEAK_RELATIVE, SpectrumNoise, quiet_window,
+                         spectrum_noise)
+
 #: how much of a run has to sit at or above half its maximum total ion current
 #: before it is called flat. Measured on both populations: the worst
 #: chromatographic acquisition reaches 0.1167 on the smaller of the two
@@ -789,6 +792,401 @@ def is_infusion(sample) -> InfusionVerdict:
         f"but its strongest channel is not ({channel_flat * 100:.0f}%, {limit} "
         f"needed) — peaks at different times, not an infusion",
         **figures)
+
+
+# --------------------------------------------------------------------------- #
+# the noise floor of the average
+# --------------------------------------------------------------------------- #
+#: how wide the quiet mass window of the second estimate is. The same stretch
+#: `precursor.SEARCH_WINDOW` reaches either side of a target, because that is
+#: the window the floor is applied in: `precursor.in_spectrum` takes the
+#: tallest point within +-0.25 Da, and what the second estimate answers is how
+#: much such a window scatters between scans where there is nothing in it.
+QUIET_WINDOW_DA = 0.5
+
+
+def format_counts(value: float) -> str:
+    """
+    An intensity for a sentence, at three figures and never in exponent form.
+
+    A measured floor spans four orders of magnitude across the acquisitions
+    to hand — 0.06 counts on one infusion and 10 on a chromatographic average
+    — and `%g` writes the big end as `1e+03`, which nobody reads as a number
+    of counts.
+    """
+    value = float(value)
+    if value >= 100:
+        return f"{value:,.0f}"
+    if value >= 1:
+        return f"{value:,.2f}"
+    return f"{value:.3g}"
+
+
+def _fixed_floor() -> float:
+    """
+    The floor used when nothing can be measured: `precursor.MIN_INTENSITY`,
+    imported where it is needed rather than at the top of the module, since
+    `precursor` imports this one.
+    """
+    from .precursor import MIN_INTENSITY
+    return float(MIN_INTENSITY)
+
+
+@dataclass(frozen=True)
+class NoiseFloor:
+    """
+    The intensity below which a centroid of an averaged spectrum is noise,
+    measured from the acquisition, with both estimates on the record.
+    """
+
+    #: the floor itself, in the intensity units of the averaged spectrum
+    value: float
+    #: (a) the empty mass regions of the averaged spectrum
+    empty: SpectrumNoise | None = None
+    #: (b) the scan-to-scan scatter of a quiet window, scaled to the average
+    scatter: float | None = None
+    #: (b) before it was scaled: the standard deviation between single scans
+    per_scan: float | None = None
+    #: the quiet window (b) was measured over
+    window: tuple[float, float] | None = None
+    #: how many scans went into the average
+    scans: int = 0
+    #: how many scans the scan-to-scan standard deviation was taken over —
+    #: the whole run, which on an infusion is the same number
+    run_scans: int = 0
+    #: the base peak of the averaged spectrum, for a floor as a fraction
+    base_peak: float = 0.0
+    #: the fixed floor this is measured against
+    fixed: float = 100.0
+    #: False when nothing could be measured and `fixed` was taken instead
+    measured: bool = False
+    note: str = ""
+
+    @property
+    def gain(self) -> float:
+        """What averaging bought: noise falls as the root of the count."""
+        return float(np.sqrt(self.scans)) if self.scans > 0 else 1.0
+
+    @property
+    def from_empty(self) -> float | None:
+        """
+        (a), the figure the floor may be taken from: the height a noise
+        *peak* of the empty regions reaches, not the height one of their
+        points reaches. `SpectrumNoise.p99` is on the record beside it.
+        """
+        return None if self.empty is None else self.empty.peak_p99
+
+    @property
+    def basis(self) -> str:
+        """Which of the two estimates the floor was taken from."""
+        if not self.measured:
+            return "not measured"
+        empty = self.from_empty
+        if empty is not None and self.scatter is not None:
+            return ("the empty regions of the average"
+                    if empty >= self.scatter else
+                    "the scan-to-scan scatter of a quiet window")
+        if empty is not None:
+            return "the empty regions of the average"
+        return "the scan-to-scan scatter of a quiet window"
+
+    @property
+    def relative(self) -> float | None:
+        """The floor as a fraction of the base peak."""
+        if self.base_peak <= 0:
+            return None
+        return self.value / self.base_peak
+
+    @property
+    def quieter_than_fixed(self) -> bool:
+        """The instrument is quieter than the constant that stood here."""
+        return self.measured and self.value < self.fixed
+
+    def describe(self) -> str:
+        """One sentence: the two estimates, the choice, and what n bought."""
+        if not self.measured:
+            return (f"the noise floor could not be measured"
+                    f"{f' ({self.note})' if self.note else ''}, so the fixed "
+                    f"{format_counts(self.fixed)} counts stands")
+        bits = []
+        if self.empty is not None:
+            bits.append(f"the empty mass regions of the average reach "
+                        f"{format_counts(self.empty.peak_p99)} counts at the "
+                        f"99th percentile of their {self.empty.maxima:,} "
+                        f"peaks (their {self.empty.points:,} points sit at a "
+                        f"median {format_counts(self.empty.median)}, MAD "
+                        f"{format_counts(self.empty.mad)}, 99th percentile "
+                        f"{format_counts(self.empty.p99)})")
+        if self.scatter is not None and self.window is not None:
+            bits.append(f"m/z {self.window[0]:,.1f}–{self.window[1]:,.1f} "
+                        f"scatters by {format_counts(self.per_scan)} counts "
+                        f"between single scans over {self.run_scans:,} of "
+                        f"them, which {self.scans:,} scans averaged divides "
+                        f"by {self.gain:,.1f} to "
+                        f"{format_counts(self.scatter)}")
+        said = (f"Measured noise floor {format_counts(self.value)} counts, "
+                f"from {self.basis}: " + "; ".join(bits) + ".")
+        if self.quieter_than_fixed:
+            said += (f" That is under the fixed "
+                     f"{format_counts(self.fixed)} counts this used to be "
+                     f"held to — the acquisition is quieter than the "
+                     f"constant, so the measurement stands.")
+        return said
+
+
+def noise_floor(channel, rt0: float | None = None, rt1: float | None = None,
+                min_relative: float = NOISE_PEAK_RELATIVE,
+                width: float = QUIET_WINDOW_DA,
+                spectrum: tuple | None = None,
+                scans: int | None = None) -> NoiseFloor:
+    """
+    The noise floor of an infusion's averaged spectrum, measured two ways.
+
+    A fixed floor is a guess about an instrument. `precursor.MIN_INTENSITY`
+    is 100 counts and it was written for a survey scan of a chromatographic
+    run — one scan, on a TripleTOF. An infusion's spectrum is the
+    average of every scan of the run, and an average has neither the units
+    nor the noise of one scan.
+
+    So it is measured, from the acquisition itself, two ways that fail
+    differently. Both are reported and the larger is taken.
+
+    **(a) The empty mass regions of the averaged profile spectrum.** Every
+    centroid at or above `min_relative` of the base peak is found and half a
+    dalton either side of it set aside (`processing.NOISE_EXCLUDE_DA`); what
+    is left is between the isotope clusters and away from every peak. The
+    median, the median absolute deviation and the 99th percentile of the
+    measured points there describe the background, and the 99th percentile
+    of the *local maxima* among them is the height a noise peak reaches —
+    which is the one the floor is taken from, since what it gates is the
+    tallest point of a window and not a point drawn at random. Both are on
+    the record. Points of exactly zero are left out, so a reader that
+    restores a vendor's stripped zeros and one that does not give the same
+    answer.
+
+    **(b) The scan-to-scan scatter of a quiet mass window.** The quietest
+    window `width` wide that holds no peak at all is extracted over the whole
+    run — the same window in every scan — and the standard
+    deviation of its summed intensity taken between scans. Averaging n scans
+    divides noise by the root of n, so that standard deviation is divided by
+    it in turn; the record keeps both numbers, because what n bought is the
+    interesting half. (a) can only see what is left after averaging; (b)
+    reads the averaging itself.
+
+    The floor is never invented: where neither estimate can be made the
+    record says so and carries `precursor.MIN_INTENSITY`, which is what
+    stood here before. Where the measurement comes out under that constant
+    the measurement is used and `quieter_than_fixed` says so.
+
+    Measured
+    --------
+
+    The nine ZenoTOF 7600 bile-acid infusions (positive, one product-ion
+    channel each, no survey scan), each averaged over its whole run. `n` is
+    the scans averaged, and every intensity is in the units of that average:
+
+    | acquisition | n | base peak | (a) | (b) | floor |
+    |---|---|---|---|---|---|
+    | `CA-d4_…12CE…TESTEARTIGO` | 294 | 109 | 0.068 | 0.026 | **0.068** |
+    | `CA-d4_…12CE…mix1` | 244 | 12,271 | 3.53 | 0.130 | **3.53** |
+    | `CA-d4_…22CE…TESTEARTIGO` | 311 | 234 | 0.129 | 0.040 | **0.129** |
+    | `CA-d4_…22CE…mix1` | 146 | 9,618 | 3.12 | 0.357 | **3.12** |
+    | `CA-d4_Mix1` CID 45 eV | 473 | 5,673 | 0.962 | 0.232 | **0.962** |
+    | `DCA-d4_…22CE…mix1` | 473 | 9,151 | 2.67 | 0.179 | **2.67** |
+    | `DCA-d4_Mix1` CID 40 eV | 473 | 3,109 | 0.583 | 0.172 | **0.583** |
+    | `TDCA-d4_…22CE…mix1` | 468 | 5,235 | 1.47 | 0.111 | **1.47** |
+    | `TDCA-d4_Mix1` CID 30 eV | 257 | 9,044 | 2.45 | 0.253 | **2.45** |
+
+    **(a) is the larger on nine of nine**, by 2.6 to 27 times, so
+    the choice never fell to (b) on these files — but (b) is what says the
+    averaging worked: one scan's window scatters by 0.45 to 5.05 counts and
+    the average of 146 to 473 of them by 0.026 to 0.36, a factor of 12 to 22,
+    which is the root of n to within the width of the estimate. The two
+    percentiles of (a) agree on six of the nine and differ on three, most
+    where the background is nearly all of the spectrum: peaks 0.068 against
+    points 0.058, 0.129 against 0.119, and 0.583 against 0.570.
+
+    Against the fixed 100 counts, every one of the nine is quieter — by a
+    factor of 28 on the loudest and 1,500 on the quietest. The floor decides
+    the precursor read off the average, and there it moves **four** of the
+    nine from *too little to measure* to a measurement: 84 counts on
+    `CA-d4_Mix1` is 88 times its floor, and 33 on `DCA-d4_Mix1` is 57 times
+    its own. What those four then measure is a different matter and not this
+    function's:
+    they come out at −30 to −70 ppm from the written precursor and none of
+    them joins the four already inside 25 ppm. The height says a peak is
+    there; the mass says whether it is the compound.
+
+    Twelve chromatographic acquisitions for contrast, on a different
+    instrument and a real gradient: a TripleTOF 5600, 81 channels each, the
+    strongest product-ion channel of every one averaged over the boundaries
+    of its own largest peak — 3 to 67 scans, peaks of 352 to 590,000 counts.
+    Eleven of the twelve are measured, at (a) 0.69 to 20.1 counts against (b)
+    0.23 to 3.25, **(a) the larger on eleven of eleven** as it was on the
+    infusions, so the floor is 0.69 to 20.1. The loudest of them,
+    `260904_…5E_003` on `TOF PI 325.20 -> 50-330, CE -45`, averages the 13
+    scans of a peak 567,000 counts tall and comes out at **20.1 counts** —
+    three hundred times the quietest infusion's, because thirteen scans
+    averaged is not four hundred, and the fixed 100 was still five times too
+    strict.
+
+    The twelfth is the fallback firing on real data rather than in a test.
+    `260903_…Cal001`'s strongest product channel holds a peak of 352 counts
+    over three scans; the average of those three has 167 measured points in
+    412 and no empty region wide enough to measure in, so neither estimate
+    can be made, `measured` is False, and the fixed 100 counts stands with
+    the reason on the record. A quiet acquisition and an acquisition with
+    nothing in it are not the same thing, and only one of them gets a
+    measurement.
+
+    The limit, stated rather than fixed: this is one number for a whole
+    spectrum and a background is not the same at every mass. On the two
+    acquisitions of the nine that hold nothing at all, the empty regions are
+    the high-mass end where the detector saw nothing, so the floor lands at
+    0.068 and 0.129 counts while the chemical background peaks at a hundred
+    — and a peak above this floor is a peak above the background, which is
+    not the same claim as a peak that is the compound.
+
+    It costs one averaged spectrum and one extracted chromatogram: 0.5 to
+    1.7 s a file on those nine, opening included, and `noise_floor_for` remembers it per
+    channel so the pane, the report and a record written from the spectrum
+    pay for it once.
+
+    `spectrum` is `(mz, intensity)` when the caller already holds the
+    average — the report and the Explorer both do, and reading a quarter of
+    a million profile points again costs seconds. The chromatogram of the
+    quiet window is still read from the channel: it is the run scan by scan,
+    which no averaged spectrum carries.
+
+    `scans` is how many scans that handed-in average was taken over, where
+    it is not simply every scan of the range. The report averages the stable
+    stretch of the spray and leaves the rest out, so counting the range would
+    divide (b) by the root of a number of scans the spectrum does not
+    contain. It changes only what (b) says and what `describe` prints, since
+    (a) has been the larger on every acquisition measured — but a sentence
+    reading "473 scans averaged" under a spectrum averaged from 400 of them
+    would be false, and the estimate would be optimistic by the ratio of the
+    roots.
+    """
+    fixed = _fixed_floor()
+    window = None
+    if rt0 is None or rt1 is None:
+        window = run_range(channel)
+        if window is None:
+            return NoiseFloor(value=fixed, fixed=fixed,
+                              note="the channel has no scans")
+        rt0, rt1 = window
+    if spectrum is not None:
+        mz, intensity = spectrum[0], spectrum[1]
+    else:
+        try:
+            mz, intensity = channel.spectrum_rt_range(float(rt0), float(rt1))
+        except Exception as exc:
+            first = str(exc).strip().splitlines()
+            name = first[0] if first else type(exc).__name__
+            return NoiseFloor(
+                value=fixed, fixed=fixed,
+                note=f"the spectrum could not be read: {name}")
+    mz = np.asarray(mz, dtype=float)
+    intensity = np.asarray(intensity, dtype=float)
+    base = float(intensity.max()) if intensity.size else 0.0
+    scans = (int(scans) if scans is not None
+             else _scans_between(channel, float(rt0), float(rt1)))
+
+    empty = spectrum_noise(mz, intensity, min_relative=min_relative)
+    quiet = quiet_window(mz, intensity, width, min_relative=min_relative)
+    scatter = per_scan = None
+    run_scans = 0
+    if quiet is not None:
+        scatter, per_scan, run_scans = _window_scatter(channel, quiet, scans)
+
+    candidates = [v for v in (None if empty is None else empty.peak_p99,
+                              scatter)
+                  if v is not None and v > 0]
+    if not candidates:
+        return NoiseFloor(
+            value=fixed, empty=empty, scatter=scatter, per_scan=per_scan,
+            window=quiet, scans=scans, run_scans=run_scans, base_peak=base,
+            fixed=fixed,
+            note="neither estimate could be made: the spectrum has no empty "
+                 "region wide enough to measure in")
+    return NoiseFloor(
+        value=max(candidates), empty=empty, scatter=scatter,
+        per_scan=per_scan, window=quiet, scans=scans, run_scans=run_scans,
+        base_peak=base, fixed=fixed, measured=True)
+
+
+def _scans_between(channel, rt0: float, rt1: float) -> int:
+    """How many scans the average was taken over."""
+    try:
+        times = np.asarray(channel.rt, dtype=float)
+    except Exception:
+        return 0
+    if times.size == 0:
+        return 0
+    lo, hi = sorted((rt0, rt1))
+    return int(((times >= lo) & (times <= hi)).sum())
+
+
+def _window_scatter(channel, window: tuple[float, float], scans: int):
+    """
+    How much a quiet window's summed intensity moves between scans, and what
+    that becomes in an average of `scans` of them.
+
+    The standard deviation is taken over **every scan of the run**, not over
+    the scans that went into the average, and the division is by the root of
+    the number averaged. The two are the same thing on an infusion, where the
+    average is the whole run. They are not on a chromatographic average over
+    a peak, and there the whole run is the better sample: a window chosen for
+    holding no peak holds none all run, and six scans measure a standard
+    deviation badly. The count the standard deviation was taken over comes
+    back, so the record can say which was which.
+    """
+    try:
+        _x, y = channel.xic_range(window[0], window[1])
+    except Exception:
+        return None, None, 0
+    y = np.asarray(y, dtype=float)
+    if y.size < 3:
+        return None, None, int(y.size)
+    per_scan = float(np.std(y, ddof=1))
+    averaged = max(int(scans), 1)
+    if per_scan <= 0:
+        return None, per_scan, int(y.size)
+    return per_scan / float(np.sqrt(averaged)), per_scan, int(y.size)
+
+
+#: floors already measured, by channel, so that the report, the pane and the
+#: record written from it pay for the average once. Weak, like the verdicts.
+_FLOORS: "weakref.WeakKeyDictionary[object, NoiseFloor]" = (
+    weakref.WeakKeyDictionary())
+
+
+def noise_floor_for(channel, spectrum: tuple | None = None,
+                    scans: int | None = None) -> NoiseFloor:
+    """
+    `noise_floor` over the whole run, measured once per channel.
+
+    A spectrum handed in is measured and **not** remembered: what the caller
+    holds may be background-subtracted or recalibrated, and a floor measured
+    off one pane's conditioning is not the channel's own.
+    """
+    if channel is None:
+        return NoiseFloor(value=_fixed_floor(), fixed=_fixed_floor(),
+                          note="no channel")
+    if spectrum is not None:
+        return noise_floor(channel, spectrum=spectrum, scans=scans)
+    try:
+        floor = _FLOORS.get(channel)
+    except TypeError:
+        return noise_floor(channel)
+    if floor is None:
+        floor = noise_floor(channel)
+        try:
+            _FLOORS[channel] = floor
+        except TypeError:
+            pass
+    return floor
 
 
 #: verdicts already reached, by sample, so that the tree — rebuilt on every

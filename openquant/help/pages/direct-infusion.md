@@ -413,6 +413,29 @@ to: it reads names and never opens a file, by design — see
 method and never at an acquisition. The disagreement is between a file name
 and a file, so the place to find it is where files are opened.
 
+## The noise floor of the average
+
+An infusion's spectrum is the average of every scan of the run, and how much
+of it is background is a property of that acquisition rather than a constant.
+It is measured, from the file, as soon as an infusion is opened: the empty
+mass regions of the average on one side, and the scan-to-scan scatter of a
+quiet half-dalton window scaled for the number of scans averaged on the other,
+the larger of the two taken. On the nine bile-acid infusions it comes out
+between **0.068 and 3.53 counts**, where the fixed floor it replaces was a
+hundred; on one of them a hundred counts was almost the whole spectrum, whose
+base peak is 109. [[signal-to-noise]] has the two methods and what they
+measured.
+
+Two things follow it in the Explorer. The **label floor** of an infusion pane
+starts at the higher of the drawing's 2% of the tallest peak in view and the
+noise floor as a share of the base peak, and the status line says which of the
+two it was and what the floor was measured to be — on all nine real infusions
+the noise floor is between 0.017% and 0.063% of the base peak, so two per cent
+wins every time and the rule is a guard rather than a change. And a record
+written to a library of your own from an infusion is held to the floor as well
+as to its one per cent of the base peak, so the record cannot carry peaks that
+were background.
+
 ## Putting one on paper
 
 **Process ▸ Report this infusion…** writes the averaged spectrum, its peaks,

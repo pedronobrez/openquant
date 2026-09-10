@@ -1020,7 +1020,8 @@ def entry_from_spectrum(name: str, mz, intensity, precursor: float | None = None
                         comment: str = "", acquired: str = "",
                         isotopic_purity: str = "",
                         min_relative: float = OWN_MIN_RELATIVE,
-                        max_peaks: int = OWN_MAX_PEAKS) -> LibraryEntry:
+                        max_peaks: int = OWN_MAX_PEAKS,
+                        min_absolute: float | None = None) -> LibraryEntry:
     """
     A record built from a measured spectrum.
 
@@ -1036,6 +1037,13 @@ def entry_from_spectrum(name: str, mz, intensity, precursor: float | None = None
     `max_peaks` of what survives is kept, strongest first. Intensities are
     stored relative to the base peak, as every library format holds them and
     as `parse_msp` reads them back.
+
+    `min_absolute` is a second floor, in the spectrum's own units, and both
+    have to be cleared. A relative floor alone says nothing about whether a
+    peak was measured: an infusion whose base peak is a hundred counts admits
+    at 1% everything down to one count, which on that acquisition is the
+    background. `infusion.noise_floor` measures what that is, and the
+    Explorer hands it in for a record made off an infusion.
 
     Two fields go in beyond what the analyst types, because a record read
     back later as a history of one standard needs them and nothing can
@@ -1064,7 +1072,10 @@ def entry_from_spectrum(name: str, mz, intensity, precursor: float | None = None
     top = float(intensity.max()) if intensity.size else 0.0
     if top <= 0:
         raise ValueError("the spectrum has no peaks to write")
-    keep = np.flatnonzero(intensity >= min_relative * top)
+    floor = min_relative * top
+    if min_absolute is not None:
+        floor = max(floor, float(min_absolute))
+    keep = np.flatnonzero(intensity >= floor)
     if keep.size > max_peaks:
         keep = keep[np.argsort(-intensity[keep])[:max_peaks]]
     keep = keep[np.argsort(mz[keep])]

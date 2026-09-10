@@ -97,6 +97,8 @@ openquant/
   api.py          the stable Python surface, imported lazily
   explain_any.py  one Explain: name, LIPID MAPS, formula and drawing
                   ranked alike, every route listed
+  energy.py       which collision energy for identification, for
+                  quantitation, for a record — three answers with reasons
   audit.py        the trail of hand edits saved with the project
   labels.py       which peaks get a label: a budget per region of the
                   visible axis, shared by the pane and the print
@@ -1007,6 +1009,20 @@ UV detector, is not implemented there) — untested on real Windows.
   EAD spectrum from 4,030 predicted masses — hence the *Ions* column. The
   label count is per route: PubChem's drawing places its four labels and
   needs none, the component table's `C24H40O5` needs all four.
+- **Three purposes do not want the same collision energy, and the highest
+  explained share is a trap.** `energy.recommend` groups a tray's infusions
+  by compound, activation and energy and picks separately for
+  identification (most predicted ions *and* a precursor above
+  `MIN_INTENSITY`), for quantitation (the largest share on one fragment,
+  repeating within `qc.OUT_PERCENT` where sprayed twice) and for a library
+  record (the middle *position* among the energies, then the share). On
+  the nine bile-acid infusions EAD 22 eV takes all three for CA-d4 and
+  DCA-d4; TDCA-d4 splits — EAD 22 eV identifies it, 30 eV quantifies it at
+  63% of the intensity on 468.3071. The library rule takes the middle
+  first because the share is highest where the compound barely fragmented
+  (85.0% at EAD 12 eV against 63.6% at 22, the surviving precursor being
+  82% of that spectrum). Nothing between two measured energies is offered;
+  a row the method contradicts is shown, greyed, never recommended.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

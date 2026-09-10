@@ -7,6 +7,7 @@ double hyphen in a comment as "not a valid source file". These read them here
 instead.
 """
 
+import os
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -93,7 +94,8 @@ def test_the_linux_launcher_entry_is_complete_and_travels_with_the_tarball():
     assert keys["Type"] == "Application" and keys["Name"] == "OpenQuant"
     assert keys["Exec"].startswith("INSTALLDIR/OpenQuant") and keys["Icon"] == "openquant"
     install = LINUX / "install.sh"
-    assert install.stat().st_mode & 0o111, "install.sh is not executable"
+    if os.name != "nt":   # Windows has no execute bit; git carries the mode
+        assert install.stat().st_mode & 0o111, "install.sh is not executable"
     script = install.read_text()
     assert "INSTALLDIR" in script and "openquant.png" in script and "--remove" in script
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()

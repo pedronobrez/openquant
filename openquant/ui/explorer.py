@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import os
+from dataclasses import replace
 
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
@@ -23,6 +24,7 @@ from ..processing import (centroid_spectrum, detect_peaks, integrate,
                           signal_to_noise)
 from ..samples import SampleEntry
 from ..session import Session
+from ..spectra_compare import SpectrumRecipe
 from ..wiff import Channel
 from .chrom_area import ChromatogramArea
 from .component_list import ComponentListPanel
@@ -122,6 +124,10 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.active_ref: ChannelRef | None = None
         self.current_scan: int = 0
         self._background_cache: dict[tuple, tuple[np.ndarray, np.ndarray]] = {}
+        #: how the spectrum on screen was made — set by `_show_scan` and
+        #: `_show_average`, which are the only two things that draw one, and
+        #: copied onto a pin so the project can say where it came from
+        self._live_recipe: SpectrumRecipe | None = None
 
         self.chrom = ChromatogramArea()
         self.contour_view = ContourView()
@@ -134,6 +140,11 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self._restore_settings()
         self.session.sigSamplesChanged.connect(self.rebuild_tree)
         self.session.sigMethodChanged.connect(self._refresh_components)
+        # the project saves what this pane is showing, and puts it back when
+        # it is opened. The hook is set here rather than by the window, so
+        # that every path that saves a project saves the view with it
+        self.session.sigViewRestored.connect(self.restore_view)
+        self.session.view_source = self.view_state
         self._update_status("Open a .wiff or .mzML file to start.")
 
     # ------------------------------------------------------------------ UI -- #
@@ -941,7 +952,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             return
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
         try:
-            self._show_average(*window,
+            self._show_average(*window, whole_run=True,
                                tag=" (infusion)" if self.verdict(ref.entry) else "")
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
@@ -998,6 +1009,12 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.active_ref = None
         self._background_cache.clear()
         self._contour_cache.clear()
+        # a pin points at a channel of a file that is about to be closed,
+        # and its recipe at a sample that is about to be gone
+        self._pinned = []
+        self._live_recipe = None
+        self.act_unpin.setEnabled(False)
+        self.act_exp_cmp.setEnabled(False)
         self.tree.clear()
         self.xic_list.clear()
         self.active_combo.clear()
@@ -1325,8 +1342,14 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                 "new spectra come out with it subtracted."
             )
 
-    def _background_spectrum(self, channel: Channel):
-        window = self.chrom.background_range()
+    def _background_spectrum(self, channel: Channel, window=None):
+        """The blank to subtract: the pane's window, or one asked for.
+
+        A pin carries the window it was made with, so restoring one has to
+        be able to say which blank rather than take whatever the
+        chromatogram is set to now.
+        """
+        window = window if window is not None else self.chrom.background_range()
         if window is None:
             return None
         key = (id(channel), round(window[0], 5), round(window[1], 5))
@@ -1335,13 +1358,14 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         return self._background_cache[key]
 
     def _apply_background(self, channel: Channel, mz: np.ndarray,
-                          intensity: np.ndarray) -> tuple[np.ndarray, bool]:
+                          intensity: np.ndarray,
+                          window=None) -> tuple[np.ndarray, bool]:
         """
         Subtract the average blank spectrum. In profile data the m/z grids of
         the spectrum and of the blank do not line up, so the blank is
         interpolated onto the spectrum's grid before subtraction.
         """
-        background = self._background_spectrum(channel)
+        background = self._background_spectrum(channel, window)
         if background is None:
             return intensity, False
         bmz, bi = background
@@ -1351,7 +1375,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         return np.clip(intensity - interpolated, 0.0, None), True
 
     # ---------------------------------------------------------------- spectrum #
-    def _recalibrate_mz(self, mz):
+    def _recalibrate_mz(self, mz, entry: SampleEntry | None = None):
         """
         The spectrum's m/z axis with this injection's correction applied.
 
@@ -1359,7 +1383,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         a mass axis that has been moved and does not admit it is the one thing
         worse than a mass axis that is wrong.
         """
-        entry = self.active_ref.entry if self.active_ref else None
+        if entry is None:
+            entry = self.active_ref.entry if self.active_ref else None
         correction = (self.session.correction_for(entry.key)
                       if entry is not None else None)
         if correction is None or mz.size == 0:
@@ -1367,6 +1392,32 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         middle = float(np.median(mz))
         return (correction.apply(mz),
                 f" · recalibrated {float(correction.ppm_at(middle)):+.1f} ppm")
+
+    def _recipe(self, channel, scan: int | None = None,
+                rt0: float | None = None, rt1: float | None = None,
+                whole_run: bool = False, subtracted: bool = False,
+                label: str = "", colour: str = "") -> SpectrumRecipe:
+        """
+        How the spectrum being drawn was made.
+
+        Kept beside the trace rather than derived afterwards: by the time a
+        spectrum is pinned the pane has only its points and its title, and
+        neither says which scan of which channel of which sample they came
+        from. The background window goes in only when it actually changed
+        the spectrum — a window set on the chromatogram after the fact would
+        otherwise be recorded as though it had been subtracted.
+        """
+        entry = self.active_ref.entry if self.active_ref else None
+        window = self.chrom.background_range() if subtracted else None
+        return SpectrumRecipe(
+            sample_key=entry.key if entry is not None else "",
+            channel=getattr(channel, "index", None),
+            scan=None if scan is None else int(scan),
+            rt0=None if rt0 is None else float(rt0),
+            rt1=None if rt1 is None else float(rt1),
+            whole_run=bool(whole_run),
+            background=(float(window[0]), float(window[1])) if window else None,
+            label=label, colour=colour)
 
     def _show_scan(self, scan: int) -> None:
         channel = self.active_ref.channel if self.active_ref else None
@@ -1381,15 +1432,21 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         intensity, subtracted = self._apply_background(channel, mz, intensity)
         rt = channel.rt_at_scan(self.current_scan)
         mz, recalibrated = self._recalibrate_mz(mz)
-        self.spectrum.set_traces(self._with_pins(
-            Trace("spec", "spectrum", mz, intensity, "#1f77b4", channel)))
-        self.spectrum.autoscale()
-        self.spectrum.set_title(
+        title = (
             f"{self.active_ref.label} · scan {self.current_scan + 1}"
             f"/{channel.info.n_scans} · RT {rt:.3f} min"
             + (" · background subtracted" if subtracted else "")
             + recalibrated
         )
+        # the title is the recipe's label, so a pin made from this spectrum
+        # carries the same words in the legend as the pane had over it
+        self._live_recipe = self._recipe(channel, scan=self.current_scan,
+                                         subtracted=subtracted, label=title)
+        self.spectrum.set_traces(self._with_pins(
+            Trace("spec", "spectrum", mz, intensity, "#1f77b4", channel,
+                  self._live_recipe)))
+        self.spectrum.autoscale()
+        self.spectrum.set_title(title)
         self.scan_spin.blockSignals(True)
         self.scan_spin.setValue(self.current_scan + 1)
         self.scan_spin.blockSignals(False)
@@ -1399,7 +1456,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self._fill_peak_table()
 
     def _show_average(self, rt0: float, rt1: float, live: bool = False,
-                      tag: str = "") -> None:
+                      tag: str = "", whole_run: bool = False) -> None:
         channel = self.active_ref.channel if self.active_ref else None
         if channel is None:
             return
@@ -1411,20 +1468,25 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         intensity, subtracted = self._apply_background(channel, mz, intensity)
         first, last = channel.scans_in_range(rt0, rt1)
         mz, recalibrated = self._recalibrate_mz(mz)
-        self.spectrum.set_traces(self._with_pins(
-            Trace("spec", "average spectrum", mz, intensity, "#d62728", channel)))
-        if not live:
-            self.spectrum.autoscale()
         # the scan numbers are what says which part of the run was taken;
         # a whole-run average has no other part to be told from, so the tag
         # replaces them rather than sitting beside them
         scans = f" ({first + 1}–{last + 1})" if not tag else ""
-        self.spectrum.set_title(
+        title = (
             f"{self.active_ref.label} · average of {last - first + 1} "
             f"scans{tag}{scans} · RT {min(rt0, rt1):.3f}–{max(rt0, rt1):.3f} min"
             + (" · background subtracted" if subtracted else "")
             + recalibrated
         )
+        self._live_recipe = self._recipe(
+            channel, rt0=rt0, rt1=rt1, whole_run=whole_run,
+            subtracted=subtracted, label=title)
+        self.spectrum.set_traces(self._with_pins(
+            Trace("spec", "average spectrum", mz, intensity, "#d62728", channel,
+                  self._live_recipe)))
+        if not live:
+            self.spectrum.autoscale()
+        self.spectrum.set_title(title)
         self.rt_label.setText(f"RT {min(rt0, rt1):.3f}–{max(rt0, rt1):.3f} min")
         self.chrom.mark(None)
         if not live:  # too slow to rebuild on every mouse move of a drag
@@ -1448,6 +1510,9 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             text = str(error).strip()
             problem = ("the spectrum could not be read: "
                        + (text.splitlines()[0] if text else type(error).__name__))
+        # nothing is on screen, so there is no recipe for what is: a stale
+        # one would be saved as the live spectrum of a pane showing an error
+        self._live_recipe = None
         self.spectrum.set_traces(list(self.pinned_spectra))
         # the pane's title is one line: the diagnosis, not the advice
         self.spectrum.set_title(problem.split(";")[0].split(". ")[0])
@@ -1875,14 +1940,20 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         pinned = getattr(self, "_pinned", [])
         colour = self.PIN_COLOURS[len(pinned) % len(self.PIN_COLOURS)]
         label = self.spectrum.title or live.label
+        # the recipe travels with the copy, so the project can save how this
+        # spectrum was made instead of its hundred thousand points
+        recipe = getattr(live, "recipe", None) or self._live_recipe
+        if recipe is not None:
+            recipe = replace(recipe, label=label, colour=colour)
         pinned.append(Trace(f"pin{len(pinned) + 1}", label, live.x.copy(),
-                            live.y.copy(), colour, live.source))
+                            live.y.copy(), colour, live.source, recipe))
         self._pinned = pinned
         self.spectrum.set_traces(self._with_pins(live))
         self.spectrum.set_legend_visible(True)
         self.spectrum.autoscale()
         self.act_unpin.setEnabled(True)
         self.act_exp_cmp.setEnabled(True)
+        self._show_pin_recipes()
         self.refresh_comparison()
         self._update_status(
             f"{len(pinned)} spectrum(s) pinned. The next spectrum draws over "
@@ -1891,6 +1962,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
 
     def unpin_spectra(self) -> None:
         self._pinned = []
+        self._show_pin_recipes()
         traces = self.spectrum.traces
         live = next((t for t in traces if t.key == "spec"), None)
         self.spectrum.set_traces([live] if live is not None else [])
@@ -1903,6 +1975,208 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
     @property
     def pinned_spectra(self) -> list[Trace]:
         return list(getattr(self, "_pinned", []))
+
+    #: what a restored pin says for itself when its file is not there
+    PIN_MISSING = "not available: file missing"
+
+    def _show_pin_recipes(self) -> None:
+        """The pins and how each was made, under the pointer."""
+        lines = []
+        for trace in self.pinned_spectra:
+            recipe = getattr(trace, "recipe", None)
+            lines.append(f"{trace.label}\n    {recipe.describe()}"
+                         if recipe is not None else trace.label)
+        self.spectrum.setToolTip(
+            "Pinned spectra:\n" + "\n".join(lines) if lines else "")
+
+    # -- the pane as the project saves it --------------------------------- #
+    def view_state(self) -> dict:
+        """
+        What this pane is showing, small enough to go into a project.
+
+        Recipes, not points: which sample, channel and scan or range each
+        pinned spectrum was made from, plus the label floor and the three
+        switches that decide how the comparison reads. `Session.to_dict`
+        asks for it — see `Session.view_source` — so every path that saves a
+        project saves this with it.
+        """
+        pins = []
+        for trace in self.pinned_spectra:
+            recipe = getattr(trace, "recipe", None)
+            if recipe is not None:
+                pins.append(recipe.to_dict())
+        return {
+            "label_floor": float(self.spectrum.label_floor),
+            "normalise": bool(self.act_norm.isChecked()),
+            "mirror": bool(self.act_mirror.isChecked()),
+            "centroid": bool(self.act_centroid.isChecked()),
+            "live": (self._live_recipe.to_dict()
+                     if self._live_recipe is not None else None),
+            "pins": pins,
+        }
+
+    def restore_view(self, view: dict | None = None) -> None:
+        """
+        Put a saved view back: the pins, the floor, the switches, the
+        spectrum that was on screen, and the comparison the report prints.
+
+        The order is the whole of it. The pins are rebuilt first, because
+        the live spectrum is drawn over them and `_with_pins` reads the list
+        as it stands; the live recipe is shown last, which is also what
+        refreshes the comparison. Every spectrum is read from its file
+        again, which is why this waits for `sigViewRestored` — emitted after
+        `load_project` has opened the samples — rather than listening for
+        the samples themselves.
+        """
+        view = self.session.view if view is None else view
+        if not view:
+            return
+        floor = view.get("label_floor")
+        if floor:
+            self.floor_spin.blockSignals(True)
+            self.floor_spin.setValue(float(floor) * 100.0)
+            self.floor_spin.blockSignals(False)
+            # the pane exactly, the spin box to the two decimals it shows: a
+            # floor dragged to 0.437% is not the same as one typed
+            self.spectrum.set_label_floor(float(floor))
+        for action, key in ((self.act_norm, "normalise"),
+                            (self.act_mirror, "mirror"),
+                            (self.act_centroid, "centroid")):
+            if key in view:
+                action.setChecked(bool(view[key]))
+
+        pins: list[Trace] = []
+        for index, row in enumerate(view.get("pins") or []):
+            recipe = SpectrumRecipe.from_dict(row)
+            if recipe is None:
+                continue
+            colour = recipe.colour or self.PIN_COLOURS[index % len(self.PIN_COLOURS)]
+            key = f"pin{index + 1}"
+            read = self._read_recipe(recipe)
+            if read is None:
+                # a pin nobody can read stays in the list saying so: a
+                # comparison that quietly came back with one spectrum fewer
+                # than it was saved with is worse than one that is short and
+                # says which spectrum is missing
+                label = f"{recipe.label or recipe.describe()} — {self.PIN_MISSING}"
+                empty = np.zeros(0, dtype=np.float64)
+                pins.append(Trace(key, label, empty, empty.copy(), colour,
+                                  None, recipe))
+                self._update_status(f"{recipe.label or recipe.describe()}: "
+                                    f"{self.PIN_MISSING}")
+            else:
+                mz, intensity, channel = read
+                pins.append(Trace(key, recipe.label or recipe.describe(),
+                                  mz, intensity, colour, channel, recipe))
+        self._pinned = pins
+        self.act_unpin.setEnabled(bool(pins))
+        self.act_exp_cmp.setEnabled(bool(pins))
+        if pins:
+            self.spectrum.set_legend_visible(True)
+        self._show_pin_recipes()
+
+        live = SpectrumRecipe.from_dict(view.get("live"))
+        if live is None or not self._show_recipe(live):
+            self.spectrum.set_traces(list(self.pinned_spectra))
+            self.spectrum.autoscale()
+            self.refresh_comparison()
+
+    def _ref_for(self, recipe: SpectrumRecipe) -> ChannelRef | None:
+        """The tree node a recipe names, if its sample is open."""
+        if not recipe.sample_key or recipe.channel is None:
+            return None
+        return self.refs.get(f"{recipe.sample_key}|{recipe.channel}")
+
+    def _read_recipe(self, recipe: SpectrumRecipe):
+        """
+        Make the spectrum a recipe describes again, off the file.
+
+        Returns the points and the channel they came from, or None when the
+        sample is not open, the channel is not there any more, or the reader
+        cannot give the scans — a `.wiff` without its `.wiff.scan` among
+        them. The conditioning is the same as the pane's: the recipe's own
+        background window, and this injection's mass correction, which is
+        the injection the recipe names and not whichever is active now.
+        """
+        ref = self._ref_for(recipe)
+        channel = ref.channel if ref is not None else None
+        if channel is None:
+            return None
+        try:
+            if recipe.scan is not None:
+                mz, intensity = channel.spectrum(recipe.scan)
+            else:
+                window = self._range_of(recipe, channel)
+                if window is None:
+                    return None
+                mz, intensity = channel.spectrum_rt_range(*window)
+        except Exception:
+            return None
+        intensity, _ = self._apply_background(channel, mz, intensity,
+                                              window=recipe.background)
+        mz, _ = self._recalibrate_mz(mz, ref.entry)
+        return mz, intensity, channel
+
+    @staticmethod
+    def _range_of(recipe: SpectrumRecipe, channel):
+        """The stretch of time a recipe covers, in this channel's own axis.
+
+        A whole-run average is re-measured rather than restored from the
+        bounds it was made with: it means every scan, and that is what it
+        has to mean again."""
+        if recipe.whole_run:
+            window = run_range(channel)
+            if window is not None:
+                return window
+        if recipe.rt0 is None or recipe.rt1 is None:
+            return None
+        return recipe.rt0, recipe.rt1
+
+    def _show_recipe(self, recipe: SpectrumRecipe) -> bool:
+        """Draw the spectrum a recipe names as the live one; did it work?"""
+        ref = self._ref_for(recipe)
+        if ref is None or not self._make_active(ref.key):
+            return False
+        if recipe.background:
+            self.chrom.set_background_range(*recipe.background)
+        if recipe.scan is not None:
+            self._show_scan(recipe.scan)
+        else:
+            window = self._range_of(recipe, ref.channel)
+            if window is None:
+                return False
+            self._show_average(*window, whole_run=recipe.whole_run,
+                               tag=" (infusion)" if recipe.whole_run else "")
+        return True
+
+    def _make_active(self, key: str) -> bool:
+        """
+        Make one channel the active one, ticking it in the tree if it is not.
+
+        The active list holds the checked channels, so a project that was
+        saved looking at a channel nobody had ticked — which is what
+        happens when a pin is made and the tree is tidied afterwards —
+        would have nowhere to put it.
+        """
+        if key not in self.refs:
+            return False
+        if self.active_combo.findData(key) < 0:
+            item = self._tree_items().get(key)
+            if item is None:
+                return False
+            self.tree.blockSignals(True)
+            item.setCheckState(0, QtCore.Qt.CheckState.Checked)
+            self.tree.blockSignals(False)
+            self._rebuild_active_combo()
+            self.refresh_chromatogram()
+        index = self.active_combo.findData(key)
+        if index < 0:
+            return False
+        self.active_combo.blockSignals(True)
+        self.active_combo.setCurrentIndex(index)
+        self.active_combo.blockSignals(False)
+        self._sync_active_ref()
+        return True
 
     def refresh_comparison(self) -> None:
         """

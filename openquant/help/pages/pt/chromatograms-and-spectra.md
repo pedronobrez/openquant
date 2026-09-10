@@ -128,7 +128,29 @@ fixado, as cores fazem a separação e o Mirror alterna.
 
 Todo o resto lê o espectro ao vivo: a tabela de picos, o [[formula-finder]], o
 Explain do [[lipid-maps]], a [[spectral-library]]. As cópias fixadas são
-figuras, e são perdidas quando os arquivos são fechados.
+perdidas quando os arquivos são fechados — e guardadas quando o projeto é
+salvo.
+
+### O que um salvamento guarda
+
+Salvar o projeto salva o painel: cada espectro fixado, o piso dos rótulos,
+Normalise, Mirror e Centroid, e o espectro que estava ao vivo. Abra o projeto
+de novo e os fixados estão de volta, o piso está onde foi deixado e a
+comparação está de pé — de modo que *Export comparison…* e a seção *Compared
+spectra* do relatório funcionam sem fixar nada outra vez. É uma coisa só a
+salvar, não duas: não há um comando separado para a vista.
+
+O que é escrito no projeto é **como** cada espectro foi feito — qual amostra,
+qual canal, qual scan ou trecho de tempo, e a janela de fundo se alguma foi
+subtraída — e nunca os seus pontos, e é por isso que um projeto que guarda
+duas médias de corrida inteira de uma infusão tem três kilobytes em vez de
+vinte megabytes. Os espectros são lidos dos arquivos brutos de novo quando o
+projeto abre, de modo que o que volta é o que os arquivos dizem agora: alguns
+segundos a mais do que abrir apenas os arquivos. Um fixado cujo arquivo bruto
+saiu do lugar não pode ser lido, e permanece na lista com o nome *not
+available: file missing* — uma comparação que voltasse com um espectro a menos
+sem dizê-lo seria lida como a comparação que foi salva. Passar o ponteiro
+sobre o painel do espectro lista os fixados e como cada um foi feito.
 
 ### Levando a comparação embora
 
@@ -166,8 +188,9 @@ o espectro ao vivo ou qualquer um dos dois interruptores a atualiza, e
 **Unpin spectra** a descarta. Não há nada a manter em dia à mão e nada que
 possa ficar desatualizado — se o painel contém dois espectros que valham ser
 reportados, o relatório também os contém; se não, o relatório deixa a seção
-de fora. Ela não é salva com o projeto, pelo mesmo motivo por que os fixados
-não são.
+de fora. A comparação em si não é escrita no projeto — ela é uma cópia dos
+traços, e uma cópia de uma cópia —, mas os fixados que a produzem são, de
+modo que ela está de pé assim que o projeto abre.
 
 ## Espectros de perfil e seus zeros
 

@@ -130,7 +130,29 @@ colours do the separating and Mirror alternates.
 
 Everything else reads the live spectrum: the peak table, the
 [[formula-finder]], the [[lipid-maps]] Explain, the [[spectral-library]].
-The pinned copies are pictures, and are lost when the files are closed.
+The pinned copies are lost when the files are closed — and kept when the
+project is saved.
+
+### What a save keeps
+
+Saving the project saves the pane: every pinned spectrum, the label floor,
+Normalise, Mirror and Centroid, and the spectrum that was live. Open the
+project again and the pins are back, the floor is where it was left, and the
+comparison is standing — so *Export comparison…* and the report's *Compared
+spectra* section work without pinning anything again. It is one thing to
+save, not two: there is no separate command for the view.
+
+What is written into the project is how each spectrum was **made** — which
+sample, which channel, which scan or stretch of time, and the background
+window if one was subtracted — and never its points, which is why a project
+holding two whole-run averages of an infusion is three kilobytes rather than
+twenty megabytes. The spectra are read from the raw files again when the
+project opens, so what comes back is what the files say now: a few seconds
+more than opening the files alone. A pin whose raw file has moved cannot be
+read, and stays in the list named *not available: file missing* — a
+comparison that came back one spectrum short without saying so would be read
+as the comparison that was saved. Hovering over the spectrum pane lists the
+pins and how each was made.
 
 ### Taking the comparison away
 
@@ -166,8 +188,10 @@ the report prints is what the pane shows: pinning a spectrum starts the
 comparison, changing the live spectrum or either switch refreshes it, and
 **Unpin spectra** drops it. There is nothing to keep in step by hand and
 nothing that can go stale — if the pane holds two spectra worth reporting,
-so does the report; if it does not, the report leaves the section out. It
-is not saved with the project, for the same reason the pins are not.
+so does the report; if it does not, the report leaves the section out. The
+comparison itself is not written into the project — it is a copy of the
+traces, and a copy of a copy — but the pins that make it are, so it is
+standing again as soon as the project is open.
 
 ## Profile spectra and their zeros
 

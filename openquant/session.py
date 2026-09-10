@@ -38,6 +38,10 @@ class Session(QtCore.QObject):
     sigProjectChanged = QtCore.pyqtSignal()
     #: something was written into the audit trail
     sigAuditChanged = QtCore.pyqtSignal()
+    #: a project's saved view is ready to be put back on screen. Emitted
+    #: last of all by `load_project`, after the samples exist: a pinned
+    #: spectrum is read from its file, so the file has to be open first.
+    sigViewRestored = QtCore.pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -74,6 +78,19 @@ class Session(QtCore.QObject):
         #: it is a copy of two traces that came off the files, and the report
         #: prints it only while it stands.
         self.spectra_comparison = None
+        #: how the Explorer was left: the pinned spectra as recipes rather
+        #: than as points, the label floor, the spectrum pane's switches and
+        #: the live spectrum's own recipe. Saved with the project under
+        #: `view`, because an infusion project whose comparison is its whole
+        #: result has to reopen with that comparison standing. It is written
+        #: by whoever set `view_source` and read by whoever listens for
+        #: `sigViewRestored`; nothing here knows what a pane is.
+        self.view: dict = {}
+        #: what to ask for the view when the project is saved — the Explorer
+        #: sets it. A hook rather than a call from the window, so that every
+        #: path that saves a project saves the view with it instead of three
+        #: of them remembering to.
+        self.view_source = None
         #: what was changed by hand in this project, in the order it was
         #: changed. Saved with the project and appended to only — see audit.py
         self.audit = AuditTrail()
@@ -144,6 +161,7 @@ class Session(QtCore.QObject):
         self.batch_comparison = None
         self.infusion_summary = None
         self.spectra_comparison = None
+        self.view = {}
         self.entries.clear()
         self.results.clear()
         self.calibrations.clear()
@@ -244,15 +262,28 @@ class Session(QtCore.QObject):
         return match_channel(entry.sample, component)
 
     # -- project ------------------------------------------------------------------ #
+    def current_view(self) -> dict:
+        """
+        The view as it stands, asked of whoever is showing it.
+
+        Kept here so that a session with no window — the command line, a
+        test, a batch comparison reading a project — still round-trips
+        whatever view the project came with instead of dropping it.
+        """
+        if self.view_source is not None:
+            self.view = dict(self.view_source() or {})
+        return self.view
+
     def to_dict(self) -> dict:
         return {
-            "version": 4,
+            "version": 5,
             "method": self.method.to_dict(),
             "samples": [e.to_dict() for e in self.entries],
             "results": self.results.to_list(),
             "calibrations": {name: curve.to_dict()
                              for name, curve in self.calibrations.items()},
             "recalibrate": self.recalibrate,
+            "view": self.current_view(),
             "audit": self.audit.to_dict(),
         }
 
@@ -310,6 +341,9 @@ class Session(QtCore.QObject):
         # absent in every project written before this existed, which is
         # exactly the answer those projects want
         self.recalibrate = bool(data.get("recalibrate", False))
+        # a project written before version 5 has no view; an empty one is
+        # the right answer for it, and whoever restores views does nothing
+        self.view = dict(data.get("view") or {})
         # likewise absent from every project written before this existed,
         # which loads with an empty trail rather than an invented one
         self.audit = AuditTrail.from_dict(data.get("audit"))
@@ -318,5 +352,8 @@ class Session(QtCore.QObject):
         self.sigSamplesChanged.emit()
         self.sigResultsChanged.emit()
         self.sigAuditChanged.emit()
+        # last, and after the samples: a pinned spectrum is rebuilt by
+        # reading it out of its file again, which needs the file open
+        self.sigViewRestored.emit()
         self._mark_clean()
         return missing

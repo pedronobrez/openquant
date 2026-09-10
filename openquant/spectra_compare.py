@@ -66,6 +66,7 @@ from __future__ import annotations
 import base64
 import datetime as _dt
 import math
+import os as _os
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -151,6 +152,118 @@ HEADROOM_LIFTS = 3.0
 
 #: the leader that joins a lifted label to its apex
 LEADER_WIDTH = 0.6
+
+
+# --------------------------------------------------------------------------- #
+# how a spectrum was made
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class SpectrumRecipe:
+    """
+    How one spectrum was made: enough to make it again, and nothing else.
+
+    A pinned spectrum is a copy of some tens of thousands of points. Writing
+    those into a project would grow the file by a megabyte a pin and, worse,
+    freeze one reading of the raw file inside a document whose whole job is
+    to point at that file. What is saved instead is this: which sample,
+    which channel, which scan or which stretch of time, and the background
+    window if one was subtracted. The spectrum is read from the file again
+    when the project is opened — the same arithmetic on the same file, so
+    the same points — and a file that is no longer there yields no spectrum
+    at all, whereupon the pin stays in the list saying so rather than
+    disappearing without a word.
+
+    `sample_key` is `SampleEntry.key`, path and sample index; `channel` is
+    the channel's index within that sample. `scan` is zero-based, as the
+    reader counts, and is None for an average, which carries `rt0`/`rt1`
+    instead. `whole_run` marks the average of every scan — an infusion has
+    no chromatography to select a range over — and is re-read from the
+    channel's own time axis rather than from the stored bounds.
+    """
+
+    sample_key: str = ""
+    channel: int | None = None
+    scan: int | None = None
+    rt0: float | None = None
+    rt1: float | None = None
+    whole_run: bool = False
+    background: tuple[float, float] | None = None
+    label: str = ""
+    colour: str = ""
+
+    @property
+    def kind(self) -> str:
+        if self.scan is not None:
+            return "scan"
+        return "whole run" if self.whole_run else "range"
+
+    @property
+    def sample_name(self) -> str:
+        """The file the sample came from, and which sample of it."""
+        path, _, index = self.sample_key.rpartition("|")
+        name = _os.path.basename(path) or self.sample_key
+        try:
+            return f"{name} sample {int(index) + 1}"
+        except ValueError:
+            return name or self.sample_key
+
+    def describe(self) -> str:
+        """The recipe in words, for a legend entry or a tooltip."""
+        where = f"channel {self.channel}" if self.channel is not None else "TIC"
+        if self.scan is not None:
+            what = f"scan {self.scan + 1}"
+        elif self.whole_run:
+            what = "whole run averaged"
+        elif self.rt0 is not None and self.rt1 is not None:
+            what = f"RT {min(self.rt0, self.rt1):.3f}–{max(self.rt0, self.rt1):.3f} min"
+        else:
+            what = "spectrum"
+        tail = (f" · background {self.background[0]:.3f}–"
+                f"{self.background[1]:.3f} min subtracted"
+                if self.background else "")
+        return f"{self.sample_name} · {where} · {what}{tail}"
+
+    def to_dict(self) -> dict:
+        return {
+            "sample_key": self.sample_key,
+            "channel": self.channel,
+            "scan": self.scan,
+            "rt0": self.rt0,
+            "rt1": self.rt1,
+            "whole_run": self.whole_run,
+            "background": (list(self.background) if self.background else None),
+            "label": self.label,
+            "colour": self.colour,
+        }
+
+    @classmethod
+    def from_dict(cls, row: dict | None) -> "SpectrumRecipe | None":
+        """A recipe from a project, or None if there is nothing to make."""
+        if not row:
+            return None
+
+        def number(key):
+            value = row.get(key)
+            return None if value is None else float(value)
+
+        background = row.get("background")
+        try:
+            window = ((float(background[0]), float(background[1]))
+                      if background else None)
+        except (TypeError, ValueError, IndexError):
+            window = None
+        channel = row.get("channel")
+        scan = row.get("scan")
+        return cls(
+            sample_key=str(row.get("sample_key") or ""),
+            channel=None if channel is None else int(channel),
+            scan=None if scan is None else int(scan),
+            rt0=number("rt0"), rt1=number("rt1"),
+            whole_run=bool(row.get("whole_run", False)),
+            background=window,
+            label=str(row.get("label") or ""),
+            colour=str(row.get("colour") or ""),
+        )
 
 
 # --------------------------------------------------------------------------- #

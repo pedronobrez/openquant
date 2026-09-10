@@ -52,6 +52,10 @@ class Trace:
     y: np.ndarray
     colour: str
     source: object | None = None  # originating Channel, when there is one
+    #: how this spectrum was made — a `spectra_compare.SpectrumRecipe`, when
+    #: the pane knows. It is what a pinned spectrum is saved as: the points
+    #: are read from the file again rather than written into the project.
+    recipe: object | None = None
 
 
 def _label_half_width(text) -> float:

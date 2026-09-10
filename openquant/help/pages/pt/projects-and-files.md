@@ -8,17 +8,28 @@ coisa. Ele contém:
 
 | Chave | Conteúdo |
 |---|---|
-| `version` | a versão do formato do arquivo, atualmente 4 |
+| `version` | a versão do formato do arquivo, atualmente 5 |
 | `method` | a tabela de componentes, os padrões de integração e de aceitação, a tolerância e as unidades, as faixas de razão iônica — tudo o que está na [[method-workspace]] |
 | `samples` | uma entrada por injeção: o caminho do arquivo bruto e o índice da amostra, o nome exibido, o tipo, o grupo, a concentração esperada, a diluição e o comentário — tudo o que está na [[samples-workspace]] |
 | `results` | cada linha da [[results-table]], incluindo integrações manuais, notas, o algoritmo que produziu cada área, os pontos sobre o pico e, para um pico ajustado, o modelo |
 | `calibrations` | cada curva: regressão, ponderação, coeficientes, r² e cada padrão com a indicação de se é usado |
+| `view` | como o painel de espectros do Explorer ficou: cada espectro fixado como a *receita* que o produziu — amostra, canal e scan ou faixa de tempo, com a janela de fundo se alguma foi subtraída —, mais o piso dos rótulos, Normalise, Mirror e Centroid, e a receita do espectro que estava ao vivo. Ver [[chromatograms-and-spectra]]; um projeto escrito antes disto existir abre com o painel vazio |
 | `audit` | o que foi alterado à mão, na ordem em que foi alterado — ver [[audit-trail]]; um projeto escrito antes disto existir não tem a chave e abre com uma trilha vazia |
 
 Ele **não** contém os dados brutos — o projeto aponta para os arquivos por
 caminho — nem a última comparação de algoritmos, que é derivada e refeita sob
-demanda. Um arquivo que mudou de lugar é reportado pelo nome quando o projeto
-abre, e o projeto abre sem ele; ver [[starting-a-project]].
+demanda. **Um espectro fixado é salvo como sua receita e nunca como seus
+pontos**, pelo mesmo motivo: duas médias de corrida inteira de uma infusão
+são 544.216 pontos, o que dá 20 MB escritos e 3 kB como as duas receitas que
+os produziram, e uma cópia congelada dentro do documento deixaria de ser uma
+leitura do arquivo para o qual ele aponta. Eles são lidos dos arquivos de
+novo quando o projeto abre — medido nessas duas infusões, 5,9 s contra os
+3,2 s que os arquivos levam para abrir — e um fixado cujo arquivo saiu do
+lugar permanece na lista marcado como *not available: file missing* em vez de
+ser descartado sem uma palavra.
+
+Um arquivo que mudou de lugar é reportado pelo nome quando o projeto abre, e
+o projeto abre sem ele; ver [[starting-a-project]].
 
 Projetos escritos pelo programa sob o nome anterior, `.opvproj`, são abertos;
 nada novo é escrito com esse sufixo. Um projeto escrito por uma versão mais

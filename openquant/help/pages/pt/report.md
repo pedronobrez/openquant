@@ -26,6 +26,7 @@ vez de deixar um buraco.
 | Compared spectra | apenas enquanto o Explorer estiver mantendo espectros juntos: a figura cabeça-cauda, uma tabela dos traços e as massas que eles compartilham dentro de 10 ppm — [[chromatograms-and-spectra]] |
 | Integration algorithms | apenas quando [[compare-algorithms]] foi executado: os totais por algoritmo e os componentes que mais se moveram |
 | Batch comparison | apenas quando [[compare-batches]] foi executado: os totais lado a lado e os componentes na ordem do quanto se moveram |
+| Changes made by hand | apenas enquanto houver histórico a imprimir: cada edição feita à mão na ordem em que foi feita, com o valor antes e depois — a [[audit-trail]], e não uma assinatura eletrônica |
 | Results | cada linha: amostra, componente, RT, área, razão, concentração, exatidão, status e marcações |
 | Statistics | o resumo agrupado da página [[statistics]], por tipo de amostra |
 

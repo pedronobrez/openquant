@@ -29,6 +29,7 @@ import html
 import os
 
 from . import __version__
+from .audit import COLUMNS as AUDIT_COLUMNS
 from .calibration import Calibration
 from .health import SERIOUS, check_method
 from .method import ProcessingMethod
@@ -63,6 +64,7 @@ SECTIONS = {
     "spectra": "Compared spectra",
     "algorithms": "Integration algorithms",
     "batches": "Batch comparison",
+    "audit": "Changes made by hand",
     "results": "Results",
     "statistics": "Statistics",
 }
@@ -977,6 +979,30 @@ def _algorithms(title: str, comparison, method: ProcessingMethod,
     return "".join(parts)
 
 
+def _audit(title: str, trail, breaks: set[str] | None = None) -> str:
+    """
+    What was changed by hand, in the order it was changed.
+
+    A report is read months later by somebody who does not have the project,
+    and the one thing the numbers cannot say for themselves is which of them
+    a person decided. This says so, and says plainly what it is not: there
+    are no accounts and no signatures here, so the trail records what was
+    done and not who did it or that nobody altered it afterwards.
+    """
+    rows = [[_escape(cell) for cell in row] for row in trail.rows()]
+    return (_heading(title, breaks)
+            + '<p class="meta">Every change made by hand in this project, in '
+              "the order it was made: manual integrations, rows excluded, "
+              "calibration standards dropped and restored, method and sample "
+              "edits, reprocessings and saves. It is a record of what was "
+              "done, not an electronic signature: there are no user accounts, "
+              "no signing and nothing that would detect the project file "
+              "being edited outside the application.</p>"
+            + _table(list(AUDIT_COLUMNS), rows,
+                     empty="Nothing was changed by hand.",
+                     widths=["14%", "14%", "22%", "18%", "18%", "14%"]))
+
+
 def _results(title: str, results: ResultsSet, method: ProcessingMethod,
              breaks: set[str] | None = None) -> str:
     """
@@ -1138,6 +1164,9 @@ def build_html(session, title: str = "Batch report",
     comparison = getattr(session, "comparison", None)
     drift = getattr(session, "mass_drift", None)
     batches = getattr(session, "batch_comparison", None)
+    # printed while there is a history to print: a section saying nothing was
+    # changed by hand would be on every report of a batch nobody touched
+    trail = getattr(session, "audit", None)
     # a comparison of spectra stands only while there is more than one of
     # them: the Explorer drops it when the pins are cleared
     spectra = getattr(session, "spectra_comparison", None)
@@ -1147,7 +1176,8 @@ def build_html(session, title: str = "Batch report",
              and (key != "algorithms" or comparison is not None)
              and (key != "mass" or drift is not None)
              and (key != "spectra" or spectra is not None)
-             and (key != "batches" or batches is not None)]
+             and (key != "batches" or batches is not None)
+             and (key != "audit" or (trail is not None and len(trail)))]
     titles = {key: f"{number}. {SECTIONS[key]}"
               for number, key in enumerate(order, start=1)}
 
@@ -1189,6 +1219,8 @@ def build_html(session, title: str = "Batch report",
             parts.append(_algorithms(name, comparison, method, breaks))
         elif key == "batches":
             parts.append(_batches(name, batches, breaks))
+        elif key == "audit":
+            parts.append(_audit(name, trail, breaks))
         elif key == "results":
             parts.append(_results(name, session.results, method, breaks))
         elif key == "statistics":

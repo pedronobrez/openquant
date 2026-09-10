@@ -8,11 +8,12 @@ coisa. Ele contém:
 
 | Chave | Conteúdo |
 |---|---|
-| `version` | a versão do formato do arquivo, atualmente 3 |
+| `version` | a versão do formato do arquivo, atualmente 4 |
 | `method` | a tabela de componentes, os padrões de integração e de aceitação, a tolerância e as unidades, as faixas de razão iônica — tudo o que está na [[method-workspace]] |
 | `samples` | uma entrada por injeção: o caminho do arquivo bruto e o índice da amostra, o nome exibido, o tipo, o grupo, a concentração esperada, a diluição e o comentário — tudo o que está na [[samples-workspace]] |
 | `results` | cada linha da [[results-table]], incluindo integrações manuais, notas, o algoritmo que produziu cada área, os pontos sobre o pico e, para um pico ajustado, o modelo |
 | `calibrations` | cada curva: regressão, ponderação, coeficientes, r² e cada padrão com a indicação de se é usado |
+| `audit` | o que foi alterado à mão, na ordem em que foi alterado — ver [[audit-trail]]; um projeto escrito antes disto existir não tem a chave e abre com uma trilha vazia |
 
 Ele **não** contém os dados brutos — o projeto aponta para os arquivos por
 caminho — nem a última comparação de algoritmos, que é derivada e refeita sob

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from ..audit import ROW_USED
 from ..quantify import FAIL, MARGINAL, PASS, PeakResult, ResultsSet
 from ..session import Session
 from . import theme
@@ -257,7 +258,15 @@ class ResultsModel(QtCore.QAbstractTableModel):
         if (role == QtCore.Qt.ItemDataRole.CheckStateRole
                 and index.column() == USED_COLUMN):
             result = self._rows[index.row()]
+            was = result.used
             result.used = QtCore.Qt.CheckState(value) == QtCore.Qt.CheckState.Checked
+            if result.used != was:
+                self.session.record(
+                    ROW_USED, f"{result.component} · {result.sample_name}",
+                    before="used" if was else "excluded",
+                    after="used" if result.used else "excluded",
+                    note=f"area {result.area:,.0f}" if result.found
+                         else result.note or "not integrated")
             self.dataChanged.emit(index, index)
             self.sigUsedChanged.emit()
             return True

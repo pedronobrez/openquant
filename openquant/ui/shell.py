@@ -173,6 +173,25 @@ class MainShell(QtWidgets.QMainWindow):
         self.statusBar().showMessage(
             f"Workbook written to {written} ({size:,.0f} KB)")
 
+    def show_audit(self) -> None:
+        """
+        The audit trail in a window of its own.
+
+        It is also the Analytics workspace's last tab; the menu is here
+        because the question — what was changed by hand — is asked of the
+        project rather than of the workspace one happens to be in.
+        """
+        from .audit_panel import AuditDialog
+
+        dialog = getattr(self, "_audit_dialog", None)
+        if dialog is None:
+            dialog = AuditDialog(self.session, self)
+            self._audit_dialog = dialog
+        dialog.panel.reload()
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
     # -- help ---------------------------------------------------------------- #
     def context_page(self) -> str:
         """The manual page for what has the focus, or for the workspace shown."""
@@ -258,6 +277,11 @@ class MainShell(QtWidgets.QMainWindow):
         self.act_report.setToolTip(
             "A document of the whole batch — method, calibration, results and "
             "statistics — to print or to hand over")
+        self.act_audit = file_menu.addAction("Audit trail…")
+        self.act_audit.setToolTip(
+            "What was changed by hand in this project — integrations, "
+            "exclusions, method and sample edits — in the order it was "
+            "changed. Read-only")
         self.act_workbook = file_menu.addAction("Export workbook (Excel)…")
         self.act_workbook.setToolTip(
             "The same batch as a spreadsheet — one sheet per section, every "
@@ -301,6 +325,7 @@ class MainShell(QtWidgets.QMainWindow):
         self.act_save_project.triggered.connect(self.save_project)
         self.act_save_project_as.triggered.connect(self.save_project_as)
         self.act_report.triggered.connect(self.export_report)
+        self.act_audit.triggered.connect(self.show_audit)
         self.act_workbook.triggered.connect(self.export_workbook)
         self.samples.btn_open.clicked.connect(lambda: self.open_files())
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PyQt6 import QtCore, QtWidgets
 
+from ..audit import SAMPLE_EDITED
 from ..samples import SAMPLE_TYPES
 from ..session import Session
 from . import style
@@ -82,6 +83,19 @@ class SamplesWorkspace(QtWidgets.QWidget):
         self.table.itemChanged.connect(self._on_edit)
         session.sigSamplesChanged.connect(self.reload)
         self.reload()
+
+    def _record(self, entry, field: str, before, after) -> None:
+        """
+        Note one field of one injection changed by hand.
+
+        Nothing here is in the raw file — every injection comes back as
+        `kUnknown` — so every one of these values was typed by somebody, and
+        the trail is the only record that it was.
+        """
+        if before == after:
+            return
+        self.session.record(SAMPLE_EDITED, f"{entry.name} · {field}",
+                            before, after, note="samples table")
 
     # -- table <-> session ------------------------------------------------------- #
     def reload(self) -> None:
@@ -178,9 +192,12 @@ class SamplesWorkspace(QtWidgets.QWidget):
         if self._loading or combo is None or row >= len(self.session.entries):
             return
         group = combo.currentText().strip()
-        if group == self.session.entries[row].sample_group:
+        entry = self.session.entries[row]
+        if group == entry.sample_group:
             return
-        self.session.entries[row].sample_group = group
+        self._record(entry, "group", entry.sample_group or "none",
+                     group or "none")
+        entry.sample_group = group
         self._refresh_group_choices()
         self._update_status()
 
@@ -192,7 +209,10 @@ class SamplesWorkspace(QtWidgets.QWidget):
             return
         self._loading = True
         for row in rows:
-            self.session.entries[row].sample_group = group
+            entry = self.session.entries[row]
+            self._record(entry, "group", entry.sample_group or "none",
+                         group or "none")
+            entry.sample_group = group
             widget = self.table.cellWidget(row, COL["Group"])
             if widget is not None:
                 widget.setCurrentText(group)
@@ -210,14 +230,23 @@ class SamplesWorkspace(QtWidgets.QWidget):
             return
         entry = self.session.entries[row]
         text = item.text().strip()
+        # itemChanged arrives once the editor closes, which is one entry per
+        # cell edited rather than one per keystroke
         if column == COL["Sample"]:
+            self._record(entry, "name", entry.name, text or entry.name)
             entry.name = text or entry.name
         elif column == COL["Comment"]:
+            self._record(entry, "comment", entry.comment, text)
             entry.comment = text
         elif column == COL["Actual conc."]:
-            entry.actual_concentration = self._number(text)
+            value = self._number(text)
+            self._record(entry, "concentration",
+                         entry.actual_concentration, value)
+            entry.actual_concentration = value
         elif column == COL["Dilution"]:
-            entry.dilution_factor = self._number(text) or 1.0
+            value = self._number(text) or 1.0
+            self._record(entry, "dilution", entry.dilution_factor, value)
+            entry.dilution_factor = value
         self._update_status()
 
     @staticmethod
@@ -229,7 +258,9 @@ class SamplesWorkspace(QtWidgets.QWidget):
 
     def _set_type(self, row: int, sample_type: str) -> None:
         if not self._loading and row < len(self.session.entries):
-            self.session.entries[row].sample_type = sample_type
+            entry = self.session.entries[row]
+            self._record(entry, "type", entry.sample_type, sample_type)
+            entry.sample_type = sample_type
             self._update_status()
 
     # -- actions ------------------------------------------------------------------ #
@@ -257,7 +288,10 @@ class SamplesWorkspace(QtWidgets.QWidget):
         source = self.session.entries[rows[0]].actual_concentration
         self._loading = True
         for row in rows[1:]:
-            self.session.entries[row].actual_concentration = source
+            entry = self.session.entries[row]
+            self._record(entry, "concentration",
+                         entry.actual_concentration, source)
+            entry.actual_concentration = source
             self.table.item(row, COL["Actual conc."]).setText(
                 "" if source is None else f"{source:g}")
         self._loading = False

@@ -13,6 +13,7 @@ import os
 
 from PyQt6 import QtCore
 
+from .audit import PROJECT_SAVED, RECALIBRATION, AuditTrail
 from .components import Component
 from .matching import components_from_sample, match_channel
 from .calibration import Calibration
@@ -35,6 +36,8 @@ class Session(QtCore.QObject):
     sigResultsChanged = QtCore.pyqtSignal()
     #: the project path or the unsaved state changed
     sigProjectChanged = QtCore.pyqtSignal()
+    #: something was written into the audit trail
+    sigAuditChanged = QtCore.pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -66,6 +69,9 @@ class Session(QtCore.QObject):
         #: it is a copy of two traces that came off the files, and the report
         #: prints it only while it stands.
         self.spectra_comparison = None
+        #: what was changed by hand in this project, in the order it was
+        #: changed. Saved with the project and appended to only — see audit.py
+        self.audit = AuditTrail()
         self.project_path: str | None = None
         #: something changed since the last save. Tracked here rather than in
         #: the window, because every workspace can change the session and none
@@ -74,6 +80,23 @@ class Session(QtCore.QObject):
         for signal in (self.sigSamplesChanged, self.sigMethodChanged,
                        self.sigResultsChanged):
             signal.connect(self._mark_dirty)
+
+    # -- the audit trail --------------------------------------------------------- #
+    def record(self, what: str, target="", before="", after="", note="",
+               when: str | None = None):
+        """
+        Note one change made by hand.
+
+        Called from wherever the change is actually made, once per user
+        action. A change worth recording is a change worth saving, so this
+        marks the project unsaved as well — which is also how an edit that
+        touches nothing else, retyping a sample's comment, comes to be
+        remembered at all.
+        """
+        entry = self.audit.record(what, target, before, after, note, when)
+        self.sigAuditChanged.emit()
+        self._mark_dirty()
+        return entry
 
     # -- unsaved state ------------------------------------------------------------ #
     def _mark_dirty(self) -> None:
@@ -119,6 +142,8 @@ class Session(QtCore.QObject):
         self.results.clear()
         self.calibrations.clear()
         self.cache.clear()
+        # a new trail rather than an emptied one: nothing removes an entry
+        self.audit = AuditTrail()
         self.project_path = None
         self.sigSamplesChanged.emit()
         self.sigResultsChanged.emit()
@@ -159,6 +184,12 @@ class Session(QtCore.QObject):
             return
         self.recalibrate = on
         self.cache.clear()
+        self.record(RECALIBRATION, "the batch",
+                    before="off" if on else "on",
+                    after="on" if on else "off",
+                    note=f"{len(self.corrections_in_force())} injection(s) "
+                         f"corrected" if on else "masses as the instrument "
+                                                 "read them")
         self._mark_dirty()
 
     def entry_by_key(self, key: str) -> SampleEntry | None:
@@ -209,18 +240,26 @@ class Session(QtCore.QObject):
     # -- project ------------------------------------------------------------------ #
     def to_dict(self) -> dict:
         return {
-            "version": 3,
+            "version": 4,
             "method": self.method.to_dict(),
             "samples": [e.to_dict() for e in self.entries],
             "results": self.results.to_list(),
             "calibrations": {name: curve.to_dict()
                              for name, curve in self.calibrations.items()},
             "recalibrate": self.recalibrate,
+            "audit": self.audit.to_dict(),
         }
 
     def save_project(self, path: str) -> None:
         if not path.endswith(PROJECT_SUFFIXES):
             path += PROJECT_SUFFIX
+        # recorded before the file is written, so that the saved project
+        # holds the record of its own saving rather than of the one before
+        self.audit.record(PROJECT_SAVED, os.path.basename(path),
+                          after=path,
+                          note=f"{len(self.results)} row(s), "
+                               f"{len(self.entries)} sample(s)")
+        self.sigAuditChanged.emit()
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(self.to_dict(), handle, indent=2, ensure_ascii=False)
         self.project_path = path
@@ -265,9 +304,13 @@ class Session(QtCore.QObject):
         # absent in every project written before this existed, which is
         # exactly the answer those projects want
         self.recalibrate = bool(data.get("recalibrate", False))
+        # likewise absent from every project written before this existed,
+        # which loads with an empty trail rather than an invented one
+        self.audit = AuditTrail.from_dict(data.get("audit"))
         self.project_path = path
         self.sigMethodChanged.emit()
         self.sigSamplesChanged.emit()
         self.sigResultsChanged.emit()
+        self.sigAuditChanged.emit()
         self._mark_clean()
         return missing

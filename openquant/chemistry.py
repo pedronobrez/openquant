@@ -851,6 +851,43 @@ def fragment_adducts(adduct: Adduct) -> tuple[Adduct, ...]:
     return (proton,)
 
 
+def adducts_of_polarity(polarity=None) -> list[Adduct]:
+    """
+    Every adduct a channel of this polarity could have produced.
+
+    The neutral entry is never one: it exists so a neutral mass can be
+    searched as if it were an ion. `polarity` is the sign the channel was
+    acquired at, as a number or as the word a file writes (`Positive`);
+    without one every adduct is offered, which is what a spectrum arriving
+    with no acquisition behind it deserves.
+    """
+    sign = polarity_sign(polarity) if polarity is not None else None
+    return [a for a in ADDUCTS if a.name != NEUTRAL
+            and (sign is None or a.polarity == sign)]
+
+
+def behaviour_text(adduct: Adduct) -> str:
+    """
+    What this adduct does when the ion breaks up, in one sentence.
+
+    A list of candidates at several adducts is not readable unless each row
+    says what its adduct implies about the fragments: an ammoniated
+    triacylglycerol shows a diacylglycerol ion carrying a proton and nothing
+    at all 17 Da above it, and a row that only says `[M+NH4]+` has left the
+    reader to know that.
+    """
+    if adduct.behaviour == LABILE:
+        return (f"labile: it leaves as {adduct.leaves} and hands over a "
+                f"proton, so the fragments carry "
+                f"{core_adduct(adduct).name}")
+    if adduct.behaviour == METAL:
+        return (f"metal: the {adduct.carrier} stays on whichever piece "
+                f"coordinates it, so both [piece+{adduct.carrier}]"
+                f"{'+' if adduct.charge > 0 else '-'} and the protonated "
+                f"piece are offered, each saying which was assumed")
+    return "proton: the charge stays on whichever piece keeps it"
+
+
 # --------------------------------------------------------------------------- #
 # which adduct a written precursor is
 # --------------------------------------------------------------------------- #
@@ -1493,6 +1530,56 @@ def adduct_map(evidence: list[AdductEvidence]) -> str:
     present = [e for e in evidence if e.present]
     present.sort(key=lambda e: -e.height)
     return ", ".join(f"{e.name} {e.relative * 100:.0f}%" for e in present)
+
+
+def _reason(formula: str, written: str, match: AdductMatch,
+            matches: list[AdductMatch]) -> str:
+    """
+    One adduct measured against a written precursor, in words.
+
+    The alternative worth printing is the form the *fragments* carry, not
+    the next nearest number: a user who expected a protonated molecule and
+    got an ammoniated one needs to see 413.3199 beside 430.3465, and being
+    shown the sodium adduct instead answers a question nobody asked.
+    """
+    core = core_adduct(match.adduct)
+    others = [m for m in matches if m.adduct.name == core.name
+              and m.adduct.name != match.name]
+    if not others:
+        others = [m for m in matches if m is not match][:1]
+    tail = ("; " + ", ".join(f"{m.name} would be {m.mz:.4f}" for m in others)
+            if others else "")
+    written_formula = format_formula(parse_formula(formula))
+    if not match.within:
+        # a candidate the isolation window let through is not one the mass
+        # names, and saying "538.6 is [M+H]+ of C27H56NO7P" about a number
+        # 396 ppm away would be asserting the very thing in doubt
+        return (f"{written} sits {match.error_ppm:+.1f} ppm from the "
+                f"{match.name} of {written_formula} ({match.mz:.4f}), "
+                f"further than an adduct is named within{tail}")
+    return (f"{written} is {match.name} of {written_formula} "
+            f"({match.mz:.4f}, {match.error_ppm:+.1f} ppm){tail}")
+
+
+def adduct_reason(formula: str, precursor: float, adduct, polarity=None,
+                  tolerance: float | None = None) -> str:
+    """
+    Why this precursor is *this* adduct of this formula, in the same sentence
+    `identify_adduct` writes when it works the adduct out for itself.
+
+    A candidate found in the database at one adduct already knows which; what
+    it does not know is how far the written precursor sits from it, and a row
+    of candidates each found at a different adduct is unreadable without that.
+    Sharing the sentence is the point: the record path and the own-structure
+    path say the same thing about the same number, because they say it with
+    the same code.
+    """
+    name = adduct if isinstance(adduct, str) else getattr(adduct, "name", "")
+    matches = adducts_matching(formula, precursor, polarity, tolerance)
+    found = next((m for m in matches if m.name == name), None)
+    if found is None:
+        return ""
+    return _reason(formula, f"{float(precursor):g}", found, matches)
 
 
 # --------------------------------------------------------------------------- #

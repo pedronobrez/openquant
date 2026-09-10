@@ -24,7 +24,10 @@ does when the ion breaks up — and `chemistry.identify_adduct` reads the
 adduct off the written precursor and refuses rather than guessing. This
 module turns that into ions: `precursor_ions` for what a formula alone can
 say, `structure_ions` for a drawing, `resolve_name` for a compound written
-by name.
+by name. A LIPID MAPS record is a drawing like any other — `explain` is
+`explain_structure` with the molfile taken out of the database — and
+`rank_candidates` will search every adduct the channel's polarity allows,
+each candidate then carrying the one that found it.
 """
 
 from __future__ import annotations
@@ -88,6 +91,23 @@ class Explanation:
     #: everything that was matched against, kept because a match means less
     #: on its own than it does beside the rivals that reach the same mass
     ions: list[PredictedIon] = field(default_factory=list)
+    #: the adduct this was scored as, by name. A candidate list drawn from
+    #: several adducts at once is a list of different hypotheses about the
+    #: same number, and a row that does not say which is not readable.
+    adduct: str = ""
+    #: how far the written precursor sits from this candidate through that
+    #: adduct, in ppm — None where nothing was searched for. It is the other
+    #: half of the evidence: two adducts can both reach a precursor, and then
+    #: the mass says which fits and the spectrum says which explains.
+    precursor_ppm: float | None = None
+
+    @property
+    def behaviour(self) -> str:
+        """What the adduct does when the ion breaks up, in one sentence."""
+        from .chemistry import adduct_from_name, behaviour_text
+
+        found = adduct_from_name(self.adduct)
+        return behaviour_text(found) if found is not None else ""
 
     @property
     def share(self) -> float:
@@ -227,23 +247,17 @@ def match_peaks(peaks, ions: list[PredictedIon],
     return matches
 
 
-def explain(record: LipidRecord, peaks, charge: int = 1,
-            tolerance_ppm: float = TOLERANCE_PPM,
-            max_cuts: int = 1, max_losses: int = 2,
-            adduct=None) -> Explanation | None:
+def scored(record: LipidRecord, molecule: Structure | None, peaks,
+           ions: list[PredictedIon], tolerance_ppm: float = TOLERANCE_PPM,
+           adduct=None, precursor_ppm: float | None = None) -> Explanation:
     """
-    How much of a spectrum one candidate structure accounts for.
+    A list of predicted ions measured against a spectrum.
 
-    `adduct` is how the precursor was ionised; a database candidate found at
-    an ammonium precursor is scored with the ammonium ion on the list, which
-    the cleavages alone cannot reach. Without one the charge is a proton,
-    which is what `charge` alone can say.
+    Every route into this module ends here — a database record, a drawing of
+    one's own, a formula — so that what "explains 63.6%" means cannot depend
+    on which of them asked. Only the enumeration differs, and each of them
+    says in its own docstring what it enumerates.
     """
-    molecule = record.molecule()
-    if molecule is None:
-        return None
-    ions = structure_ions(molecule, adduct=adduct, charge=charge,
-                          max_cuts=max_cuts, max_losses=max_losses)
     matches = match_peaks(peaks, ions, tolerance_ppm)
     # where a mass has rival routes, let the spectrum pick between them: the
     # route whose own intermediates are present is the better explanation
@@ -255,7 +269,42 @@ def explain(record: LipidRecord, peaks, charge: int = 1,
     total = sum(height for _mz, height in peaks)
     explained = sum(m.intensity for m in matches)
     return Explanation(record=record, matches=matches, explained=explained,
-                       total=total, considered=len(peaks), predicted=len(ions), ions=ions)
+                       total=total, considered=len(peaks),
+                       predicted=len(ions), ions=ions,
+                       adduct=_adduct_name(adduct),
+                       precursor_ppm=precursor_ppm)
+
+
+def _adduct_name(adduct) -> str:
+    if adduct is None:
+        return ""
+    return adduct if isinstance(adduct, str) else getattr(adduct, "name", "")
+
+
+def explain(record: LipidRecord, peaks, charge: int = 1,
+            tolerance_ppm: float = TOLERANCE_PPM,
+            max_cuts: int = 1, max_losses: int = 2,
+            adduct=None, deuterium: int = 0,
+            precursor_ppm: float | None = None) -> Explanation | None:
+    """
+    How much of a spectrum one candidate structure accounts for.
+
+    This is `explain_structure` with the drawing taken out of a LIPID MAPS
+    record instead of off the disk — the same enumeration, the same adduct
+    model, the same scoring. A database candidate found at an ammonium
+    precursor is therefore scored with the ammonium ion on the list and the
+    ladder hanging off the proton it hands over, which the cleavages alone
+    cannot reach; a sodiated one is offered both carriers. Without an adduct
+    the charge is a proton, which is what `charge` alone can say.
+    """
+    molecule = record.molecule()
+    if molecule is None:
+        return None
+    ions = structure_ions(molecule, adduct=adduct, charge=charge,
+                          max_cuts=max_cuts, max_losses=max_losses,
+                          deuterium=deuterium)
+    return scored(record, molecule, peaks, ions, tolerance_ppm, adduct,
+                  precursor_ppm)
 
 
 # --------------------------------------------------------------------------- #
@@ -511,16 +560,7 @@ def explain_structure(molecule: Structure, peaks, name: str = "",
     ions = structure_ions(molecule, adduct=adduct, charge=charge,
                           max_cuts=max_cuts, max_losses=max_losses,
                           deuterium=deuterium)
-    matches = match_peaks(peaks, ions, tolerance_ppm)
-    matches = [
-        PeakMatch(mz=m.mz, intensity=m.intensity, ion=m.ion,
-                  route=routes_for(molecule, m.ion, peaks, tolerance_ppm)[0])
-        for m in matches
-    ]
-    total = sum(height for _mz, height in peaks)
-    explained = sum(m.intensity for m in matches)
-    return Explanation(record=record, matches=matches, explained=explained,
-                       total=total, considered=len(peaks), predicted=len(ions), ions=ions)
+    return scored(record, molecule, peaks, ions, tolerance_ppm, adduct)
 
 
 def loss_text(losses: tuple[str, ...]) -> str:
@@ -711,16 +751,7 @@ def explain_formula(formula: str, adduct_name: str, peaks, name: str = "",
     """What a formula alone accounts for: the precursor and its losses."""
     ions = formula_ions(formula, adduct_name, deuterium, max_losses)
     record = custom_record(name, formula)
-    matches = match_peaks(peaks, ions, tolerance_ppm)
-    matches = [
-        PeakMatch(mz=m.mz, intensity=m.intensity, ion=m.ion,
-                  route=routes_for(None, m.ion, peaks, tolerance_ppm)[0])
-        for m in matches
-    ]
-    total = sum(height for _mz, height in peaks)
-    explained = sum(m.intensity for m in matches)
-    return Explanation(record=record, matches=matches, explained=explained,
-                       total=total, considered=len(peaks), predicted=len(ions), ions=ions)
+    return scored(record, None, peaks, ions, tolerance_ppm, adduct_name)
 
 
 # --------------------------------------------------------------------------- #
@@ -1472,26 +1503,99 @@ def candidates_for(database: LipidDatabase, precursor: float, adduct: str,
     return chosen
 
 
+def adduct_gate(precursor: float) -> float:
+    """
+    How far a candidate found at an adduct *other than the proton one* may
+    sit from the written precursor and still be offered, in Da.
+
+    The same window `identify_adduct` uses to say which adduct a written
+    number is — `ADDUCT_MATCH_DA`, widened to the precision the precursor was
+    written with — because proposing that a channel was an ammonium adduct
+    *is* an adduct identification and an identification needs the mass. The
+    proton adduct is not gated: it is the reading the method wrote down.
+
+    The gate is what makes a search over every adduct usable, and it was
+    measured rather than assumed. A product-ion channel is matched over the
+    isolation window (`matching.PRECURSOR_MATCH_DA`, 0.5 Da), which at 700 Da
+    is 700 ppm and holds hundreds of species; running five adducts over it
+    multiplies the candidates that explain a noisy spectrum by accident.
+    Measured on the sphingolipid batch's four named compounds — whose written
+    precursors are 36 to 264 ppm from the compounds themselves, so no mass
+    rule can promote them — searching every adduct ungated moved them from
+    ranks 1, 4, 1, 1 to 1, 5, 5, 3, the new top rows being a doubly charged
+    glycosphingolipid at −171 ppm and a potassiated ceramide at +356 ppm with
+    two to three times as many predicted ions each. Gated, all four come back
+    at ranks 1, 4, 1, 1 with the same share and the same ions as the
+    single-adduct search: the gate leaves the proton list exactly as it was
+    and admits another adduct only where the mass says so. On the ZenoTOF DIA
+    window holding TG 52:2 at 876.80 it admits the ammonium and the compound
+    is found at 24.0% of the spectrum and −1.7 ppm, where a `[M+H]+` search
+    does not list it at all.
+    """
+    from .chemistry import ADDUCT_MATCH_DA
+    from .lipidmaps import mass_precision
+
+    return max(ADDUCT_MATCH_DA, mass_precision(float(precursor)))
+
+
 def rank_candidates(database: LipidDatabase, precursor: float, peaks,
-                    adduct: str = "[M+H]+", tolerance: float = 20.0,
-                    unit: str = "ppm", charge: int = 1,
-                    max_cuts: int = 1, max_losses: int = 2,
-                    limit: int = 12) -> list[Explanation]:
+                    adduct: str | None = "[M+H]+", tolerance: float = 20.0,
+                    unit: str = "ppm", max_cuts: int = 1, max_losses: int = 2,
+                    limit: int = 12, polarity=None) -> list[Explanation]:
     """
     Every candidate for the precursor, ordered by what it accounts for.
 
     This is the whole point of the exercise: the enumerator cannot say which
     cleavage happens, and the spectrum can.
-    """
-    from .chemistry import adduct_from_name
 
-    ionised = adduct_from_name(adduct)
-    found = []
-    for record in candidates_for(database, precursor, adduct, tolerance, unit,
-                                 limit):
-        explanation = explain(record, peaks, charge, TOLERANCE_PPM,
-                              max_cuts, max_losses, adduct=ionised)
-        if explanation is not None:
-            found.append(explanation)
-    found.sort(key=lambda e: (-e.share, -e.matched))
-    return found
+    `adduct` may be left out (None), and then the search is run at every
+    adduct the channel's polarity allows and each candidate carries the one
+    it was found at. That is not a convenience: a triacylglycerol acquired at
+    876.80 is not a lipid at all as `[M+H]+` — the database answers with
+    nothing — and the ammonium is the only adduct that reaches it. A search
+    fixed to one adduct cannot say so; it can only come back empty.
+
+    An adduct other than the proton one then has to *name* the precursor —
+    see `adduct_gate`, which is where that is measured. The proton adduct
+    keeps the whole isolation window it always had, because that is the
+    reading the method wrote down and needs no identifying.
+
+    There is no charge argument: the sign is the adduct's own, and an adduct
+    that did not declare one would not be an adduct.
+    """
+    from .chemistry import (ADDUCTS_BY_NAME, adduct_from_name,
+                            adducts_of_polarity, mass_error_ppm)
+
+    if adduct:
+        forms = [f for f in [adduct_from_name(adduct)] if f is not None]
+        gate, core = None, set()
+    else:
+        forms = adducts_of_polarity(polarity)
+        gate = adduct_gate(precursor)
+        # the proton adduct of each polarity being searched. A spectrum that
+        # arrived with no polarity behind it is searched at both, and both
+        # readings are then the written one rather than an identification.
+        signs = {f.polarity for f in forms}
+        core = {ADDUCTS_BY_NAME["[M+H]+" if sign > 0 else "[M-H]-"].name
+                for sign in signs}
+    found: list[Explanation] = []
+    for form in forms:
+        for record in candidates_for(database, precursor, form.name, tolerance,
+                                     unit, limit):
+            theoretical = form.mz(record.exact_mass)
+            if (gate is not None and form.name not in core
+                    and abs(float(precursor) - theoretical) > gate):
+                continue
+            error = (mass_error_ppm(float(precursor), theoretical)
+                     if record.exact_mass else None)
+            explanation = explain(record, peaks, 1 if form.charge > 0 else -1,
+                                  TOLERANCE_PPM, max_cuts, max_losses,
+                                  adduct=form, precursor_ppm=error)
+            if explanation is not None:
+                found.append(explanation)
+    # what a candidate explains first, then how many peaks, then how well the
+    # mass fits — the last only ever separates candidates the spectrum could
+    # not, which on a channel with no product ions worth the name is all of them
+    found.sort(key=lambda e: (-e.share, -e.matched,
+                              abs(e.precursor_ppm or 0.0)))
+    return found[:limit] if len(forms) > 1 else found

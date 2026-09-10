@@ -1327,10 +1327,17 @@ def from_explorer(explorer, compound: str = "", others=(),
     if lipids is not None:
         try:
             deuterium = int(lipids.own_deuterium.value())
-            # what it was actually scored as, which the own-structure path
-            # reads off the written precursor rather than off the box
-            adduct = str(getattr(lipids, "explanation_adduct", "")
-                         or lipids.explain_adduct.currentText())
+            # what it was actually scored as. The explanation itself carries
+            # it, which is the only source that cannot disagree with the
+            # scoring: both paths read the adduct off the written precursor
+            # rather than off the box, and the box may say "from the
+            # precursor" — the name of a rule, not of an ion
+            from .chemistry import adduct_from_name
+
+            chosen = lipids.explain_adduct.currentText()
+            adduct = str(getattr(explanation, "adduct", "")
+                         or getattr(lipids, "explanation_adduct", "")
+                         or (chosen if adduct_from_name(chosen) else ""))
         except Exception:
             deuterium, adduct = 0, adduct
 

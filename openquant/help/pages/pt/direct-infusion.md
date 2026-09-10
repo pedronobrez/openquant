@@ -190,9 +190,49 @@ um minuto. Numa infusão a medida toma o meio da corrida como âncora e
 promedia a corrida inteira tanto para o survey quanto para o espectro de íons
 produto, que é o máximo de sinal que a aquisição pode lhe dar.
 
+## O que o arquivo diz que é, e o que o seu método faz
+
+Uma infusão costuma ser adquirida à mão, e uma aquisição manual anota quase
+nada. Lidos por reflexão, os nove arquivos ZenoTOF reais chamam a sua amostra
+de `sample`, nomeiam o seu método de `Untitled 1.msm` e deixam
+`TargetedCompoundInfo` — o campo em que um método direcionado põe o nome de
+um composto — vazio. O que o experimento carrega é uma polaridade, uma faixa
+de massas, uma massa fixa, e DP, CE, DPS e CES. **Nenhum composto, em lugar
+nenhum do arquivo.** O único lugar em que um composto está escrito é o nome
+do arquivo, e é por isso que a coluna *Compound* em toda parte no OpenQuant
+se chama uma proposta.
+
+O precursor isolado pelo método é uma segunda resposta à mesma pergunta, e é
+a do instrumento e não a de quem digitou. Quando uma infusão é aberta, o
+composto com que o seu nome começa é resolvido a uma fórmula e cada aduto
+dessa fórmula é medido contra o precursor que o método isola. Onde discordam,
+a janela avisa uma vez, ao abrir o arquivo, ao lado do aviso para um `.wiff`
+sem o seu `.wiff.scan`:
+
+> CA-d4_TOFMSMS_EAD_12CE_44DP_13KE_TESTEARTIGO: The file is named CA-d4 but
+> the method isolates 839.56 over 100–1000, which is no adduct of
+> C24H36D4O5 within ±0.05 Da; it fits nothing in the component table or the
+> library.
+
+Esse aviso não lê espectro nenhum e levou 32 ms, então chega antes de
+qualquer coisa ter sido medida — e nos dois arquivos para os quais foi
+escrito, é o achado inteiro: ver *Quando o nome e o método discordam* em
+[[infusion-report]] para o que eles acabaram sendo e para a regra que impede
+um nome de amostra comum de resolver a um lipídio com que ele apenas se
+parece.
+
+A verificação de pasta antes de uma abertura não pode fazer esta verificação
+e não é chamada a fazê-la: ela lê nomes e nunca abre um arquivo, por
+princípio — ver [[checking-files]]. Nem o [[check-method]], que olha o método
+de processamento e nunca uma aquisição. A discordância é entre o nome de um
+arquivo e um arquivo, então o lugar de encontrá-la é onde arquivos são
+abertos.
+
 ## Colocando uma no papel
 
 **Process ▸ Report this infusion…** escreve o espectro promediado, os seus
 picos, o precursor acurado e o que quer que tenha sido rodado contra ele como
 um documento de duas a quatro páginas — ver [[infusion-report]]. Só é
-oferecido numa infusão, porque tudo nele é a média de uma corrida inteira.
+oferecido numa infusão, porque tudo nele é a média de uma corrida inteira. O
+seu cabeçalho carrega o par *Named* e *Isolated*, de modo que as duas
+afirmações sobre o que o frasco contém são impressas lado a lado.

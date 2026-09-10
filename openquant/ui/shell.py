@@ -464,15 +464,51 @@ class MainShell(QtWidgets.QMainWindow):
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
         if opened is not None:
-            # a .wiff without its .wiff.scan opens and draws its chromatograms;
-            # the first sign that its spectra cannot be read should not be an
-            # empty pane half an hour later
-            problems = dict.fromkeys(
-                e.problem for e in self.session.entries
-                if e.path == opened.path and e.problem)
-            if problems:
-                QtWidgets.QMessageBox.warning(
-                    self, "Spectra cannot be read", "\n\n".join(problems))
+            self.warn_about(opened.path)
+
+    def warn_about(self, path: str) -> None:
+        """
+        What the samples of one just-opened file say about themselves.
+
+        Two warnings, each about something the file volunteers and neither
+        visible from a pane: spectra that cannot be read, and a name whose
+        compound is not the one its method isolates. Both are put up here
+        rather than at the point of use because both are cheap to ask now and
+        expensive to discover later — the second is arithmetic on two numbers
+        the file already holds, and the first is one scan.
+
+        Split out from `load_file` so it can be exercised with no file dialog
+        and no file: it reads the session's entries and nothing else.
+        """
+        for title, said in zip(("Spectra cannot be read",
+                                "The name and the method disagree"),
+                               self.file_warnings(path), strict=True):
+            if said:
+                QtWidgets.QMessageBox.warning(self, title, "\n\n".join(said))
+
+    def file_warnings(self, path: str) -> tuple[list[str], list[str]]:
+        """
+        The two warnings for one file, as text: unreadable spectra, then
+        names their methods contradict.
+
+        Returned rather than shown, so the wording is testable without a
+        modal dialog — which offscreen would block the suite rather than
+        fail it.
+        """
+        from ..infusion_report import name_disagreements
+
+        mine = [e for e in self.session.entries if e.path == path]
+        # a .wiff without its .wiff.scan opens and draws its chromatograms;
+        # the first sign that its spectra cannot be read should not be an
+        # empty pane half an hour later
+        problems = list(dict.fromkeys(e.problem for e in mine if e.problem))
+        # the library of one's own is not consulted here: it lives behind a
+        # setting the Explorer owns and reading it is seconds, which is not
+        # what an open should spend. The Infusions tab asks the same question
+        # with the library in hand
+        disagreements = name_disagreements(
+            mine, getattr(self.session.method, "components", ()))
+        return problems, disagreements
 
     def close_all(self) -> None:
         # close_all drops the batch and the project link, so unsaved work would

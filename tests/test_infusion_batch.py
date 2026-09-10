@@ -293,7 +293,7 @@ def test_one_document_per_compound_and_the_csv(qapp, two_compounds, tmp_path):
 
     assert result.csv == str(csv_path)
     lines = csv_path.read_text(encoding="utf-8").strip().splitlines()
-    assert lines[0].startswith("Compound,Sample,Mode")
+    assert lines[0].startswith("Compound,Sample,Isolated,Mode")
     assert len(lines) == 4                        # a header and three rows
 
 

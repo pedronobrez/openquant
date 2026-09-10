@@ -2244,13 +2244,17 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
 
         PNG is written at twice the drawing's own size, which is what makes
         the type and the sticks come out sharp on paper; SVG is the same
-        drawing as vectors for a figure that will be resized.
+        drawing as vectors for a figure that will be resized. The theme is
+        asked for here, beside the file name, because it is a property of
+        where the figure is going and not of the window it came from — and
+        it is remembered for the next one.
         """
         self.refresh_comparison()
         comparison = getattr(self.session, "spectra_comparison", None)
         if comparison is None or not comparison.stands:
             self._update_status("Pin a spectrum first: a comparison needs two.")
             return
+        from .export_theme import add_theme_box, chosen_theme, remember
         from .help_window import describe
 
         dialog = QtWidgets.QFileDialog(
@@ -2258,20 +2262,28 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             os.path.join(self._last_dir(), "compared-spectra.png"),
             "PNG image, 2× for print (*.png);;SVG image (*.svg)")
         dialog.setAcceptMode(QtWidgets.QFileDialog.AcceptMode.AcceptSave)
+        theme_box = add_theme_box(dialog, self.settings)
         describe(dialog, "chromatograms-and-spectra")
-        if not dialog.exec() or not dialog.selectedFiles():
+        wanted = dialog.exec() and dialog.selectedFiles()
+        path = dialog.selectedFiles()[0] if wanted else ""
+        svg = "svg" in dialog.selectedNameFilter().lower()
+        theme = chosen_theme(theme_box)
+        dialog.deleteLater()
+        if not wanted:
             return
-        path = dialog.selectedFiles()[0]
-        self._write_comparison(
-            path, svg="svg" in dialog.selectedNameFilter().lower())
+        remember(theme, self.settings)
+        self._write_comparison(path, svg=svg, theme=theme)
 
-    def _write_comparison(self, path: str, svg: bool = False) -> str | None:
+    def _write_comparison(self, path: str, svg: bool = False,
+                          theme: str = "paper") -> str | None:
         """Write the current comparison to `path`, as SVG or as a 2× PNG."""
         comparison = getattr(self.session, "spectra_comparison", None)
         if comparison is None:
             return None
-        from ..spectra_compare import PRINT_SCALE, render_png, render_svg
+        from ..spectra_compare import (PALETTE_NAMES, PRINT_SCALE,
+                                       palette_named, render_png, render_svg)
 
+        palette = palette_named(theme)
         svg = svg or path.lower().endswith(".svg")
         wanted = ".svg" if svg else ".png"
         if not path.lower().endswith(wanted):
@@ -2279,14 +2291,16 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self._remember_dir(path)
         try:
             if svg:
-                render_svg(comparison, path)
+                render_svg(comparison, path, palette=palette)
             else:
-                render_png(comparison, path, scale=PRINT_SCALE)
+                render_png(comparison, path, scale=PRINT_SCALE,
+                           palette=palette)
         except Exception as exc:                       # a full disk, a bad path
             self._update_status(f"Could not write {path}: {exc}")
             return None
         self._update_status(
             f"{len(comparison.traces)} spectra written to {path}"
+            f", {PALETTE_NAMES[palette.name].lower()}"
             + ("" if svg else f", at {PRINT_SCALE:g}× for print"))
         return path
 

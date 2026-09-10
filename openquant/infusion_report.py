@@ -75,8 +75,8 @@ from .components import Component
 from .explain import Explanation
 from .infusion import InfusionVerdict, run_range, strongest_channel, verdict_for
 from .library import PEAK_TOLERANCE_PPM, LibraryHit, match
-from .report import (IMAGE_WIDTH, _escape, _heading, _number, _STYLE, _table,
-                     print_document)
+from .report import (IMAGE_WIDTH, _escape, _heading, _number, _table,
+                     picture_palette, print_document, style_for)
 from .samples import SampleEntry
 from .spectra_compare import LABEL_MIN_RELATIVE, SpectrumComparison
 
@@ -1435,7 +1435,7 @@ def _read_as(report: InfusionReport) -> str:
 
 
 def _picture(comparison: SpectrumComparison,
-             width: int = PICTURE_WIDTH) -> str:
+             width: int = PICTURE_WIDTH, theme: str = "paper") -> str:
     """
     One drawing, and nothing else in the block.
 
@@ -1448,7 +1448,9 @@ def _picture(comparison: SpectrumComparison,
     """
     height = int(round(width * spectra_compare.DEFAULT_HEIGHT
                        / spectra_compare.DEFAULT_WIDTH))
-    return (f'<p><img src="{spectra_compare.data_uri(comparison)}" '
+    palette = picture_palette(theme)
+    return (f'<p><img src="'
+            f'{spectra_compare.data_uri(comparison, palette=palette)}" '
             f'width="{width}" height="{height}" /></p>')
 
 
@@ -1464,7 +1466,8 @@ def _verdict(report: InfusionReport, breaks: set[str] | None = None) -> str:
 
 
 def _spectrum_block(report: InfusionReport,
-                    breaks: set[str] | None = None) -> str:
+                    breaks: set[str] | None = None,
+                    theme: str = "paper") -> str:
     if report.spectrum is None or report.trace is None:
         return (_sub("Averaged spectrum", breaks)
                 + '<p class="empty">No spectrum could be read from this '
@@ -1472,7 +1475,7 @@ def _spectrum_block(report: InfusionReport,
     base = report.base_peak()
     peaks = report.peaks()
     parts = [_sub("Averaged spectrum", breaks),
-             _picture(report.spectrum),
+             _picture(report.spectrum, theme=theme),
              f'<p class="foot">Every scan of the channel averaged into one '
              f'spectrum — an infusion has no chromatography to select over, '
              f'so this is the whole of the run. Peaks are labelled at '
@@ -1558,7 +1561,8 @@ def _explanation_block(report: InfusionReport,
 
 
 def _library_block(report: InfusionReport,
-                   breaks: set[str] | None = None) -> str:
+                   breaks: set[str] | None = None,
+                   theme: str = "paper") -> str:
     hit = report.hit
     if hit is None:
         return ""
@@ -1567,7 +1571,7 @@ def _library_block(report: InfusionReport,
     parts = [_sub(f"Library — {entry.name}", breaks)]
     comparison = _hit_picture(report)
     if comparison is not None:
-        parts.append(_picture(comparison))
+        parts.append(_picture(comparison, theme=theme))
         parts.append('<p class="foot">The measured spectrum above, the record '
                      'below, both drawn as centroids on their own base peak. '
                      'A record is already sticks, so nothing here is '
@@ -1637,7 +1641,8 @@ def _hit_picture(report: InfusionReport) -> SpectrumComparison | None:
 
 
 def _compared_block(report: InfusionReport,
-                    breaks: set[str] | None = None) -> str:
+                    breaks: set[str] | None = None,
+                    theme: str = "paper") -> str:
     if not report.compared:
         return ""
     parts = [_sub("Other infusions of the same compound", breaks),
@@ -1659,12 +1664,13 @@ def _compared_block(report: InfusionReport,
         widths=["38%", "11%", "11%", "16%", "24%"]))
     for other in report.compared:
         parts.append(_sub(f"Against {other.label}", breaks))
-        parts.append(_picture(other.comparison))
+        parts.append(_picture(other.comparison, theme=theme))
     return "".join(parts)
 
 
 def build_section(report: InfusionReport, heading: str = "",
-                  breaks: set[str] | None = None) -> str:
+                  breaks: set[str] | None = None,
+                  theme: str = "paper") -> str:
     """
     One compound: the heading, the header, the verdict and the blocks.
 
@@ -1677,10 +1683,10 @@ def build_section(report: InfusionReport, heading: str = "",
         _heading(heading, breaks) if heading else "",
         _identity(report),
         _verdict(report, breaks),
-        _spectrum_block(report, breaks),
+        _spectrum_block(report, breaks, theme),
         _explanation_block(report, breaks),
-        _library_block(report, breaks),
-        _compared_block(report, breaks),
+        _library_block(report, breaks, theme),
+        _compared_block(report, breaks, theme),
     ])
 
 
@@ -1740,14 +1746,16 @@ def default_title(reports: list[InfusionReport]) -> str:
 
 
 def build_html(reports, title: str = "", contents: dict[str, int] | None = None,
-               breaks: set[str] | None = None) -> str:
+               breaks: set[str] | None = None, theme: str = "paper") -> str:
     """
     One compound, or every one of them, as one HTML document.
 
     `contents` and `breaks` are what `report.print_document` works out for
     itself — None for no page column, `{}` to reserve one, the mapping on the
     final pass — so the two documents are printed through the same code and
-    the heading that ends a page is chased in one place.
+    the heading that ends a page is chased in one place. `theme` is the
+    batch report's: the same three style sheets and the same palette for
+    every picture, since these pages are mostly pictures.
     """
     reports = _as_list(reports)
     title = title or default_title(reports)
@@ -1761,11 +1769,11 @@ def build_html(reports, title: str = "", contents: dict[str, int] | None = None,
         breaks |= set(headings[1:])
     parts = ["<!DOCTYPE html>", "<html><head><meta charset='utf-8'>",
              f"<title>{_escape(title)}</title>",
-             f"<style>{_STYLE}</style></head><body>",
+             f"<style>{style_for(theme)}</style></head><body>",
              _title_block(title, reports),
              _contents(headings, contents)]
     for heading, report in zip(headings, reports, strict=True):
-        parts.append(build_section(report, heading, breaks))
+        parts.append(build_section(report, heading, breaks, theme))
     parts.append("</body></html>")
     return "".join(parts)
 
@@ -1786,7 +1794,9 @@ def write_pdf(reports, path: str | os.PathLike, **kwargs) -> str:
     """
     reports = _as_list(reports)
     title = kwargs.pop("title", "") or default_title(reports)
+    theme = kwargs.pop("theme", "paper")
     return print_document(
         lambda contents, breaks: build_html(reports, title=title,
-                                            contents=contents, breaks=breaks),
-        path, title, reflows=REFLOWS)
+                                            contents=contents, breaks=breaks,
+                                            theme=theme),
+        path, title, reflows=REFLOWS, theme=theme)

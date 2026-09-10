@@ -817,7 +817,7 @@ IMAGE_WIDTH = 660
 
 
 def _spectra(title: str, comparison, breaks: set[str] | None = None,
-             most: int = 20) -> str:
+             most: int = 20, theme: str = "paper") -> str:
     """
     The spectra the Explorer was comparing, as a picture and as two tables.
 
@@ -849,8 +849,9 @@ def _spectra(title: str, comparison, breaks: set[str] | None = None,
         f"to be printed clear of the traces is left out rather than drawn "
         f"over them.</p>")
     parts.append(
-        f'<p><img src="{spectra_compare.data_uri(comparison)}" '
-        f'width="{IMAGE_WIDTH}" height="{height}" /></p>')
+        f'<p><img src="'
+        f'{spectra_compare.data_uri(comparison, palette=picture_palette(theme))}'
+        f'" width="{IMAGE_WIDTH}" height="{height}" /></p>')
     # the picture carries its own title and legend, so there is no caption
     # under it: the same words twice, four lines apart, read as a mistake
     rows = []
@@ -1195,13 +1196,148 @@ table.ident td { border-bottom: 1px solid #dfe3e9; }
 table.contents td { border-bottom: 1px solid #eef1f5; }
 """
 
+#: black and white, for a journal that prints in no other colour. Two things
+#: change and they are the two things a greyscale press flattens: nothing is
+#: tinted — the striped rows and the shaded heading cells become rules, since
+#: a 4% tint reproduces as either nothing or a smudge — and every colour that
+#: carried meaning becomes weight or a rule instead. A failure is bold, not
+#: red; a heading is black over a black rule. Rendered and looked at, the
+#: same as every rule in `_STYLE`: `background` appears nowhere below, and a
+#: page of it rendered out of the PDF came back with **zero** pixels whose
+#: red, green and blue differ at all — see
+#: `tests/test_export_themes.py`, which measures exactly that, and note that
+#: the running furniture had to be themed separately to get there.
+_STYLE_MONO = """
+@page { size: A4 portrait; margin: 15mm 15mm 15mm 18mm; }
+body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+       font-size: 9pt; color: #000000; }
+p.eyebrow { color: #000000; font-size: 7.5pt; font-weight: 600;
+            letter-spacing: 1px; margin: 0 0 2pt 0; }
+h1 { font-size: 19pt; font-weight: 600; color: #000000; margin: 0 0 7pt 0; }
+h2 { font-size: 11.5pt; font-weight: 600; color: #000000;
+     margin: 18pt 0 5pt 0; border-bottom: 2px solid #000000;
+     padding-bottom: 2pt; }
+h2.plain { border-bottom: 1px solid #767676; }
+h3 { font-size: 9.5pt; font-weight: 600; margin: 12pt 0 3pt 0; color: #000000; }
+h2.break, h3.break { page-break-before: always; }
+p { margin: 0 0 4pt 0; }
+p.meta { color: #3c3c3c; font-size: 8pt; margin: 0 0 6pt 0; }
+p.empty { color: #3c3c3c; font-style: italic; margin: 2pt 0 6pt 0; }
+p.foot { color: #3c3c3c; font-size: 7.5pt; margin: 2pt 0 0 0; }
+ul.findings { margin: 6pt 0 0 0; }
+li { margin: 0 0 2pt 0; }
+span.aside { color: #3c3c3c; font-style: italic; }
+span.mark { color: #3c3c3c; }
+span.bad { color: #000000; font-weight: 700; }
+table { border-collapse: collapse; }
+th { font-size: 8pt; text-align: left; color: #000000;
+     border-top: 1px solid #000000; border-bottom: 1.5px solid #000000;
+     font-weight: 600; }
+th.num { text-align: right; }
+td { font-size: 8pt; border-bottom: 1px solid #b8b8b8; vertical-align: top; }
+td.num { text-align: right; }
+td.label { color: #3c3c3c; }
+table.ident td { border-bottom: 1px solid #b8b8b8; }
+table.contents td { border-bottom: 1px solid #d7d7d7; }
+"""
+
+#: for a screen: the application's own dark ground, and every colour on it
+#: lightened to the cast the dark interface already uses. **For the HTML
+#: export only.** A PDF is a thing somebody prints, and a dark page prints
+#: as a sheet of toner with white letters knocked out of it, so
+#: `print_document` refuses this theme rather than write one — see the
+#: message it raises.
+#:
+#: Measured on #1e2124, since a dark page is where type goes thin and grey:
+#: the body 13.2:1, the muted asides 6.4:1, the headings' accent 5.7:1, a
+#: failure 5.2:1, a heading cell's ink on its own ground 7.4:1, and the
+#: muted asides on the striped rows 6.0:1 — every one of them past the
+#: 4.5:1 WCAG asks of text, with the failure red the closest to it.
+_STYLE_DARK = """
+@page { size: A4 portrait; margin: 15mm 15mm 15mm 18mm; }
+body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+       font-size: 9pt; color: #e6e8eb; background: #1e2124; }
+p.eyebrow { color: #6f9be0; font-size: 7.5pt; font-weight: 600;
+            letter-spacing: 1px; margin: 0 0 2pt 0; }
+h1 { font-size: 19pt; font-weight: 600; color: #e6e8eb; margin: 0 0 7pt 0; }
+h2 { font-size: 11.5pt; font-weight: 600; color: #6f9be0;
+     margin: 18pt 0 5pt 0; border-bottom: 2px solid #6f9be0;
+     padding-bottom: 2pt; }
+h2.plain { border-bottom: 1px solid #3c4148; }
+h3 { font-size: 9.5pt; font-weight: 600; margin: 12pt 0 3pt 0; color: #e6e8eb; }
+h2.break, h3.break { page-break-before: always; }
+p { margin: 0 0 4pt 0; }
+p.meta { color: #9ba3ae; font-size: 8pt; margin: 0 0 6pt 0; }
+p.empty { color: #9ba3ae; font-style: italic; margin: 2pt 0 6pt 0; }
+p.foot { color: #9ba3ae; font-size: 7.5pt; margin: 2pt 0 0 0; }
+ul.findings { margin: 6pt 0 0 0; }
+li { margin: 0 0 2pt 0; }
+span.aside { color: #9ba3ae; font-style: italic; }
+span.mark { color: #9ba3ae; }
+span.bad { color: #e07070; font-weight: 600; }
+table { border-collapse: collapse; }
+th { font-size: 8pt; text-align: left; background: #22304a; color: #a8c4ee;
+     border-bottom: 1.5px solid #6f9be0; font-weight: 600; }
+th.num { text-align: right; }
+td { font-size: 8pt; border-bottom: 1px solid #2c3035; vertical-align: top; }
+td.num { text-align: right; }
+td.label { color: #9ba3ae; background: #232629; }
+tr.alt td { background: #232629; }
+table.ident td { border-bottom: 1px solid #2c3035; }
+table.contents td { border-bottom: 1px solid #2c3035; }
+"""
+
+#: the themes by the name a setting or a dialog holds, and what each is
+#: called where a person reads it. `paper` is the default everywhere: no
+#: saved project, no existing caller and no test moves because this exists.
+THEMES = {"paper": _STYLE, "mono": _STYLE_MONO, "dark": _STYLE_DARK}
+THEME_NAMES = {"paper": "Paper", "mono": "Black and white", "dark": "Dark"}
+#: the themes a printed document may be written in. A dark PDF is not what a
+#: printer wants and the export does not offer one.
+PRINTABLE_THEMES = ("paper", "mono")
+
+#: the running header and footer's two colours per theme — the hairline and
+#: the type. The furniture is painted rather than laid out, so it is the one
+#: part of the document the style sheet cannot reach; a black and white page
+#: whose footer rule is still the blue-grey #c3c9d3 is not black and white,
+#: which is what the printed-page test found by reading its pixels.
+FURNITURE = {
+    "paper": ("#c3c9d3", "#5b6472"),
+    "mono": ("#767676", "#3c3c3c"),
+    "dark": ("#3c4148", "#9ba3ae"),
+}
+
+
+def theme_named(theme) -> str:
+    """The name of a theme, `paper` for anything this does not have."""
+    name = str(theme or "").strip().lower()
+    return name if name in THEMES else "paper"
+
+
+def style_for(theme="paper") -> str:
+    """The style sheet of one theme."""
+    return THEMES[theme_named(theme)]
+
+
+def picture_palette(theme):
+    """The palette the pictures of a report in this theme are drawn in.
+
+    The report and the figures inside it are one document: a black and
+    white report holding a four-colour spectrum is not a black and white
+    report.
+    """
+    from . import spectra_compare
+
+    return spectra_compare.palette_named(theme_named(theme))
+
 
 # --------------------------------------------------------------------------- #
 def build_html(session, title: str = "Batch report",
                grouping: str = GROUP_BY_SAMPLE_TYPE,
                sections: tuple[str, ...] = ALL_SECTIONS,
                contents: dict[str, int] | None = None,
-               breaks: set[str] | None = None) -> str:
+               breaks: set[str] | None = None,
+               theme: str = "paper") -> str:
     """
     The whole report as one HTML document.
 
@@ -1209,6 +1345,11 @@ def build_html(session, title: str = "Batch report",
     hundred-component method makes a results section nobody prints — and are
     numbered here rather than in the section functions, so that leaving one
     out closes the gap instead of leaving one.
+
+    `theme` names the style sheet and, with it, the palette every picture in
+    the document is drawn in — `paper`, `mono` for a journal that prints in
+    black and white, `dark` for reading on a screen. It changes how the
+    document looks and never what it says.
 
     `contents` is how the printed version puts page numbers in its table of
     contents: `None` for no page column at all, an empty mapping to reserve
@@ -1250,7 +1391,7 @@ def build_html(session, title: str = "Batch report",
     parts = ["<!DOCTYPE html>",
              "<html><head><meta charset='utf-8'>",
              f"<title>{_escape(title)}</title>",
-             f"<style>{_STYLE}</style></head><body>",
+             f"<style>{style_for(theme)}</style></head><body>",
              _title_block(title, session.project_path, entries, method),
              _contents(list(titles.values()), contents)]
     for key in order:
@@ -1282,7 +1423,7 @@ def build_html(session, title: str = "Batch report",
         elif key == "infusions":
             parts.append(_infusions(name, infusions, breaks))
         elif key == "spectra":
-            parts.append(_spectra(name, spectra, breaks))
+            parts.append(_spectra(name, spectra, breaks, theme=theme))
         elif key == "algorithms":
             parts.append(_algorithms(name, comparison, method, breaks))
         elif key == "batches":
@@ -1653,7 +1794,8 @@ def _orphan_headings(document, page_height: float) -> set[str]:
 
 def _furniture(painter, writer, page: int, total: int, title: str,
                header: float, footer: float, body,
-               strings: dict[str, str] | None = None) -> None:
+               strings: dict[str, str] | None = None,
+               theme: str = "paper") -> None:
     """
     The running header and footer: what this is, and where the reader is in it.
 
@@ -1667,8 +1809,9 @@ def _furniture(painter, writer, page: int, total: int, title: str,
     """
     from PyQt6 import QtCore, QtGui
 
-    rule = QtGui.QColor("#c3c9d3")
-    muted = QtGui.QColor("#5b6472")
+    hairline, ink = FURNITURE[theme_named(theme)]
+    rule = QtGui.QColor(hairline)
+    muted = QtGui.QColor(ink)
     font = QtGui.QFont()
     font.setFamilies(["Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"])
     font.setPointSizeF(7.0)
@@ -1707,7 +1850,8 @@ def _furniture(painter, writer, page: int, total: int, title: str,
 
 def print_document(build, path: str | os.PathLike, title: str,
                    reflows: int = MAX_REFLOWS,
-                   strings: dict[str, str] | None = None) -> str:
+                   strings: dict[str, str] | None = None,
+                   theme: str = "paper") -> str:
     """
     Lay an HTML document out on A4 portrait pages and write it as a PDF.
 
@@ -1728,9 +1872,24 @@ def print_document(build, path: str | os.PathLike, title: str,
     of page one. And it is laid out more than once, because a heading
     stranded at the foot of a page has to be pushed over, and the table of
     contents cannot know a page number until the pages exist.
+
+    `theme` reaches two things. The document's own style is already in the
+    HTML the caller's `build` returns; the running header and footer are
+    painted here, outside it, so they are given the theme's own two colours
+    — a black and white page whose footer rule is still a blue-grey
+    hairline is not black and white, which the printed-page test found by
+    reading its pixels. And a dark document is refused before it is
+    written: a PDF is a thing somebody prints, and a printer handed a dark
+    page lays down a whole sheet of toner with the letters knocked out of
+    it. The HTML export is where a dark report belongs.
     """
     from PyQt6 import QtCore, QtGui
 
+    if theme_named(theme) not in PRINTABLE_THEMES:
+        raise ValueError(
+            "a dark theme is for reading on a screen, not for printing: "
+            "export the report as a web page for that, or print it in "
+            + " or ".join(THEME_NAMES[name] for name in PRINTABLE_THEMES))
     path = str(path)
     writer = QtGui.QPdfWriter(path)
     writer.setPageSize(QtGui.QPageSize(QtGui.QPageSize.PageSizeId.A4))
@@ -1776,7 +1935,7 @@ def print_document(build, path: str | os.PathLike, title: str,
                 0.0, index * body.height(), body.width(), body.height()))
             painter.restore()
             _furniture(painter, writer, index + 1, total, title, header, footer,
-                       body, strings)
+                       body, strings, theme)
     finally:
         painter.end()
     return path
@@ -1791,7 +1950,8 @@ def write_pdf(session, path: str | os.PathLike, **kwargs) -> str:
     is what most of the tests exercise — needs no GUI toolkit at all.
     """
     title = kwargs.get("title", "Batch report")
+    theme = kwargs.get("theme", "paper")
     return print_document(
         lambda contents, breaks: build_html(session, contents=contents,
                                             breaks=breaks, **kwargs),
-        path, title)
+        path, title, theme=theme)

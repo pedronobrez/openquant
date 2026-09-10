@@ -59,6 +59,39 @@ only way two spectra of different sizes compare in a table. A mass in one
 and not in the other is a difference, and a difference is read off the
 picture.
 
+## Themes
+
+The export dialog asks which theme the document is to be written in, and
+remembers the answer for the next one. It changes how the report looks and
+never what it says: the same sections, the same numbers, the same words.
+
+| Theme | For |
+|---|---|
+| Paper | the report as it has always been — the project's blue for headings, striped rows, the pictures in the traces' own colours |
+| Black and white | a journal that prints in no other colour, or a photocopier |
+
+**Black and white** is more than a report with the colour taken out. Nothing
+is tinted, because a 4% tint reproduces as either nothing or a smudge: the
+striped rows and the shaded heading cells become rules instead, and a failed
+row is bold where it was red. The pictures go with it — a black and white
+report holding a four-colour spectrum is not a black and white report — so
+the compared spectra are drawn in two tones and two line styles: the first
+trace solid black (21:1 on white), the second dashed in #666666 (5.7:1), and,
+where the drawing is centroids, a filled head on the first trace's tall
+sticks and a hollow one on the second's, since a dash cannot show on a stick
+one point wide. Measured on the two averaged CA-d4 spectra head to tail: with
+the peak labels masked out, the upper trace's ink is a median grey of 0 and
+the lower's 102, on a page that is 255, and the dash pattern is still a
+dashed line after the figure is halved.
+
+There is a third theme, **dark**, and it is for the HTML export only. A PDF
+is a thing somebody prints, and a printer handed a dark page lays down a
+whole sheet of toner with the letters knocked out of it, so the printed
+export offers two themes and `report.write_pdf` refuses the third. On screen
+it is the application's own dark ground with every colour lightened until it
+clears 3:1 on it. The same three themes are offered for a figure on its own —
+see [[chromatograms-and-spectra]], where the measured contrast figures are.
+
 ## The printed layout
 
 A4 portrait; a title block; a table of contents with page numbers; a

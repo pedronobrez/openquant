@@ -112,19 +112,38 @@ class MainShell(QtWidgets.QMainWindow):
         PDF for handing over, HTML for keeping: the second opens in a browser
         long after this application is gone, which is the point of a report as
         against an export.
+
+        The theme is asked for on the same dialog: paper, or the black and
+        white a journal prints in — which is the document and its pictures
+        both, since a black and white report holding a four-colour spectrum
+        is not a black and white report. There is no dark report to print:
+        `report.print_document` refuses one, and the reason is that a
+        printer handed a dark page lays down a whole sheet of toner.
         """
-        from ..report import write_html, write_pdf
+        from ..report import PRINTABLE_THEMES, write_html, write_pdf
+        from .export_theme import add_theme_box, chosen_theme, remember
+        from .help_window import describe
 
         if not self.session.entries:
             self.statusBar().showMessage("Open a batch before reporting on it.")
             return
         stem = (os.path.splitext(os.path.basename(self.session.project_path))[0]
                 if self.session.project_path else "batch")
-        path, chosen = QtWidgets.QFileDialog.getSaveFileName(
+        dialog = QtWidgets.QFileDialog(
             self, "Export report", os.path.join(self._last_dir(), f"{stem}.pdf"),
             "PDF (*.pdf);;Web page (*.html)")
-        if not path:
+        dialog.setAcceptMode(QtWidgets.QFileDialog.AcceptMode.AcceptSave)
+        theme_box = add_theme_box(dialog, self.settings,
+                                  allowed=PRINTABLE_THEMES)
+        describe(dialog, "report")
+        wanted = dialog.exec() and dialog.selectedFiles()
+        path = dialog.selectedFiles()[0] if wanted else ""
+        chosen = dialog.selectedNameFilter()
+        theme = chosen_theme(theme_box)
+        dialog.deleteLater()
+        if not wanted:
             return
+        remember(theme, self.settings)
         self.settings.setValue("io/last_dir", os.path.dirname(path))
         wants_html = path.lower().endswith(".html") or "html" in chosen.lower()
         if not os.path.splitext(path)[1]:
@@ -139,7 +158,7 @@ class MainShell(QtWidgets.QMainWindow):
         QtWidgets.QApplication.processEvents()
         try:
             writer = write_html if wants_html else write_pdf
-            writer(self.session, path, title=title)
+            writer(self.session, path, title=title, theme=theme)
         except Exception as exc:
             QtWidgets.QMessageBox.warning(self, "Report failed", str(exc))
             return

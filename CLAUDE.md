@@ -678,6 +678,22 @@ UV detector, is not implemented there) — untested on real Windows.
   by a hundred. Renaming and reprocessing left 78 of 78 rows identical.
   The mass is asked about the totals before the chains are split: a
   triacylglycerol took 13 s the naive way, 0.06 s this way.
+- **A summary of many infusions is a different claim from a report of one,
+  and its cells have to say why they are empty.** `infusion_report.summarise`
+  builds one row per open infusion, grouped by `compound_of`; the row *is*
+  an `InfusionReport`, so the Infusions tab and the printed pages cannot
+  disagree, plus the mutual cosines within a compound and a reason wherever
+  a measurement could not be made. `report_for(others=…)` re-averages each
+  other infusion once per report, so `cross_compare` scores from the
+  averages already held. Measured on the nine ZenoTOF bile-acid infusions
+  with the three CID runs as an own library: 14.1 s for nine; the document
+  of all nine 61 pages in 18 s; 4 of 9 precursors within 25 ppm, all the
+  softer activations (the CID runs left 33 and 84 counts and the cell says
+  so); own records at 6, 29, 33 and 61 against the same vial under another
+  activation. And it found what nobody had looked for: the two files named
+  `CA-d4_…TESTEARTIGO` target **839.56**, not 430.35 — no record within
+  ±0.02 Da, 0 of 31 ions, 73 against each other and 5–10 against the real
+  CA-d4 files. `session.infusion_summary` is derived and not saved.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

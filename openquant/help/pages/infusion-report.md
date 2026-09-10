@@ -603,3 +603,10 @@ same tab asks a different question — how much of one compound there is
 against another in the same spray — and answers it with the two responses,
 the isotope cross-talk between them and the ratio. See
 [[infusion-quantitation]].
+
+## The whole folder from a script
+
+`api.infusion_report(folder, "infusions.pdf")` writes this document for
+every infusion in a file or a folder without opening the application, and
+returns one row per section so the numbers can be read without opening the
+PDF — see [[python-api]].

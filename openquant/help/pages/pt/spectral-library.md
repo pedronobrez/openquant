@@ -498,3 +498,10 @@ Uma biblioteca própria acumula um registro por verificação do mesmo padrão.
 **History…**, ao lado da contagem de registros, lê esses registros de volta
 como um gráfico de controle do padrão ao longo do tempo — veja
 [[standard-history]].
+
+## A partir de um script
+
+`api.Library.open(msp)`, `.search(spectrum)` e `.add(spectrum, name)` fazem
+tudo isso sem a janela, tomando o precursor e a polaridade do próprio
+espectro e centroidizando-o antes de escrever um registro — veja a
+[[python-api]].

@@ -125,3 +125,8 @@ writes a report from a session; `openquant.compare.compare_algorithms` runs
 the comparison. The chemistry layer — `openquant.chemistry` — parses
 formulas, computes masses and isotope patterns and searches compositions,
 and depends on neither the interface nor the vendor libraries.
+
+Those are the modules themselves, and they are free to move. For a surface
+that will not — a batch reprocessed and exported, a spectrum explained, a
+library searched, a report written, in ten lines and with a stability
+promise attached — use [[python-api]] instead.

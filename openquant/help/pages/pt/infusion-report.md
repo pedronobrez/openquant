@@ -613,3 +613,10 @@ Este relatório pergunta se um frasco é o que o rótulo diz. O **Quantify…** 
 mesma aba faz outra pergunta — quanto há de um composto contra outro no mesmo
 spray — e a responde com as duas respostas, a interferência isotópica entre
 elas e a razão. Veja a [[infusion-quantitation]].
+
+## A pasta inteira a partir de um script
+
+`api.infusion_report(folder, "infusions.pdf")` escreve este documento para
+cada infusão de um arquivo ou de uma pasta sem abrir a aplicação, e devolve
+uma linha por seção para que os números possam ser lidos sem abrir o PDF —
+veja a [[python-api]].

@@ -126,3 +126,8 @@ executa um método sobre um lote e devolve o conjunto de resultados;
 — `openquant.chemistry` — analisa fórmulas, calcula massas e padrões isotópicos
 e busca composições, e não depende nem da interface nem das bibliotecas do
 fornecedor.
+
+Esses são os módulos em si, e eles podem mudar de lugar. Para uma superfície
+que não muda — um lote reprocessado e exportado, um espectro explicado, uma
+biblioteca buscada, um relatório escrito, em dez linhas e com uma promessa
+de estabilidade — use a [[python-api]].

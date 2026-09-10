@@ -52,7 +52,9 @@ The internal-standard and qualifier columns are explained in
   carry and fills the empty Formula cells with it, see below.
 - **Repair precursors…** is the way out of what that refuses: where a formula
   and the precursor written beside it disagree, it offers the formula's mass
-  for the precursor, row by row, see below.
+  for the precursor, row by row — and, where the two are a whole dalton apart
+  and the mass is the one the instrument acquired, it offers the names whose
+  formula matches that mass instead, see below.
 - **Export schedule…** writes the scheduled acquisition the method implies,
   with the dwell a target cycle leaves each transition, see
   [[acquisition-schedule]].
@@ -184,6 +186,66 @@ Each of those says the same thing: the instrument acquired the mass as it was
 written, so the written mass is the one the data is under and the *name* is
 what wants correcting. No arithmetic could have known that, which is why
 nothing there is ticked.
+
+### When the name is the mistake: rename the row
+
+A whole-dalton row has three answers rather than two — keep it, repair the
+mass, or **rename it** — and the *Rename to* column is the third. It offers
+the names whose formula *does* match the mass that was written: first the ones
+in the written name's own class, with the chains moved by up to four carbons
+and three double bonds, an acyl hydroxyl added or taken away, and a sphingoid
+base's `d`/`t`/`m` varied; then whatever [[lipid-maps|LIPID MAPS]] holds at
+that mass, marked as another class. Nothing is pre-selected. The list is
+ordered by how little of the written name each entry changes, and every entry
+carries its formula and how far that formula's mass sits from the written one,
+in ppm.
+
+Choosing one writes the name and its formula and **leaves every number alone**
+— the precursor, the fragment, the window and therefore the channel are
+untouched — and records `Name renamed` in the [[audit-trail]] with the reason:
+`formula C48H87NO13 matches the written 886.6407 to −17.7 ppm`.
+
+The search matches the *nominal* mass, half a dalton either way, and not the
+four decimals the precursor was typed with. That is the point of it: a row is
+only offered a rename because its written mass already disagrees with its own
+name by a whole dalton, which says where those decimals came from — they were
+computed for the compound the name got wrong. `LacCER(d18:1/18:1(9Z))` is
+written 886.6407 against a formula of 888.6407, and the difference is exactly
+2.0000 where a real double bond is 2.0157. Matching that fraction to its last
+decimal answers nothing at all; matching the nominal mass answers the isomer,
+and the ppm on the row is what says the answer is nominal.
+
+### Measured, on the three whole-dalton rows
+
+| Written | What is offered | The top of the list |
+|---|---|---|
+| `LacCER(d18:1/18:1(9Z))`, 886.6407 | 204 names in the class, over **four** formulas; 25 shown | `LacCER(d18:1/18:2)` and `LacCER(d18:2/18:1)`, both C48H87NO13 at 886.6250, −17.7 ppm |
+| `LacCER(d18:0/18:1)`, 889.6563 | nothing, from the class or the database | a chain moves a lipid by 14 Da, a double bond by 2, a hydroxyl by 16 — nothing this class can be sits one dalton away |
+| `C18:1 Cer`, 464.4 | nothing in the class; one LIPID MAPS species, `CAR 20:4;O` at −136 ppm | the name reads as 564.5350, a hundred daltons out; the search reaches four carbons, not eleven |
+
+Two of the three are answered by saying nothing, and both refusals are worth
+more than a guess would have been. A **whole odd dalton is not a chain**: every
+move the search can make is an even number of nominal daltons, so half the
+integers are unreachable and `LacCER(d18:0/18:1)` is a typed digit rather than
+a misnamed compound. And 204 names over four formulas is the other half of the
+same fact — a mass fixes the composition and never the split between the
+chains, which is why the list is long, why it is ordered by how little it
+changes, and why nothing on it is ticked for you.
+
+Renaming `LacCER(d18:1/18:1(9Z))` to `LacCER(d18:1/18:2)` and processing the
+batch again: **78 of 78 rows identical** — the three whole-dalton components
+across the 26 injections, every area, height, retention time, boundary, point
+count, channel and note the same. That is the whole claim for it. A rename is
+bookkeeping: what it buys is a row whose formula agrees with its own mass,
+which is what a lock mass for the [[mass-recalibration]] is made of, and a
+name that means the compound the data is actually under.
+
+Afterwards the row comes back in this same dialog, now 15.7 mDa out and
+ticked, because the written 886.6407 was never the exact mass of anything: the
+name is right now and the number is the one that was typed. Applying that too
+leaves 78 of 78 rows identical again — 16 mDa is well inside the 0.7 Da that
+picks the channel — and the row ends with its name, its formula and its mass
+all saying the same compound.
 
 ## Method defaults
 

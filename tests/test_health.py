@@ -153,6 +153,32 @@ def test_a_formula_that_is_not_the_precursor_is_serious():
     assert "484.4724" in found.detail
 
 
+def test_a_whole_dalton_disagreement_says_the_name_may_be_the_error():
+    """
+    Past half a dalton the mass is the more likely of the two to be right — it
+    is what the instrument was set to acquire — so the finding has to point at
+    the name and at the column that offers one, rather than at the mass.
+    """
+    health = check_method(_method([
+        Component("LacCER(d18:1/18:1(9Z))", 886.6407, 264.2686, rt=7.0,
+                  adduct="[M+H]+", formula="C48H89NO13"),
+    ]))
+    found = _finding(health, "formula against precursor")
+    assert found is not None
+    assert "1 of them are a whole dalton or more apart" in found.detail
+    assert "makes the *name* the error" in found.detail
+    assert "Rename to" in found.detail
+
+
+def test_a_sub_dalton_disagreement_does_not_talk_about_the_name():
+    health = check_method(_method([
+        Component("dHCer(d18:0/12:0)", 484.465, 284.2948, rt=5.5,
+                  adduct="[M+H]+", formula="C30H61NO3"),
+    ]))
+    found = _finding(health, "formula against precursor")
+    assert found is not None and "Rename to" not in found.detail
+
+
 def test_a_formula_with_no_adduct_is_not_called_a_disagreement():
     health = check_method(_method([
         Component("A", 500.0, 264.2686, rt=5.0, formula="C30H61NO3"),

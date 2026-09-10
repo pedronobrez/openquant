@@ -1,6 +1,8 @@
 """
 Elemental composition tools: formula parsing, exact masses, isotope patterns,
-mass accuracy and formula finding.
+mass accuracy, formula finding, and the lipid shorthand read both ways — a
+name into a formula (`formula_from_name`) and a mass back into the names that
+carry it (`names_for_mass`).
 
 Masses are monoisotopic unless stated otherwise. Abundances come from the
 IUPAC 2013 representative isotopic compositions.
@@ -369,10 +371,186 @@ def formula_from_name(name: str) -> str | None:
     return readings[0] if readings else None
 
 
-def _readings(name: str) -> list[str]:
-    text = " ".join(str(name or "").split()).lower().replace("_", " ")
+@dataclass(frozen=True)
+class Chain:
+    """
+    One chain as the shorthand wrote it: `18:1`, `d18:1`, `h24:0`.
+
+    `prefix` is what stood in front of the number and is kept as written,
+    because it is the part that carries chemistry: `d`/`t`/`m` say how many
+    hydroxyls the sphingoid base has, `h` says the acyl chain carries one, and
+    `c` says nothing at all — it is the `C` a method writes in front of a
+    chain, which is why it is dropped when a chain is written back out.
+    """
+
+    prefix: str
+    carbons: int
+    double_bonds: int
+
+    @property
+    def text(self) -> str:
+        prefix = "" if self.prefix == "c" else self.prefix
+        return f"{prefix}{self.carbons}:{self.double_bonds}"
+
+    @property
+    def hydroxylated(self) -> bool:
+        return self.prefix == "h"
+
+
+@dataclass(frozen=True)
+class Shorthand:
+    """
+    A lipid shorthand name taken apart: the class, the chains, the oxygens.
+
+    This is the parse `formulas_from_name` runs on, kept as an object because
+    two things need it rather than one. Reading a name into a formula needs
+    only the totals; offering a *different* name for the same mass
+    (`names_for_mass`) needs to know what the name said chain by chain, so
+    that what it proposes differs from what was written by a chain and not by
+    a rewrite.
+    """
+
+    lipid: LipidClass
+    chains: tuple[Chain, ...]
+    #: hydroxyls on the sphingoid base — the `d`/`t`/`m` prefix
+    base_hydroxyls: int = 0
+    #: oxygens the name added other than through a chain's `h` prefix: an
+    #: `OH`, a `(2OH)` or a `;O2` on a class that is not a sphingolipid
+    extra_oxygens: int = 0
+    #: unplaced deuterium, `-d4`
+    labels: int = 0
+    #: the double bonds the class's own name implies when the number does not
+    #: say — `Sphingosine C17:0`
+    base_double_bonds: int | None = None
+    #: the class as this name wrote it, `LacCER` rather than `Hex2Cer`, so
+    #: that a name offered back reads like the one it is offered against
+    written_class: str = ""
+
+    @property
+    def oxygens(self) -> int:
+        """Every oxygen above the class's own, the `h` chains included."""
+        return self.extra_oxygens + sum(1 for c in self.chains if c.hydroxylated)
+
+    @property
+    def writes_base(self) -> bool:
+        """
+        Whether the first chain is the sphingoid base, written out.
+
+        A sphingolipid given one chain has not written it: the number is
+        either the whole species or the N-acyl alone, and which of those it is
+        is what `readings` offers both of.
+        """
+        return self.lipid.sphingoid and len(self.chains) == self.lipid.chains
+
+    @property
+    def text(self) -> str:
+        """
+        The name written back out, in one shape.
+
+        The class token is the one the name used and the chains are the ones
+        it named; everything else about how it was typed — the separator, the
+        double-bond positions, the `C` in front of a chain — is not
+        reproduced, because two names that differ only in those are the same
+        compound and a proposal that differed from the written name only
+        there would be noise.
+        """
+        token = self.written_class or self.lipid.name
+        said = f"{token}({'/'.join(chain.text for chain in self.chains)})"
+        if self.extra_oxygens:
+            said += ";O" if self.extra_oxygens == 1 else f";O{self.extra_oxygens}"
+        if self.labels:
+            said += f"-d{self.labels}"
+        return said
+
+    def readings(self) -> list[tuple[int, int]]:
+        """
+        (total carbons, total double bonds) per reading, the standard
+        shorthand's first — see `formulas_from_name` for why there is ever
+        more than one.
+        """
+        return self.readings_of(sum(chain.carbons for chain in self.chains),
+                                sum(chain.double_bonds for chain in self.chains))
+
+    def readings_of(self, carbons: int, double_bonds: int) -> list[tuple[int, int]]:
+        """
+        The same rule applied to totals that are not this name's own.
+
+        `names_for_mass` needs it: it asks whether a set of totals could weigh
+        what the method says *before* it works out how to split them over the
+        chains, and the answer has to be the reading rule this name is read
+        with rather than a second copy of it.
+        """
+        if (len(self.chains) == 1 and self.base_double_bonds is not None
+                and not double_bonds):
+            double_bonds = self.base_double_bonds
+
+        readings = [(carbons, double_bonds)]
+        if self.lipid.sphingoid and len(self.chains) < self.lipid.chains:
+            # the base was not written. It may have been left out because the
+            # number is the whole species (`SM 34:1`) or because the method
+            # names the N-acyl alone (`C14_SM`); both are offered.
+            readings.append((carbons + DEFAULT_BASE[0],
+                             double_bonds + DEFAULT_BASE[1]))
+            if carbons < DEFAULT_BASE[0] + MIN_CHAIN_CARBONS:
+                readings.pop(0)     # too few carbons to be a whole sphingolipid
+        return readings
+
+    def compositions(self) -> list[dict[str, int]]:
+        """Element counts per reading."""
+        out = []
+        for carbons, double_bonds in self.readings():
+            counts = composition(self.lipid, carbons, double_bonds,
+                                 self.base_hydroxyls, self.oxygens, self.labels)
+            if counts is not None:
+                out.append(counts)
+        return out
+
+    def formulas(self) -> list[str]:
+        return [format_formula(counts) for counts in self.compositions()]
+
+
+def composition(lipid: LipidClass, carbons: int, double_bonds: int,
+                base_hydroxyls: int, extra_oxygens: int,
+                labels: int = 0) -> dict[str, int] | None:
+    """
+    Element counts for one class carrying these totals, or None for a total
+    outside what a lipid is — see `LipidClass` for the arithmetic.
+    """
+    if not MIN_CHAIN_CARBONS <= carbons <= MAX_TOTAL_CARBONS:
+        return None
+    counts = {"C": carbons + lipid.carbons,
+              "H": 2 * carbons - 2 * double_bonds + lipid.hydrogens}
+    for element, n in lipid.atoms.items():
+        counts[element] = counts.get(element, 0) + n
+    counts["O"] = counts.get("O", 0) + base_hydroxyls + extra_oxygens
+    if counts["H"] < labels:
+        return None
+    if labels:
+        counts["H"] -= labels
+        counts["D"] = labels
+    return {element: n for element, n in counts.items() if n}
+
+
+def _as_written(name: str, alias: str) -> str:
+    """The class token as the original name spelled it, `LacCER` not `laccer`."""
+    pattern = "".join("[ _]" if char == " " else re.escape(char)
+                      for char in alias)
+    match = re.search(pattern, name, re.IGNORECASE)
+    return match.group(0) if match else ""
+
+
+def parse_shorthand(name: str) -> Shorthand | None:
+    """
+    Take a lipid shorthand name apart, or None when it is not one.
+
+    None for the same reasons `formula_from_name` returns None: no class
+    name, no chain, more chains than the class takes, or a chain outside what
+    a chain can be.
+    """
+    original = " ".join(str(name or "").split())
+    text = original.lower().replace("_", " ")
     if not text:
-        return []
+        return None
 
     labels = sum(int(n) for n in _LABEL.findall(text))
     text = _LABEL.sub(" ", text)
@@ -387,28 +565,25 @@ def _readings(name: str) -> list[str]:
 
     found = _find_class(text)
     if found is None:
-        return []
+        return None
     lipid, base_double_bonds, start, end = found
-    rest = text[:start] + " " + text[end:]
+    alias, rest = text[start:end], text[:start] + " " + text[end:]
 
-    chains = [(prefix, int(carbons), int(double_bonds))
+    chains = [Chain(prefix, int(carbons), int(double_bonds))
               for prefix, carbons, double_bonds in _CHAIN.findall(rest)]
     if not chains:
-        chains = [("", int(carbons), 0) for carbons in _BARE_CHAIN.findall(rest)]
+        chains = [Chain("", int(carbons), 0)
+                  for carbons in _BARE_CHAIN.findall(rest)]
     if not chains or len(chains) > lipid.chains:
-        return []
-    if any(not MIN_CHAIN_CARBONS <= carbons <= MAX_CHAIN_CARBONS
-           for _prefix, carbons, _db in chains):
-        return []
-
-    carbons = sum(c for _prefix, c, _db in chains)
-    double_bonds = sum(db for _prefix, _c, db in chains)
-    extra_oxygens += sum(1 for prefix, _c, _db in chains if prefix == "h")
+        return None
+    if any(not MIN_CHAIN_CARBONS <= chain.carbons <= MAX_CHAIN_CARBONS
+           for chain in chains):
+        return None
 
     base_hydroxyls = DEFAULT_BASE_HYDROXYLS if lipid.sphingoid else 0
-    for prefix, _c, _db in chains:
-        if prefix in _BASE_HYDROXYLS:
-            base_hydroxyls = _BASE_HYDROXYLS[prefix]
+    for chain in chains:
+        if chain.prefix in _BASE_HYDROXYLS:
+            base_hydroxyls = _BASE_HYDROXYLS[chain.prefix]
             break
     if written_oxygens is not None:
         if lipid.sphingoid:
@@ -416,37 +591,15 @@ def _readings(name: str) -> list[str]:
         else:
             extra_oxygens += written_oxygens
 
-    if len(chains) == 1 and base_double_bonds is not None and not double_bonds:
-        double_bonds = base_double_bonds
+    return Shorthand(lipid=lipid, chains=tuple(chains),
+                     base_hydroxyls=base_hydroxyls, extra_oxygens=extra_oxygens,
+                     labels=labels, base_double_bonds=base_double_bonds,
+                     written_class=_as_written(original, alias))
 
-    # (carbons, double bonds) per reading, the standard shorthand's first
-    readings = [(carbons, double_bonds)]
-    if lipid.sphingoid and len(chains) < lipid.chains:
-        # the base was not written. It may have been left out because the
-        # number is the whole species (`SM 34:1`) or because the method
-        # names the N-acyl alone (`C14_SM`); both are offered.
-        readings.append((carbons + DEFAULT_BASE[0],
-                         double_bonds + DEFAULT_BASE[1]))
-        if carbons < DEFAULT_BASE[0] + MIN_CHAIN_CARBONS:
-            readings.pop(0)     # too few carbons to be a whole sphingolipid
 
-    out = []
-    for total_carbons, total_double_bonds in readings:
-        if not MIN_CHAIN_CARBONS <= total_carbons <= MAX_TOTAL_CARBONS:
-            continue
-        counts = {"C": total_carbons + lipid.carbons,
-                  "H": (2 * total_carbons - 2 * total_double_bonds
-                        + lipid.hydrogens)}
-        for element, n in lipid.atoms.items():
-            counts[element] = counts.get(element, 0) + n
-        counts["O"] = counts.get("O", 0) + base_hydroxyls + extra_oxygens
-        if counts["H"] < labels:
-            continue
-        if labels:
-            counts["H"] -= labels
-            counts["D"] = labels
-        out.append(format_formula({e: n for e, n in counts.items() if n}))
-    return out
+def _readings(name: str) -> list[str]:
+    parsed = parse_shorthand(name)
+    return parsed.formulas() if parsed is not None else []
 
 
 # --------------------------------------------------------------------------- #
@@ -607,6 +760,395 @@ def mass_error_mda(measured: float, theoretical: float) -> float:
     return (measured - theoretical) * 1000.0
 
 
+# --------------------------------------------------------------------------- #
+# the name for a mass: when the mass is right and the name is wrong
+# --------------------------------------------------------------------------- #
+#: how far a proposed name may sit from the written one. A name is wrong by a
+#: chain, not by a rewrite: a transposed digit, a double bond counted on the
+#: wrong side of the slash, a `d` typed for a `t`. Four carbons is two
+#: methylenes either way and three double bonds covers a polyunsaturated acyl
+#: written as a saturated one; past that the proposal stops being a correction
+#: of this name and becomes a different compound that happens to weigh the
+#: same, which is what the database list is for.
+NAME_SEARCH_CARBONS = 4
+NAME_SEARCH_DOUBLE_BONDS = 3
+
+#: how many of a name's chains may differ from what was written. Two, for the
+#: same reason as above and for one more: three chains each free to move over
+#: their own range is the product of three ranges, and a triacylglycerol took
+#: 13 seconds to enumerate before this was here — measured — against 0.1 s for
+#: a two-chain class. A proposal that changes every chain of a name is not a
+#: correction of it.
+NAME_SEARCH_CHAINS = 2
+
+#: how far a name's mass may sit from the written one, in Da, when the caller
+#: does not say. Half a dalton: the same *nominal* mass, and no more.
+#:
+#: This is deliberately not the precision the mass was written to. A name is
+#: only searched for when the written precursor already contradicts the name's
+#: own formula by a whole dalton, which says where the digits came from — the
+#: fraction was computed for the compound the name got wrong. The real method
+#: shows it: `LacCER(d18:1/18:1(9Z))` is written 886.6407, its formula gives
+#: 888.6407, and the difference is exactly 2.0000 — a nominal shift, where a
+#: real double bond is 2.0157. Matching that fraction to its four written
+#: decimals answers nothing at all; matching the nominal mass answers the
+#: isomer, 15.7 mDa away. So the search is nominal and every row carries its
+#: own Δ ppm, which is what separates a name that fits the mass exactly from
+#: one that only fits the integer.
+NAME_MASS_TOLERANCE = 0.5
+
+#: most names offered from the class, and from the database
+MAX_NAME_SUGGESTIONS = 25
+MAX_DATABASE_SUGGESTIONS = 10
+
+#: the base prefix each hydroxyl count is written with
+_BASE_PREFIX = {n: prefix for prefix, n in _BASE_HYDROXYLS.items()}
+
+
+@dataclass(frozen=True)
+class NameSuggestion:
+    """
+    A name whose formula matches a mass the written name does not.
+
+    `in_class` is the whole of the ranking: a name built from the written
+    one's own class is a correction of it — same head group, same base, same
+    number of chains, a chain or a double bond different — and a name out of
+    the database is another compound entirely that happens to weigh the same.
+    Both are offered; only the first is a proposal about *this* row.
+    """
+
+    name: str
+    formula: str
+    #: the m/z the formula gives through the adduct asked for
+    mz: float
+    #: the mass it was matched against — the precursor the method carries
+    written: float
+    in_class: bool = True
+    #: where it came from, for the row that says so
+    source: str = "the class"
+    #: how many chains, hydroxyls or oxygens differ from the written name
+    changes: int = 0
+    #: characters of difference from the written name
+    distance: int = 0
+
+    @property
+    def difference(self) -> float:
+        return self.mz - self.written
+
+    @property
+    def error_ppm(self) -> float:
+        """
+        How far the formula's mass sits from the written one, in ppm.
+
+        The same convention as `components.FormulaProposal`: the formula is
+        the true mass and the written value is the measurement of it being
+        judged, so the formula is the denominator.
+        """
+        return self.difference / self.mz * 1e6 if self.mz else 0.0
+
+
+def _name_key(name: str) -> str:
+    """
+    A name reduced to what it says about the composition.
+
+    Double-bond positions, spacing, brackets and case are how a name was typed
+    rather than what it names, and two proposals that differ only there are
+    the same proposal. Comparing the keys is what keeps `(9Z)` from making
+    every proposal look four edits away from the name it corrects — and what
+    stops `TG 52:2` being offered `TG(52:2)`, which is the same name with the
+    brackets this module writes.
+    """
+    text = " ".join(str(name or "").split()).lower()
+    text = _POSITION.sub("", text)
+    return text.translate(str.maketrans("", "", " ()[]_"))
+
+
+def _edit_distance(a: str, b: str) -> int:
+    """Levenshtein distance, iterative and over short strings only."""
+    if a == b:
+        return 0
+    if not a or not b:
+        return len(a) or len(b)
+    previous = list(range(len(b) + 1))
+    for i, char_a in enumerate(a, start=1):
+        current = [i]
+        for j, char_b in enumerate(b, start=1):
+            current.append(min(previous[j] + 1, current[j - 1] + 1,
+                               previous[j - 1] + (char_a != char_b)))
+        previous = current
+    return previous[-1]
+
+
+def _chain_options(chain: Chain, is_base: bool) -> list[tuple[int, int, bool]]:
+    """
+    Every (carbons, double bonds, hydroxylated) one chain may be instead.
+
+    Two chains are excluded rather than offered: one with more than one double
+    bond per two carbons, which is not a fatty chain, and — on the sphingoid
+    base — a hydroxyl written as `h`, since the base's hydroxyls are the
+    `d`/`t`/`m` prefix and are varied there.
+    """
+    carbons = [c for c in range(chain.carbons - NAME_SEARCH_CARBONS,
+                                chain.carbons + NAME_SEARCH_CARBONS + 1)
+               if MIN_CHAIN_CARBONS <= c <= MAX_CHAIN_CARBONS]
+    double_bonds = [d for d in range(
+        max(0, chain.double_bonds - NAME_SEARCH_DOUBLE_BONDS),
+        chain.double_bonds + NAME_SEARCH_DOUBLE_BONDS + 1)]
+    if is_base or chain.prefix not in ("", "c", "h"):
+        hydroxyls = (chain.hydroxylated,)
+    else:
+        hydroxyls = (False, True)
+    return [(c, d, h) for c in carbons for d in double_bonds
+            if 2 * d <= c for h in hydroxyls]
+
+
+def _distributions(options: list[list[tuple[int, int, bool]]],
+                   written: list[tuple[int, int, bool]],
+                   carbons: int, double_bonds: int, hydroxyls: int,
+                   max_changed: int = NAME_SEARCH_CHAINS):
+    """
+    Every way of splitting these totals over the chains, each chain within its
+    own options and at most `max_changed` of them different from what the name
+    wrote. Bounded by what the remaining chains can still reach, which is what
+    keeps a three-chain class from walking its whole product.
+    """
+    n = len(options)
+    reach = [(0, 0, 0, 0)] * (n + 1)        # min/max carbons, min/max dbs
+    hydroxyl_reach = [0] * (n + 1)
+    for index in range(n - 1, -1, -1):
+        low_c, high_c, low_d, high_d = reach[index + 1]
+        reach[index] = (low_c + min(c for c, _d, _h in options[index]),
+                        high_c + max(c for c, _d, _h in options[index]),
+                        low_d + min(d for _c, d, _h in options[index]),
+                        high_d + max(d for _c, d, _h in options[index]))
+        hydroxyl_reach[index] = hydroxyl_reach[index + 1] + (
+            1 if any(h for _c, _d, h in options[index]) else 0)
+
+    def walk(index, left_c, left_d, left_h, left_changes, picked):
+        if index == n:
+            if left_c == 0 and left_d == 0 and left_h == 0:
+                yield tuple(picked)
+            return
+        for option in options[index]:
+            changed = int(option != written[index])
+            if changed > left_changes:
+                continue
+            c, d, h = option
+            rest_c, rest_d, rest_h = left_c - c, left_d - d, left_h - int(h)
+            low_c, high_c, low_d, high_d = reach[index + 1]
+            if not low_c <= rest_c <= high_c or not low_d <= rest_d <= high_d:
+                continue
+            if not 0 <= rest_h <= hydroxyl_reach[index + 1]:
+                continue
+            picked.append(option)
+            yield from walk(index + 1, rest_c, rest_d, rest_h,
+                            left_changes - changed, picked)
+            picked.pop()
+
+    yield from walk(0, carbons, double_bonds, hydroxyls, max_changed, [])
+
+
+def _candidates(parsed: Shorthand, weighs) -> list[Shorthand]:
+    """
+    Every name in this one's class within the search's reach that weighs the
+    right amount.
+
+    Totals first, their distribution over the chains second, and `weighs` —
+    which takes the hydroxyls, the oxygens and the totals — asked in between.
+    That order is the whole of the performance: a lipid's mass is fixed by its
+    totals, so a set of totals that cannot weigh what the method says has no
+    name worth writing out, and only a few sets of totals ever match. Asking
+    afterwards instead took a triacylglycerol from 0.05 s to 3.9 s, because
+    the chains of a name that cannot be right were still being split every
+    possible way.
+    """
+    chains = parsed.chains
+    options = [_chain_options(chain, parsed.writes_base and index == 0)
+               for index, chain in enumerate(chains)]
+    written_chains = [(chain.carbons, chain.double_bonds, chain.hydroxylated)
+                      for chain in chains]
+    written_carbons = sum(chain.carbons for chain in chains)
+    written_double_bonds = sum(chain.double_bonds for chain in chains)
+    reach = len(chains)
+
+    base_options = ([1, 2, 3] if parsed.writes_base
+                    else [parsed.base_hydroxyls])
+    extra_options = ([parsed.extra_oxygens] if parsed.lipid.sphingoid else
+                     sorted({max(0, parsed.extra_oxygens + delta)
+                             for delta in (-1, 0, 1)}))
+
+    out: list[Shorthand] = []
+    seen: set[str] = set()
+    carbon_range = range(max(MIN_CHAIN_CARBONS,
+                             written_carbons - NAME_SEARCH_CARBONS * reach),
+                         written_carbons + NAME_SEARCH_CARBONS * reach + 1)
+    double_bond_range = range(
+        max(0, written_double_bonds - NAME_SEARCH_DOUBLE_BONDS * reach),
+        written_double_bonds + NAME_SEARCH_DOUBLE_BONDS * reach + 1)
+    hydroxyl_counts = range(sum(1 for chain_options in options
+                                if any(h for _c, _d, h in chain_options)) + 1)
+
+    for base_hydroxyls in base_options:
+        for extra_oxygens in extra_options:
+            for hydroxylated in hydroxyl_counts:
+                for carbons in carbon_range:
+                    for double_bonds in double_bond_range:
+                        if not weighs(base_hydroxyls,
+                                      extra_oxygens + hydroxylated,
+                                      carbons, double_bonds):
+                            continue
+                        for picked in _distributions(
+                                options, written_chains, carbons,
+                                double_bonds, hydroxylated):
+                            candidate = _rebuild(parsed, picked, base_hydroxyls,
+                                                 extra_oxygens)
+                            key = _name_key(candidate.text)
+                            if key in seen:
+                                continue
+                            seen.add(key)
+                            out.append(candidate)
+    return out
+
+
+def _rebuild(parsed: Shorthand, picked: tuple[tuple[int, int, bool], ...],
+             base_hydroxyls: int, extra_oxygens: int) -> Shorthand:
+    """One enumerated composition written back as a name in the same shape."""
+    chains = []
+    for index, (carbons, double_bonds, hydroxylated) in enumerate(picked):
+        written = parsed.chains[index]
+        if parsed.writes_base and index == 0:
+            # the base says its hydroxyls in its prefix, and says nothing
+            # where it has the usual two and the written name said nothing
+            prefix = ("" if (base_hydroxyls == DEFAULT_BASE_HYDROXYLS
+                             and written.prefix not in _BASE_HYDROXYLS)
+                      else _BASE_PREFIX[base_hydroxyls])
+        elif hydroxylated:
+            prefix = "h"
+        else:
+            prefix = "" if written.prefix in ("c", "h") else written.prefix
+        chains.append(Chain(prefix, carbons, double_bonds))
+    return Shorthand(lipid=parsed.lipid, chains=tuple(chains),
+                     base_hydroxyls=base_hydroxyls, extra_oxygens=extra_oxygens,
+                     labels=parsed.labels,
+                     base_double_bonds=parsed.base_double_bonds,
+                     written_class=parsed.written_class)
+
+
+def _changes(parsed: Shorthand, candidate: Shorthand) -> int:
+    """How many things the proposal changes about the written name."""
+    changed = sum(1 for written, offered in zip(parsed.chains, candidate.chains)
+                  if (written.carbons, written.double_bonds,
+                      written.hydroxylated) != (offered.carbons,
+                                                offered.double_bonds,
+                                                offered.hydroxylated))
+    changed += int(parsed.base_hydroxyls != candidate.base_hydroxyls)
+    changed += int(parsed.extra_oxygens != candidate.extra_oxygens)
+    return changed
+
+
+def names_for_mass(mz: float, adduct: str | Adduct = "[M+H]+",
+                   like: str = "", tolerance: float | None = None,
+                   database=None,
+                   max_results: int = MAX_NAME_SUGGESTIONS,
+                   max_database: int = MAX_DATABASE_SUGGESTIONS,
+                   ) -> list[NameSuggestion]:
+    """
+    Names whose formula matches this mass, for when the name is the mistake.
+
+    `components.precursor_repairs` finds a written precursor its name's
+    formula contradicts and offers to overwrite the mass. Where the two are a
+    whole dalton or more apart that is the wrong repair: the instrument
+    acquired the mass that was written, so it is the *name* that is wrong, and
+    this is what says what it might have been.
+
+    Two lists come back, the class's first and the database's after it, every
+    row carrying `in_class` to say which it is:
+
+    - names built out of the written name's own class — same head group, same
+      base, the same number of chains — with the chains moved within
+      `NAME_SEARCH_CARBONS` and `NAME_SEARCH_DOUBLE_BONDS`, the hydroxyls
+      moved, and the sphingoid base's `d`/`t`/`m` varied. These are ranked by
+      how little of the written name they change, nearest first: a name that
+      differs by one double bond is a correction, and one that differs by
+      three chains and a hydroxyl is a coincidence.
+    - what LIPID MAPS holds at the same mass, which is where a name outside
+      the class comes from. Grouped by species, because a mass search answers
+      a species and never a compound.
+
+    `tolerance` is in Da and defaults to `NAME_MASS_TOLERANCE`, which is the
+    nominal mass and not the written one — see the constant for why. Nothing
+    is offered that the mass does not support, so an empty list is a real
+    answer, and on the real method it is the commonest one: a disagreement of
+    a whole odd dalton cannot be a chain at all. A chain moves the mass by
+    14 Da, a double bond by 2 and a hydroxyl by 16, so nothing this class can
+    be reaches a mass 1 Da away — the name is not off by a chain, the number
+    is off by a digit, and the class has nothing to say about it.
+    """
+    form = ADDUCTS_BY_NAME.get(adduct) if isinstance(adduct, str) else adduct
+    if form is None or not mz or mz <= 0:
+        return []
+    tolerance = NAME_MASS_TOLERANCE if tolerance is None else tolerance
+    parsed = parse_shorthand(like)
+    written_key = _name_key(like)
+    suggestions: list[NameSuggestion] = []
+    if parsed is not None:
+        def weighs(base_hydroxyls, oxygens, carbons, double_bonds) -> bool:
+            """Could a name with these totals weigh what was written?"""
+            for total_c, total_db in parsed.readings_of(carbons, double_bonds):
+                counts = composition(parsed.lipid, total_c, total_db,
+                                     base_hydroxyls, oxygens, parsed.labels)
+                if counts is None:
+                    continue
+                if abs(form.mz(monoisotopic_mass(counts)) - mz) <= tolerance:
+                    return True
+            return False
+
+        for candidate in _candidates(parsed, weighs):
+            if _name_key(candidate.text) == written_key:
+                continue
+            for counts in candidate.compositions():
+                offered = form.mz(monoisotopic_mass(counts))
+                if abs(offered - mz) > tolerance:
+                    continue
+                suggestions.append(NameSuggestion(
+                    name=candidate.text, formula=format_formula(counts),
+                    mz=offered, written=mz, in_class=True, source="the class",
+                    changes=_changes(parsed, candidate),
+                    distance=_edit_distance(_name_key(candidate.text),
+                                            written_key)))
+                break
+        suggestions.sort(key=lambda s: (s.distance, s.changes,
+                                        abs(s.error_ppm), s.name))
+        suggestions = suggestions[:max_results]
+
+    found = (database() if callable(database) else database) if database else None
+    if found is not None:
+        # a database name is judged on its mass alone — there is no written
+        # name for it to be a correction of — so it gets the precision the
+        # written value actually carries and not the nominal search above.
+        # The same limit `fill_formulas` used to refuse the formula in the
+        # first place; a call, not an import cycle, since components imports
+        # this module and never the other way round.
+        from .components import written_tolerance
+        from .lipidmaps import group_by_species
+
+        exact = written_tolerance(mz)
+        taken = {_name_key(s.name) for s in suggestions} | {written_key}
+        for species in group_by_species(found.search_mz(mz, form, exact)):
+            name = species.species
+            if _name_key(name) in taken:
+                continue
+            taken.add(_name_key(name))
+            record = species.records[0] if species.records else None
+            suggestions.append(NameSuggestion(
+                name=name, formula=species.formula, mz=species.theoretical,
+                written=mz, in_class=False,
+                source=f"LIPID MAPS {record.lm_id}" if record else "LIPID MAPS",
+                changes=0,
+                distance=_edit_distance(_name_key(name), written_key)))
+            if sum(1 for s in suggestions if not s.in_class) >= max_database:
+                break
+    return suggestions
 # --------------------------------------------------------------------------- #
 # isotope patterns
 # --------------------------------------------------------------------------- #

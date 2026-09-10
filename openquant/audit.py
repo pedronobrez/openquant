@@ -41,6 +41,9 @@ COMPONENT_ADDED = "Component added"
 COMPONENT_EDITED = "Component edited"
 COMPONENT_REMOVED = "Component removed"
 PRECURSOR_REPAIRED = "Precursor repaired"
+#: the other half of a precursor that disagrees with its name: where the
+#: mass is what the instrument acquired, the name is the thing corrected
+NAME_RENAMED = "Name renamed"
 METHOD_DEFAULT = "Method default"
 SAMPLE_EDITED = "Sample edited"
 PROCESSED = "Batch processed"
@@ -52,7 +55,8 @@ PROJECT_SAVED = "Project saved"
 EVENTS: tuple[str, ...] = (
     MANUAL_INTEGRATION, AUTOMATIC_INTEGRATION, ROW_USED, CALIBRATION_POINT,
     CALIBRATION_OUTLIERS, COMPONENT_ADDED, COMPONENT_EDITED,
-    COMPONENT_REMOVED, PRECURSOR_REPAIRED, METHOD_DEFAULT, SAMPLE_EDITED,
+    COMPONENT_REMOVED, PRECURSOR_REPAIRED, NAME_RENAMED, METHOD_DEFAULT,
+    SAMPLE_EDITED,
     PROCESSED, REPROCESSED,
     RECALIBRATION, INFUSION_REPORT, PROJECT_SAVED,
 )

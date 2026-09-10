@@ -594,3 +594,36 @@ def test_the_manuals_scripts_run(data, tmp_path, capsys):
     assert "records searched" in printed            # the third
     for name in ("bile-acids.msp", "out.csv", "out.xlsx", "out.pdf"):
         assert os.path.exists(tmp_path / name), name
+
+
+def test_the_offscreen_platform_is_given_fonts_on_windows(tmp_path, monkeypatch):
+    """
+    Qt's offscreen platform finds no fonts on Windows and draws every
+    glyph as a box — measured: a 47-page report with no text in it. The
+    system's directory is pointed at, only there, and only where nothing
+    else has said where to look.
+    """
+    import os
+    import sys
+
+    (tmp_path / "Fonts").mkdir()
+    monkeypatch.setenv("WINDIR", str(tmp_path))
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.delenv("QT_QPA_FONTDIR", raising=False)
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    api.offscreen_fonts()
+    assert "QT_QPA_FONTDIR" not in os.environ
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    api.offscreen_fonts()
+    assert os.environ["QT_QPA_FONTDIR"] == str(tmp_path / "Fonts")
+
+    monkeypatch.setenv("QT_QPA_FONTDIR", "elsewhere")
+    api.offscreen_fonts()
+    assert os.environ["QT_QPA_FONTDIR"] == "elsewhere"
+
+    monkeypatch.setenv("QT_QPA_PLATFORM", "windows")
+    monkeypatch.delenv("QT_QPA_FONTDIR")
+    api.offscreen_fonts()
+    assert "QT_QPA_FONTDIR" not in os.environ

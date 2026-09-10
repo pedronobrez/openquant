@@ -194,6 +194,9 @@ def _ensure_app():
 
     app = QtWidgets.QApplication.instance()
     if app is None:
+        from .api import offscreen_fonts
+
+        offscreen_fonts()
         app = _APP = QtWidgets.QApplication([""])
     return app
 

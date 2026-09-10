@@ -118,7 +118,9 @@ fits from the samples the project calls standards and reports nothing where
 there are none. `report()` renders through Qt and makes the offscreen
 application itself, so a plain script needs no `headless()`; hold one open
 by hand when a script writes several documents, or wants Qt for something
-of its own.
+of its own. On Windows the offscreen platform is given the system's fonts
+(`QT_QPA_FONTDIR`, unless already set), because on its own it has none
+and a report came out as boxes where the words should be.
 
 ## A spectrum against a library
 

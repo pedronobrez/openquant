@@ -65,6 +65,19 @@ marcação não posicionada, quantos deutérios o fragmento reteve. Depois, numa
 tabela própria, **os picos que ela não explica**: a metade honesta da
 resposta, e onde uma impureza co-infundida ou o composto errado aparece.
 
+**A pureza isotópica**, quando o composto carrega marcações e um aduto foi
+identificado — o número do certificado que ninguém mede. O bloco é o próprio
+envelope: cada degrau de d0 a dn com a sua *m/z*, a sua intensidade, a sua
+fração do íon totalmente marcado e a fração ajustada, depois o par de
+espécies (`d4 96,2%, ≥d3 99,1%`) e o átomo por cento, que é a grandeza que o
+certificado declara e é outro número. Quando o envelope não pode ser
+resolvido, os degraus são impressos do mesmo jeito com a razão embaixo,
+porque uma recusa é uma afirmação sobre aqueles números e quem não os vê não
+pode conferi-la. Esse é o desfecho em todas as nove infusões reais, por uma
+razão que o [[lipid-maps]] expõe: o precursor de um espectro de íons produto
+passou pelo quadrupolo, e os satélites de carbono-13 de que a solução precisa
+foram junto.
+
 **O resultado da biblioteca**, quando uma busca foi feita na aba
 [[spectral-library]]: o melhor registro, a sua pontuação e a pontuação
 reversa, quantos dos seus picos casaram, a diferença de precursor em ppm, os
@@ -548,6 +561,36 @@ separadas, o que isto se recusa a fazer — o `check_method` ainda chamou as
 duas linhas de DCA-d4 de transição compartilhada: as duas são 414,3516 →
 361,30 dentro da tolerância, uma a 22 eV e outra a 40, e nada além de um tempo
 de retenção poderia distingui-las.
+
+### Pureza isotópica, nos mesmos nove arquivos
+
+Todos eles voltaram como *não medida*, e o bloco diz isso com os seus próprios
+números na página. O satélite de carbono-13 do íon totalmente marcado, que a
+fórmula coloca em 26,5 – 30,0% dele, mede 0,006 – 0,206%:
+
+| infusão | degrau d4 | M+1 medido | razão para a fórmula | leitura |
+|---|---|---|---|---|
+| CA-d4 EAD 12 eV | 83.712 | 0,006% | 0,0002 | não medida |
+| CA-d4 EAD 22 eV | 66.655 | 0,028% | 0,0010 | não medida |
+| CA-d4 CID 45 eV | 607 | 0,095% | 0,0036 | não medida |
+| DCA-d4 EAD 22 eV | 38.178 | 0,015% | 0,0006 | não medida |
+| DCA-d4 CID 40 eV | 296 | 0,150% | 0,0057 | não medida |
+| TDCA-d4 EAD 22 eV | 36.447 | 0,020% | 0,0007 | não medida |
+| TDCA-d4 CID 30 eV | 2.272 | 0,206% | 0,0069 | não medida |
+
+As duas linhas `TESTEARTIGO` não têm bloco nenhum: nada identificou um íon
+para elas, pela razão que a lista acima dá, e não há envelope para imprimir.
+
+O número que o envelope *teria* dado, com a verificação desligada, é
+98,3 – 99,0% de d4 nos sete precursores — o que ficaria confortavelmente acima
+de um `≥98 átomo % D` de certificado e não significaria nada, porque se move
+com a energia de colisão: 98,32%, 98,77% e 98,98% em três aquisições do mesmo
+frasco de ácido cólico-d4 a 12, 22 e 45 eV. A escada, tentada do mesmo modo,
+dá 36,7%, 90,1% e 85,0% para essas mesmas três. **O que os dados dizem é que
+estes arquivos não conseguem responder à pergunta**, e um relato honesto da
+pureza de um padrão d4 neste instrumento precisa de um minuto de TOF MS ao
+lado do canal de íons produto. O [[lipid-maps]] tem a aritmética e o resto das
+evidências.
 
 ## O mesmo padrão, no mês que vem
 

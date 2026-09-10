@@ -63,6 +63,19 @@ table of its own, **the peaks it does not account for**: the honest half of
 the answer, and where a co-infused impurity or the wrong compound shows
 itself.
 
+**The isotopic purity**, when the compound carries labels and an adduct was
+identified — the number on the certificate that nobody measures. The block is
+the envelope itself: every rung from d0 to dn with its *m/z*, its intensity,
+its share of the fully-labelled ion and its fitted fraction, then the species
+pair (`d4 96.2%, ≥d3 99.1%`) and the atom per cent, which is the quantity the
+certificate states and is a different number. Where the envelope cannot be
+solved the rungs are printed all the same with the reason under them, because
+a refusal is a statement about those numbers and a reader who cannot see them
+cannot check it. That is the outcome on every one of the nine real infusions,
+for a reason [[lipid-maps]] sets out: a product-ion scan's precursor has been
+through the quadrupole, and the carbon-13 satellites the solve needs went with
+it.
+
 **The library result**, when a search was run in the [[spectral-library]]
 tab: the best record, its score and reverse score, how many of its peaks
 matched, the precursor difference in ppm, the two spectra head to tail, and
@@ -537,6 +550,36 @@ separate rows, which this refuses to do — `check_method` also called the two
 DCA-d4 rows a shared transition: both are 414.3516 → 361.30 within tolerance,
 one at 22 eV and one at 40, and nothing but a retention time could tell them
 apart.
+
+### Isotopic purity, on the same nine files
+
+Every one of them came back *not measured*, and the block says so with its own
+numbers on the page. The fully-labelled ion's carbon-13 satellite, which the
+formula puts at 26.5 – 30.0% of it, measures 0.006 – 0.206%:
+
+| infusion | d4 rung | M+1 measured | ratio to the formula | read |
+|---|---|---|---|---|
+| CA-d4 EAD 12 eV | 83,712 | 0.006% | 0.0002 | not measured |
+| CA-d4 EAD 22 eV | 66,655 | 0.028% | 0.0010 | not measured |
+| CA-d4 CID 45 eV | 607 | 0.095% | 0.0036 | not measured |
+| DCA-d4 EAD 22 eV | 38,178 | 0.015% | 0.0006 | not measured |
+| DCA-d4 CID 40 eV | 296 | 0.150% | 0.0057 | not measured |
+| TDCA-d4 EAD 22 eV | 36,447 | 0.020% | 0.0007 | not measured |
+| TDCA-d4 CID 30 eV | 2,272 | 0.206% | 0.0069 | not measured |
+
+The two `TESTEARTIGO` rows have no block at all: nothing identified an ion for
+them, for the reason the list above gives, and there is no envelope to print.
+
+The number the envelope *would* have given, if the check were switched off, is
+98.3 – 99.0% d4 on all seven precursors — which would sit comfortably above a
+certificate's `≥98 atom % D` and would mean nothing, because it moves with the
+collision energy: 98.32%, 98.77% and 98.98% for three acquisitions of the one
+bottle of cholic acid-d4 at 12, 22 and 45 eV. The ladder, tried the same way,
+gives 36.7%, 90.1% and 85.0% for those same three. **What the data says is
+that these files cannot answer the question**, and the honest report of a
+d4 standard's purity from this instrument needs one minute of TOF MS beside
+the product-ion channel. [[lipid-maps]] has the arithmetic and the rest of the
+evidence.
 
 ## The same standard, next month
 

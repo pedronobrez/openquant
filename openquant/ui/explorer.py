@@ -2049,6 +2049,13 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                 context["channel"] = info.label
                 context["polarity"] = info.polarity
                 context["collision_energy"] = info.collision_energy
+        # the isotopic purity the Explain tab last measured, if any. It has
+        # to travel with the record because it cannot be recovered from one:
+        # the envelope it was solved from is under the floor the record's
+        # peaks are kept at
+        measured = getattr(self.lipid_panel, "purity", None)
+        if measured is not None:
+            context["isotopic_purity"] = measured.field()
         return mz, intensity, precursor, context
 
     def _lipid_fragment(self, name: str, lm_id: str, route: str,

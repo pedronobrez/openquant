@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+import numpy as np
 from PyQt6 import QtCore, QtWidgets
 
 from .. import lipidmaps
@@ -348,6 +349,9 @@ class LipidPanel(QtWidgets.QWidget):
         #: None when the table is holding a structure of one's own — which
         #: writes its own basis line and must not have it written over
         self._record_context = None
+        self._spectrum = None
+        #: the last `purity.Purity`, for a report or a library record to read
+        self.purity = None
 
         self.explain_tree = QtWidgets.QTreeWidget()
         self.explain_tree.setHeaderLabels(["Candidate", "Explains", "Peaks",
@@ -400,6 +404,20 @@ class LipidPanel(QtWidgets.QWidget):
         labels_layout.addWidget(self.labels_note)
         self.labels_box.setVisible(False)
         explain_layout.addWidget(self.labels_box)
+
+        self.purity_text = QtWidgets.QLabel("")
+        self.purity_text.setWordWrap(True)
+        self.purity_text.setTextInteractionFlags(
+            QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.purity_text.setToolTip(
+            "The isotopic purity of the labelled standard, solved from the "
+            "envelope at the identified ion — the number on the certificate "
+            "that nobody measures. It needs the natural-abundance satellites "
+            "of the fully-labelled ion to be in the spectrum, so a "
+            "product-ion scan whose precursor the quadrupole isolated cannot "
+            "be asked and says so")
+        self.purity_text.setVisible(False)
+        explain_layout.addWidget(self.purity_text)
 
         self.explain_note = QtWidgets.QLabel(
             "A share is evidence, not proof. Isomers fragment alike, and a long "
@@ -808,10 +826,21 @@ class LipidPanel(QtWidgets.QWidget):
         the caller's own words, or empty for the instrument's own numbers.
         """
         self._peaks = significant_peaks(mz, intensity)
+        # the profile arrays as well as the peaks above 1%: an isotopic
+        # envelope's rungs are tenths of a per cent of the base peak and
+        # `significant_peaks` has already thrown every one of them away
+        self._spectrum = (np.asarray(mz, dtype=float),
+                          np.asarray(intensity, dtype=float))
         self._polarity = str(polarity or "")
         self._survey = survey
         self.adduct_evidence = []
         self._recalibration = str(recalibration or "")
+        # a purity belongs to the spectrum it was solved from: leaving the
+        # last one standing would write another sample's material into this
+        # one's library record
+        self.purity = None
+        self.purity_text.setVisible(False)
+        self.purity_text.setText("")
         if precursor:
             self.explain_precursor.setText(f"{precursor:g}")
         self.modes.setCurrentIndex(3)
@@ -1039,6 +1068,7 @@ class LipidPanel(QtWidgets.QWidget):
         self.explanation_adduct = adduct.name
         self._show_ranked([explanation], None, adduct.name)
         self._place_labels(explanation, peaks, deuterium)
+        self._show_purity(molecule, formula, adduct, deuterium)
         labelled = f", {deuterium} unplaced label(s)" if deuterium else ""
         lead = f"{note}. " if note else ""
         self._report(f"{lead}{explanation.name}: {explanation.share * 100:.1f}% of "
@@ -1060,6 +1090,48 @@ class LipidPanel(QtWidgets.QWidget):
         return (f"{basis} \u00b7 {self._recalibration}"
                 if self._recalibration else basis)
 
+    def _show_purity(self, molecule, formula: str, adduct,
+                     deuterium: int) -> None:
+        """
+        The isotopic purity line, under the label inference, when there are
+        labels and an ion to read them at.
+
+        Off the profile spectrum rather than off `self._peaks`: the rungs of
+        an isotopic envelope are tenths of a per cent of the base peak and
+        the peak list starts at one per cent. Where the envelope cannot be
+        solved the reason goes in the same place — a line that appears only
+        on success is a line nobody can tell from a feature that did not run.
+        """
+        from ..explain import placed_labels
+        from ..purity import purity_from_spectrum
+
+        self.purity = None
+        spectrum = getattr(self, "_spectrum", None)
+        labels = deuterium or (len(placed_labels(molecule))
+                               if molecule is not None else 0)
+        if spectrum is None or labels <= 0 or adduct is None:
+            self.purity_text.setVisible(False)
+            self.purity_text.setText("")
+            return
+        # a drawing that places its labels has them in its own formula
+        # already, so `deuterium` is the count to fold in and nothing else
+        source = (molecule.formula if molecule is not None and not deuterium
+                  else formula)
+        attempt = purity_from_spectrum(spectrum[0], spectrum[1], source,
+                                       adduct, deuterium)
+        result = attempt.best
+        if result is None:
+            self.purity_text.setVisible(False)
+            self.purity_text.setText("")
+            return
+        self.purity = result
+        self.purity_text.setText(result.line())
+        self.purity_text.setProperty("role",
+                                     "hint" if result.usable else "warning")
+        self.purity_text.style().unpolish(self.purity_text)
+        self.purity_text.style().polish(self.purity_text)
+        self.purity_text.setVisible(True)
+
     def _explain_nothing(self, reason: str) -> None:
         """
         Clear the tables and say why, rather than explain the wrong ion.
@@ -1075,6 +1147,8 @@ class LipidPanel(QtWidgets.QWidget):
         self.match_tree.clear()
         self.sigMatches.emit([])
         self.labels_box.setVisible(False)
+        self.purity_text.setVisible(False)
+        self.purity = None
         self.explanation_basis = ""
         self.explanation_adduct = ""
         self._report(f"Nothing explained: {reason}.")

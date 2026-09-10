@@ -159,6 +159,297 @@ def rdbe(counts: dict[str, int]) -> float:
 
 
 # --------------------------------------------------------------------------- #
+# lipid shorthand -> formula
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class LipidClass:
+    """
+    How a class's formula is built from its chains.
+
+    Every lipid in the shorthand is a head group plus one, two or three
+    chains, and the arithmetic is the same for all of them: the chains
+    contribute their carbons, and every double bond takes two hydrogens
+    away. So a class needs only what its head group adds —
+
+        C = chain carbons + `carbons`
+        H = 2 x chain carbons - 2 x double bonds + `hydrogens`
+
+    — and the fixed atoms of that head group. A hydroxyl replaces a hydrogen
+    with an OH, so it moves the oxygen count and leaves C and H alone, which
+    is why the sphingoid base's hydroxyls are counted apart from `atoms`:
+    `d` (two), `t` (three) and `m` (one) change the oxygens and nothing else.
+    """
+
+    name: str
+    #: how many chains the shorthand names — 1 for a lyso species or a
+    #: sphingoid base, 2 for a diacyl or a ceramide, 3 for a triacylglycerol
+    chains: int
+    #: carbons the head group adds
+    carbons: int = 0
+    #: the hydrogen offset above
+    hydrogens: int = 0
+    #: everything else the head group carries, its oxygens included
+    atoms: dict[str, int] = field(default_factory=dict)
+    #: whether the first chain is a sphingoid base, whose hydroxyls are
+    #: written as the `d`/`t`/`m` prefix and default to two
+    sphingoid: bool = False
+
+
+#: hydroxyls each sphingoid base prefix stands for
+_BASE_HYDROXYLS = {"m": 1, "d": 2, "t": 3}
+DEFAULT_BASE_HYDROXYLS = 2
+
+#: the classes the shorthand is understood for. Every one was checked against
+#: a published exact mass before it was written down.
+LIPID_CLASSES: dict[str, LipidClass] = {
+    c.name: c for c in [
+        LipidClass("FA", 1, 0, 0, {"O": 2}),
+        LipidClass("MG", 1, 3, 6, {"O": 4}),
+        LipidClass("DG", 2, 3, 4, {"O": 5}),
+        LipidClass("TG", 3, 3, 2, {"O": 6}),
+        LipidClass("CE", 1, 27, 44, {"O": 2}),
+        LipidClass("PA", 2, 3, 5, {"O": 8, "P": 1}),
+        LipidClass("PC", 2, 8, 16, {"N": 1, "O": 8, "P": 1}),
+        LipidClass("PE", 2, 5, 10, {"N": 1, "O": 8, "P": 1}),
+        LipidClass("PG", 2, 6, 11, {"O": 10, "P": 1}),
+        LipidClass("PI", 2, 9, 15, {"O": 13, "P": 1}),
+        LipidClass("PS", 2, 6, 10, {"N": 1, "O": 10, "P": 1}),
+        LipidClass("LPA", 1, 3, 7, {"O": 7, "P": 1}),
+        LipidClass("LPC", 1, 8, 18, {"N": 1, "O": 7, "P": 1}),
+        LipidClass("LPE", 1, 5, 12, {"N": 1, "O": 7, "P": 1}),
+        LipidClass("LPG", 1, 6, 13, {"O": 9, "P": 1}),
+        LipidClass("LPI", 1, 9, 17, {"O": 12, "P": 1}),
+        LipidClass("LPS", 1, 6, 12, {"N": 1, "O": 9, "P": 1}),
+        LipidClass("Cer", 2, 0, 1, {"N": 1, "O": 1}, sphingoid=True),
+        LipidClass("SM", 2, 5, 13, {"N": 2, "O": 4, "P": 1}, sphingoid=True),
+        LipidClass("HexCer", 2, 6, 11, {"N": 1, "O": 6}, sphingoid=True),
+        LipidClass("Hex2Cer", 2, 12, 21, {"N": 1, "O": 11}, sphingoid=True),
+        LipidClass("CerP", 2, 0, 2, {"N": 1, "O": 4, "P": 1}, sphingoid=True),
+        LipidClass("SPB", 1, 0, 3, {"N": 1}, sphingoid=True),
+        LipidClass("SPBP", 1, 0, 4, {"N": 1, "O": 3, "P": 1}, sphingoid=True),
+    ]
+}
+
+#: what a name may call a class, and the double bonds that class's own base
+#: carries when the number does not say. `Sphingosine C17:0` is the d17:1
+#: base and `Sphinganine C17:0` the d17:0 one: the trailing `:0` counts the
+#: carbons of a chain that is the base itself, and sphingosine's double bond
+#: is in the word rather than in the number. The written precursor is what
+#: decides whether that reading was right.
+LIPID_ALIASES: dict[str, tuple[str, int | None]] = {
+    "fa": ("FA", None), "fattyacid": ("FA", None),
+    "mg": ("MG", None), "mag": ("MG", None),
+    "dg": ("DG", None), "dag": ("DG", None),
+    "tg": ("TG", None), "tag": ("TG", None),
+    "ce": ("CE", None), "cholesterylester": ("CE", None),
+    "pa": ("PA", None), "pc": ("PC", None), "pe": ("PE", None),
+    "pg": ("PG", None), "pi": ("PI", None), "ps": ("PS", None),
+    "lpa": ("LPA", None), "lpc": ("LPC", None), "lpe": ("LPE", None),
+    "lpg": ("LPG", None), "lpi": ("LPI", None), "lps": ("LPS", None),
+    "cer": ("Cer", None), "ceramide": ("Cer", None),
+    "dhcer": ("Cer", None), "dihydroceramide": ("Cer", None),
+    "sm": ("SM", None), "sphingomyelin": ("SM", None),
+    "hexcer": ("HexCer", None), "glccer": ("HexCer", None),
+    "galcer": ("HexCer", None),
+    "glucosylceramide": ("HexCer", None),
+    "galactosylceramide": ("HexCer", None),
+    "glucosyl ceramide": ("HexCer", None),
+    "galactosyl ceramide": ("HexCer", None),
+    "galact ceramide": ("HexCer", None),
+    "hex2cer": ("Hex2Cer", None), "laccer": ("Hex2Cer", None),
+    "lactosylceramide": ("Hex2Cer", None),
+    "lactosyl ceramide": ("Hex2Cer", None),
+    "cerp": ("CerP", None), "cer1p": ("CerP", None),
+    "ceramide-1-p": ("CerP", None), "ceramide 1 phosphate": ("CerP", None),
+    "spb": ("SPB", None), "sph": ("SPB", 1),
+    "sphingosine": ("SPB", 1), "sphinganine": ("SPB", 0),
+    "dhsph": ("SPB", 0), "sphingoid base": ("SPB", None),
+    "spbp": ("SPBP", None), "s1p": ("SPBP", 1),
+    "sphingosine1p": ("SPBP", 1), "sphingosine-1-p": ("SPBP", 1),
+    "sphingosine 1 phosphate": ("SPBP", 1),
+    "sphinganine1p": ("SPBP", 0), "sphinganine-1-p": ("SPBP", 0),
+    "sphinganine 1 phosphate": ("SPBP", 0),
+    "dhs1p": ("SPBP", 0),
+}
+
+#: the base a two-chain sphingolipid is taken to have when the name writes
+#: one chain only — `Cer1P (16:0)`, `C14_SM`. It is much the commonest base,
+#: and the written precursor confirms the reading or it is thrown away.
+DEFAULT_BASE = (18, 1)
+
+#: a chain: `18:1`, `d18:1`, `h24:0`, and the `C` a method writes in front of
+#: one — `C16:0-Ceramide` — which says nothing the number does not
+_CHAIN = re.compile(r"(?<![A-Za-z0-9])([dtmhc]?)(\d{1,3}):(\d{1,2})(?![:\d])")
+#: a chain written without its double bonds: the `C20` of `C20 Sphinganine`
+_BARE_CHAIN = re.compile(r"(?<![A-Za-z0-9:])c?(\d{1,3})(?![:\d])")
+#: unplaced deuterium: `-d4`, `d7`, `(d9)`. The digits may not be followed by
+#: a colon, which is what keeps the `d18` of `d18:1` a sphingoid base rather
+#: than eighteen labels.
+_LABEL = re.compile(r"(?<![A-Za-z0-9])d(\d{1,2})(?![:\d])")
+#: a double-bond position, `(15Z)`, which says nothing about the composition
+_POSITION = re.compile(r"\(\d{1,2}[ez]\)")
+#: a hydroxyl written out: `OH`, or `2OH` — where the 2 is the position it
+#: sits at and not how many there are, so either is one oxygen
+_HYDROXYL = re.compile(r"(?<![A-Za-z0-9])\d?oh(?![a-z])")
+#: `;O2`, LIPID MAPS's own way of writing the oxygens
+_OXYGENS = re.compile(r";o(\d?)")
+
+#: sanity: a chain outside these is not a chain, it is something else that
+#: happened to be written as a number
+MIN_CHAIN_CARBONS = 2
+MAX_CHAIN_CARBONS = 60
+MAX_TOTAL_CARBONS = 100
+
+
+def _find_class(text: str) -> tuple[LipidClass, int | None, int, int] | None:
+    """
+    The longest class name in the text, and where it sat.
+
+    Longest wins, so `LacCer` is not read as `Cer`, `HexCer` not as `Cer`,
+    and `Sphinganine1P` not as `Sphinganine` followed by a chain of one
+    carbon. A match has to be delimited: a class name may end where a digit
+    or a bracket begins, never in the middle of a longer word.
+    """
+    best: tuple[int, str, int | None, int, int] | None = None
+    for alias, (class_name, base_double_bonds) in LIPID_ALIASES.items():
+        start = text.find(alias)
+        while start >= 0:
+            end = start + len(alias)
+            delimited = ((start == 0 or not text[start - 1].isalnum())
+                         and (end == len(text) or not text[end].isalpha()))
+            if delimited and (best is None or len(alias) > best[0]):
+                best = (len(alias), class_name, base_double_bonds, start, end)
+            start = text.find(alias, start + 1)
+    if best is None:
+        return None
+    _length, class_name, base_double_bonds, start, end = best
+    return LIPID_CLASSES[class_name], base_double_bonds, start, end
+
+
+def formulas_from_name(name: str) -> list[str]:
+    """
+    Every formula a lipid shorthand name can be read as, best guess first.
+
+    There is more than one only where the name is genuinely ambiguous: a
+    two-chain sphingolipid written with a single chain is `SM 34:1` in LIPID
+    MAPS's own shorthand, where the number is the whole species, and
+    `C14_SM` in a method's, where it is the N-acyl and the base is left
+    unsaid. Both readings are arithmetic; only the written precursor can say
+    which was meant, so both are offered and the caller checks them.
+    """
+    return _readings(name)
+
+
+def formula_from_name(name: str) -> str | None:
+    """
+    The elemental formula a lipid shorthand name implies, or None.
+
+    Understands the forms a method actually carries: `SM(d18:1/12:0)`,
+    `Cer(d18:1/16:0)`, `PC 34:1`, `LPC 18:0`, `TG 52:2`, `FA 18:1`, the class
+    written after the chain (`C16:0-Ceramide`, `C14_SM`), a hydroxyl written
+    as `h24:0`, `(2OH)` or `;O3`, a double-bond position in brackets that
+    says nothing about the composition (`24:1(15Z)`), and unplaced deuterium
+    as `-d4`, `d7` or `(d9)`.
+
+    **Nothing here is a measurement.** It is what the name says, and a name
+    is written by a person: a two-chain sphingolipid given one chain is taken
+    to have the d18:1 base, `Sphingosine C17:0` to be the d17:1 base its own
+    word names, and either reading can be wrong. So every caller in this
+    package checks the answer against the precursor the method already
+    carries, to the precision that precursor was written with, and throws the
+    formula away when the two disagree — a wrong formula is a wrong lock mass
+    for the recalibration, which is worse than no lock mass at all.
+
+    Where a name has more than one reading — see `formulas_from_name` — this
+    returns the first, which is the standard shorthand's. Returns None rather
+    than guess when there is no class name, no chain, or a count outside what
+    a lipid chain can be.
+    """
+    readings = _readings(name)
+    return readings[0] if readings else None
+
+
+def _readings(name: str) -> list[str]:
+    text = " ".join(str(name or "").split()).lower().replace("_", " ")
+    if not text:
+        return []
+
+    labels = sum(int(n) for n in _LABEL.findall(text))
+    text = _LABEL.sub(" ", text)
+    text = _POSITION.sub(" ", text)
+
+    extra_oxygens = len(_HYDROXYL.findall(text))
+    text = _HYDROXYL.sub(" ", text)
+    written_oxygens: int | None = None
+    for count in _OXYGENS.findall(text):
+        written_oxygens = int(count) if count else 1
+    text = _OXYGENS.sub(" ", text)
+
+    found = _find_class(text)
+    if found is None:
+        return []
+    lipid, base_double_bonds, start, end = found
+    rest = text[:start] + " " + text[end:]
+
+    chains = [(prefix, int(carbons), int(double_bonds))
+              for prefix, carbons, double_bonds in _CHAIN.findall(rest)]
+    if not chains:
+        chains = [("", int(carbons), 0) for carbons in _BARE_CHAIN.findall(rest)]
+    if not chains or len(chains) > lipid.chains:
+        return []
+    if any(not MIN_CHAIN_CARBONS <= carbons <= MAX_CHAIN_CARBONS
+           for _prefix, carbons, _db in chains):
+        return []
+
+    carbons = sum(c for _prefix, c, _db in chains)
+    double_bonds = sum(db for _prefix, _c, db in chains)
+    extra_oxygens += sum(1 for prefix, _c, _db in chains if prefix == "h")
+
+    base_hydroxyls = DEFAULT_BASE_HYDROXYLS if lipid.sphingoid else 0
+    for prefix, _c, _db in chains:
+        if prefix in _BASE_HYDROXYLS:
+            base_hydroxyls = _BASE_HYDROXYLS[prefix]
+            break
+    if written_oxygens is not None:
+        if lipid.sphingoid:
+            base_hydroxyls = written_oxygens
+        else:
+            extra_oxygens += written_oxygens
+
+    if len(chains) == 1 and base_double_bonds is not None and not double_bonds:
+        double_bonds = base_double_bonds
+
+    # (carbons, double bonds) per reading, the standard shorthand's first
+    readings = [(carbons, double_bonds)]
+    if lipid.sphingoid and len(chains) < lipid.chains:
+        # the base was not written. It may have been left out because the
+        # number is the whole species (`SM 34:1`) or because the method
+        # names the N-acyl alone (`C14_SM`); both are offered.
+        readings.append((carbons + DEFAULT_BASE[0],
+                         double_bonds + DEFAULT_BASE[1]))
+        if carbons < DEFAULT_BASE[0] + MIN_CHAIN_CARBONS:
+            readings.pop(0)     # too few carbons to be a whole sphingolipid
+
+    out = []
+    for total_carbons, total_double_bonds in readings:
+        if not MIN_CHAIN_CARBONS <= total_carbons <= MAX_TOTAL_CARBONS:
+            continue
+        counts = {"C": total_carbons + lipid.carbons,
+                  "H": (2 * total_carbons - 2 * total_double_bonds
+                        + lipid.hydrogens)}
+        for element, n in lipid.atoms.items():
+            counts[element] = counts.get(element, 0) + n
+        counts["O"] = counts.get("O", 0) + base_hydroxyls + extra_oxygens
+        if counts["H"] < labels:
+            continue
+        if labels:
+            counts["H"] -= labels
+            counts["D"] = labels
+        out.append(format_formula({e: n for e, n in counts.items() if n}))
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # adducts
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True)

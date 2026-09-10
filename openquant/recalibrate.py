@@ -40,33 +40,40 @@ for the instrument's.
 Measured on the 26-injection sphingolipid batch this was written against
 (TripleTOF 5600, one 50–700 TOF MS survey, one scan every 14.6 s):
 
-* **As the project ships, the batch has no lock mass at all.** None of its
-  eleven internal standards carries a formula, so `MassTrend.exact` is None
-  for every one of them and all 26 injections come back "no usable lock mass
-  — left as measured". The feature is dormant, correctly, until somebody
-  types a formula into the method.
-* Given one formula — `SM(d18:1/12:0)`, C35H71N2O6P, [M+H]+ = 647.5123 —
-  that standard is also the only one whose survey signal holds together
-  across the run: `mass_drift` puts the other ten between 98 and 534 ppm of
-  spread, which fails `same_ion`, and one has no survey covering it at all.
-  So the fit is **one lock mass, offset only, in 25 of 26 injections** and
-  every row says so.
+* **The method carried no formula at all**, so this was dormant until
+  `components.fill_formulas` — Method workspace ▸ *Fill formulas from names*
+  — read the lipid shorthand in the names: **125 of 141 components and 10 of
+  11 internal standards**, each kept only where its mass agreed with the
+  precursor the method already carried. The 16 refusals are all the written
+  precursor being wrong rather than the name, `dHCer(d18:0/12:0)` at
+  484.465 against its formula's 484.4724 among them.
+* **A formula was the missing half of the question and is not the binding
+  one.** Of the 60 components that then carry a formula *and* lie inside the
+  50–700 survey, exactly **one** measures the same ion in injection after
+  injection: `SM(d18:1/12:0)`, C35H71N2O6P, [M+H]+ = 647.5123. `mass_drift`
+  puts the other ten standards between 98 and 534 ppm of spread, which fails
+  `same_ion`, one has no survey covering it, and `C17:0_Ceramide` was found
+  in five injections with a median 238 ppm from its own formula — a
+  different ion, not a badly measured one. So the fit is **one lock mass,
+  offset only, in 25 of 26 injections**, every row says so, and several lock
+  masses are not available on this batch at any formula coverage.
 * Those offsets: median **+4.8 ppm**, from −4.4 to +11.7, a spread of
   16.1 ppm — which is the same 16 ppm this batch's one standard scatters by
   between injections. **The correction is the size of its own uncertainty.**
   The lock mass's residual goes from a median −4.8 ppm to 0.0 by
   construction; with one lock mass there is nothing left over to check it
   against, which is why the verdict names the count.
-* The figure that matters is the other components. Fifteen analytes inside
-  the survey have a theoretical mass derivable from the lipid shorthand in
-  their own names, independent of anything measured. Over 369 measurements
-  of them the median error is −275 ppm before and −270 ppm after: those are
-  interferences, not the compound, and no ppm-scale correction touches them.
-  Over the 66 measurements that were within 25 ppm to begin with — where the
-  survey plausibly found the right ion — the median error goes from
-  **−8.7 ppm to −3.3 ppm** and the median magnitude from **9.9 to 7.0 ppm**,
-  smaller on 43 of 66. It moves the centre in the right direction and it
-  cannot do better than the one lock mass it was fitted from.
+* The figure that matters is the other components. Fifty-one analytes inside
+  the survey now carry a formula — against the fifteen that could be derived
+  by hand when this was first measured — and 1,228 measurements of them
+  stand. Over all of them the median error is −247 ppm before and −241 ppm
+  after: those are interferences, not the compound, and no ppm-scale
+  correction touches them. Over the 197 measurements that were within 25 ppm
+  to begin with — where the survey plausibly found the right ion — the
+  median error goes from **−7.0 ppm to −1.4 ppm** and the median magnitude
+  from **8.6 to 6.8 ppm**, smaller on 122 of 197. It moves the centre in the
+  right direction and it cannot do better than the one lock mass it was
+  fitted from.
 * And it is **not cosmetic**. Reprocessing the whole batch both ways, over
   ±20 ppm extraction windows, a median shift of 5 ppm moved 1,769 of 2,593
   integrated areas: median |Δ| 1.3%, 830 rows past 5%, and ten rows lost
@@ -76,9 +83,10 @@ Measured on the 26-injection sphingolipid batch this was written against
   quantitative decision, not a display preference, which is why the switch
   is saved with the project and off by default.
 
-A batch with four or more formula-bearing standards spread across the mass
+A batch with four or more standards that *hold the same ion* across the mass
 range is what a linear term needs, and no such batch was available to
-measure. Until one is, `MIN_SLOPE_LOCK_MASSES`, `MIN_MASS_SPAN` and the
+measure — this one has one such standard whether ten of them carry a formula
+or none do. Until one is, `MIN_SLOPE_LOCK_MASSES`, `MIN_MASS_SPAN` and the
 leave-one-out test are written and tested but have never fired on real data.
 """
 
@@ -399,7 +407,10 @@ def describe(corrections: dict[str, MassCorrection]) -> str:
         return (f"No lock mass in any of {len(corrections)} injection(s). A "
                 f"lock mass is an internal standard carrying a formula and an "
                 f"adduct, measuring the same ion throughout the run; nothing "
-                f"here does, so nothing is corrected.")
+                f"here does, so nothing is corrected. Method workspace ▸ "
+                f"Fill formulas from names supplies the formula where the "
+                f"name is lipid shorthand; where the ion is what fails, no "
+                f"formula can help.")
     counts = {len(c.lock_masses) for c in usable}
     offsets = np.array([c.offset_ppm for c in usable], dtype=float)
     spread = ("{}–{}".format(min(counts), max(counts)) if len(counts) > 1

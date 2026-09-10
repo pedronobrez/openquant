@@ -25,6 +25,24 @@ def test_load_accepts_minimal_columns(tmp_path):
     assert component.fragment is None
 
 
+def test_load_reads_a_formula_under_any_of_its_headers(tmp_path):
+    """
+    A formula is what makes a component a lock mass for the recalibration, so
+    a spreadsheet that calls the column something else should still arrive
+    with one.
+    """
+    for header in ("formula", "elemental_formula", "composition",
+                   "molecular_formula", "Chemical Formula"):
+        path = tmp_path / "f.csv"
+        path.write_text(f"name,precursor,adduct,{header}\n"
+                        f"SM(d18:1/12:0),647.5,[M+H]+,C35H71N2O6P\n",
+                        encoding="utf-8")
+        [component] = load_components(path)
+        assert component.formula == "C35H71N2O6P", header
+        assert component.precursor_from_formula() == pytest.approx(647.5123,
+                                                                   abs=5e-4)
+
+
 def test_load_rejects_missing_name(tmp_path):
     path = tmp_path / "bad.csv"
     path.write_text("precursor\n313.2\n", encoding="utf-8")

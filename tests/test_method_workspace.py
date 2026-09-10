@@ -107,3 +107,59 @@ def test_a_dragged_width_survives_a_reload(qapp, method):
     widget.table.setColumnWidth(COL["Name"], 480)
     widget.reload()
     assert widget.table.columnWidth(COL["Name"]) == 480
+
+
+# --------------------------------------------------------------------------- #
+# filling the formulas from the names
+# --------------------------------------------------------------------------- #
+def _filling_method():
+    return [
+        Component(name="SM(d18:1/12:0)", precursor=647.5, fragment=184.0733,
+                  adduct="[M+H]+", is_internal_standard=True),
+        Component(name="C16:0-Ceramide", precursor=538.5, fragment=264.2686,
+                  adduct="[M+H]+"),
+        Component(name="C25:0-Ceramide", precursor=664.4, fragment=264.2686,
+                  adduct="[M+H]+"),
+        Component(name="Mine", precursor=500.0, adduct="[M+H]+",
+                  formula="C30H61NO3"),
+    ]
+
+
+def test_filling_formulas_writes_the_empty_cells_only(qapp, monkeypatch):
+    monkeypatch.setattr(QtWidgets.QMessageBox, "exec", lambda self: None)
+    widget = make(_filling_method())
+    widget.fill_formulas()
+    formulas = [widget.table.item(row, COL["Formula"]).text()
+                for row in range(widget.table.rowCount())]
+    assert formulas == ["C35H71N2O6P", "C34H67NO3", "", "C30H61NO3"]
+    assert [c.formula for c in widget.session.method.components] == formulas
+
+
+def test_filling_formulas_leaves_every_precursor_alone(qapp, monkeypatch):
+    """
+    A formula and an adduct can stand in for a precursor when one is typed by
+    hand, and here they must not: the precursor is what the derivation was
+    checked against, and moving it would move every extraction window in the
+    batch without anybody asking.
+    """
+    monkeypatch.setattr(QtWidgets.QMessageBox, "exec", lambda self: None)
+    widget = make(_filling_method())
+    before = [widget.table.item(row, COL["Precursor"]).text()
+              for row in range(widget.table.rowCount())]
+    widget.fill_formulas()
+    after = [widget.table.item(row, COL["Precursor"]).text()
+             for row in range(widget.table.rowCount())]
+    assert before == after
+    assert [c.precursor for c in widget.session.method.components] == [
+        647.5, 538.5, 664.4, 500.0]
+
+
+def test_filling_formulas_says_what_it_could_not_do(qapp, monkeypatch):
+    said = {}
+    monkeypatch.setattr(QtWidgets.QMessageBox, "exec", lambda self: None)
+    monkeypatch.setattr(QtWidgets.QMessageBox, "setDetailedText",
+                        lambda self, text: said.setdefault("detail", text))
+    widget = make(_filling_method())
+    widget.fill_formulas()
+    assert "2 formula(s) filled in" in widget.status.text()
+    assert "C25:0-Ceramide" in said["detail"] and "664.6602" in said["detail"]

@@ -1,6 +1,6 @@
 """OpenQuant - open source quantitation for LC-MS data (.wiff, .mzML)."""
 
-__version__ = "0.7.9"
+__version__ = "0.8.0"
 
 from .components import Component  # noqa: F401
 from .method import ProcessingMethod  # noqa: F401

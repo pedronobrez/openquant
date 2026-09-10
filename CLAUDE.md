@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.7.9 released; 0.8.0 in progress on main. 1117 tests. Public repository.**
+**Version 0.8.0 released. 1247 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -82,7 +82,10 @@ openquant/
   infusion.py     is this sample a direct infusion (two flatness
                   figures, chromatograms only)
   infusion_report.py  one infused standard on two to four pages: the
-                  checks summed, never a badge
+                  checks summed, never a badge; and every open infusion
+                  on one row
+  standard_history.py  the own library's records of one compound as a
+                  control chart over the days they were acquired
   audit.py        the trail of hand edits saved with the project
   labels.py       which peaks get a label: a budget per region of the
                   visible axis, shared by the pane and the print
@@ -694,6 +697,24 @@ UV detector, is not implemented there) — untested on real Windows.
   `CA-d4_…TESTEARTIGO` target **839.56**, not 430.35 — no record within
   ±0.02 Da, 0 of 31 ions, 73 against each other and 5–10 against the real
   CA-d4 files. `session.infusion_summary` is derived and not saved.
+- **An own-library record is a verification, and reading the file back is
+  a control chart.** `standard_history.py` orders every record of one
+  compound by acquisition date, cuts them into series by collision energy
+  and activation, and charts three metrics against the first record of the
+  series — the cosine, the base peak's ppm from it, its absolute height —
+  through `qc.chart_from_values`, `control_chart` split so the batch and
+  the history cannot disagree about "out"; `qc.Limits` says whether a
+  deviation is a share of the centre or a difference from it. Two fields
+  are now written that nothing recovers later: `Acquired` (the comment
+  only ever said the day the record was typed) and `Base_peak_intensity`.
+  `MIN_RECORDS` is three, and below it the verdict is *too few to chart*.
+  Measured on the nine bile-acid infusions: 9 records, 7 series, one day;
+  CA-d4 against itself scores 67 (EAD 12 vs 22), 29 (EAD 22 vs CID 45), 6
+  (EAD 12 vs CID 45), which is why series never cross an energy; the
+  `_TESTEARTIGO` acquisitions, expected repeats, isolate 839.56 and the
+  history said so with scores of 8 and 0 and *not the same ion* past
+  `SAME_PEAK_PPM` (50). Six infusions cut into thirds give the floor: score
+  98.7–100, base peak within 0.4 ppm, height within 4.5%.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and
@@ -903,7 +924,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-1117 tests, two skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+1247 tests, two skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `ui/settings.py` is the one place a settings object is made, and
 `tests/conftest.py` sets `OPENQUANT_SETTINGS` before any widget exists so

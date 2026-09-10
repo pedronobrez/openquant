@@ -123,6 +123,16 @@ class InfusionsPanel(QtWidgets.QWidget):
             "been saved with a measured summary in it; no raw file is opened")
         self.btn_compare.setEnabled(False)
         bar.addWidget(self.btn_compare)
+        self.btn_energy = QtWidgets.QPushButton("Recommend energies…")
+        self.btn_energy.setToolTip(
+            "Every infusion of a compound grouped by activation and "
+            "collision energy, and which of them to use for identification, "
+            "for quantitation and for a library record — three different "
+            "questions, each with the figures it was decided on. Nothing is "
+            "measured again and no energy between two that were acquired is "
+            "offered")
+        self.btn_energy.setEnabled(False)
+        bar.addWidget(self.btn_energy)
         self.btn_quantify = QtWidgets.QPushButton("Quantify…")
         self.btn_quantify.setToolTip(
             "Measure each analyte against the internal standard the method "
@@ -168,6 +178,7 @@ class InfusionsPanel(QtWidgets.QWidget):
         self.btn_report.clicked.connect(self.write_report)
         self.btn_csv.clicked.connect(self.export_csv)
         self.btn_compare.clicked.connect(self.compare_infusions)
+        self.btn_energy.clicked.connect(self.recommend_energies)
         self.btn_method.clicked.connect(self.use_in_method)
         self.btn_quantify.clicked.connect(self.quantify)
         self.btn_library.clicked.connect(self.add_all_to_library)
@@ -269,6 +280,7 @@ class InfusionsPanel(QtWidgets.QWidget):
         self.btn_report.setEnabled(bool(rows))
         self.btn_csv.setEnabled(bool(rows))
         self.btn_compare.setEnabled(bool(rows))
+        self.btn_energy.setEnabled(bool(rows))
         self.btn_method.setEnabled(bool(rows))
         self.btn_library.setEnabled(bool(rows))
         self._describe()
@@ -379,6 +391,27 @@ class InfusionsPanel(QtWidgets.QWidget):
         self._report(f"{len(rows)} infusion(s) written to "
                      f"{os.path.basename(path)}.")
         return path
+
+    def recommend_energies(self):
+        """
+        Which collision energy and activation explains each standard best.
+
+        Arithmetic on the summary that already stands: no file is read and
+        nothing is measured again, so this opens at once. A tab that has not
+        been measured has no conditions to group and says so rather than
+        opening an empty table.
+        """
+        from .energy_dialog import EnergyDialog
+
+        summary = self.summary
+        if summary is None or not summary.rows:
+            self.status.setText("Measure first; there is nothing to "
+                                "recommend from.")
+            return None
+        self._dialog = EnergyDialog(summary, self)
+        self._dialog.show()
+        self._report(self._dialog.status.text())
+        return self._dialog
 
     def compare_infusions(self, path: str = ""):
         """

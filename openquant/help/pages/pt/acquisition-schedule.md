@@ -76,3 +76,10 @@ melhor que um formato de importação inventado.
 As figuras — transições com tempo, o momento mais cheio, o dwell que o ciclo
 alvo deixa — são também uma seção do [[method-report]], ao lado de tudo o
 mais que se pode ler do método antes de ele ser executado.
+
+## A outra metade da aquisição
+
+Esta página decide *quando* cada transição é adquirida. Em *que* ela é
+adquirida — em qual energia de colisão, e sob qual ativação — é a mesma
+pergunta feita às infusões em vez de à separação, e a [[collision-energy]]
+a responde a partir dos padrões que foram de fato borrifados.

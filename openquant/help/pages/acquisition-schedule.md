@@ -72,3 +72,11 @@ say why a stated difference beats an invented import format.
 The figures — transitions with a time, the busiest moment, the dwell the
 target cycle leaves — are also a section of the [[method-report]], beside
 everything else the method can be read to say before it is run.
+
+## The other half of the acquisition
+
+This page decides *when* each transition is acquired. What it is acquired
+*at* — which collision energy, and under which activation — is the same
+question asked of the infusions rather than of the separation, and
+[[collision-energy]] answers it from the standards that were actually
+sprayed.

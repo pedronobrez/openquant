@@ -776,3 +776,83 @@ def test_the_panel_never_offers_a_negative_adduct_to_a_positive_channel():
     assert signs == {"+"}
     panel.deleteLater()
     app.processEvents()
+
+
+def test_the_explorer_hands_the_lipid_panel_its_own_survey_scan():
+    """
+    A product-ion scan cannot say which adduct its precursor is: Q1 passed
+    one mass and the satellites never reached the detector. The survey of
+    the same acquisition, over the same scans, can — so the Explorer looks
+    for one and hands it over, and where the method has none it hands over
+    nothing rather than something else's spectrum.
+    """
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import numpy as np
+    from PyQt6 import QtWidgets
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    from openquant.samples import SampleEntry
+    from openquant.session import Session
+    from openquant.ui.explorer import ChannelRef, ExplorerWorkspace
+    from openquant.wiff import ChannelInfo
+
+    mz = np.arange(400.0, 440.0, 0.01)
+
+    class _Channel:
+        def __init__(self, index, ms1, tag):
+            self.index = index
+            self.tag = tag
+            self.info = ChannelInfo(
+                index=index, name="TOF MS" if ms1 else "TOF PI",
+                experiment_type="TOF MS" if ms1 else "Product",
+                polarity="Positive", precursor=None if ms1 else 430.35,
+                start_mass=400.0, end_mass=440.0, n_scans=60,
+                collision_energy=None if ms1 else 45.0)
+            self.asked = []
+
+        @property
+        def rt(self):
+            return np.linspace(0.0, 15.0, 60)
+
+        def rt_at_scan(self, scan):
+            return float(self.rt[int(scan)])
+
+        def spectrum_rt_range(self, rt0, rt1, add_zeros=True):
+            self.asked.append((rt0, rt1))
+            return mz, np.full(mz.size, float(self.tag))
+
+        def scans_in_range(self, rt0, rt1):
+            return 20, 24
+
+        def tic(self):
+            return self.rt, np.full(60, 1000.0)
+
+    class _Sample:
+        instrument = "ZenoTOF"
+        problem = None
+
+        def __init__(self, channels):
+            self.channels = channels
+
+    survey, product = _Channel(0, True, 7.0), _Channel(1, False, 3.0)
+    explorer = ExplorerWorkspace(Session())
+    entry = SampleEntry("/d/CA-d4.wiff", 0, "CA-d4")
+    entry.sample = _Sample([survey, product])
+    explorer.active_ref = ChannelRef(entry, product)
+    explorer._show_average(5.0, 6.0)
+
+    found = explorer._survey_spectrum(430.35)
+    assert found is not None
+    assert float(found[1][0]) == 7.0                  # the survey, not the pane
+    assert survey.asked[-1] == (5.0, 6.0)             # the same scans
+
+    # a sample whose only channel is the product-ion one has nothing to give
+    entry.sample = _Sample([product])
+    assert explorer._survey_spectrum(430.35) is None
+    # and the survey is never handed back for itself
+    explorer.active_ref = ChannelRef(entry, survey)
+    assert explorer._survey_spectrum(430.35) is None
+    explorer.deleteLater()
+    app.processEvents()

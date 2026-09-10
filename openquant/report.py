@@ -775,9 +775,9 @@ def _infusions(title: str, summary, breaks: set[str] | None = None) -> str:
     The summary that comes before the per-compound pages: what was measured
     of each vial and, in the cells that could not be filled, what was not
     there to measure. Printed narrower than the tab shows it, because
-    A4 does not hold nineteen columns and a table squeezed into it is a table
+    A4 does not hold twenty columns and a table squeezed into it is a table
     nobody reads; `infusion_report.REPORT_COLUMNS` is the same row with the
-    precursor and the record written as one cell each.
+    precursor, the adduct and the record written as one cell each.
     """
     from .infusion_report import (CONFIRMED_PPM, COUNTED_SCORE,
                                   REPORT_COLUMNS, SCORE_SHARE)
@@ -787,7 +787,10 @@ def _infusions(title: str, summary, breaks: set[str] | None = None) -> str:
         f'<p class="meta">One row per infused sample, each averaged over its '
         f'whole run. The precursor is the method\u2019s own written value '
         f'measured back off the acquisition, counted as confirmed in the line '
-        f'below at {CONFIRMED_PPM:g} ppm; the ions found are of those a '
+        f'below at {CONFIRMED_PPM:g} ppm; the adduct is the ion that '
+        f'written precursor is, with whether the survey scan of the same '
+        f'acquisition confirmed it by exact mass and isotope pattern; the '
+        f'ions found are of those a '
         f'formula or a structure predicted; the record is the best in the '
         f'library of your own, scored by the same cosine a library search '
         f'takes and counted below at {COUNTED_SCORE * 100:.0f}. The last '
@@ -800,9 +803,9 @@ def _infusions(title: str, summary, breaks: set[str] | None = None) -> str:
         list(REPORT_COLUMNS),
         [[_escape(cell) for cell in row.report_cells()]
          for row in summary.rows],
-        right={3, 4, 8}, empty="No infusion is open.",
-        widths=["9%", "15%", "9%", "4%", "8%", "14%", "6%", "14%", "4%",
-                "17%"]))
+        right={3, 4, 9}, empty="No infusion is open.",
+        widths=["9%", "13%", "9%", "4%", "8%", "13%", "10%", "5%", "13%",
+                "4%", "12%"]))
     parts.append(f'<p class="foot">{_escape(summary.summary())}. '
                  f'Measured {summary.taken.strftime("%Y-%m-%d %H:%M")}.</p>')
     return "".join(parts)

@@ -335,6 +335,56 @@ positivo nunca recebe a oferta de um aduto negativo. Sem nenhum precursor
 escrito não há de onde lê-lo, e a caixa Adduct no topo da aba — a que a
 busca do banco de dados usa — entra no lugar, dito em voz alta.
 
+### O survey confirma
+
+Tudo acima é aritmética sobre um número que alguém digitou. Onde a aquisição
+tem uma **varredura de survey** — um canal TOF MS de varredura completa
+cobrindo o precursor — o aduto deixa de ser uma dedução e vira uma medida, e
+o painel diz qual das duas você está olhando.
+
+O survey da mesma aquisição, promediado sobre as mesmas varreduras que o
+espectro na tela, é perguntado sobre cada candidato: a massa exata do íon,
+dentro de 25 ppm e acima de 100 contagens, e o padrão isotópico da composição
+do próprio íon — átomos do aduto incluídos, já que `[M+NH4]+` carrega um
+nitrogênio que a molécula não tem. A linha abaixo do botão então diz
+
+> 647.5 is [M+H]+ of C35H71N2O6P (647.5123, −18.9 ppm); [M+NH4]+ would be
+> 664.5388; confirmed by the survey: 647.5112, −1.6 ppm, isotopes agree, and
+> the survey also shows [M+Na]+ 13%, [M+K]+ 0%
+
+ou, quando não confirma,
+
+> …; the survey does not show it (the nearest peak is +69.9 ppm away, past
+> ±25), so it is chosen from the written mass alone
+
+A segunda cláusula é o ponto. Uma varredura de íons produto não pode
+verificar isto de jeito nenhum: o Q1 deixou passar uma massa e jogou fora os
+satélites isotópicos junto com todo o resto, de modo que o espectro na tela
+não tem padrão para ler. As nove infusões de ácidos biliares em mãos foram
+adquiridas só como varreduras de íons produto, e nelas esta frase diz *no
+survey scan covering 430.35, so nothing independent says which ion it is* —
+que é o que o aduto sempre foi ali, agora escrito.
+
+**O mapa vale tanto quanto a resposta.** Um survey costuma mostrar um
+composto como vários íons ao mesmo tempo, e cada um é reportado com sua
+altura como fração do mais forte: no lote de esfingolipídios tanto a
+esfingomielina quanto a ceramida C16 ficam em cerca de `[M+H]+` 100%,
+`[M+Na]+` 13%. Um oitavo do sinal está num canal que ninguém adquiriu, e um
+composto cujo aduto de sódio seja o maior será quantificado mal por quem
+assumir o contrário.
+
+**O padrão decide o que a massa não decide.** Duas coisas podem ficar numa
+mesma massa: um íon, e o M+1 de algo um dalton mais leve. O `[M+NH4]+` da
+ceramida acima está a 21.5 ppm — dentro dos 25 ppm que dizem "o mesmo íon" —
+e tem 170 contagens, acima das 100 que dizem "mensurável"; seu M+1 e seu M+2
+voltam a 1.00 e 1.00 do seu M, que é ruído plano e não um padrão isotópico, e
+ele fica em último. Um padrão d4 e sua impureza d3, a 1.0063 Da um do outro,
+são o mesmo problema ao contrário: os dois estão na massa dentro de 1 ppm, e
+só o padrão — 0.97 contra 0.06 — diz de qual deles o pico é.
+
+Os números, os dois compostos reais e o que o M+2 de um lipídio de fato
+contém estão em [[accurate-precursor]].
+
 ### O que fez nas infusões reais
 
 Três padrões de ácidos biliares infundidos em um ZenoTOF 7600 em modo

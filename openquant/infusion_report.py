@@ -224,6 +224,19 @@ class InfusionReport:
     #: why there is no survivor, when there is not: a window that held
     #: nothing, or one that held too little to be a measurement
     survivor_note: str = ""
+    # -- what the survey says about the adduct -------------------------------- #
+    #: the formula the adduct was weighed against, labels included
+    formula: str = ""
+    #: `chemistry.adduct_evidence` for every candidate adduct, best supported
+    #: first. Empty where there was no survey to read, which is not the same
+    #: as a survey that showed nothing.
+    evidence: list = field(default_factory=list)
+    #: the sentence the header cell abbreviates: why the adduct is or is not
+    #: confirmed
+    adduct_note: str = ""
+    adduct_confirmed: bool = False
+    #: the survey channel it was read from, as the file labels it
+    survey_channel: str = ""
     # -- the spectrum -------------------------------------------------------- #
     #: the averaged spectrum, drawn for paper; one trace
     spectrum: SpectrumComparison | None = None
@@ -310,6 +323,7 @@ class InfusionReport:
         """
         said: list[str] = []
         said += self._precursor_sentences()
+        said += self._adduct_sentences()
         said += self._fragment_sentences()
         said += self._library_sentences()
         if not said:
@@ -356,6 +370,32 @@ class InfusionReport:
         if measurement is not None:
             return [f"Precursor not confirmed: {measurement.note or 'not found'}."]
         return []
+
+    def _adduct_sentences(self) -> list[str]:
+        """
+        What the survey scan says the written precursor is, if anything.
+
+        An adduct is otherwise arithmetic on a number somebody typed: the
+        method says 647.5, the molecule weighs 646.50, and the only ion that
+        joins them is the protonated one — which is a deduction, not a
+        measurement, and it is wrong the moment the formula is. A survey scan
+        turns it into a measurement, by the exact mass and by the isotope
+        pattern, and where the acquisition has no survey this says so instead
+        of letting the deduction pass for one.
+        """
+        if not self.adduct_note:
+            return []
+        said = [self.adduct_note if self.adduct_note.endswith(".")
+                else self.adduct_note + "."]
+        others = [e for e in self.evidence
+                  if e.present and e.name != self.adduct]
+        if self.adduct_confirmed and others:
+            from .chemistry import adduct_map
+
+            said[-1] += (f" The survey shows this compound as "
+                         f"{adduct_map(self.evidence)}, so the channel that "
+                         f"was acquired is not the only one it would give.")
+        return said
 
     def _fragment_sentences(self) -> list[str]:
         explanation = self.explanation
@@ -502,7 +542,8 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
                label_floor: float = LABEL_MIN_RELATIVE,
                centroid: bool = False,
                spectrum: tuple | None = None,
-               measure_precursor: bool = True) -> InfusionReport:
+               measure_precursor: bool = True,
+               formula: str = "") -> InfusionReport:
     """
     A report for one open infusion, reading the file for what it needs.
 
@@ -521,7 +562,7 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
         file=getattr(entry, "filename", ""),
         sample=getattr(entry, "name", ""),
         instrument=str(getattr(sample, "instrument", "") or ""),
-        adduct=adduct,
+        adduct=adduct, formula=formula,
         explanation=explanation, basis=basis, deuterium=int(deuterium),
         hit=hit, library=library, label_floor=float(label_floor),
     )
@@ -567,6 +608,12 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
         if report.measurement is None or not report.measurement.found:
             _survivor(report, mz, intensity)
 
+    # which adduct that written precursor is, asked of the survey scan
+    # rather than deduced from the number. Only where a formula is known:
+    # without one there is nothing for an adduct to be an adduct of.
+    if formula:
+        confirm_adduct(entry, report, formula, deuterium)
+
     mine = (report.spectrum.peaks(report.trace, most=SCORE_PEAKS,
                                   min_relative=SCORE_SHARE)
             if report.trace is not None else [])
@@ -576,6 +623,105 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
         if other is not None:
             report.compared.append(other)
     return report
+
+
+def survey_spectrum(entry, report: InfusionReport):
+    """
+    The survey scan of this acquisition over the same range as the spectrum.
+
+    The same range on purpose: the product-ion average on the page and the
+    survey it is checked against have to be the same moment of the same run,
+    or the adduct is confirmed from somebody else eluting. For an infusion
+    that range is the whole run, which is the whole of the measurement.
+
+    Returns `(channel, mz, intensity)`, or None when the sample has no
+    full-scan channel covering the precursor — the ordinary case on the nine
+    bile-acid infusions, which were acquired as product-ion scans alone.
+    """
+    from .precursor import survey_channel
+
+    sample = getattr(entry, "sample", None)
+    precursor = float(report.written_precursor or 0.0)
+    if sample is None or not precursor:
+        return None
+    window = report.rt_range
+    middle = None if window is None else (window[0] + window[1]) / 2.0
+    try:
+        channel = survey_channel(sample, precursor, middle)
+    except Exception:                       # a reader that cannot say
+        return None
+    if channel is None:
+        return None
+    span = window or run_range(channel)
+    if span is None:
+        return None
+    try:
+        mz, intensity = channel.spectrum_rt_range(float(span[0]), float(span[1]))
+    except Exception:                       # a .wiff with no .wiff.scan
+        return None
+    return channel, mz, intensity
+
+
+def confirm_adduct(entry, report: InfusionReport, formula: str,
+                   deuterium: int = 0):
+    """
+    Ask the survey which adduct the written precursor is, and record it.
+
+    The written precursor still says which adducts are candidates — the
+    quadrupole isolated that mass — and the survey says which of them the
+    instrument saw, by the exact mass and by the isotope pattern. What comes
+    back goes on the report whichever way it falls: an adduct nobody could
+    check is a different claim from one measured, and the report is a list of
+    claims with their evidence.
+
+    Returns the `chemistry.AdductChoice`, or None where there was no formula
+    or no precursor to ask about.
+    """
+    from .chemistry import (FormulaError, format_formula, identify_adduct,
+                            parse_formula)
+
+    report.evidence = []
+    report.adduct_confirmed = False
+    report.survey_channel = ""
+    precursor = float(report.written_precursor or 0.0)
+    if not formula or not precursor:
+        report.adduct_note = ""
+        return None
+    try:
+        counts = dict(parse_formula(formula))
+    except (FormulaError, ValueError):
+        report.adduct_note = f"“{formula}” is not a formula this can read"
+        return None
+    if deuterium and counts.get("H", 0) >= deuterium and not counts.get("D"):
+        counts["D"] = counts.get("D", 0) + deuterium
+        counts["H"] -= deuterium
+    labelled = format_formula(counts)
+    report.formula = labelled
+
+    found = survey_spectrum(entry, report)
+    polarity = report.polarity or None
+    if found is None:
+        choice = identify_adduct(labelled, precursor, polarity)
+        report.adduct_note = (
+            f"Adduct read from the written precursor alone: this acquisition "
+            f"has no survey scan covering {precursor:g}, so nothing "
+            f"independent says which ion it is — {choice.reason}")
+        if choice.adduct is not None and not report.adduct:
+            report.adduct = choice.adduct.name
+        return choice
+    channel, mz, intensity = found
+    report.survey_channel = str(getattr(channel.info, "label", "") or "")
+    choice = identify_adduct(labelled, precursor, polarity,
+                             survey=(mz, intensity))
+    report.evidence = list(choice.evidence)
+    report.adduct_confirmed = bool(choice.confirmed)
+    if choice.adduct is not None and (not report.adduct
+                                      or choice.confirmed):
+        report.adduct = choice.adduct.name
+    lead = ("Adduct confirmed by the survey" if choice.confirmed
+            else "Adduct not confirmed by the survey")
+    report.adduct_note = f"{lead}: {choice.reason}"
+    return choice
 
 
 def _survivor(report: InfusionReport, mz, intensity) -> None:
@@ -699,12 +845,17 @@ def from_explorer(explorer, compound: str = "", others=(),
                     LABEL_MIN_RELATIVE)
     centroid = bool(getattr(getattr(explorer, "spectrum", None), "centroided",
                             False))
+    # the formula whatever was explained was explained from: without one
+    # there is nothing for an adduct to be an adduct of, and the survey is
+    # not asked
+    formula = str(getattr(getattr(explanation, "record", None), "formula", "")
+                  or "")
     return report_for(
         ref.entry, ref.channel, compound=compound, explanation=explanation,
         basis=basis, deuterium=deuterium, hit=hit, library=library,
         adduct=adduct, others=others, label_floor=float(floor),
         centroid=centroid, spectrum=spectrum,
-        measure_precursor=measure_precursor)
+        measure_precursor=measure_precursor, formula=formula)
 
 
 def infusions_open(source) -> "list[tuple[SampleEntry, object]]":
@@ -756,7 +907,7 @@ COUNTED_SCORE = 0.60
 #: One definition for the table, the CSV and the row's own sort keys.
 SUMMARY_COLUMNS = (
     "Compound", "Sample", "Mode", "CE (eV)", "Scans", "Base peak m/z",
-    "Precursor written", "Found m/z", "Δ ppm", "Height", "Ions found",
+    "Precursor written", "Found m/z", "Δ ppm", "Height", "Adduct", "Ions found",
     "Library record", "Score", "Reverse", "Matched", "Record Δ ppm",
     "Record CE", "Other infusions", "File")
 
@@ -765,8 +916,8 @@ SUMMARY_COLUMNS = (
 #: record are each written as one cell there — the panel and the CSV carry
 #: the parts.
 REPORT_COLUMNS = ("Compound", "Sample", "Mode", "Scans", "Base peak m/z",
-                  "Precursor", "Ions found", "Library record", "Score",
-                  "Other infusions")
+                  "Precursor", "Adduct", "Ions found", "Library record",
+                  "Score", "Other infusions")
 
 _NOT_ALPHANUMERIC = re.compile(r"[^a-z0-9]+")
 
@@ -868,6 +1019,30 @@ class InfusionRow:
         return self.report.survivor
 
     @property
+    def adduct(self) -> str:
+        """
+        The adduct and whether the survey confirmed it, in one cell.
+
+        Three states and not two: confirmed, read off the written precursor
+        with a survey that did not show it, and read off the written
+        precursor because there was no survey to ask. The third is the
+        ordinary case on a product-ion-only acquisition and it is not a
+        failure — but it is not a confirmation either, and a cell that said
+        only `[M+NH4]+` would let it pass for one.
+        """
+        report = self.report
+        if not report.adduct and not report.adduct_note:
+            return "—"                       # nothing was asked, so nothing said
+        name = report.adduct or "—"
+        if report.adduct_confirmed:
+            return f"{name} confirmed"
+        if report.evidence:
+            return f"{name} not confirmed"
+        if report.survey_channel:
+            return f"{name}, survey unreadable"
+        return f"{name}, no survey"
+
+    @property
     def score(self) -> float | None:
         return None if self.report.hit is None else self.report.hit.score
 
@@ -894,6 +1069,7 @@ class InfusionRow:
                                               or "not measurable"),
             f"{error:+.1f}" if error is not None else "—",
             f"{found[1]:,.0f}" if found else "—",
+            self.adduct,
             (f"{explanation.matched} of {explanation.predicted}"
              if explanation is not None and explanation.predicted
              else f"{explanation.matched}" if explanation is not None
@@ -937,11 +1113,11 @@ class InfusionRow:
             7: found[0] if found else None,
             8: error,
             9: found[1] if found else None,
-            10: float(explanation.matched) if explanation is not None else None,
-            12: hit.score if hit is not None else None,
-            13: hit.reverse if hit is not None else None,
-            14: float(hit.matched) if hit is not None else None,
-            15: hit.delta_ppm if hit is not None else None,
+            11: float(explanation.matched) if explanation is not None else None,
+            13: hit.score if hit is not None else None,
+            14: hit.reverse if hit is not None else None,
+            15: float(hit.matched) if hit is not None else None,
+            16: hit.delta_ppm if hit is not None else None,
         }
         keys: list = list(cells)
         for column, value in numbers.items():
@@ -974,6 +1150,7 @@ class InfusionRow:
             f"{report.scans:,}" if report.scans else "—",
             f"{base[0]:,.4f}" if base else "no spectrum",
             precursor,
+            self.adduct,
             (f"{explanation.matched} of {explanation.predicted}"
              if explanation is not None and explanation.predicted
              else self.explanation_note or "nothing run"),
@@ -1086,7 +1263,7 @@ def cross_compare(reports, peaks=None, centroid: bool = False) -> None:
                 note=_report_note(other)))
 
 
-def _headless_explanation(session, report: InfusionReport):
+def _headless_explanation(session, report: InfusionReport, entry=None):
     """
     What the component table alone can say about this spectrum.
 
@@ -1106,7 +1283,7 @@ def _headless_explanation(session, report: InfusionReport):
     if not component.formula:
         return None, "", f"{component.name} carries no formula"
     formula, deuterium, labelled = _headless_labels(component, report)
-    adduct, why = _headless_adduct(component, report, formula)
+    adduct, why = _headless_adduct(component, report, formula, entry)
     if not adduct:
         return None, "", why
     if not formula_ions(component.formula, adduct):
@@ -1158,7 +1335,7 @@ def _headless_labels(component, report: InfusionReport):
 
 
 def _headless_adduct(component, report: InfusionReport,
-                     formula: str = "") -> tuple[str, str]:
+                     formula: str = "", entry=None) -> tuple[str, str]:
     """
     The adduct to explain this infusion's formula with, and where it came from.
 
@@ -1169,6 +1346,12 @@ def _headless_adduct(component, report: InfusionReport,
     and an ammoniated channel explained as [M+H]+ predicts every fragment
     17 Da away from anything in the spectrum. The reason travels with the
     answer, into the basis line under the table.
+
+    Whatever comes out is written back onto the report, so the summary's
+    Adduct cell names the ion the fragments were actually predicted from.
+    A declared adduct that the survey contradicts still wins here — it is
+    what the analyst said the channel was — but the evidence beside it says
+    the survey disagreed, which is the whole point of measuring.
     """
     from .chemistry import adducts_matching, identify_adduct
 
@@ -1176,25 +1359,35 @@ def _headless_adduct(component, report: InfusionReport,
     declared = component.adduct or ""
     formula = formula or component.formula
     if precursor:
-        choice = identify_adduct(formula, float(precursor),
-                                 report.polarity or None)
+        # the survey where the acquisition has one: an adduct measured beats
+        # an adduct deduced, and where there is no survey this is the same
+        # call it always was, with the report saying so
+        choice = (confirm_adduct(entry, report, formula) if entry is not None
+                  else None)
+        if choice is None:
+            choice = identify_adduct(formula, float(precursor),
+                                     report.polarity or None)
         if declared:
             fits = [m for m in adducts_matching(formula,
                                                 float(precursor),
                                                 report.polarity or None)
                     if m.within and m.name == declared]
             if fits:
+                report.adduct = declared
                 return declared, "from the component table"
             if choice.adduct is not None:
+                report.adduct = choice.adduct.name
                 return choice.adduct.name, (
                     f"read off the written precursor — {choice.reason}, "
                     f"not the {declared} the component table carries")
             return "", (f"{component.name} is written {declared}, and "
                         f"{choice.reason}")
         if choice.adduct is not None:
+            report.adduct = choice.adduct.name
             return choice.adduct.name, f"read off the written precursor — {choice.reason}"
         return "", (f"{component.name} carries no adduct and {choice.reason}")
     if declared:
+        report.adduct = declared
         return declared, "from the component table"
     return "", f"{component.name} carries no adduct"
 
@@ -1295,7 +1488,7 @@ def summarise(session, library=None, explanations=None,
                 report.basis = "what was run in the LIPID MAPS tab"
             else:
                 report.explanation, report.basis, note = \
-                    _headless_explanation(session, report)
+                    _headless_explanation(session, report, entry)
             hit, library_note = _best_record(library, report)
             report.hit = hit
             row = InfusionRow(
@@ -1395,6 +1588,9 @@ def _identity(report: InfusionReport) -> str:
         ["Scans averaged", f"{report.scans:,}" if report.scans else "—",
          "Over", span],
         ["Adduct", value(report.adduct), "Read as", _read_as(report)],
+        ["Adduct evidence", _adduct_cell(report), "Survey",
+         value(report.survey_channel) if report.survey_channel
+         else "none in this acquisition"],
     ]
     cells = []
     for number, row in enumerate(rows):
@@ -1421,6 +1617,21 @@ def _sub(title: str, breaks: set[str] | None = None) -> str:
     """
     css = ' class="break"' if breaks and title in breaks else ""
     return f"<h3{css}>{_escape(title)}</h3>"
+
+
+def _adduct_cell(report: InfusionReport) -> str:
+    """Whether the survey confirmed the adduct, short enough for a cell."""
+    if report.adduct_confirmed:
+        best = next((e for e in report.evidence if e.name == report.adduct),
+                    None)
+        return ("confirmed by the survey"
+                if best is None else
+                _escape(f"confirmed by the survey: {best.confirmation}"))
+    if report.evidence:
+        return "not confirmed — see below"
+    if report.adduct_note:
+        return "no survey — see below"
+    return "—"
 
 
 def _read_as(report: InfusionReport) -> str:

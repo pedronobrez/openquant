@@ -19,6 +19,7 @@ from ..chemistry import (
 from ..components import Component
 from ..infusion import InfusionVerdict, run_range, verdict_for
 from ..matching import match_channel
+from ..precursor import survey_channel
 from .settings import settings
 from ..processing import (centroid_spectrum, detect_peaks, integrate,
                           signal_to_noise)
@@ -1858,9 +1859,55 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             # is depends on the sign the channel was acquired at, and the
             # sign is a fact about the acquisition rather than a choice
             polarity = str(getattr(info, "polarity", "") or "")
-        self.lipid_panel.set_spectrum(mz, intensity, precursor, polarity)
+        self.lipid_panel.set_spectrum(mz, intensity, precursor, polarity,
+                                      self._survey_spectrum(precursor))
         self.show_panel_named("LIPID MAPS")
         self.lipid_panel.explain_spectrum()
+
+    def _survey_spectrum(self, precursor: float | None):
+        """
+        The same acquisition's survey over the same range as the spectrum.
+
+        The product-ion scan cannot say which adduct its precursor is: Q1
+        passed one mass and threw the isotopes away with everything else. The
+        survey has both — the exact mass and the pattern — and reading it
+        over the same scans is what makes it the same moment of the same run
+        rather than a different compound eluting.
+
+        None where the method has no full-scan channel covering that mass,
+        which is the ordinary case on a product-ion-only acquisition and is
+        what the panel prints instead of a confirmation.
+        """
+        ref = self.active_ref
+        sample = getattr(ref, "entry", None)
+        sample = getattr(sample, "sample", None)
+        if sample is None or not precursor:
+            return None
+        channel = getattr(ref, "channel", None)
+        if channel is None or channel.info.is_ms1:
+            return None            # the spectrum on screen is the survey
+        rt0, rt1 = self._shown_range(channel)
+        survey = survey_channel(sample, float(precursor), (rt0 + rt1) / 2.0)
+        if survey is None:
+            return None
+        try:
+            return survey.spectrum_rt_range(rt0, rt1)
+        except Exception:          # a .wiff whose .wiff.scan is missing
+            return None
+
+    def _shown_range(self, channel) -> tuple[float, float]:
+        """The retention times the spectrum on screen was made from."""
+        recipe = getattr(self, "_live_recipe", None)
+        if recipe is not None and recipe.rt0 is not None \
+                and recipe.rt1 is not None:
+            return float(recipe.rt0), float(recipe.rt1)
+        if recipe is not None and recipe.scan is not None:
+            rt = float(channel.rt_at_scan(int(recipe.scan)))
+            return rt, rt
+        times = channel.rt
+        if times.size == 0:
+            return 0.0, 0.0
+        return float(times[0]), float(times[-1])
 
     def _library_spectrum(self):
         """
@@ -1882,7 +1929,9 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         if not self.act_centroid.isChecked():
             mz, intensity = centroid_spectrum(mz, intensity)
         precursor = None
-        context = {"title": self.spectrum.title}
+        context = {"title": self.spectrum.title,
+                   # whether the adduct on the record was measured or assumed
+                   "adduct": self.lipid_panel.adduct_provenance}
         if self.active_ref is not None:
             context["file"] = self.active_ref.filename
             context["sample"] = self.active_ref.alias

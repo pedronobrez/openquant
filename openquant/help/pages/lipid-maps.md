@@ -323,6 +323,57 @@ channel is never offered a negative adduct. With no precursor written at all
 there is nothing to read it off, and the Adduct box at the top of the tab —
 the one the database search uses — stands in, said out loud.
 
+### The survey confirms it
+
+Everything above is arithmetic on a number somebody typed. Where the
+acquisition has a **survey scan** — a full-scan TOF MS channel covering the
+precursor — the adduct stops being a deduction and becomes a measurement,
+and the panel says which of the two you are looking at.
+
+The survey of the same acquisition, averaged over the same scans as the
+spectrum on screen, is asked about every candidate: the exact mass of the
+ion, within 25 ppm and above 100 counts, and the isotope pattern of the
+ion's own composition — the adduct's atoms included, since `[M+NH4]+`
+carries a nitrogen the molecule has not got. The line under the button then
+reads
+
+> 647.5 is [M+H]+ of C35H71N2O6P (647.5123, −18.9 ppm); [M+NH4]+ would be
+> 664.5388; confirmed by the survey: 647.5112, −1.6 ppm, isotopes agree, and
+> the survey also shows [M+Na]+ 13%, [M+K]+ 0%
+
+or, when it does not,
+
+> …; the survey does not show it (the nearest peak is +69.9 ppm away, past
+> ±25), so it is chosen from the written mass alone
+
+The second clause is the point. A product-ion scan cannot check this at all:
+Q1 passed one mass and threw the isotope satellites away with everything
+else, so the spectrum on screen has no pattern to read. Nine bile-acid
+infusions to hand were acquired as product-ion scans only, and on them this
+sentence says *no survey scan covering 430.35, so nothing independent says
+which ion it is* — which is what the adduct always was there, now written
+down.
+
+**The map is worth as much as the answer.** A survey usually shows a
+compound as several ions at once, and each is reported with its height as a
+share of the strongest: on the sphingolipid batch both the sphingomyelin and
+the C16 ceramide run at about `[M+H]+` 100%, `[M+Na]+` 13%. An eighth of the
+signal is on a channel nobody acquired, and a compound whose sodium adduct is
+the bigger one will be quantified badly by anyone who assumed otherwise.
+
+**The pattern decides what the mass cannot.** Two things can sit at one
+mass: an ion, and the M+1 of something a dalton lighter. The ceramide's
+`[M+NH4]+` above is 21.5 ppm out — inside the 25 ppm that says "the same
+ion" — and 170 counts, over the 100 that says "measurable"; its M+1 and M+2
+come back at 1.00 and 1.00 of its M, which is flat noise and not an isotope
+pattern, and it ranks last. A d4 standard and its d3 impurity, 1.0063 Da
+apart, are the same problem in reverse: both are on the mass to within
+1 ppm, and only the pattern — 0.97 against 0.06 — says which of them the
+peak belongs to.
+
+The figures, the two real compounds and what the M+2 of a lipid actually
+holds are on [[accurate-precursor]].
+
 ### What it did on the real infusions
 
 Three bile-acid standards infused on a ZenoTOF 7600 in **positive** mode,

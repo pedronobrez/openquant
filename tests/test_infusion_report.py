@@ -138,8 +138,21 @@ class FakeSample:
         return {"Sample": self.name}
 
 
+def _survey_peaks(scale: float = 30_000.0) -> dict:
+    """The precursor's whole isotope ladder, as a survey would show it.
+
+    A survey carries the satellites and a product-ion scan does not, which
+    is the difference the adduct evidence is built on: without them there
+    is a mass and nothing to say whether it is a monoisotopic ion.
+    """
+    from openquant.chemistry import ADDUCTS_BY_NAME, ion_pattern
+
+    return {mz: scale * abundance for mz, abundance
+            in ion_pattern(FORMULA, ADDUCTS_BY_NAME[ADDUCT], max_peaks=3)}
+
+
 def _entry(name="TESTOL_infusion_A", survives=True, energy=20.0,
-           with_survey=False, stray_only=False):
+           with_survey=False, stray_only=False, survey_peaks=None):
     """
     One infused standard.
 
@@ -153,11 +166,12 @@ def _entry(name="TESTOL_infusion_A", survives=True, energy=20.0,
     if stray_only:
         peaks = {STRAY: 900.0}
     peaks[precursor] = 9_000.0 if survives else MIN_INTENSITY / 10.0
-    mz = _grid(list(peaks))
+    survey = dict(_survey_peaks() if survey_peaks is None else survey_peaks)
+    mz = _grid(list(peaks) + (list(survey) if with_survey else []))
     channels = []
     if with_survey:
-        channels.append(FakeChannel(0, mz, {precursor: 30_000.0},
-                                    precursor=None, name="TOF MS"))
+        channels.append(FakeChannel(0, mz, survey, precursor=None,
+                                    name="TOF MS"))
     channels.append(FakeChannel(len(channels), mz, peaks, precursor=precursor,
                                 collision_energy=energy))
     entry = SampleEntry(f"/d/{name}.wiff", 0, name)
@@ -263,6 +277,68 @@ def test_a_survey_scan_is_preferred_to_the_product_ion_scan(qapp):
     assert report.measurement is not None and report.measurement.found
     assert report.survivor is None            # not needed, so not taken
     assert "the survey scan puts" in report.sentences()[0]
+
+
+def test_the_survey_confirms_which_adduct_the_precursor_is(qapp):
+    """The header cell and the verdict say the same thing, and both say it
+    was measured rather than deduced."""
+    entry, channel = _entry(with_survey=True)
+    report = ir.report_for(entry, channel, formula=FORMULA,
+                           measure_precursor=False)
+
+    assert report.adduct == ADDUCT and report.adduct_confirmed
+    assert report.survey_channel.startswith("TOF MS")
+    assert [e.name for e in report.evidence][0] == ADDUCT
+    said = [s for s in report.sentences() if "Adduct" in s]
+    assert len(said) == 1
+    assert said[0].startswith("Adduct confirmed by the survey:")
+    assert "isotopes agree" in said[0]
+    row = ir.InfusionRow(report=report)
+    assert row.adduct == f"{ADDUCT} confirmed"
+    assert "confirmed by the survey" in ir._adduct_cell(report)
+    assert ir._identity(report).count("Adduct evidence") == 1
+
+
+def test_without_a_survey_the_adduct_is_read_from_the_written_mass(qapp):
+    """The nine bile-acid infusions to hand: product-ion scans only. The
+    adduct is unchanged and the cell says why it is not a confirmation."""
+    entry, channel = _entry()
+    report = ir.report_for(entry, channel, formula=FORMULA,
+                           measure_precursor=False)
+
+    assert report.adduct == ADDUCT
+    assert not report.adduct_confirmed and report.evidence == []
+    assert report.survey_channel == ""
+    said = [s for s in report.sentences() if "Adduct" in s]
+    assert len(said) == 1
+    assert said[0].startswith("Adduct read from the written precursor alone")
+    assert "no survey scan covering" in said[0]
+    assert ir.InfusionRow(report=report).adduct == f"{ADDUCT}, no survey"
+    assert ir._adduct_cell(report) == "no survey — see below"
+
+
+def test_no_formula_means_the_adduct_is_not_claimed_at_all(qapp):
+    entry, channel = _entry(with_survey=True)
+    report = ir.report_for(entry, channel, measure_precursor=False)
+
+    assert report.adduct_note == "" and report.evidence == []
+    assert not [s for s in report.sentences() if "Adduct" in s]
+    assert ir._adduct_cell(report) == "—"
+
+
+def test_a_survey_showing_another_ion_does_not_confirm_the_adduct(qapp):
+    """The survey covers the mass and holds something else: a single peak
+    a tenth of a dalton away, with no pattern to it."""
+    entry, channel = _entry(with_survey=True,
+                            survey_peaks={_ions()[0] + 0.1: 30_000.0})
+    report = ir.report_for(entry, channel, formula=FORMULA,
+                           measure_precursor=False)
+
+    assert report.evidence and not report.adduct_confirmed
+    said = [s for s in report.sentences() if "Adduct" in s][0]
+    assert said.startswith("Adduct not confirmed by the survey")
+    assert "the survey does not show it" in said
+    assert ir.InfusionRow(report=report).adduct.endswith("not confirmed")
 
 
 def test_the_fragments_are_counted_against_what_was_predicted(qapp):

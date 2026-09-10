@@ -421,6 +421,12 @@ class LibraryPanel(QtWidgets.QWidget):
         """
         context = self._context
         parts = [str(p) for p in (context.get("title"), context.get("file")) if p]
+        # how the adduct on this record was arrived at. A record states an
+        # adduct and nothing in it says whether that was measured from a
+        # survey scan or deduced from a number somebody typed, which is the
+        # difference between a fact and a reading
+        if context.get("adduct"):
+            parts.append(str(context["adduct"]))
         parts.append(f"added {datetime.date.today().isoformat()}")
         return {
             "name": str(context.get("name", "")),

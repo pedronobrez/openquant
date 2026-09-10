@@ -931,13 +931,59 @@ class AdductChoice:
     adduct: Adduct | None
     reason: str
     matches: tuple[AdductMatch, ...] = ()
+    #: what the survey scan said about each candidate, where one was handed
+    #: in: `adduct_evidence`, best supported first. Empty when no survey was
+    #: read, which is not the same as a survey that showed nothing.
+    evidence: tuple["AdductEvidence", ...] = ()
+    #: the survey found this ion at the right mass and its isotopes agreed
+    confirmed: bool = False
 
     def __bool__(self) -> bool:
         return self.adduct is not None
 
+    @property
+    def read_survey(self) -> bool:
+        """Was a survey scan asked at all?"""
+        return bool(self.evidence)
+
+
+def _isolation_da() -> float:
+    """How wide a window the quadrupole passed, in daltons."""
+    from .matching import PRECURSOR_MATCH_DA
+
+    return float(PRECURSOR_MATCH_DA)
+
+
+def _survey_rescue(evidence, precursor: float):
+    """
+    The adduct the survey names when the written precursor names none.
+
+    A method written `538.6` for a ceramide whose `[M+H]+` weighs 538.5194
+    is 0.08 Da out, which is eighty times what an adduct is allowed and
+    still the ion the quadrupole isolated — `matching.PRECURSOR_MATCH_DA`
+    is the 0.7 Da window that says so. Without a survey there is nothing to
+    prefer that reading to a typing mistake and the honest answer is to
+    refuse; with one, the instrument has already said which ion was there,
+    at its own accuracy and with its isotopes. So the survey is allowed to
+    answer a question the written number could not, and only inside the
+    window the quadrupole actually passed.
+    """
+    supported = sorted((e for e in evidence if e.present and e.agrees),
+                       key=lambda e: -e.score)
+    for found in supported:
+        error = precursor - found.mz
+        if abs(error) <= _isolation_da():
+            return found, AdductMatch(adduct=found.adduct, mz=found.mz,
+                                      error_da=error,
+                                      error_ppm=mass_error_ppm(precursor,
+                                                               found.mz),
+                                      within=False)
+    return None
+
 
 def identify_adduct(formula: str, precursor: float, polarity=None,
-                    tolerance: float | None = None) -> AdductChoice:
+                    tolerance: float | None = None,
+                    survey: tuple | None = None) -> AdductChoice:
     """
     Which adduct a method's written precursor is, for this formula, in words.
 
@@ -949,26 +995,81 @@ def identify_adduct(formula: str, precursor: float, polarity=None,
     alternative would have been — and where nothing fits, it names the
     closest and returns no adduct, so that nothing is explained rather than
     the wrong ion being explained well.
+
+    `survey` is `(mz, intensity)` from the full-scan channel of the same
+    acquisition, averaged over the same range as the product spectrum, and
+    with it the answer stops being arithmetic on a hand-typed number. The
+    written precursor still says which adducts are candidates — the
+    quadrupole isolated that mass and not another — and the survey then says
+    which of them the instrument actually saw, by the exact mass and by the
+    isotope pattern. Where it saw none the written mass still decides and
+    the sentence says the survey did not confirm it, because an adduct
+    chosen from two decimals is a different claim from one measured.
     """
     from .lipidmaps import mass_precision
 
     matches = adducts_matching(formula, precursor, polarity, tolerance)
     if not matches:
         return AdductChoice(None, f"{formula!r} is not a formula this can read")
+    evidence: tuple[AdductEvidence, ...] = ()
+    if survey is not None:
+        evidence = tuple(adduct_evidence(
+            survey[0], survey[1], formula,
+            candidates=[m.adduct for m in matches]))
     written = f"{float(precursor):g}"
     inside = [m for m in matches if m.within]
     if not inside:
         window = (tolerance if tolerance is not None
                   else max(ADDUCT_MATCH_DA, mass_precision(float(precursor))))
+        rescued = _survey_rescue(evidence, float(precursor))
+        if rescued is not None:
+            found, match = rescued
+            return AdductChoice(
+                match.adduct,
+                f"{written} is none of the adducts of "
+                f"{format_formula(parse_formula(formula))} within "
+                f"±{window:g} Da, but the survey shows {found.name} at "
+                f"{found.confirmation} — {abs(match.error_da):.4f} Da from "
+                f"the written mass, inside the ±{_isolation_da():g} Da the "
+                f"quadrupole passes, so it is read as {found.name}",
+                tuple(matches), evidence, True)
         closest = ", ".join(
             f"{m.name} at {m.mz:.4f} ({m.error_da:+.4f} Da)"
             for m in matches[:2])
+        seen = adduct_map(list(evidence))
         return AdductChoice(
             None,
             f"{written} is none of the adducts of {format_formula(parse_formula(formula))}"
-            f" within ±{window:g} Da — closest {closest}",
-            tuple(matches))
+            f" within ±{window:g} Da — closest {closest}"
+            + (f"; the survey shows {seen}" if seen else ""),
+            tuple(matches), evidence)
     best = inside[0]
+    survey_note = ""
+    confirmed = False
+    if survey is not None:
+        named = {m.name for m in inside}
+        supported = sorted((e for e in evidence
+                            if e.present and e.name in named),
+                           key=lambda e: -e.score)
+        if supported:
+            found = supported[0]
+            best = next(m for m in inside if m.name == found.name)
+            # present at the right mass is not the same as confirmed: an ion
+            # whose satellites are not its own is something else sitting on
+            # the mass, and the sentence has to be able to say so while still
+            # reporting what was found
+            confirmed = found.pattern is None or found.agrees
+            lead = ("confirmed by the survey" if confirmed
+                    else "seen in the survey but not confirmed")
+            survey_note = f"; {lead}: {found.confirmation}"
+            seen = adduct_map([e for e in evidence if e.name != found.name])
+            if seen:
+                survey_note += f", and the survey also shows {seen}"
+        else:
+            why = next((e.note for e in evidence if e.name == best.name), "")
+            survey_note = ("; the survey does not show it"
+                           + (f" ({why})" if why else "")
+                           + ", so it is chosen from the written mass alone")
     # the alternative worth printing is the form the *fragments* carry, not
     # the next nearest number: a user who expected a protonated molecule and
     # got an ammoniated one needs to see 413.3199 beside 430.3465, and being
@@ -984,8 +1085,414 @@ def identify_adduct(formula: str, precursor: float, polarity=None,
         best.adduct,
         f"{written} is {best.name} of "
         f"{format_formula(parse_formula(formula))} "
-        f"({best.mz:.4f}, {best.error_ppm:+.1f} ppm){tail}",
-        tuple(matches))
+        f"({best.mz:.4f}, {best.error_ppm:+.1f} ppm){tail}{survey_note}",
+        tuple(matches), evidence, confirmed)
+
+
+# --------------------------------------------------------------------------- #
+# what the survey scan says about the adduct
+# --------------------------------------------------------------------------- #
+#: how many isotope peaks of an ion the survey is asked about: M, M+1, M+2.
+#: The first is the mass, the second is about 1.1% per carbon and is what
+#: tells an ion from its neighbour's satellite, and the third is where sulfur
+#: and chlorine announce themselves. Past that a lipid's peaks are a few per
+#: cent of the monoisotopic and a survey averaged over one chromatographic
+#: peak carries noise of that size.
+SURVEY_ISOTOPES = 3
+
+#: how far apart in m/z two points may be and still be read as the same peak
+#: when a height is being looked up. A TOF peak at 650 is about 0.03 Da wide
+#: at half height, so 0.02 either side of a theoretical mass lands on it
+#: without reaching the next nominal mass.
+SURVEY_PEAK_DA = 0.02
+
+#: how far the *nearest* centroid may sit from an adduct's exact mass and
+#: still be offered as that ion at all. Wider than the tolerance a match is
+#: judged on, because a miss with a number on it — "the nearest peak is 84
+#: ppm away" — says more than "nothing found".
+SURVEY_WINDOW_DA = 0.05
+
+#: the satellite agreement at or above which the isotopes are called
+#: agreeing. Measured on the sphingolipid batch's survey, averaged over each
+#: compound's own peak in injection 01 — see `adduct_evidence` for the two
+#: tables. The ions that are really there score 0.87, 0.77 and 0.76; the one
+#: whose M+1 window holds a neighbour scores 0.55; and the two that are not
+#: the ion — a potassium adduct read off a 223-count spike, an ammonium
+#: 21 ppm out whose satellites are flat noise — score 0.13 and 0.33. 0.50 is
+#: the trough. It decides nothing on its own: `adduct_evidence` ranks by
+#: `score`, and this only chooses the wording.
+PATTERN_AGREES = 0.50
+
+
+def survey_tolerance_ppm() -> float:
+    """
+    How near a survey centroid has to sit to be the adduct's ion.
+
+    `precursor.CONSENSUS_SPREAD_PPM` is the figure the rest of the program
+    already holds two measurements to before calling them the same ion, and a
+    second number for the same question would be one too many. Fetched
+    through a function so that this module keeps its habit of importing
+    nothing from the rest of the package at the top.
+    """
+    from .precursor import CONSENSUS_SPREAD_PPM
+
+    return float(CONSENSUS_SPREAD_PPM)
+
+
+def pattern_agreement(measured, expected) -> float | None:
+    """
+    How well a measured isotope pattern agrees with a theoretical one, 0 to 1.
+
+    Both are the satellites as shares of the monoisotopic peak, which is 1.0
+    in each by construction and therefore says nothing; the score is built
+    from M+1 onwards. Each satellite is scored against the larger of the two
+    numbers — so a satellite twice as big as it should be and one half the
+    size it should be both cost the same — and the satellites are averaged
+    weighted by how much of the theoretical pattern each is, which puts about
+    five sixths of the weight on M+1 for a lipid.
+
+    This is not `match_isotope_pattern`, which sums the absolute differences
+    over all the satellites. That is the right rule for ranking candidate
+    formulas against one spectrum, where every candidate is measured the same
+    way and the largest satellite should dominate. It is the wrong rule here,
+    because a single contaminated satellite is fatal under it: the C16
+    ceramide's own `[M+H]+` in the sphingolipid survey scores 0.43 there,
+    since its M+2 window holds the co-eluting dihydroceramide — C34H69NO3 at
+    540.5350, 17 ppm from the ceramide's own M+2 at 540.5259 and inside the
+    same 0.02 Da — and a rule that calls a compound's true adduct a
+    disagreement because its saturated analogue co-elutes will do that on
+    every lipid batch there is. Weighted per satellite it scores 0.77.
+
+    None where there is nothing to compare.
+    """
+    if len(measured) < 2 or len(expected) < 2:
+        return None
+    total = 0.0
+    score = 0.0
+    for mine, theirs in zip(measured[1:], expected[1:]):
+        weight = float(theirs)
+        if weight <= 0:
+            continue
+        largest = max(float(mine), weight)
+        agreement = 1.0 - abs(float(mine) - weight) / largest if largest else 0.0
+        score += weight * max(0.0, agreement)
+        total += weight
+    if total <= 0:
+        return None
+    return score / total
+
+
+def ion_composition(counts: dict[str, int],
+                    adduct: Adduct) -> dict[str, int] | None:
+    """
+    The atoms the ion carries: the molecule's, plus what the adduct brings.
+
+    This is what an isotope pattern has to be computed from, and it is not
+    the same thing as shifting the neutral's pattern by the adduct's mass.
+    `[M+Na]+` and `[M+NH4]+` are 4.955 Da apart and need no pattern to be
+    told apart, but the ammonium's nitrogen adds 0.37% to the M+1 and its
+    four hydrogens another 0.06%, and `[M+Cl]-` adds a 32% M+2 that the
+    molecule does not have. An adduct treated as an offset says those ions
+    have their molecule's pattern, which for chloride is wrong by a factor
+    of ten.
+
+    Returns None when the adduct's composition is not written down, or when
+    it would take away hydrogens the molecule has not got.
+    """
+    out = dict(counts)
+    if adduct.added:
+        try:
+            for element, n in parse_formula(adduct.added).items():
+                out[element] = out.get(element, 0) + n
+        except (FormulaError, ValueError):
+            return None
+    elif adduct.charge < 0:
+        # a deprotonated molecule: the only adducts with no `added` are the
+        # ones that take protons off, one per unit of negative charge
+        lost = abs(adduct.charge)
+        if out.get("H", 0) < lost:
+            return None
+        out["H"] -= lost
+    return {element: n for element, n in out.items() if n}
+
+
+def ion_pattern(formula: str, adduct: Adduct,
+                max_peaks: int = SURVEY_ISOTOPES,
+                min_abundance: float = 0.0005) -> list[tuple[float, float]]:
+    """
+    The ion's theoretical isotope pattern as (m/z, abundance), M scaled to 1.
+
+    The adduct's own atoms are in the composition (`ion_composition`) and its
+    electrons are in the mass, so a doubly charged ion comes back with its
+    satellites half a dalton apart, which is what a spectrum shows.
+    """
+    try:
+        counts = parse_formula(formula)
+    except (FormulaError, ValueError):
+        return []
+    ion = ion_composition(counts, adduct) if counts else None
+    if not ion:
+        return []
+    charge = abs(adduct.charge) or 1
+    pattern = isotope_pattern(ion, min_abundance=min_abundance,
+                              max_peaks=max_peaks)
+    if not pattern:
+        return []
+    base = pattern[0][1] or 1.0
+    return [((mass - adduct.charge * ELECTRON_MASS) / charge, abundance / base)
+            for mass, abundance in pattern]
+
+
+@dataclass
+class AdductEvidence:
+    """
+    One candidate adduct held against a survey scan: the mass and the pattern.
+
+    Two independent questions, kept apart on purpose. `error_ppm` says
+    whether anything of the right mass is there at all; `pattern` says
+    whether what is there is a monoisotopic ion or somebody else's satellite,
+    which is the only question a mass cannot answer.
+    """
+
+    adduct: Adduct
+    #: what the formula says this ion weighs
+    mz: float
+    #: the nearest centroid in the survey, and its height
+    found_mz: float | None = None
+    height: float = 0.0
+    error_ppm: float | None = None
+    #: M, M+1, M+2 measured, as shares of M
+    measured: tuple[float, ...] = ()
+    #: the same from the ion's own composition
+    expected: tuple[float, ...] = ()
+    #: agreement over the satellites alone, 0 to 1, or None where the survey
+    #: holds no satellites to compare — a product-ion scan, or an ion too
+    #: weak to carry one
+    pattern: float | None = None
+    #: this ion's height as a share of the strongest adduct the survey shows
+    #: for this molecule: the adduct map of the standard
+    relative: float = 0.0
+    present: bool = False
+    tolerance_ppm: float = 0.0
+    note: str = ""
+
+    @property
+    def name(self) -> str:
+        return self.adduct.name
+
+    @property
+    def agrees(self) -> bool:
+        """Does the isotope pattern support this being the ion it claims?"""
+        return self.pattern is not None and self.pattern >= PATTERN_AGREES
+
+    @property
+    def score(self) -> float:
+        """
+        How well the survey supports this adduct, 0 to 1.
+
+        Half the mass and half the pattern where there is a pattern to read,
+        and the mass alone where there is not — said rather than assumed,
+        since scoring a missing pattern as zero would call every product-ion
+        scan a disagreement.
+        """
+        if not self.present or self.error_ppm is None:
+            return 0.0
+        tolerance = self.tolerance_ppm or survey_tolerance_ppm()
+        mass = max(0.0, 1.0 - abs(self.error_ppm) / tolerance)
+        if self.pattern is None:
+            return mass
+        return 0.5 * mass + 0.5 * float(self.pattern)
+
+    @property
+    def isotope_note(self) -> str:
+        """The M+1 measured against the M+1 expected, in words."""
+        if self.pattern is None or len(self.measured) < 2 \
+                or len(self.expected) < 2:
+            return "no isotope satellites to compare"
+        said = (f"M+1 {self.measured[1]:.2f} measured vs "
+                f"{self.expected[1]:.2f} expected")
+        return said + ("" if self.agrees else " — the isotopes disagree")
+
+    @property
+    def confirmation(self) -> str:
+        """What the survey found, for a basis line: mass, ppm, isotopes."""
+        if not self.present:
+            return self.note or "not found"
+        said = f"{self.found_mz:.4f}, {self.error_ppm:+.1f} ppm"
+        if self.pattern is None:
+            return f"{said}, no isotopes to compare"
+        return f"{said}, isotopes {'agree' if self.agrees else 'do not agree'}"
+
+    @property
+    def sentence(self) -> str:
+        """This candidate in one clause, whether or not it was found."""
+        if self.present:
+            return (f"{self.name} at {self.found_mz:.4f}, "
+                    f"{self.error_ppm:+.1f} ppm, {self.isotope_note}")
+        return f"{self.name} at {self.mz:.4f}: {self.note or 'not found'}"
+
+
+def adduct_evidence(mz, intensity, formula: str, candidates=None,
+                    tolerance_ppm: float | None = None, polarity=None,
+                    min_intensity: float | None = None
+                    ) -> list[AdductEvidence]:
+    """
+    What a survey scan says about each adduct a formula could have produced.
+
+    `mz` and `intensity` are a spectrum already read — the survey averaged
+    over the peak, or over the whole run for an infusion. `candidates` are
+    the adducts to weigh: `Adduct`s, `AdductMatch`es as `adducts_matching`
+    returns them, names, or None for every adduct of `polarity`.
+
+    Each candidate comes back with the exact mass found (the nearest centroid
+    within `SURVEY_WINDOW_DA`, its ppm and its height) and the agreement
+    between the ion's own theoretical M / M+1 / M+2 and the measured ones.
+    The list is sorted by how well the survey supports the candidate, and
+    every candidate is in it: an adduct the survey does not show is a
+    measurement too, and the sentence says what was looked for and what was
+    there instead.
+
+    Where several adducts of the same molecule are present — `[M+H]+`,
+    `[M+NH4]+` and `[M+Na]+` together, which is the ordinary case in positive
+    infusion — every one is reported with `relative`, its height as a share
+    of the strongest. That is the adduct map of the standard, and it is worth
+    more than the single answer: a compound whose sodium adduct is four times
+    its protonated one will be quantified on the wrong channel by anyone who
+    assumed otherwise.
+
+    Measured on injection 01 of the 26-injection sphingolipid batch
+    (TripleTOF 5600, positive, a TOF MS 50–700 survey averaged over the two
+    scans across each compound's peak):
+
+    | | exact | found | Δ ppm | height | of the strongest | M+1 meas/exp | pattern |
+    |---|---|---|---|---|---|---|---|
+    | SM(d18:1/12:0), C35H71N2O6P, written 647.5, at 5.60 min ||||||||
+    | `[M+H]+` | 647.5123 | 647.5112 | −1.6 | 51,341 | 100% | 0.37 / 0.40 | 0.87 |
+    | `[M+Na]+` | 669.4942 | 669.4956 | +2.1 | 6,443 | 12.5% | 0.53 / 0.40 | 0.76 |
+    | `[M+K]+` | 685.4681 | 685.4571 | −16.1 | 223 | 0.4% | 2.76 / 0.40 | 0.13 |
+    | `[M+NH4]+` | 664.5388 | — | nearest 69 away | — | — | — | — |
+    | Cer(d18:1/16:0), C34H67NO3, written 538.6, at 4.89 min ||||||||
+    | `[M+H]+` | 538.5194 | 538.5197 | +0.6 | 7,690 | 100% | 0.33 / 0.38 | 0.77 |
+    | `[M+Na]+` | 560.5013 | 560.5071 | +10.4 | 1,025 | 13.3% | 0.67 / 0.38 | 0.55 |
+    | `[M+NH4]+` | 555.5459 | 555.5340 | −21.5 | 170 | 2.2% | 1.00 / 0.38 | 0.33 |
+    | `[M+K]+` | 576.4753 | — | nearest 60 away | — | — | — | — |
+
+    Two rows there are the argument for asking the pattern at all. The
+    ceramide's `[M+NH4]+` is 21.5 ppm out — inside the 25 that says "the same
+    ion" — and 170 counts, over the 100 that says "measurable"; its M+1 and
+    M+2 come back at 1.00 and 1.00 of its M, which is flat noise and not an
+    isotope pattern, and it ranks last. And the sphingomyelin's `[M+K]+` is a
+    223-count spike whose neighbour is nearly three times it.
+
+    The nine bile-acid infusions have no survey channel at all, so nothing is
+    asked and nothing is claimed: `identify_adduct` says so rather than
+    letting a deduction from the written precursor pass for a measurement.
+    """
+    from .precursor import MIN_INTENSITY, in_spectrum
+
+    mz = np.asarray(mz, dtype=float)
+    intensity = np.asarray(intensity, dtype=float)
+    tolerance = float(tolerance_ppm if tolerance_ppm is not None
+                      else survey_tolerance_ppm())
+    floor = float(min_intensity if min_intensity is not None else MIN_INTENSITY)
+
+    adducts = _as_adducts(candidates, polarity)
+    try:
+        counts = parse_formula(formula)
+    except (FormulaError, ValueError):
+        counts = {}
+    if not counts or not adducts:
+        return []
+    mass = monoisotopic_mass(counts)
+
+    out: list[AdductEvidence] = []
+    for adduct in adducts:
+        item = AdductEvidence(adduct=adduct, mz=adduct.mz(mass),
+                              tolerance_ppm=tolerance)
+        pattern = ion_pattern(formula, adduct)
+        if pattern:
+            item.mz = pattern[0][0]
+            item.expected = tuple(round(a, 6) for _m, a in pattern)
+        if mz.size == 0:
+            item.note = "no survey scan"
+            out.append(item)
+            continue
+        found = in_spectrum(mz, intensity, item.mz, window=SURVEY_WINDOW_DA)
+        if found is None:
+            item.note = f"nothing within ±{SURVEY_WINDOW_DA:g} Da"
+            out.append(item)
+            continue
+        item.found_mz, item.height = found
+        item.error_ppm = mass_error_ppm(item.found_mz, item.mz)
+        if item.height < floor:
+            item.note = (f"only {item.height:,.0f} counts, under the "
+                         f"{floor:,.0f} a mass can be read from")
+        elif abs(item.error_ppm) > tolerance:
+            item.note = (f"the nearest peak is {item.error_ppm:+.1f} ppm away, "
+                         f"past ±{tolerance:g}")
+        else:
+            item.present = True
+            item.measured = _measured_ratios(mz, intensity, pattern)
+            if has_isotope_satellites(mz, intensity, item.found_mz,
+                                      adduct.charge, tolerance=SURVEY_PEAK_DA):
+                item.pattern = pattern_agreement(item.measured, item.expected)
+            else:
+                # a product-ion scan, where Q1 kept the monoisotopic ion and
+                # threw its satellites away. Nothing to compare is not a
+                # disagreement, and the score says so by falling back to the
+                # mass alone
+                item.note = "no isotope satellites in this spectrum"
+        out.append(item)
+
+    strongest = max((i.height for i in out if i.present), default=0.0)
+    if strongest > 0:
+        for item in out:
+            item.relative = item.height / strongest if item.present else 0.0
+    out.sort(key=lambda i: (-i.score, abs(i.error_ppm or 1e9)))
+    return out
+
+
+def _as_adducts(candidates, polarity=None) -> list[Adduct]:
+    """`candidates` as `Adduct`s, or every adduct of a polarity."""
+    if candidates is None:
+        sign = polarity_sign(polarity) if polarity is not None else None
+        return [a for a in ADDUCTS if a.name != NEUTRAL
+                and (sign is None or a.polarity == sign)]
+    out: list[Adduct] = []
+    for candidate in candidates:
+        if isinstance(candidate, Adduct):
+            out.append(candidate)
+        elif isinstance(candidate, AdductMatch):
+            out.append(candidate.adduct)
+        else:
+            found = adduct_from_name(candidate)
+            if found is not None:
+                out.append(found)
+    return out
+
+
+def _measured_ratios(mz: np.ndarray, intensity: np.ndarray,
+                     pattern: list[tuple[float, float]]) -> tuple[float, ...]:
+    """The heights at the pattern's masses, as shares of the first."""
+    heights = []
+    for target, _abundance in pattern:
+        window = (mz >= target - SURVEY_PEAK_DA) & (mz <= target + SURVEY_PEAK_DA)
+        heights.append(float(intensity[window].max()) if window.any() else 0.0)
+    if not heights or heights[0] <= 0:
+        return ()
+    return tuple(round(h / heights[0], 6) for h in heights)
+
+
+def adduct_map(evidence: list[AdductEvidence]) -> str:
+    """
+    The adducts the survey actually shows, with their relative heights.
+
+    Empty when it shows none, which is a sentence the caller writes rather
+    than a phrase to be pasted into one.
+    """
+    present = [e for e in evidence if e.present]
+    present.sort(key=lambda e: -e.height)
+    return ", ".join(f"{e.name} {e.relative * 100:.0f}%" for e in present)
 
 
 # --------------------------------------------------------------------------- #

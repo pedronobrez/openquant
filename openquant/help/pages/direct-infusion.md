@@ -162,7 +162,57 @@ For a sample read as an infusion:
 
 Nothing else changes. The chromatogram pane still draws the total ion
 current over time, the scan controls still step scan by scan, and the
-[[contour-view]] still builds.
+[[contour-view]] still builds — as a film, with the run's total ion current
+beside it and a Play that steps through the scans. See below.
+
+## Seeing the run scan by scan
+
+The average is the right thing to read an infusion from and the wrong thing
+to check it with: a transient at the first scan, a burst part way through and
+a fragment that only appears once the spray settles all disappear into it.
+Two things put the run back.
+
+**The film.** Switch *View* to *Contour* on an infusion and the surface comes
+with the run's total ion current as a strip on the same time axis, the scans
+left out of the average marked ✕, and **Play**, which steps the spectrum pane
+through every scan of the run. A fragment is a ridge running the length of
+the run; a spray transient is a column one scan wide. See [[contour-view]] for
+what it showed on the real acquisitions.
+
+**Δ from the average.** *Process ▸ Δ from average*, off by default and offered
+only on an infusion, draws the current scan **minus** the average of the whole
+run, with the average mirrored underneath it — through the same *Mirror*
+switch as a pinned spectrum, which it turns on and puts back afterwards.
+Every scan of a spray is meant to be the same spectrum, so what is left is
+what changed.
+
+The average is interpolated onto the scan's own m/z axis first, the way a
+background is, because the two grids do not line up: on `DCA-d4_TOFMSMS_Mix1`
+a single scan carries 8,815 to 21,960 points against the average's 242,308,
+which is every scan's grid unioned. Nothing is clipped at zero — a scan
+*short* of the average is exactly what this is for.
+
+While it is on, the difference **is** the live spectrum: the peak table, the
+comparison and a pin all read it. Turn it off before *Explain spectrum*, a
+library search or a report, which want the spectrum and not the residual.
+
+### What it showed
+
+Read by nominal mass on `DCA-d4_TOFMSMS_Mix1`, against a channel whose total
+sits at 373,000 counts:
+
+| the scan | what the difference says |
+|---|---|
+| **scan 1**, 0.0042 min, 0.67× the median total | the whole ladder short of the average — −1,997 at 153, −1,897 at 247, −1,843 at 167. The spray had not settled |
+| **scan 262**, 1.0988 min, 4.36× | the whole ladder up together — **+118,209 at 361**, +25,520 at 219, +24,949 at 95, and a peak difference of +21,674 counts. A spray event, not a new species: a new species would be one mass |
+| **scan 237**, 0.9938 min, 0.91× | almost nothing: the largest single point differs by −523 counts against an average peak of 2,795 |
+
+**Read it by mass, not by point.** The profile grid moves by a fraction of a
+point between scans, so a peak's residual comes out as a dipole either side of
+it: on the CA-d4 EAD file the three largest differences at scan 1 are
++2,457, −2,052 and +1,978 counts within 0.010 Da of 377.30, which is the same
+peak arriving slightly early rather than three findings. Summed over a whole
+nominal mass that cancels, and what is left is the change.
 
 ## Doing it by hand, and overriding
 

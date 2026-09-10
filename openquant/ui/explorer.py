@@ -17,7 +17,8 @@ from ..chemistry import (
     rank_by_isotope_pattern,
 )
 from ..components import Component
-from ..infusion import InfusionVerdict, run_range, verdict_for
+from .. import infusion as infusion_rules
+from ..infusion import InfusionVerdict, after_settling, run_range, verdict_for
 from ..matching import match_channel
 from .settings import settings
 from ..processing import (centroid_spectrum, detect_peaks, integrate,
@@ -50,6 +51,66 @@ def _first_line(error: BaseException) -> str:
     """A .NET exception is a page; the first line is the message."""
     text = str(error).strip()
     return text.splitlines()[0] if text else type(error).__name__
+
+
+def _as_scan_mask(chosen, times: np.ndarray) -> np.ndarray | None:
+    """
+    Whatever `infusion.stable_scans` hands back, as a boolean per scan.
+
+    The shape of that answer is not this module's to decide, and it is being
+    written elsewhere while this is: a mask, a list of scan indices, or the
+    kept part of the trace are all reasonable and all readable. Anything else
+    is None, and the caller falls back to what it can measure itself. This
+    reads a value rather than trusting one — a wrong guess about the shape
+    would mark the wrong scans, which is worse than marking none.
+    """
+    if chosen is None:
+        return None
+    chosen = getattr(chosen, "mask", chosen)
+    if isinstance(chosen, tuple) and len(chosen) == 2:
+        # the kept times, the way `after_settling` returns them
+        kept = np.asarray(chosen[0], dtype=float)
+        return np.isin(times, kept) if kept.ndim == 1 else None
+    values = np.asarray(chosen)
+    if values.ndim != 1:
+        return None
+    if values.dtype == bool and values.size == times.size:
+        return values
+    if np.issubdtype(values.dtype, np.integer) and values.size <= times.size:
+        mask = np.zeros(times.size, dtype=bool)
+        inside = values[(values >= 0) & (values < times.size)]
+        mask[inside] = True
+        return mask
+    return None
+
+
+def excluded_scans(times, y) -> np.ndarray:
+    """
+    Which scans of an infusion are **not** in the average it is read from.
+
+    `infusion.stable_scans` is the authority when the module has it; it is
+    what actually decides the average, so a marker that read anything else
+    would be drawing a different answer from the one in force. Without it the
+    settling window is all there is to go on — the first second of
+    acquisition, which is where the spray transient was measured to be — and
+    that is what `infusion.after_settling` already leaves out of the verdict.
+    """
+    times = np.asarray(times, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if times.size == 0 or times.size != y.size:
+        return np.zeros(times.size, dtype=bool)
+    picker = getattr(infusion_rules, "stable_scans", None)
+    if picker is not None:
+        try:
+            mask = _as_scan_mask(picker(times, y), times)
+        except Exception:
+            mask = None
+        if mask is not None:
+            return ~mask
+    kept, _ = after_settling(times, y)
+    if kept.size == times.size or kept.size == 0:
+        return np.zeros(times.size, dtype=bool)
+    return times < float(kept[0])
 
 
 class ChannelRef:
@@ -124,6 +185,11 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.active_ref: ChannelRef | None = None
         self.current_scan: int = 0
         self._background_cache: dict[tuple, tuple[np.ndarray, np.ndarray]] = {}
+        #: whole-run averages, by channel, for the Δ mode — reading 473 scans
+        #: once a scan is what a film would cost without this
+        self._average_cache: dict[tuple, tuple[np.ndarray, np.ndarray]] = {}
+        #: Mirror as it was before Δ turned it on, to put back afterwards
+        self._mirror_before_delta: bool | None = None
         #: how the spectrum on screen was made — set by `_show_scan` and
         #: `_show_average`, which are the only two things that draw one, and
         #: copied onto a pin so the project can say where it came from
@@ -524,6 +590,14 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             "Average every scan of the active channel into one spectrum — "
             "what a direct infusion, which has no chromatography to select "
             "over, is meant to be looked at as")
+        self.act_delta = QtGui.QAction("Δ from average", self, checkable=True)
+        self.act_delta.setEnabled(False)
+        self.act_delta.setToolTip(
+            "On an infusion: draw the scan minus the average of the whole "
+            "run, with the average mirrored underneath it. Every scan of a "
+            "spray is the same spectrum, so what is left is what changed — "
+            "and while this is on, the live spectrum is that difference")
+        proc.addAction(self.act_delta)
         self.act_inf_report = proc.addAction("Report this infusion…")
         self.act_inf_report.setEnabled(False)
         self.act_inf_report.setToolTip(
@@ -625,7 +699,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             "Panels": list(self.panel_actions),
             "Process": [self.act_centroid, self.act_marker, self.act_marker_clear,
                         self.act_set_bg, self.act_clear_bg, self.act_explain,
-                        self.act_detect, self.act_avg_run,
+                        self.act_detect, self.act_avg_run, self.act_delta,
                         self.act_inf_report, self.act_inf_reports,
                         self.act_pin, self.act_unpin],
         }
@@ -660,6 +734,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.act_explain.triggered.connect(self.explain_spectrum)
         self.act_detect.triggered.connect(self._detect_peaks)
         self.act_avg_run.triggered.connect(self.average_whole_run)
+        self.act_delta.toggled.connect(self._set_delta_mode)
         self.act_inf_report.triggered.connect(self.report_infusion)
         self.act_inf_reports.triggered.connect(
             lambda: self.report_infusion(batch=True))
@@ -688,6 +763,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.contour_view.sigPointPicked.connect(self._on_contour_point)
         self.contour_view.sigRegionPicked.connect(self._on_contour_region)
         self.contour_view.sigRebuildRequested.connect(self._rebuild_contour)
+        self.contour_view.sigScanRequested.connect(self._play_to_scan)
 
         self.chrom.sigClicked.connect(self._on_chrom_click)
         self.chrom.sigRangeSelected.connect(self._on_chrom_range)
@@ -957,6 +1033,76 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
 
+    # -- Δ from the average ------------------------------------------------ #
+    def run_average(self, channel) -> tuple[np.ndarray, np.ndarray] | None:
+        """
+        The average of every scan of a channel, read once and kept.
+
+        The Δ mode needs it on every scan the film steps through, and on the
+        real infusions that is 473 scans of a 242,308-point average: reading
+        it each time would make Play a slideshow.
+        """
+        if channel is None:
+            return None
+        window = run_range(channel)
+        if window is None:
+            return None
+        key = (id(channel), int(getattr(channel.info, "n_scans", 0)), window)
+        if key not in self._average_cache:
+            try:
+                self._average_cache[key] = channel.spectrum_rt_range(*window)
+            except Exception:
+                return None
+        return self._average_cache[key]
+
+    def _delta_from_average(self, channel, mz: np.ndarray,
+                            intensity: np.ndarray):
+        """
+        The scan minus the whole-run average, and the average beside it.
+
+        The average is interpolated onto the scan's own m/z axis first, the
+        same way a background is: the two grids do not line up in profile
+        data, and on a real infusion they are not even the same length — a
+        scan of 8,815 points against an average of 242,308, which is every
+        scan's grid unioned. Nothing is clipped at zero, unlike the
+        background subtraction: a scan that is *short* of the average is
+        precisely what this is for.
+        """
+        average = self.run_average(channel)
+        if average is None or mz.size == 0:
+            return None
+        avg_mz, avg_intensity = average
+        if np.asarray(avg_mz).size < 2:
+            return None
+        base = np.interp(mz, avg_mz, avg_intensity, left=0.0, right=0.0)
+        return intensity - base, base
+
+    def _set_delta_mode(self, enabled: bool) -> None:
+        """
+        Turn the difference on, and Mirror with it.
+
+        Mirror is what draws the pair head to tail, and a difference drawn on
+        top of the average it was taken from is unreadable — so this turns it
+        on rather than asking, and puts it back as it was on the way out. It
+        is the existing switch being set, not a second copy of it: turning
+        Mirror off by hand while Δ is on leaves the two overlaid, which is a
+        thing somebody might want.
+        """
+        if enabled:
+            self._mirror_before_delta = bool(self.act_mirror.isChecked())
+            self.act_mirror.setChecked(True)
+        else:
+            if self._mirror_before_delta is not None:
+                self.act_mirror.setChecked(self._mirror_before_delta)
+            self._mirror_before_delta = None
+        if self.active_ref is not None and self.active_ref.channel is not None:
+            self._show_scan(self.current_scan)
+        self._update_status(
+            "Δ from the average: the scan minus the average of the whole "
+            "run, over the average mirrored. The live spectrum is that "
+            "difference — turn it off before Explain or a library search."
+            if enabled else "Δ from the average off.")
+
     def report_infusion(self, batch: bool = False) -> None:
         """
         One compound on paper — the dialog picks the format, the file and
@@ -1009,6 +1155,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.active_ref = None
         self._background_cache.clear()
         self._contour_cache.clear()
+        self._average_cache.clear()
+        self.contour_view.clear_film()
         # a pin points at a channel of a file that is about to be closed,
         # and its recipe at a sample that is about to be gone
         self._pinned = []
@@ -1130,16 +1278,26 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         # else; the batch one needs at least one open, which is the same test
         self.act_inf_report.setEnabled(bool(verdict))
         self.act_inf_reports.setEnabled(bool(verdict))
+        # the difference is against the average of the whole run, which is
+        # only the spectrum on a run with no chromatography in it
+        self.act_delta.setEnabled(bool(verdict))
+        if not verdict and self.act_delta.isChecked():
+            self.act_delta.setChecked(False)
         if self.active_ref is not None:
             self.sample_info.show_sample(self.active_ref.sample, channel)
 
     def _on_active_changed(self, _index: int) -> None:
+        # a film is of one channel; the next channel's is a different run of
+        # scans, and a timer left running would be stepping the new one
+        self.contour_view.stop_play()
         self._sync_active_ref()
         if self.active_ref and self.active_ref.channel:
             self._show_scan(min(self.current_scan,
                                 self.active_ref.channel.info.n_scans - 1))
         if self._contour_showing:
             self._show_contour()
+        else:
+            self.contour_view.clear_film()
 
     # ----------------------------------------------------------- contour -- #
     @property
@@ -1153,6 +1311,11 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.mode_combo.setVisible(not self._contour_showing)
         if self._contour_showing and self.contour_view.contour().is_empty:
             self._show_contour()
+        elif not self._contour_showing:
+            # Pause lives on the surface, so a film left running behind the
+            # chromatogram would be stepping scans with nothing on screen to
+            # stop it
+            self.contour_view.stop_play()
 
     def _show_contour(self, rt_range=None, mz_range=None) -> None:
         """
@@ -1169,6 +1332,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         if channel is None:
             self.contour_view.set_contour(Contour(
                 note="Pick an active channel to build a contour."))
+            self.contour_view.clear_film()
             return
 
         key = (ref.key, rt_range, mz_range)
@@ -1199,7 +1363,45 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         while len(self._contour_cache) > CONTOUR_CACHE:
             self._contour_cache.pop(next(iter(self._contour_cache)))
         self.contour_view.set_contour(contour, ref.label)
+        self._update_film()
         self._update_status(f"Contour of {ref.label}: {contour.scans:,} scans")
+
+    def _update_film(self) -> None:
+        """
+        On an infusion, the surface is a film and gets the strip and Play.
+
+        The strip is the channel's own chromatogram rather than anything
+        taken off the grid: the grid's rows may be several scans averaged
+        into one and its m/z bins are wider than the instrument's steps, so
+        a burst read off it would be the picture's arithmetic and not the
+        instrument's. On a chromatographic run there is nothing here to add
+        — the chromatogram pane already draws the same trace, over peaks
+        that mean something — so the film goes away entirely.
+        """
+        ref = self.active_ref
+        channel = ref.channel if ref else None
+        if channel is None or not self.verdict(ref.entry):
+            self.contour_view.clear_film()
+            return
+        try:
+            times, values = channel.tic()
+        except Exception:
+            self.contour_view.clear_film()
+            return
+        self.contour_view.set_film(times, values,
+                                   excluded_scans(times, values), ref.label)
+        self.contour_view.set_current_scan(self.current_scan)
+
+    def _play_to_scan(self, scan: int) -> None:
+        """
+        Play asks for a scan; the spin box is what moves.
+
+        Through the spin box rather than straight to `_show_scan` so that
+        one frame of the film is exactly what pressing ▶ once is: the same
+        signal, the same title, the same recipe on the spectrum, and the
+        number under the reader's eye keeps up with the picture.
+        """
+        self.scan_spin.setValue(int(scan) + 1)
 
     def _rebuild_contour(self) -> None:
         """Read the scans again over what is on screen, at the full grid."""
@@ -1431,10 +1633,16 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             return
         intensity, subtracted = self._apply_background(channel, mz, intensity)
         rt = channel.rt_at_scan(self.current_scan)
+        # the difference is taken before the mass axis is corrected, so that
+        # one correction moves the pair together rather than sliding the
+        # scan against the average it is being compared with
+        pair = (self._delta_from_average(channel, mz, intensity)
+                if self.act_delta.isChecked() else None)
         mz, recalibrated = self._recalibrate_mz(mz)
         title = (
             f"{self.active_ref.label} · scan {self.current_scan + 1}"
             f"/{channel.info.n_scans} · RT {rt:.3f} min"
+            + (" · Δ from the run average" if pair is not None else "")
             + (" · background subtracted" if subtracted else "")
             + recalibrated
         )
@@ -1442,16 +1650,34 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         # carries the same words in the legend as the pane had over it
         self._live_recipe = self._recipe(channel, scan=self.current_scan,
                                          subtracted=subtracted, label=title)
-        self.spectrum.set_traces(self._with_pins(
-            Trace("spec", "spectrum", mz, intensity, "#1f77b4", channel,
-                  self._live_recipe)))
-        self.spectrum.autoscale()
+        if pair is None:
+            drawn = [Trace("spec", "spectrum", mz, intensity, "#1f77b4",
+                           channel, self._live_recipe)]
+        else:
+            difference, average = pair
+            # the difference keeps the "spec" key: it is what this pane is
+            # showing, and every panel that reads the first trace should read
+            # what is on screen rather than a spectrum that is not
+            drawn = [
+                Trace("spec", f"scan {self.current_scan + 1} − run average",
+                      mz, difference, "#1f77b4", channel, self._live_recipe),
+                Trace("avg", "run average", mz, average, "#d62728", channel),
+            ]
+        self.spectrum.set_traces(self._with_pins(drawn))
+        # a film whose axes jump every frame is a flicker rather than a film:
+        # while Play is running the scale is left where it was, so what moves
+        # on screen is the data. Every other way of reaching a scan rescales.
+        if not self.contour_view.playing:
+            self.spectrum.autoscale()
         self.spectrum.set_title(title)
         self.scan_spin.blockSignals(True)
         self.scan_spin.setValue(self.current_scan + 1)
         self.scan_spin.blockSignals(False)
         self.rt_label.setText(f"RT {rt:.3f} min")
         self.chrom.mark(rt)
+        # the film's cursor follows whatever put a scan on screen — Play, the
+        # arrow keys, the spin box or a click on the surface
+        self.contour_view.set_current_scan(self.current_scan)
         self.refresh_comparison()
         self._fill_peak_table()
 
@@ -1922,10 +2148,18 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
     #: colours for the spectra held for comparison; the live one stays blue
     PIN_COLOURS = ("#e08a1e", "#2ca02c", "#9467bd", "#8c564b", "#17becf", "#7f7f7f")
 
-    def _with_pins(self, current: Trace) -> list[Trace]:
+    def _with_pins(self, current: "Trace | list[Trace]") -> list[Trace]:
         """The live spectrum first, then whatever was pinned: the first trace
-        is what every panel reads, and Mirror flips the odd ones."""
-        return [current] + list(getattr(self, "_pinned", []))
+        is what every panel reads, and Mirror flips the odd ones.
+
+        More than one live trace when the Δ mode is on: the difference and,
+        second, the average it was taken from, which is the one Mirror draws
+        downwards. The pins then start at the third, so Δ and pins together
+        flip the pins the other way up — the price of drawing the pair
+        through the switch that already exists rather than a second one.
+        """
+        live = [current] if isinstance(current, Trace) else list(current)
+        return live + list(getattr(self, "_pinned", []))
 
     def pin_spectrum(self) -> None:
         """

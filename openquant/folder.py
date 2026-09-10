@@ -45,7 +45,16 @@ ABSENT = "absent"
 
 #: extensions of other instrument formats. Not read here; msconvert writes
 #: mzML from all of them. `.wiff2` is the one that turns up beside the files
-#: this does read, so it has an answer of its own.
+#: this does read, so it has an answer of its own — and the answer is
+#: measured rather than assumed. Clearcore2's own `CheckDataFileIntegrity`
+#: calls all nine `.wiff2` of the ZenoTOF folder `NotWiffFile`, and its
+#: `Clearcore2.Data.Wiff2` assembly declares the container's whole schema:
+#: seven tables — header, sample, method, device_method, device_descriptor,
+#: device_identifier, method_parameters_info — with no column for a
+#: spectrum, a peak, an intensity or a chromatogram. The header table holds
+#: `wiff_hash`, `scan_hash` and `scan_size`, which is what the file is for:
+#: it records the identity of the `.wiff` and `.wiff.scan` beside it. So
+#: "nothing is lost" is a measurement, not a hope.
 OTHER_FORMATS = {
     ".raw": "Thermo",
     ".d": "Agilent or Bruker",
@@ -361,16 +370,19 @@ def check_files(paths, open_paths=()) -> FolderReport:
             report.findings.append(Finding(
                 folder, IGNORED,
                 f"{len(paired)} .wiff2 file{'' if len(paired) == 1 else 's'} "
-                f"({_some(paired)}): a different container, not read here",
+                f"({_some(paired)}): the acquisition's method and file "
+                f"hashes, holding no scan data, not read here",
                 "nothing is lost — the .wiff of the same name beside each "
                 "holds the same acquisition, and that is what is opened"))
         if alone:
             report.findings.append(Finding(
                 folder, IGNORED,
                 f"{len(alone)} .wiff2 file{'' if len(alone) == 1 else 's'} "
-                f"({_some(alone)}) with no .wiff of the same name: a "
-                f"different container, not read here",
-                "those acquisitions will not be opened; fetch their .wiff, "
+                f"({_some(alone)}) with no .wiff of the same name: the "
+                f"method and file hashes, holding no scan data, not read "
+                f"here",
+                "those acquisitions will not be opened, and the .wiff2 "
+                "cannot stand in — it holds no spectra; fetch their .wiff, "
                 "or convert them to mzML"))
         others: dict[str, list[str]] = {}
         for name in names:

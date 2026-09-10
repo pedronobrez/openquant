@@ -28,6 +28,22 @@ internos, amostrado a cada 14.6 s.
   para os espectros e uma montagem ausente (`OFX.Core.Contracts`) para os
   cromatogramas. Nada no próprio arquivo diz que o companheiro está ausente;
   só ler um scan diz, e é por isso que um é lido quando o arquivo é aberto.
+- **Um `.wiff2` não contém dados de scan, e isso foi medido antes de ele ser
+  deixado de fora.** O Clearcore2 levanta `Invalid OLE structured storage
+  file` em todos os nove `.wiff2` de uma pasta de um ZenoTOF 7600 — com os
+  companheiros ao lado, com cada companheiro retirado por vez, e quando o
+  arquivo é renomeado para `.wiff`, logo é o contêiner e não a extensão — e
+  o seu próprio `CheckDataFileIntegrity` chama cada um deles de
+  `NotWiffFile`. A montagem do Clearcore2 que escreve o formato declara o
+  seu esquema inteiro: sete tabelas, nenhuma com coluna para um espectro, um
+  pico, uma intensidade ou um cromatograma, e uma tabela `header` de
+  `wiff_hash`, `scan_hash` e `scan_size`. Os tamanhos concordam — nesses
+  nove o `.wiff.scan` vai de 1.67 a 9.88 MB (5.9×) e o `.wiff2` de 303 a
+  406 kB (1.34×, cinco valores distintos), correlacionando 0.989 com o
+  `.wiff` e 0.748 com os dados de scan. Ler o `.wiff` de uma aquisição com o
+  `.wiff2` ao lado e com ele apagado deu a mesma amostra, o mesmo
+  experimento, o mesmo TIC de 473 pontos e o mesmo primeiro espectro de
+  13.705 pontos. Ver [[formats]].
 - **Os formatos concordam, exceto em um ponto.** Exportado para mzML e lido
   de volta: espectros, cromatogramas de canal, o TIC da corrida (577 pontos)
   e as áreas integradas idênticos; os cromatogramas de íon extraído diferem

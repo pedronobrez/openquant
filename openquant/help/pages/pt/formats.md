@@ -23,9 +23,9 @@ pôde ser extraída. A mensagem nomeia o arquivo que tem de estar ao lado do
 (`name.wiff_mix1.scan` ao lado de `name_mix1.wiff`) é a maneira habitual de
 o par se desfazer, e renomeá-lo para `name_mix1.wiff.scan` é o reparo
 inteiro — que [[checking-files]] encontra e oferece antes mesmo de o
-arquivo ser aberto. Um `.wiff2` ao lado do par é outro contêiner e não é
-lido aqui; nada se perde, pois o `.wiff` de mesmo nome contém a mesma
-aquisição. Eles são lidos pelas próprias bibliotecas Clearcore2 da SCIEX, que
+arquivo ser aberto. Um `.wiff2` ao lado do par não é lido aqui, e nada se
+perde com isso — veja a seção abaixo para o que foi medido.
+Eles são lidos pelas próprias bibliotecas Clearcore2 da SCIEX, que
 são o único software capaz de decodificar o formato e são redistribuídas
 pelo pacote de código aberto alpharaw. Como elas são feitas funcionar fora
 do Windows está descrito em [[how-wiff-is-read]].
@@ -42,6 +42,45 @@ fabricante reporta são usados como reportados; nada é recalculado a partir
 dos pontos armazenados onde existe o número do próprio instrumento, porque
 somar os pontos armazenados em vez disso foi medido deslocando toda área
 integrada em 2%.
+
+## .wiff2
+
+Um instrumento com SCIEX OS escreve um terceiro arquivo ao lado do par,
+`name.wiff2`, e num ZenoTOF 7600 uma aquisição chega como um trio. Ele não
+é aberto aqui, e o motivo é medido e não suposto.
+
+Não é o mesmo tipo de arquivo. Um `.wiff` é um documento composto OLE; um
+`.wiff2` é um banco de dados SQLite protegido por senha. Ao ser pedido para
+abrir um, o Clearcore2 diz `Invalid OLE structured storage file`, e o seu
+próprio `CheckDataFileIntegrity` chama-o de `NotWiffFile`. Isso valeu para
+todos os nove `.wiff2` da pasta em que isto foi testado, com os
+companheiros ao lado e com cada companheiro retirado por vez, e continuou
+valendo quando o arquivo foi renomeado para `.wiff` — logo é o contêiner, e
+não a extensão.
+
+E, o que mais importa, não há nada nele para ler. A montagem do Clearcore2
+que escreve um `.wiff2` declara o esquema inteiro, e são sete tabelas:
+`header`, `sample`, `method`, `device_method`, `device_descriptor`,
+`device_identifier` e `method_parameters_info`. Nenhuma coluna guarda um
+espectro, um pico, uma intensidade ou um cromatograma. O que a tabela
+`header` guarda é `wiff_hash`, `scan_hash` e `scan_size` — a identidade e o
+tamanho dos dois arquivos ao lado dele. O `.wiff2` é o método da aquisição
+e o seu registro dos companheiros, não os seus dados.
+
+Os tamanhos dos arquivos dizem o mesmo. Nessas nove aquisições o
+`.wiff.scan` — que realmente contém os espectros — vai de 1.67 a 9.88 MB,
+um fator de 5.9, enquanto o `.wiff2` vai de 303 a 406 kB, um fator de 1.34,
+em cinco valores distintos. O `.wiff2` acompanha o `.wiff` (correlação
+0.989), não os dados de scan (0.748).
+
+Portanto o `.wiff` de mesmo nome contém a aquisição, e abri-lo não perde
+nada: lido com o `.wiff2` ao lado e com o `.wiff2` apagado, o mesmo arquivo
+deu a mesma amostra, o mesmo experimento único, o mesmo cromatograma de
+íons totais de 473 pontos e o mesmo primeiro espectro de 13.705 pontos. Um
+`.wiff2` sem nenhum `.wiff` ao lado é uma aquisição que não pode ser aberta
+aqui de modo algum, e nenhum leitor poderia ser escrito para ele a partir
+deste contêiner — os espectros não estão nele. [[checking-files]] diz em
+qual dos dois casos uma pasta está antes de qualquer coisa ser aberta.
 
 ## mzML
 

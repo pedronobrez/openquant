@@ -17,7 +17,7 @@ takes to list it.
 |---|---|---|
 | a `.wiff` with no `.wiff.scan` beside it | the acquisition opens and looks whole — method, sample list, every channel's chromatogram — and every spectrum, extracted ion chromatogram and integration fails. See [[formats]] | put the companion back; if the folder holds a stray, the row below offers the rename |
 | a `.scan` belonging to no `.wiff` in the folder | usually the companion of one of these files, renamed by hand: `name.wiff_mix1.scan` beside `name_mix1.wiff` | **Rename** it to the name the `.wiff` is looking for |
-| `.wiff2` files | a different container, which this program does not read | nothing, when the `.wiff` of the same name is beside it: that holds the same acquisition and is what is opened |
+| `.wiff2` files | the acquisition's method and the hashes of its two companions — measured to hold no spectrum, peak or chromatogram at all, and not read here. See [[formats]] | nothing, when the `.wiff` of the same name is beside it: that holds the same acquisition and is what is opened. With no `.wiff` beside it the acquisition cannot be opened, and the `.wiff2` cannot stand in for one |
 | files of another vendor's format | `.raw`, `.d`, `.tdf` and the rest are not read here | convert them to mzML with ProteoWizard's `msconvert` |
 | a file already open | adding it again would put a second copy of every sample in the batch | it is left out; close the batch first to read it again |
 | a file that cannot be read, or is not there | permissions, or a file that moved since it was named | fix the permissions, or add it again from where it is now |

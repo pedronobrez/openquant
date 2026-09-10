@@ -18,7 +18,7 @@ que leva para listá-la.
 |---|---|---|
 | um `.wiff` sem um `.wiff.scan` ao lado | a aquisição abre e parece inteira — método, lista de amostras, o cromatograma de cada canal — e todo espectro, cromatograma de íon extraído e integração falha. Ver [[formats]] | reponha o companheiro; se a pasta contiver um avulso, a linha abaixo oferece a renomeação |
 | um `.scan` que não pertence a nenhum `.wiff` da pasta | em geral o companheiro de um destes arquivos, renomeado à mão: `name.wiff_mix1.scan` ao lado de `name_mix1.wiff` | **Rename** para o nome que o `.wiff` procura |
-| arquivos `.wiff2` | um contêiner diferente, que este programa não lê | nada, quando o `.wiff` de mesmo nome está ao lado: ele contém a mesma aquisição e é o que é aberto |
+| arquivos `.wiff2` | o método da aquisição e os hashes dos seus dois companheiros — medido como não contendo espectro, pico ou cromatograma algum, e não lido aqui. Ver [[formats]] | nada, quando o `.wiff` de mesmo nome está ao lado: ele contém a mesma aquisição e é o que é aberto. Sem nenhum `.wiff` ao lado, a aquisição não pode ser aberta, e o `.wiff2` não pode substituí-lo |
 | arquivos no formato de outro fabricante | `.raw`, `.d`, `.tdf` e os demais não são lidos aqui | converta-os para mzML com o `msconvert` do ProteoWizard |
 | um arquivo já aberto | acrescentá-lo de novo poria uma segunda cópia de cada amostra no lote | ele fica de fora; feche o lote primeiro para lê-lo outra vez |
 | um arquivo que não pode ser lido, ou que não está lá | permissões, ou um arquivo que mudou de lugar depois de ter sido nomeado | corrija as permissões, ou acrescente-o de novo de onde ele está agora |

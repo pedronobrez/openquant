@@ -22,8 +22,8 @@ companion renamed by hand (`name.wiff_mix1.scan` next to `name_mix1.wiff`)
 is the usual way the pair comes apart, and renaming it to
 `name_mix1.wiff.scan` is the whole repair — which [[checking-files]] finds
 and offers before the file is opened at all. A `.wiff2` beside the pair is
-a different container and is not read here; nothing is lost, since the
-`.wiff` of the same name holds the same acquisition. They are read through SCIEX's own Clearcore2 libraries, which are
+not read here, and nothing is lost by that — see the section below for what
+was measured. They are read through SCIEX's own Clearcore2 libraries, which are
 the only software able to decode the format and are redistributed by the
 open-source package alpharaw. How they are made to work off Windows is
 described in [[how-wiff-is-read]].
@@ -38,6 +38,44 @@ declares them. Totals, retention times and integrated areas that the vendor
 library reports are used as reported; nothing is recomputed from the stored
 points where the instrument's own figure exists, because summing the stored
 points instead was measured to move every integrated area by 2%.
+
+## .wiff2
+
+A SCIEX OS instrument writes a third file beside the pair, `name.wiff2`,
+and on a ZenoTOF 7600 an acquisition arrives as a trio. It is not opened
+here, and the reason is measured rather than assumed.
+
+It is not the same kind of file. A `.wiff` is an OLE compound document; a
+`.wiff2` is a password-protected SQLite database. Asked to open one,
+Clearcore2 says `Invalid OLE structured storage file`, and its own
+`CheckDataFileIntegrity` calls it `NotWiffFile`. That was true of all nine
+`.wiff2` in the folder this was tested on, with the companions beside them
+and with each companion taken away in turn, and it stayed true when the
+file was renamed to `.wiff` — so it is the container, not the extension.
+
+More to the point, there is nothing in it to read. The Clearcore2 assembly
+that writes a `.wiff2` declares the whole schema, and it is seven tables:
+`header`, `sample`, `method`, `device_method`, `device_descriptor`,
+`device_identifier` and `method_parameters_info`. Not one column holds a
+spectrum, a peak, an intensity or a chromatogram. What the `header` table
+holds is `wiff_hash`, `scan_hash` and `scan_size` — the identity and size
+of the two files beside it. The `.wiff2` is the acquisition's method and
+its record of its companions, not its data.
+
+The file sizes say the same thing. Across those nine acquisitions the
+`.wiff.scan` — which really does hold the spectra — spans 1.67 to 9.88 MB,
+a factor of 5.9, while the `.wiff2` spans 303 to 406 kB, a factor of 1.34,
+over five distinct values. The `.wiff2` tracks the `.wiff` (correlation
+0.989), not the scan data (0.748).
+
+So the `.wiff` of the same name holds the acquisition, and opening it
+loses nothing: read with the `.wiff2` beside it and with the `.wiff2`
+deleted, the same file gave the same sample, the same single experiment,
+the same 473-point total ion chromatogram and the same 13,705-point first
+spectrum. A `.wiff2` with no `.wiff` beside it is an acquisition that
+cannot be opened here at all, and no reader could be written for it from
+this container — the spectra are not in it. [[checking-files]] says which
+of the two cases a folder is in before anything is opened.
 
 ## mzML
 

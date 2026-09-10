@@ -343,6 +343,24 @@ def test_an_unknown_extension_says_what_is_supported():
         raw.format_of("acquisition.raw")
 
 
+def test_wiff2_is_refused_and_is_not_mistaken_for_a_wiff():
+    """
+    `.wiff2` is not a reader that is missing; it is a container with no scan
+    data in it. Measured: Clearcore2 raises `Invalid OLE structured storage
+    file` on every one, its own CheckDataFileIntegrity calls them
+    `NotWiffFile`, and the format's declared schema has no column for a
+    spectrum. So the dispatcher must refuse it outright rather than fall
+    through to the SCIEX reader on a prefix match — `.wiff2` starts with
+    `.wiff`, and an extension test written with `startswith` would have
+    handed it to a reader that cannot open it.
+    """
+    assert not raw.is_supported("acquisition.wiff2")
+    assert ".wiff2" not in raw.FORMATS
+    with pytest.raises(raw.UnsupportedFormat, match=r"\.wiff2"):
+        raw.format_of("acquisition.wiff2")
+    assert raw.format_of("acquisition.wiff") == "SCIEX"
+
+
 def test_opening_mzml_needs_no_dotnet(written):
     """
     The SCIEX reader starts a .NET runtime on import. Someone working with

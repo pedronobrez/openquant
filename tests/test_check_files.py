@@ -167,12 +167,38 @@ def test_wiff2_beside_its_wiff_costs_nothing_and_says_so(acquisitions):
     assert "nothing is lost" in ignored[0].action
 
 
+def test_the_wiff2_finding_says_what_the_container_holds(acquisitions):
+    """
+    "a different container" was true and unhelpful: it invited the reading
+    that a reader is simply missing. What was measured is stronger — the
+    format's own declared schema has seven tables and not one column for a
+    spectrum, a peak or a chromatogram, and its header table holds the
+    hashes of the `.wiff` and `.wiff.scan` beside it. The finding says that,
+    so "nothing is lost" is backed by something.
+    """
+    ignored, = check_files([acquisitions]).of_kind(IGNORED)
+    assert "no scan data" in ignored.finding
+    assert "method" in ignored.finding
+
+
 def test_a_wiff2_on_its_own_is_an_acquisition_that_will_not_open(tmp_path):
     write(tmp_path, "only.wiff2", "fine.wiff", "fine.wiff.scan")
     ignored, = check_files([tmp_path]).of_kind(IGNORED)
     assert "only.wiff2" in ignored.finding
     assert "no .wiff of the same name" in ignored.finding
     assert "fetch their .wiff" in ignored.action
+    # and it must not suggest the .wiff2 could be opened instead: it holds
+    # no spectra, so there is no reader that could be written for it
+    assert "cannot stand in" in ignored.action
+
+
+def test_a_named_wiff2_is_refused_rather_than_passed_to_the_wiff_reader(tmp_path):
+    """`.wiff2` starts with `.wiff`; naming one outright must still refuse."""
+    write(tmp_path, "only.wiff2")
+    unsupported, = check_files([tmp_path / "only.wiff2"]).of_kind(UNSUPPORTED)
+    assert "only.wiff2" in unsupported.finding
+    assert "does not read" in unsupported.finding
+    assert check_files([tmp_path / "only.wiff2"]).paths == []
 
 
 def test_another_vendors_files_are_grouped_by_extension(tmp_path):

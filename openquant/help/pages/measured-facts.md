@@ -27,6 +27,21 @@ method of 141 components and 11 internal standards, sampled every 14.6 s.
   missing assembly (`OFX.Core.Contracts`) for the chromatograms. Nothing
   in the file itself says the companion is absent; only reading a scan
   does, which is why one is read when the file is opened.
+- **A `.wiff2` holds no scan data, and that was measured before it was left
+  out.** Clearcore2 raises `Invalid OLE structured storage file` on all nine
+  `.wiff2` of a ZenoTOF 7600 folder — with the companions beside them, with
+  each companion removed in turn, and when the file is renamed `.wiff`, so
+  it is the container and not the extension — and its own
+  `CheckDataFileIntegrity` calls every one of them `NotWiffFile`. The
+  Clearcore2 assembly that writes the format declares its whole schema:
+  seven tables, none with a column for a spectrum, a peak, an intensity or
+  a chromatogram, and a `header` table of `wiff_hash`, `scan_hash` and
+  `scan_size`. The sizes agree — over those nine the `.wiff.scan` spans
+  1.67–9.88 MB (5.9×) and the `.wiff2` 303–406 kB (1.34×, five distinct
+  values), correlating 0.989 with the `.wiff` and 0.748 with the scan data.
+  Reading one acquisition's `.wiff` with the `.wiff2` beside it and with it
+  deleted gave the same sample, the same experiment, the same 473-point TIC
+  and the same 13,705-point first spectrum. See [[formats]].
 - **Formats agree, except in one place.** Exported to mzML and read back:
   spectra, channel chromatograms, the run's TIC (577 points) and integrated
   areas identical; extracted ion chromatograms differ by a median 0.58% of

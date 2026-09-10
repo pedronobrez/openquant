@@ -240,8 +240,9 @@ UV detector, is not implemented there) — untested on real Windows.
   and takes the median of those per injection, so all-standards-down-together
   is separable from one-standard-down-alone. On the batch it was written for,
   the standards taken separately scattered between 32% and 228% and looked
-  hopeless; taken together the injections sat within ±18% with three
-  exceptions, one of them at 0.08 where every standard had gone at once.
+  hopeless; taken together the injections sat between 0.44 and 2.08 with four
+  flagged (the original run of this measurement read ±18% with three
+  exceptions; `tests/real/` asserts the current figure).
 - **Flagging needs a floor and a ceiling, for opposite reasons.**
   `OUT_PERCENT` stops a batch that repeats itself well from flagging ordinary
   scatter. `ALWAYS_OUT_PERCENT` is its mirror: a batch whose own scatter is
@@ -316,7 +317,7 @@ UV detector, is not implemented there) — untested on real Windows.
   uses to say samples disagree — and a trend that fails it is not judged,
   says why, and stays out of the index. With that, the batch says what it
   can: `SM(d18:1/12:0)`, the one standard strong enough in a 50–700 survey,
-  held to −4.0 ppm across the run with a 16 ppm spread; nine others cannot
+  held to −4.8 ppm against its formula across the run with a 16 ppm spread; nine others cannot
   be measured; no index, since fewer than three standards qualify. The
   measurement is not saved with the project (a few seconds to repeat; three
   on that batch) and the report carries it only while it stands.
@@ -1171,6 +1172,28 @@ UV detector, is not implemented there) — untested on real Windows.
   `QProgressDialog.setValue` pumps the event loop and can close the dialog
   underneath its own handler. Left: `processing.pick_peaks` is 64% of what
   remains, 188 M generator calls, the same trace picked three times.
+- **A measured figure that nothing runs is prose.** Every number in this
+  file came from a real acquisition and, until `tests/real/`, none was
+  checked: the fixtures are synthetic by design, because raw data is never
+  committed. `tests/real/` is 56 tests over five sets — the five
+  `260904_EICs_*`, the 26-injection batch with its project, the nine
+  ZenoTOF infusions, eight DIA runs, two Thermo mzML — each asserting one
+  figure at the tolerance it was written to. `tests/conftest.py` marks
+  everything under the directory `real` and skips it unless
+  `OPENQUANT_REAL_DATA=1` or `-m real`, so CI runs `pytest -q` unchanged;
+  each test skips itself naming the path it wanted; only the two sets this
+  repository already names carry a default path, the rest come from an
+  environment variable or an untracked `tests/real/data.local.json`.
+  Writing them found six figures that had moved: the response index (±18%
+  with three exceptions is now 0.437–2.081 with four), the retention-time
+  bands (33/36/53/71% over 18/11/17/7 components), the margin's
+  before-and-after (1,771 → 2,665 rows is now 1,647 → 2,638),
+  `SM(d18:1/12:0)`'s error against its formula (−4.0 → −4.8 ppm; the 16.1
+  spread unchanged), a sixth lock-mass refusal (the repairs gave an
+  eleventh standard a formula, 234 ppm off), and +6.2 → +6.6 ppm at the top
+  of the infusion corrections. Each test asserts what the program does now
+  and keeps the old number in its docstring with what is known about the
+  difference.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and
@@ -1232,8 +1255,9 @@ UV detector, is not implemented there) — untested on real Windows.
   which is set by the channel's start offset. `quantify.detection_range`
   gives the detector `MARGIN_SCANS` either side and the apex is required to
   land inside the declared window afterwards. On that batch it took the rows
-  with a peak from 1,771 to 2,665 and the components with any peak at all from
-  89 to 139 of 141. The margin is small on purpose: everything inside it
+  with a peak from 1,647 to 2,638 and the components with any peak at all from
+  84 to 139 of 141 (first measured as 1,771 → 2,665 and 89 → 139; `tests/real/`
+  asserts the current figures). The margin is small on purpose: everything inside it
   competes on relative height with the real peak.
 - **A contour averages the scans it cannot draw, it does not skip them.**
   A long run has more scans than a screen has rows. Sampling every k-th scan

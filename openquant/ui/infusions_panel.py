@@ -39,6 +39,7 @@ HELP_PAGE = "infusion-report"
 #: than by position: a column added in the middle would otherwise move the
 #: tooltip onto the wrong cell without anything failing
 FOUND_COLUMN = SUMMARY_COLUMNS.index("Found m/z")
+SCANS_COLUMN = SUMMARY_COLUMNS.index("Scans")
 OTHERS_COLUMN = SUMMARY_COLUMNS.index("Other infusions")
 ADDUCT_COLUMN = SUMMARY_COLUMNS.index("Adduct")
 ISOLATED_COLUMN = SUMMARY_COLUMNS.index("Isolated")
@@ -204,8 +205,14 @@ class InfusionsPanel(QtWidgets.QWidget):
         QtWidgets.QApplication.setOverrideCursor(
             QtCore.Qt.CursorShape.WaitCursor)
         try:
-            summary = summarise(self.session, library=library,
-                                explanations=self.explanations())
+            summary = summarise(
+                self.session, library=library,
+                explanations=self.explanations(),
+                # the same rule the Explorer's pane is drawing under, so the
+                # table and the spectrum on screen are of the same scans
+                include_unstable=bool(getattr(
+                    self.explorer, "include_unstable_scans",
+                    lambda: False)()))
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
         self.session.infusion_summary = summary
@@ -269,6 +276,9 @@ class InfusionsPanel(QtWidgets.QWidget):
             # other column explains it
             verdict = row.report.isolation
             return verdict.sentence() if verdict is not None else text
+        if column == SCANS_COLUMN:
+            # the cell is "464 of 473"; where the rest went is a sentence
+            return row.report.scans_line()
         if column == OTHERS_COLUMN and row.others:
             return "\n".join(
                 f"{label}: score {score * 100:.0f}, reverse "

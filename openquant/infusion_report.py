@@ -69,11 +69,14 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from . import infusion as _infusion
 from . import precursor as _precursor
 from . import spectra_compare
 from .components import Component
 from .explain import Explanation
-from .infusion import InfusionVerdict, run_range, strongest_channel, verdict_for
+from .infusion import (InfusionVerdict, ScanMask, average_stable, mask_for,
+                       run_range, stable_scans, strongest_channel,
+                       verdict_for)
 from .library import PEAK_TOLERANCE_PPM, LibraryHit, match
 from .report import (IMAGE_WIDTH, _escape, _heading, _number, _table,
                      picture_palette, print_document, style_for)
@@ -666,6 +669,13 @@ class InfusionReport:
     written_precursor: float | None = None
     collision_energy: float | None = None
     scans: int = 0
+    #: which scans went into the average and which the spray lost. None where
+    #: nothing measured it — an older project, or a channel that would not
+    #: read — and the report then says the scan count and nothing about it.
+    mask: ScanMask | None = None
+    #: the average was taken over every scan, unstable ones included, because
+    #: the reader asked for it
+    unstable_included: bool = False
     rt_range: tuple[float, float] | None = None
     adduct: str = ""
     verdict: InfusionVerdict | None = None
@@ -793,6 +803,57 @@ class InfusionReport:
                     / self.written_precursor * 1e6)
         return None
 
+    # -- the scans ----------------------------------------------------------- #
+    def scans_line(self) -> str:
+        """
+        How many scans there were and how many were averaged, in one line.
+
+        "473 scans, 464 averaged; 9 left out: 0.008 min; 1.069–1.099 min,
+        8 scans" — the header's cell and the library record's comment read
+        this, so a record and the paper beside it say the same thing.
+        """
+        mask = self.mask
+        if mask is None or mask.n_scans == 0:
+            return f"{self.scans:,}" if self.scans else "—"
+        if self.unstable_included and mask.excluded:
+            return (f"{mask.n_scans:,} scans, all averaged; "
+                    f"{mask.excluded:,} unstable scan(s) kept on request: "
+                    f"{mask.ranges}")
+        return mask.summary()
+
+    def scans_cell(self) -> str:
+        """The scans column of a table of many: "464 of 473", or "473"."""
+        mask = self.mask
+        if mask is not None and mask.excluded and not self.unstable_included:
+            return f"{mask.kept:,} of {mask.n_scans:,}"
+        return f"{self.scans:,}" if self.scans else "—"
+
+    def scans_averaged(self) -> int:
+        """The scans the average was actually taken over."""
+        mask = self.mask
+        if mask is None or mask.n_scans == 0:
+            return int(self.scans)
+        return mask.n_scans if self.unstable_included else mask.kept
+
+    def _scan_sentences(self) -> list[str]:
+        mask = self.mask
+        if mask is None or mask.n_scans == 0 or not mask.excluded:
+            return []
+        if self.unstable_included:
+            return [f"{mask.excluded} scan(s) of {mask.n_scans} depart from "
+                    f"the run's own level by more than "
+                    f"{_infusion.SPRAY_JUMP:.0%} — {mask.ranges} — and were "
+                    f"averaged in anyway, because *Include unstable scans* "
+                    f"is on. The spectrum above is the whole run."]
+        return [f"{mask.excluded} scan(s) of {mask.n_scans} were left out of "
+                f"the average: {mask.ranges}. Each departs from the running "
+                f"median of {_infusion.STABILITY_WINDOW} scans by more than "
+                f"{_infusion.SPRAY_JUMP:.0%}, or follows one that does and "
+                f"had not come back within {_infusion.SPRAY_RECOVERED:.0%} — "
+                f"a spray that faltered, not a compound that changed. The "
+                f"rest of the run repeats itself to "
+                f"{mask.scatter:.1%} of its own level."]
+
     def energy_gap(self) -> tuple[float, float] | None:
         """This acquisition's energy and the record's, when they differ."""
         if self.hit is None or self.collision_energy is None:
@@ -831,6 +892,10 @@ class InfusionReport:
                 "or formula was scored against this spectrum and no library "
                 "was searched. What follows is the averaged spectrum and its "
                 "peaks, which is all this report claims to be.")
+        # last, because it is about the spectrum every other sentence was
+        # measured on rather than about the compound — and it is not a check,
+        # so it does not stop the sentence above from being written
+        said += self._scan_sentences()
         return said
 
     def _isolation_sentences(self) -> list[str]:
@@ -955,18 +1020,37 @@ class InfusionReport:
 # --------------------------------------------------------------------------- #
 # building one
 # --------------------------------------------------------------------------- #
-def average_spectrum(channel):
+def average_spectrum(channel, include_unstable: bool = False, sample=None):
     """
-    Every scan of a channel averaged into one spectrum, with the range.
+    Every steady scan of a channel averaged into one spectrum, with the range
+    and the mask that says which scans those were.
 
     An infusion has no chromatography to select over, so this is the whole of
-    it — the same view `Explorer.average_whole_run` lands on.
+    it — the same view `Explorer.average_whole_run` lands on, and the same
+    arithmetic, so the pane and the paper cannot disagree.
+
+    `include_unstable` averages the run as it comes, which is what this did
+    before `infusion.stable_scans` existed and what *Include unstable scans*
+    in the Explorer's Process menu asks for. The mask is measured and returned
+    either way, so a report of the raw average can still say what it kept.
+
+    `sample` is the channel's own sample where the caller has it, and it gates
+    the mask on the infusion verdict (`infusion.mask_for`) — the peaks of a
+    chromatographic run depart from their neighbours further than any spray
+    ever does. Without one this trusts the caller that the channel is an
+    infusion's, which every caller inside this module is.
     """
     window = run_range(channel)
     if window is None:
         return None
-    mz, intensity = channel.spectrum_rt_range(*window)
-    return np.asarray(mz, dtype=float), np.asarray(intensity, dtype=float), window
+    mask = (mask_for(sample, channel) if sample is not None
+            else stable_scans(channel))
+    if include_unstable:
+        mz, intensity = channel.spectrum_rt_range(*window)
+    else:
+        mz, intensity = average_stable(channel, mask)
+    return (np.asarray(mz, dtype=float), np.asarray(intensity, dtype=float),
+            window, mask)
 
 
 class _Trace:
@@ -1036,12 +1120,15 @@ def score_against(peaks, other_peaks,
     return match(mz, intensity, other_mz, other_intensity, tolerance_ppm)
 
 
-def _channel_note(channel) -> str:
+def _channel_note(channel, mask: ScanMask | None = None) -> str:
     info = getattr(channel, "info", None)
     if info is None:
         return ""
     energy = getattr(info, "collision_energy", None)
-    bits = [f"{info.n_scans:,} scans"]
+    if mask is not None and mask.excluded:
+        bits = [f"{mask.kept:,} of {mask.n_scans:,} scans"]
+    else:
+        bits = [f"{info.n_scans:,} scans"]
     if energy:
         bits.append(f"CE {energy:g} eV")
     return ", ".join(bits)
@@ -1057,7 +1144,8 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
                spectrum: tuple | None = None,
                measure_precursor: bool = True,
                formula: str = "", components=(), own_library=None,
-               session=None, recalibrated: bool = False) -> InfusionReport:
+               session=None, recalibrated: bool = False,
+               include_unstable: bool = False) -> InfusionReport:
     """
     A report for one open infusion, reading the file for what it needs.
 
@@ -1117,11 +1205,17 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
         mz, intensity = (np.asarray(spectrum[0], dtype=float),
                          np.asarray(spectrum[1], dtype=float))
         report.rt_range = run_range(channel)
+        # the pane already averaged; the mask is measured again here so the
+        # header can say what the pane's title says. It costs one chromatogram
+        report.mask = mask_for(sample, channel)
+        report.unstable_included = bool(include_unstable)
     else:
-        averaged = average_spectrum(channel)
+        averaged = average_spectrum(channel, include_unstable=include_unstable,
+                                    sample=sample)
         if averaged is None:
             return report
-        mz, intensity, report.rt_range = averaged
+        mz, intensity, report.rt_range, report.mask = averaged
+        report.unstable_included = bool(include_unstable)
     # the mass axis, before anything reads a mass off it. Fitted from the
     # uncorrected average, which is why this comes before the correction is
     # applied and why a caller that has already applied one says so.
@@ -1324,10 +1418,12 @@ def _compared(report: InfusionReport, mine, other_entry,
         strongest_channel(sample) if sample is not None else None)
     if channel is None:
         return None
-    averaged = average_spectrum(channel)
+    averaged = average_spectrum(channel,
+                                include_unstable=report.unstable_included,
+                                sample=sample)
     if averaged is None:
         return None
-    other_mz, other_intensity, _window = averaged
+    other_mz, other_intensity, _window, other_mask = averaged
     trace = report.trace
     if trace is None:
         return None
@@ -1341,7 +1437,7 @@ def _compared(report: InfusionReport, mine, other_entry,
     score, reverse, pairs = score_against(mine, theirs)
     return Compared(label=label, comparison=comparison, score=float(score),
                     reverse=float(reverse), matched=len(pairs),
-                    of_other=len(theirs), note=_channel_note(channel))
+                    of_other=len(theirs), note=_channel_note(channel, other_mask))
 
 
 def from_explorer(explorer, compound: str = "", others=(),
@@ -1435,7 +1531,9 @@ def from_explorer(explorer, compound: str = "", others=(),
         centroid=centroid, spectrum=spectrum,
         measure_precursor=measure_precursor, formula=formula,
         components=components, own_library=own,
-        session=session, recalibrated=corrected)
+        session=session, recalibrated=corrected,
+        include_unstable=bool(getattr(explorer, "include_unstable_scans",
+                                      lambda: False)()))
 
 
 def infusions_open(source) -> "list[tuple[SampleEntry, object]]":
@@ -1563,7 +1661,11 @@ def raw_sticks(report: InfusionReport):
 def _report_note(report: InfusionReport) -> str:
     """How an infusion was acquired, in one cell — `_channel_note`'s words
     from the report rather than from a channel, since a report holds both."""
-    bits = [f"{report.scans:,} scans"] if report.scans else []
+    mask = report.mask
+    if mask is not None and mask.excluded and not report.unstable_included:
+        bits = [f"{mask.kept:,} of {mask.n_scans:,} scans"]
+    else:
+        bits = [f"{report.scans:,} scans"] if report.scans else []
     if report.collision_energy:
         bits.append(f"CE {report.collision_energy:g} eV")
     return ", ".join(bits)
@@ -1700,7 +1802,7 @@ class InfusionRow:
             self.mode,
             "—" if report.collision_energy is None
             else f"{report.collision_energy:g}",
-            f"{report.scans:,}" if report.scans else "—",
+            report.scans_cell(),
             f"{base[0]:,.4f}" if base else "no spectrum",
             f"{report.written_precursor:g}" if report.written_precursor
             else "none written",
@@ -1751,7 +1853,7 @@ class InfusionRow:
         cells = self.cells()
         numbers = {
             "CE (eV)": report.collision_energy,
-            "Scans": float(report.scans) if report.scans else None,
+            "Scans": float(report.scans_averaged()) or None,
             "Base peak m/z": base[0] if base else None,
             "Precursor written": report.written_precursor,
             "Found m/z": found[0] if found else None,
@@ -1801,7 +1903,7 @@ class InfusionRow:
             report.named_compound, report.sample,
             self.mode + (f", {report.collision_energy:g} eV"
                          if report.collision_energy is not None else ""),
-            f"{report.scans:,}" if report.scans else "—",
+            report.scans_cell(),
             f"{base[0]:,.4f}" if base else "no spectrum",
             precursor,
             self.adduct,
@@ -2244,7 +2346,8 @@ def _precursor_reason(report: InfusionReport) -> str:
 
 
 def summarise(session, library=None, explanations=None,
-              progress=None) -> InfusionSummary | None:
+              progress=None,
+              include_unstable: bool = False) -> InfusionSummary | None:
     """
     Every open infusion as one row: the summary that comes before the pages.
 
@@ -2262,6 +2365,8 @@ def summarise(session, library=None, explanations=None,
 
     `progress(done, total)` is called as each infusion is read and stops the
     measurement by returning False, in which case this returns None.
+    `include_unstable` averages every scan rather than only the steady ones —
+    the Explorer's *Include unstable scans* — and every row then says so.
     """
     import time
 
@@ -2288,7 +2393,8 @@ def summarise(session, library=None, explanations=None,
             report = report_for(entry, channel, compound=compound,
                                 library=name,
                                 components=getattr(method, "components", ()),
-                                own_library=library, session=session)
+                                own_library=library, session=session,
+                                include_unstable=include_unstable)
             explanation = given.get(compound)
             note = ""
             if explanation is not None:
@@ -2400,8 +2506,7 @@ def _identity(report: InfusionReport) -> str:
          value(report.polarity)],
         ["Channel", value(report.channel), "Collision energy", energy],
         ["Precursor, written", written, "Precursor, measured", accurate],
-        ["Scans averaged", f"{report.scans:,}" if report.scans else "—",
-         "Over", span],
+        ["Scans averaged", value(report.scans_line()), "Over", span],
         ["Adduct", value(report.adduct), "Read as", _read_as(report)],
         ["Named", value(report.compound), "Isolated", _isolated(report)],
         ["Adduct evidence", _adduct_cell(report), "Survey",

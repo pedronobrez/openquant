@@ -149,6 +149,101 @@ importa), o coeficiente de variação do cromatograma de íons totais (sem
 margem contra um branco, e que pune a deriva da pulverização) e a ausência de
 um pico detectado (um traço plano com 3% de ruído ainda rende três).
 
+## Scans que a pulverização perdeu
+
+Uma eletronebulização não fica estável pela corrida inteira. Ela arqueia, uma
+gotícula alcança o cone, a agulha molha: a corrente iônica total deixa o nível
+que vinha mantendo por um scan ou alguns e volta. Esses scans não são o que o
+composto parece, e incluí-los na média com o resto levanta a resposta.
+
+Por isso a média da corrida inteira os deixa de fora, e diz quantos e onde. Um
+scan é **instável** quando a sua corrente iônica total se afasta da mediana
+móvel dos seus **21 scans vizinhos** em mais de **50%**, e os scans seguintes
+continuam instáveis até a corrente voltar para dentro de **25%**. Todo o resto
+entra na média. O título do painel, o cabeçalho do [[infusion-report]], a
+coluna *Scans* da aba Infusions e o comentário de um registro escrito numa
+biblioteca sua carregam todos a mesma linha:
+
+> 473 scans, 464 averaged; 9 left out: 0.008 min; 1.069–1.099 min, 8 scans
+
+Um único scan é nomeado pelo seu tempo e um trecho é dado pelos seus extremos.
+Onde nada foi deixado de fora, o título continua sendo *average of N scans*,
+exatamente como antes.
+
+**Process ▸ Include unstable scans** faz a média da corrida como ela saiu do
+instrumento. Vem desligado e é lembrado entre sessões; com ele ligado, o
+relatório diz quantos scans instáveis foram mantidos e onde estavam, de modo
+que um documento feito de qualquer um dos dois jeitos diz qual dos dois é.
+
+### Os números por trás disso
+
+Medido nas nove infusões reais. O afastamento de cada scan em relação à sua
+própria mediana móvel foi lido, e as duas populações não se sobrepõem: o maior
+afastamento de uma pulverização que nunca falhou é **0.316** (uma corrida CID
+cuja pulverização vagueia), e o menor afastamento dentro de uma rajada de
+verdade é **0.870**. A contagem de scans excluídos é a mesma em todo limiar de
+0.35 a 0.85, de modo que 50% é o meio de um platô e não um valor ajustado. A
+janela é de 21 scans porque uma mediana móvel sobrevive a uma perturbação de
+até metade da sua largura e a mais longa medida tem oito scans: com 11 scans a
+rajada decide a sua própria linha de base e seis scans são encontrados, com 15
+oito, e de 21 em diante nove — e aí a contagem para de se mexer.
+
+O pico base foi medido ao lado do total e não é usado. Ele é de quatro a oito
+vezes mais ruidoso — nas seis infusões sem rajada nenhuma ele se afasta da sua
+própria mediana móvel em até 0.585, onde o total nunca passa de 0.164 — de modo
+que qualquer limiar sobre ele que pegue uma rajada também pega scans comuns de
+uma pulverização estável, e todo scan que ele marca nos arquivos que de fato
+têm rajada o total também marca.
+
+A faixa de recuperação é o que pega os scans no meio de uma rajada que não são
+nem o pico nem a pulverização: uma rajada real vai a 0.01, 0.03, 0.64, 2.57,
+0.63, 0.13, 0.74, 4.68 do seu nível ao longo de oito scans, e três desses nunca
+passam de 50% por conta própria. O que ela *não* compra é uma cauda — em toda
+rajada e todo transiente medidos, o scan seguinte ao último excluído já está
+dentro de 13% do nível, de modo que uma pulverização aqui volta em um scan.
+
+O primeiro segundo de aquisição **não** é descartado. A janela de acomodação
+descrita acima existe porque um percentil põe de lado uma *fração* dos scans;
+isto mede cada scan contra os seus vizinhos, e o transiente do scan 1 sai a
+4.5, 5.1 e 5.0 vezes a sua própria linha de base nos três arquivos que o
+carregam — treze vezes o maior afastamento comum. Descartar quatro scans de
+toda corrida para pegar o que já está pego seria jogar fora dados contra os
+quais nenhuma medida tem objeção.
+
+### O que isso faz com a resposta
+
+Três dos nove arquivos perdem alguma coisa; seis voltam **byte a byte a média
+do próprio leitor**, porque uma máscara que não exclui nada pede ao leitor a
+corrida inteira numa chamada só e não toca no que volta.
+
+| | scans deixados de fora | da corrente iônica da corrida | pico base |
+|---|---|---|---|
+| CA-d4 CID | 1 | 0,61% | −0,62% |
+| TDCA-d4 CID | 1 | 1,66% | −1,99% |
+| DCA-d4 CID | 9 | 2,78% | **−2,90%** |
+| as outras seis | 0 | — | 0,00% |
+
+O que muda é a altura, não a forma: pontuada como um registro seu contra a
+mesma média tomada do jeito antigo, a pior das três volta com **99.999**. É
+esse o ponto. Um espectro é o mesmo composto de qualquer jeito, e o gráfico do
+[[standard-history]] segura o pico base do mesmo padrão dentro de 4,5% entre
+terços de uma corrida — de modo que uma rajada que vale 2,9% dele é mais da
+metade disso, e é uma rajada e não o composto.
+
+A máscara lê um cromatograma, o que dá 3 ms por arquivo. Fazer a média dos
+trechos sobreviventes não é mais lento do que fazer a média da corrida
+inteira: nessas nove, 15,0 s contra 19,4 s, porque há menos scans nela.
+
+### Numa corrida que não é uma infusão
+
+A regra só é aplicada onde a amostra é lida como uma infusão. Um pico
+cromatográfico se afasta dos seus vizinhos muito mais do que qualquer
+pulverização — é isso que um pico é — de modo que num gradiente de vinte
+minutos a mesma aritmética deixa de fora justamente os únicos scans que valem
+a pena. O **Average whole run** é oferecido em qualquer canal, então o veredito
+acima é a comporta: em qualquer coisa não lida como infusão, todo scan entra na
+média.
+
 ## O que muda
 
 Para uma amostra lida como infusão:
@@ -157,9 +252,10 @@ Para uma amostra lida como infusão:
   cursor sobre a amostra dá as medidas que a decidiram;
 - o seu canal de íons produto mais forte vem marcado e torna-se o **active
   channel** (canal ativo), em vez do survey em que o Explorer aterrissaria;
-- o painel do espectro abre na média de todos os scans, intitulado *average
-  of N scans (infusion)*, e **infusion** aparece ao lado do tempo de
-  retenção;
+- o painel do espectro abre na média de todos os scans em que a
+  pulverização esteve estável, intitulado *average of N scans (infusion)*
+  — ou, onde scans foram deixados de fora, *N scans, M averaged; K left
+  out: …* — e **infusion** aparece ao lado do tempo de retenção;
 - tudo a jusante vê essa média, porque ela é o espectro ao vivo: a subtração
   de fundo, o *Explain spectrum*, a busca na biblioteca, a tabela de picos, o
   *Pin spectrum* e a exportação CSV.

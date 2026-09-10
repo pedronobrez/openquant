@@ -41,6 +41,14 @@ to tell a corrected axis from an uncorrected one. The rules and what the
 nine real infusions gave are in
 [[mass-recalibration|An infusion recalibrates on its own precursor]].
 
+*Scans averaged* is the line [[direct-infusion]] describes: how many scans
+the acquisition holds, how many went into the average and where the rest
+went — *473 scans, 464 averaged; 9 left out: 0.008 min; 1.069–1.099 min, 8
+scans*. Those are the scans where the spray faltered, and a report that left
+them out says so on the header and again in one sentence of the verdict. With
+**Process ▸ Include unstable scans** on, the same two places say instead that
+they were kept on request, so a document says which average it is of.
+
 **The averaged spectrum**, drawn for paper at the label floor the pane was
 left at, so the masses printed are the masses that were on screen — see
 [[chromatograms-and-spectra]] for the floor and how labels are placed. Under
@@ -85,6 +93,11 @@ gets no sentence:
 - **"Collision energy differs from the record's (22 against 45 eV)"** — a
   spectrum taken at another energy has other fragments, so a low score there
   is the energy and not necessarily the compound.
+- **"9 scan(s) of 473 were left out of the average: …"**, with the times, why
+  each went and how well the rest of the run repeats itself. It is last
+  because it is not a check on the compound: it is a fact about the spectrum
+  the checks above were made on. A run whose spray never faltered gets no
+  sentence.
 
 There is no pass, no fail and no badge. Whether the vial holds what it should
 is a judgement made from evidence by somebody who knows what was weighed into
@@ -110,7 +123,8 @@ and a tab that did that whenever the results changed is a tab nobody keeps
 open. The row count appears in the tab's own name once it has.
 
 Each row carries the compound and the sample, the mode and collision energy,
-how many scans were averaged, the base peak, the precursor as the method wrote
+how many scans were averaged — *464 of 473* where the spray lost some, with
+the whole line on hover — the base peak, the precursor as the method wrote
 it and as it was measured back with its error in ppm and its height, the ions
 found of those predicted, the best record of your own library with both scores
 and the record's collision energy against this acquisition's, and the other

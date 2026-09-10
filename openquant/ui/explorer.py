@@ -17,7 +17,8 @@ from ..chemistry import (
     rank_by_isotope_pattern,
 )
 from ..components import Component
-from ..infusion import InfusionVerdict, run_range, verdict_for
+from ..infusion import (InfusionVerdict, average_stable, mask_for,
+                        run_range, verdict_for)
 from ..matching import match_channel
 from ..precursor import survey_channel
 from .settings import settings
@@ -507,6 +508,19 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.act_centroid = QtGui.QAction("Centroid", self, checkable=True)
         self.act_centroid.setToolTip("Show the spectrum as centroid sticks")
         proc.addAction(self.act_centroid)
+        # off by default: a whole-run average leaves out the scans where the
+        # spray faltered, and this puts them back for anyone who wants the
+        # run exactly as it came off the instrument
+        self.act_unstable = QtGui.QAction("Include unstable scans", self,
+                                          checkable=True)
+        self.act_unstable.setToolTip(
+            "Average every scan of the run, including the ones where the "
+            "spray faltered.\n"
+            "Off, a whole-run average leaves out any scan whose total ion "
+            "current departs\nfrom its neighbours by more than half, and the "
+            "ones after it until it comes back —\nthe pane's title, the "
+            "report's header and a library record made from it all say how "
+            "many\nand where")
         proc.addSeparator()
         self.act_set_bg = proc.addAction("Set background")
         self.act_set_bg.setToolTip(
@@ -624,7 +638,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                      self.act_apex, self.act_relative, self.act_legend,
                      *self._dock_actions()],
             "Panels": list(self.panel_actions),
-            "Process": [self.act_centroid, self.act_marker, self.act_marker_clear,
+            "Process": [self.act_centroid, self.act_unstable,
+                        self.act_marker, self.act_marker_clear,
                         self.act_set_bg, self.act_clear_bg, self.act_explain,
                         self.act_detect, self.act_avg_run,
                         self.act_inf_report, self.act_inf_reports,
@@ -644,6 +659,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.act_relative.toggled.connect(self._set_relative_labels)
         self.act_legend.toggled.connect(self.chrom.set_legend_visible)
         self.act_centroid.toggled.connect(self._set_centroid)
+        self.act_unstable.toggled.connect(self._unstable_toggled)
         self.act_marker.triggered.connect(self._add_marker)
         self.act_marker_clear.triggered.connect(self._clear_markers)
         self.act_pin.triggered.connect(self.pin_spectrum)
@@ -753,6 +769,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.act_legend.setChecked(flag("view/legend", True))
         self.act_select.setChecked(flag("view/select_mode", False))
         self.act_centroid.setChecked(flag("view/centroid", False))
+        self.act_unstable.setChecked(flag("proc/include_unstable", False))
         self.offset_x_spin.setValue(s.value("view/offset_x", 0.0, type=float))
         self.offset_y_spin.setValue(s.value("view/offset_y", 0.0, type=float))
         # kept as the per cent the spin box shows, which is what the reader
@@ -813,6 +830,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         s.setValue("view/legend", self.act_legend.isChecked())
         s.setValue("view/select_mode", self.act_select.isChecked())
         s.setValue("view/centroid", self.act_centroid.isChecked())
+        s.setValue("proc/include_unstable", self.act_unstable.isChecked())
         s.setValue("view/offset_x", self.offset_x_spin.value())
         s.setValue("view/offset_y", self.offset_y_spin.value())
         s.setValue("view/label_floor", self.floor_spin.value())
@@ -1489,13 +1507,33 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.refresh_comparison()
         self._fill_peak_table()
 
+    def include_unstable_scans(self) -> bool:
+        """Whether a whole-run average keeps the scans the spray lost."""
+        return bool(self.act_unstable.isChecked())
+
+    def _unstable_toggled(self, _checked: bool) -> None:
+        """Redraw a whole-run average under the new rule; leave the rest."""
+        recipe = self._live_recipe
+        if recipe is not None and getattr(recipe, "whole_run", False):
+            self.average_whole_run()
+
     def _show_average(self, rt0: float, rt1: float, live: bool = False,
                       tag: str = "", whole_run: bool = False) -> None:
         channel = self.active_ref.channel if self.active_ref else None
         if channel is None:
             return
+        # a whole-run average is an infusion's spectrum, and an infusion's
+        # spray is not steady for the whole of it. `stable_scans` says which
+        # scans it was and the average is taken over those alone, unless the
+        # Process menu asks otherwise. A range average is a range: the reader
+        # picked it, and nothing here second-guesses what it holds.
+        mask = None
         try:
-            mz, intensity = channel.spectrum_rt_range(rt0, rt1)
+            if whole_run and not self.include_unstable_scans():
+                mask = mask_for(self.active_ref.entry.sample, channel)
+                mz, intensity = average_stable(channel, mask)
+            else:
+                mz, intensity = channel.spectrum_rt_range(rt0, rt1)
         except Exception as exc:
             self._spectrum_unreadable(exc)
             return
@@ -1510,9 +1548,14 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         # a whole-run average has no other part to be told from, so the tag
         # replaces them rather than sitting beside them
         scans = f" ({first + 1}–{last + 1})" if not tag else ""
+        # a whole-run average says how many scans it kept and where the rest
+        # went, because that sentence is the provenance a pinned spectrum, a
+        # library record's comment and the report's header all copy from it
+        count = (mask.summary() if mask is not None and mask.excluded
+                 else f"average of {last - first + 1} scans")
         title = (
-            f"{self.active_ref.label} · average of {last - first + 1} "
-            f"scans{tag}{scans} · RT {min(rt0, rt1):.3f}–{max(rt0, rt1):.3f} min"
+            f"{self.active_ref.label} · {count}{tag}{scans} "
+            f"· RT {min(rt0, rt1):.3f}–{max(rt0, rt1):.3f} min"
             + (" · background subtracted" if subtracted else "")
             + recalibrated
         )
@@ -2121,6 +2164,11 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             "normalise": bool(self.act_norm.isChecked()),
             "mirror": bool(self.act_mirror.isChecked()),
             "centroid": bool(self.act_centroid.isChecked()),
+            # which scans a whole-run average is of: a project reopened
+            # under the other setting would show a different spectrum from
+            # the one it was saved with, and its pins are recipes rather
+            # than points, so this has to travel with them
+            "include_unstable": bool(self.act_unstable.isChecked()),
             "live": (self._live_recipe.to_dict()
                      if self._live_recipe is not None else None),
             "pins": pins,
@@ -2155,6 +2203,14 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                             (self.act_centroid, "centroid")):
             if key in view:
                 action.setChecked(bool(view[key]))
+        if "include_unstable" in view:
+            # set with its signal blocked: the pins and the live spectrum are
+            # read from the file further down and a toggle that redrew now
+            # would read the run twice. An older project has no key at all
+            # and keeps whatever the preference is.
+            self.act_unstable.blockSignals(True)
+            self.act_unstable.setChecked(bool(view["include_unstable"]))
+            self.act_unstable.blockSignals(False)
 
         pins: list[Trace] = []
         for index, row in enumerate(view.get("pins") or []):
@@ -2220,7 +2276,15 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                 window = self._range_of(recipe, channel)
                 if window is None:
                     return None
-                mz, intensity = channel.spectrum_rt_range(*window)
+                # a pin of a whole run is rebuilt under the rule in force
+                # now, the same as the live spectrum: the recipe says every
+                # scan, and which of those the spray was steady for is a
+                # measurement on the file rather than something to store
+                if recipe.whole_run and not self.include_unstable_scans():
+                    mz, intensity = average_stable(
+                        channel, mask_for(ref.entry.sample, channel))
+                else:
+                    mz, intensity = channel.spectrum_rt_range(*window)
         except Exception:
             return None
         intensity, _ = self._apply_background(channel, mz, intensity,

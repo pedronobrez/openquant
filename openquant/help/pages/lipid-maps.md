@@ -239,6 +239,110 @@ anything in the spectrum.
 chromatogram: it takes the spectrum of the current scan and its channel's
 precursor.
 
+### The satellites of a matched fragment
+
+A ppm figure cannot say that a matched peak is the composition claimed. An
+isobar is inside the tolerance by definition, and at 20 ppm a product-ion
+spectrum offers plenty of them. The peak's own **isotope satellite** can:
+a fragment carrying twenty carbons owes an M+1 of about 22% of itself, and a
+peak that shows one in proportion is a peak of about that many carbons.
+
+That is the check the survey already makes on the *precursor* — see *The
+survey confirms it*, below — asked of every matched **fragment**, on the
+product-ion spectrum itself. The **Isotopes** column of the candidate table
+carries the count and its tooltip the sentence:
+
+> 2 of 2 agree
+>
+> 2 of 2 matched ion(s) have a satellite that agrees, 0 disagree, 0
+> unmeasurable.
+
+Four verdicts, and the last is the one that matters most:
+
+- **agrees** — the M+1, and the M+2 where there is one, are in proportion.
+- **disagrees** — they are not. The match is **kept and printed**: an
+  unexpected satellite has innocent causes (a co-eluting neighbour a
+  millidalton away, a detector at the top of its range) as well as guilty
+  ones, and the ranking is not the place to decide between them.
+- **no satellite measurable** — the ion's own predicted M+1 would be
+  smaller than this spectrum can show, or another predicted ion sits inside
+  the window where its M+1 belongs. Neither is a disagreement, and saying so
+  is the point.
+- **none expected: precursor isolated monoisotopically** — the quadrupole
+  passed the monoisotopic precursor and nothing else, so no fragment in this
+  spectrum came from a molecule with a 13C in it. There is no satellite to
+  look for, and a column of disagreements would be a picture of the
+  instrument's own selection rather than evidence about the structure.
+
+Which of those applies is measured before any fragment is read, off the
+**precursor's own M+1** in the same spectrum — the way the isotopic purity
+solve and the infusion cross-talk term already refuse themselves. Where the
+collision energy has consumed the precursor, the **strongest matched
+fragment** answers the same question, and the sentence says which was read.
+
+#### What the data say
+
+The measurement this was written to make. On the seven ZenoTOF 7600
+bile-acid infusions — product-ion acquisitions with no survey — the
+precursor's transmitted M+1 is **0.00 to 0.26% of what its composition
+demands**, which is 26.4 to 30.0%:
+
+| Infusion | CE | read off | height | M+1 measured | predicted | transmitted |
+|---|---|---|---|---|---|---|
+| CA-d4 | 45 | strongest fragment | 5,638 | 0.068% | 26.4% | 0.26% |
+| CA-d4 | 22 | precursor | 9,415 | 0.000% | 27.0% | 0.00% |
+| CA-d4 | 12 | precursor | 12,271 | 0.000% | 27.0% | 0.00% |
+| DCA-d4 | 40 | strongest fragment | 3,019 | 0.060% | 26.4% | 0.23% |
+| DCA-d4 | 22 | precursor | 5,582 | 0.000% | 26.9% | 0.00% |
+| TDCA-d4 | 30 | precursor | 123 | 0.000% | 30.0% | 0.00% |
+| TDCA-d4 | 22 | precursor | 5,235 | 0.000% | 30.0% | 0.00% |
+
+All **34 matched ions across the seven** therefore read *none expected*, and
+none of them is called a disagreement. Every one of the 34 had a composition
+that could be worked out, and **12 of the 34** have another predicted ion
+inside the window where their M+1 belongs — the same piece carrying one more
+label. A deuterium is 1.00628 Da from the hydrogen it replaced against the
+neutron's 1.00336, so a `+3D` rung's "M+1" is its `+4D` neighbour 2.9 mDa
+away: read as a satellite those twelve give M+1 shares of
+0.96, 1.12, 2.20, 2.63, 4.51, 7.99, 8.61, 11.27, 12.44, 12.57, 19.98 and
+40.54 times their own peak. They are unmeasurable, and they say so.
+
+The question a product-ion acquisition cannot answer on its own is whether
+an isolation window ever passes the M+1. A TripleTOF 5600 sphingolipid
+injection answers it, because it acquires a 50–700 survey beside the
+product-ion channels. Over the same two scans across the peak of
+SM(d18:1/12:0):
+
+| | precursor | height | M+1 measured | predicted | transmitted |
+|---|---|---|---|---|---|
+| the 647.5 product-ion channel | 647.5121 | 1,064 | 0.31% | 39.6% | **0.8%** |
+| the survey, same scans | 647.5103 | 58,462 | 29.23% | 39.6% | **73.7%** |
+
+So the window does not pass it: two orders of magnitude between the two
+readings of the same ion in the same acquisition. On the survey the same
+rule then finds what it is for — both matched ions **agree**, at 0.70 and
+0.99 — and on the product-ion channel both read *none expected*. The
+ceramide channel of the same injection shows the third verdict: a 163-count
+base peak, whose precursor's own M+1 would be 4 counts against the 10 that
+spectrum can show, so nothing is claimed either way.
+
+A composition is what a satellite has to be predicted from, and a predicted
+ion does not simply carry one: a cleavage holds the piece's formula with the
+hydrogens it moved and the neutrals it then shed recorded beside it, while a
+precursor form holds the composition it already is with the adduct's atoms
+outside it. So each reading is proposed and turned back into an m/z, and
+kept only where it reproduces the ion's own mass. On the same two CA-d4
+spectra scored against PubChem's drawing rather than against a formula —
+882 predicted ions, 20 matched — every one of the 20 came back with a
+composition, and the isolation was read off the precursor at 22 eV and off
+the strongest fragment at 45, where the precursor is gone.
+
+One thing an agreeing satellite does not do is confirm the route. On that
+survey the second agreeing ion is `[M+H-2CO-CO2]+` at 547.5229, which scores
+0.99 because it is *some* ion of about that many carbons — which it is,
+whatever produced it. The satellite bounds the composition; the ladder and
+the unexplained peaks are what argue for the route.
+
 ### A structure or formula of your own
 
 The database does not hold everything — not a deuterated bile acid bought

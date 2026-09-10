@@ -100,6 +100,13 @@ class Explanation:
     #: half of the evidence: two adducts can both reach a precursor, and then
     #: the mass says which fits and the spectrum says which explains.
     precursor_ppm: float | None = None
+    #: what each matched ion's own isotope satellites say, where the spectrum
+    #: was asked (`isotope_evidence`). Empty until it is: scoring needs the
+    #: peaks alone, and this needs the whole spectrum, satellites included.
+    isotopes: dict = field(default_factory=dict)
+    #: what Q1 let through, measured on the precursor's own M+1. None where
+    #: it was not asked or could not be measured.
+    isolation: "PrecursorIsolation | None" = None
 
     @property
     def behaviour(self) -> str:
@@ -121,6 +128,17 @@ class Explanation:
     @property
     def name(self) -> str:
         return self.record.name or self.record.abbrev
+
+    @property
+    def isotope_summary(self) -> str:
+        """
+        What the satellites of the matched ions said, in one sentence.
+
+        Empty before `isotope_evidence` has been run against the spectrum,
+        because nothing has been asked and a count of zero would read as an
+        answer.
+        """
+        return isotope_sentence(self.isotopes, self.isolation)
 
     def unexplained(self, peaks) -> list[tuple[float, float]]:
         """The peaks it does not account for — the honest half of the answer."""
@@ -1599,3 +1617,580 @@ def rank_candidates(database: LipidDatabase, precursor: float, peaks,
     found.sort(key=lambda e: (-e.share, -e.matched,
                               abs(e.precursor_ppm or 0.0)))
     return found[:limit] if len(forms) > 1 else found
+
+
+# --------------------------------------------------------------------------- #
+# the isotope pattern as evidence for a fragment
+# --------------------------------------------------------------------------- #
+#: how many times over the noise an ion's *predicted* M+1 has to stand before
+#: the spectrum is asked about it at all. Below it the satellite is not
+#: absent, it is unmeasurable, and the two are different findings: a fragment
+#: of 300 counts whose M+1 should be 18% of it has 54 counts of satellite to
+#: show, which on a spectrum whose noise is 20 counts says nothing either way.
+SATELLITE_DETECTABLE = 3.0
+
+#: how much of an ion's predicted M+1 has to be there before the satellites
+#: are believed to have been transmitted at all, as a share of the
+#: prediction. This is `infusion_quant.ISOTOPES_TRANSMITTED` asked of the
+#: precursor rather than of a cross-talk term, and it is the same
+#: measurement: on a product-ion acquisition Q1 keeps the monoisotopic
+#: precursor and the satellites never enter the collision cell.
+ISOLATION_TRANSMITTED = 0.10
+
+#: what one matched ion's satellites came to
+ISOTOPES_AGREE = "agrees"
+ISOTOPES_DISAGREE = "disagrees"
+ISOTOPES_UNMEASURABLE = "no satellite measurable"
+ISOTOPES_NONE_EXPECTED = "none expected: precursor isolated monoisotopically"
+
+#: how near a proposed composition's m/z has to come to the ion's own before
+#: the two are the same ion. Half a millidalton: the readings `ion_counts`
+#: chooses between are a proton, a water or a deuterium apart, so nothing
+#: needs a wider window and a wider one could take the wrong reading.
+COMPOSITION_TOLERANCE_DA = 0.0005
+
+
+@dataclass(frozen=True)
+class PrecursorIsolation:
+    """
+    What the quadrupole let through, read off the precursor's own M+1.
+
+    A product-ion spectrum of a monoisotopically isolated precursor cannot
+    show a 13C satellite on any fragment, because every fragment in it came
+    from a precursor that had no 13C in it to begin with. That is not a
+    property of the fragments and it cannot be read off them one at a time;
+    it is a property of the isolation, and this is where it is measured.
+    """
+
+    mz: float
+    height: float = 0.0
+    #: the ion's M+1 as a share of its own monoisotopic peak
+    measured: float | None = None
+    #: what its composition demands
+    expected: float | None = None
+    #: which ion this was read off, in words — the precursor itself, or the
+    #: strongest matched fragment where the precursor is not in the spectrum
+    basis: str = "the precursor"
+    note: str = ""
+
+    @property
+    def transmission(self) -> float | None:
+        """Measured M+1 over expected M+1 — what the window passed."""
+        if self.measured is None or not self.expected:
+            return None
+        return self.measured / self.expected
+
+    @property
+    def monoisotopic(self) -> bool:
+        """Did Q1 keep the monoisotopic precursor and nothing else?"""
+        transmitted = self.transmission
+        return transmitted is not None and transmitted < ISOLATION_TRANSMITTED
+
+    @property
+    def sentence(self) -> str:
+        if self.measured is None or self.expected is None:
+            return self.note or "the isolation was not measured"
+        return (f"{self.basis}'s M+1 is {self.measured * 100:.2f}% of it "
+                f"against {self.expected * 100:.1f}% predicted, a "
+                f"transmission of {(self.transmission or 0.0) * 100:.1f}%")
+
+
+@dataclass(frozen=True)
+class IsotopeEvidence:
+    """One matched ion held against its own isotope satellites."""
+
+    ion: PredictedIon
+    #: where the ion was measured, and how tall
+    mz: float
+    height: float = 0.0
+    #: the ion's own composition, where it could be worked out
+    composition: dict | None = None
+    #: M, M+1, M+2 measured, as shares of M
+    measured: tuple[float, ...] = ()
+    #: the same from the composition
+    expected: tuple[float, ...] = ()
+    #: agreement over the satellites alone, 0 to 1 — `chemistry`'s own rule
+    agreement: float | None = None
+    verdict: str = ISOTOPES_UNMEASURABLE
+    note: str = ""
+
+    @property
+    def agrees(self) -> bool:
+        return self.verdict == ISOTOPES_AGREE
+
+    @property
+    def measurable(self) -> bool:
+        return self.verdict in (ISOTOPES_AGREE, ISOTOPES_DISAGREE)
+
+    @property
+    def text(self) -> str:
+        """The verdict with its numbers, for a row or a report."""
+        if self.verdict == ISOTOPES_DISAGREE and len(self.measured) > 1 \
+                and len(self.expected) > 1:
+            return (f"disagrees: M+1 {self.measured[1]:.2f} measured vs "
+                    f"{self.expected[1]:.2f} expected")
+        if self.verdict == ISOTOPES_AGREE and len(self.measured) > 1:
+            return f"agrees: M+1 {self.measured[1]:.2f}"
+        return self.note or self.verdict
+
+
+def ion_counts(ion: PredictedIon, adduct=None) -> dict[str, int] | None:
+    """
+    The atoms one predicted ion carries, checked against its own m/z.
+
+    An isotope pattern has to be computed from a composition, and a predicted
+    ion does not simply carry one. A cleavage ion holds the *piece's* formula
+    with the hydrogens it moved, the neutrals it then shed and any labels
+    kept recorded beside it; a precursor-form ion holds the composition it
+    already is, with the adduct's own atoms outside it. Reconstructing either
+    from the other's rule gives a composition that is wrong by a water or by
+    a proton, and an isotope pattern computed from that is wrong quietly.
+
+    So the composition is not deduced, it is *proposed and checked*: each
+    reading is built, turned back into an m/z, and kept only if it reproduces
+    the ion's own mass. `None` where none of them does, which is a fragment
+    whose satellites are not measured rather than one that failed.
+    """
+    from .chemistry import (ELECTRON_MASS, FormulaError, adduct_from_name,
+                            monoisotopic_mass, parse_formula)
+
+    if isinstance(adduct, str) and adduct:
+        adduct = adduct_from_name(adduct)
+    try:
+        base = dict(parse_formula(ion.fragment.formula))
+    except (FormulaError, ValueError):
+        return None
+    if not base:
+        return None
+    charge = ion.charge or 1
+    extras: list[dict[str, int]] = [{}]
+    if ion.carrier:
+        extras.append({ion.carrier: 1})
+    added = getattr(adduct, "added", "")
+    if added:
+        try:
+            extras.append(dict(parse_formula(added)))
+        except (FormulaError, ValueError):
+            pass
+    extras.append({"H": 1})
+
+    for shed in (True, False):
+        for labelled in (True, False):
+            counts = dict(base)
+            counts["H"] = counts.get("H", 0) + ion.hydrogens
+            if shed and ion.losses:
+                counts = _with_losses(counts, ion.losses) or {}
+            if labelled and ion.labels:
+                if counts.get("H", 0) < ion.labels:
+                    continue
+                counts["H"] -= ion.labels
+                counts["D"] = counts.get("D", 0) + ion.labels
+            counts = {e: n for e, n in counts.items() if n > 0}
+            if not counts:
+                continue
+            for extra in extras:
+                whole = dict(counts)
+                for element, n in extra.items():
+                    whole[element] = whole.get(element, 0) + n
+                whole = {e: n for e, n in whole.items() if n > 0}
+                mass = monoisotopic_mass(whole)
+                mz = (mass - charge * ELECTRON_MASS) / abs(charge)
+                if abs(mz - ion.mz) <= COMPOSITION_TOLERANCE_DA:
+                    return whole
+    return None
+
+
+def noise_floor(intensity) -> float:
+    """
+    What a peak has to beat here to be a peak at all: the median height.
+
+    A centroided product-ion spectrum is mostly noise by count — a few ions
+    that matter and hundreds of specks — so the median of the positive
+    heights is the noise and not the signal. It is used for one thing only:
+    deciding whether an ion's *predicted* satellite would have been visible,
+    so that an unmeasurable satellite is reported as unmeasurable.
+    """
+    values = np.asarray(intensity, dtype=float)
+    values = values[values > 0]
+    if not values.size:
+        return 0.0
+    return float(np.median(values))
+
+
+#: how near a satellite has to be read, whatever the tolerance says. Two
+#: millidaltons: the thing a satellite window must not catch is the same
+#: piece carrying one more deuterium, and a label is 1.00628 Da from the
+#: hydrogen it replaced against the neutron's 1.00336 — 2.9 mDa apart. The
+#: survey's own 20 mDa merges them, which is why this does not reuse it.
+SATELLITE_WINDOW_DA = 0.002
+
+
+def _satellite_ratios(mz, intensity, pattern, found_mz: float,
+                      tolerance_ppm: float = TOLERANCE_PPM
+                      ) -> tuple[float, ...]:
+    """
+    The measured M, M+1, M+2 of one ion, as shares of its M.
+
+    `chemistry`'s own reading, moved onto the mass the ion was measured at
+    rather than the mass it was predicted at: these spectra sit several ppm
+    off their own axis, and a satellite window placed on the prediction would
+    miss by that much at every rung together.
+
+    The window is the caller's own tolerance and never narrower than
+    `SATELLITE_WINDOW_DA`, which is what keeps a labelled piece's `-1D` rung
+    out of the place its M+1 belongs.
+    """
+    from .chemistry import measured_ratios
+
+    if not pattern:
+        return ()
+    mz = np.asarray(mz, dtype=float)
+    intensity = np.asarray(intensity, dtype=float)
+    shift = found_mz - pattern[0][0]
+    moved = [(mass + shift, abundance) for mass, abundance in pattern]
+    window = max(found_mz * tolerance_ppm * 1e-6, SATELLITE_WINDOW_DA)
+    # only the stretch the pattern covers. A candidate list is scored ion by
+    # ion against a whole profile spectrum, and reading three windows out of
+    # a quarter of a million points sixty times over is the difference
+    # between a table that appears and one that arrives
+    lo = int(np.searchsorted(mz, moved[0][0] - window, side="left"))
+    hi = int(np.searchsorted(mz, moved[-1][0] + window, side="right"))
+    return measured_ratios(mz[lo:hi], intensity[lo:hi], moved, window=window)
+
+
+def _pattern_of(counts: dict, charge: int, max_peaks: int = 3):
+    """The theoretical pattern of a composition, M scaled to 1."""
+    from .chemistry import ELECTRON_MASS, isotope_pattern
+
+    pattern = isotope_pattern(counts, min_abundance=0.0005,
+                              max_peaks=max_peaks)
+    if not pattern:
+        return []
+    base = pattern[0][1] or 1.0
+    charge = charge or 1
+    return [((mass - charge * ELECTRON_MASS) / abs(charge), abundance / base)
+            for mass, abundance in pattern]
+
+
+def _intact_of(explanation: Explanation, adduct) -> PredictedIon | None:
+    """The precursor as it was ionised, among the ions that were offered."""
+    named = adduct.name if adduct is not None else explanation.adduct
+    # the heaviest of them, because a drawing whose labels are unplaced is
+    # offered as the same intact ion carrying 0 to n of them and the
+    # precursor of a d4 standard is the one carrying all four
+    forms = [ion for ion in explanation.ions
+             if ion.form and ion.form == named and not ion.losses]
+    if forms:
+        return max(forms, key=lambda i: i.mz)
+    # nothing was scored as an adduct. An uncut molecule that reached its
+    # mass by taking one hydrogen is still a precursor form — that is what
+    # `_as_precursor_form` renames — and one that reached it by taking two
+    # is an assumption about the cleavage, so the named ones come first
+    uncut = [ion for ion in explanation.ions
+             if not ion.losses and not ion.fragment.cuts]
+    named_forms = [ion for ion in uncut if ion.form]
+    if named_forms:
+        return max(named_forms, key=lambda i: i.mz)
+    return max(uncut, key=lambda i: i.mz) if uncut else None
+
+
+def _peak_near(mz, intensity, target: float, tolerance_ppm: float):
+    """
+    The tallest centroid within the tolerance of a mass, and its height.
+
+    `precursor.in_spectrum` answers the same question for a *profile*
+    spectrum and cannot be reused here: it refines across the neighbouring
+    points, which on sticks reads 430.3489 as 429.7675. These spectra are
+    centroids by the time they reach this.
+    """
+    window = max(target * tolerance_ppm * 1e-6, ISOLATION_WINDOW_DA)
+    inside = (mz >= target - window) & (mz <= target + window)
+    if not inside.any():
+        return None
+    heights = intensity[inside]
+    index = int(np.argmax(heights))
+    return float(mz[inside][index]), float(heights[index])
+
+
+#: how far either side of a predicted mass the ion itself may be looked for
+#: when the tolerance is tighter than that. These spectra sit 4 to 7 ppm off
+#: their own axis before `recalibrate.fit_infusion` is applied, and a
+#: precursor missed for that reason would be read as an isolation that could
+#: not be measured.
+ISOLATION_WINDOW_DA = 0.005
+
+
+def _transmission_at(ion: PredictedIon, mz, intensity, floor: float,
+                     tolerance_ppm: float, basis: str, adduct=None,
+                     at: float | None = None) -> PrecursorIsolation:
+    """One ion's own M+1 against what its composition demands."""
+    counts = ion_counts(ion, adduct)
+    if not counts:
+        return PrecursorIsolation(mz=ion.mz, basis=basis,
+                                  note=f"{basis}'s composition is not known")
+    pattern = _pattern_of(counts, ion.charge)
+    if len(pattern) < 2:
+        return PrecursorIsolation(mz=ion.mz, basis=basis,
+                                  note=f"{basis} has no satellite to predict")
+    found = _peak_near(mz, intensity, ion.mz if at is None else at,
+                       tolerance_ppm)
+    if found is None:
+        return PrecursorIsolation(
+            mz=ion.mz, basis=basis,
+            note=f"{basis} is not in this spectrum, so what the quadrupole "
+                 "passed cannot be read from it")
+    found_mz, height = found
+    would_be = height * pattern[1][1]
+    if would_be < floor:
+        return PrecursorIsolation(
+            mz=found_mz, height=height, basis=basis,
+            note=f"{basis}'s own M+1 would be {would_be:,.0f} counts, under "
+                 f"the {floor:,.0f} this spectrum can show: what the "
+                 "quadrupole passed cannot be read from it")
+    measured = _satellite_ratios(mz, intensity, pattern, found_mz,
+                                 tolerance_ppm)
+    if len(measured) < 2:
+        return PrecursorIsolation(mz=found_mz, height=height, basis=basis,
+                                  note=f"{basis} has no satellite to read")
+    return PrecursorIsolation(mz=found_mz, height=height, basis=basis,
+                              measured=float(measured[1]),
+                              expected=float(pattern[1][1]))
+
+
+def precursor_isolation(explanation: Explanation, mz, intensity,
+                        tolerance_ppm: float = TOLERANCE_PPM,
+                        floor: float = 0.0) -> PrecursorIsolation | None:
+    """
+    What Q1 passed, measured on an M+1 in this spectrum.
+
+    The question has to be asked before any fragment's satellites are read,
+    because it decides what reading them means. A precursor isolated
+    monoisotopically produces fragments that cannot carry a 13C: the
+    satellite is not missing, it was never made, and a column of
+    disagreements would be an artefact of the isolation rather than evidence
+    about the structure.
+
+    The precursor's own M+1 is the direct reading and is tried first. Where
+    the precursor is not in the spectrum — the ordinary case at a collision
+    energy high enough to consume it, and three of the seven bile-acid
+    infusions — the **strongest matched fragment** answers the same question,
+    because a fragment of a monoisotopically isolated precursor cannot carry
+    a satellite either: whatever the window passed, the strongest ion in the
+    spectrum is where it would show. `basis` says which was read, and it is
+    printed rather than assumed, since the second reading is a fragment being
+    used to say something about all the fragments.
+
+    Either way the ion has to be tall enough for its own predicted M+1 to
+    clear `floor`; below that nothing is claimed. `None` only where the
+    prediction offers no intact precursor and nothing was matched.
+    """
+    from .chemistry import adduct_from_name
+
+    adduct = adduct_from_name(explanation.adduct) if explanation.adduct else None
+    mz = np.asarray(mz, dtype=float)
+    intensity = np.asarray(intensity, dtype=float)
+    intact = _intact_of(explanation, adduct)
+    read = None
+    if intact is not None:
+        read = _transmission_at(intact, mz, intensity, floor, tolerance_ppm,
+                                "the precursor", adduct)
+        if read.measured is not None:
+            return read
+    strongest = max(explanation.matches, key=lambda m: m.intensity,
+                    default=None)
+    if strongest is None or (intact is not None
+                             and strongest.ion.mz == intact.mz):
+        return read
+    fallback = _transmission_at(strongest.ion, mz, intensity, floor,
+                                tolerance_ppm, "the strongest matched fragment",
+                                adduct, at=strongest.mz)
+    if fallback.measured is None and read is not None:
+        return read
+    return fallback
+
+
+def isotope_evidence(explanation: Explanation, mz, intensity,
+                     tolerance_ppm: float = TOLERANCE_PPM,
+                     detectable: float = SATELLITE_DETECTABLE
+                     ) -> dict[PredictedIon, IsotopeEvidence]:
+    """
+    Each matched ion held against its own isotope satellites.
+
+    The precursor's adduct is confirmed by the survey's isotope pattern
+    (`chemistry.adduct_evidence`); this is the same question asked of every
+    *fragment*, on the product-ion spectrum itself. A fragment of a lipid
+    carries fifteen to thirty carbons and therefore an M+1 of 16 to 33%, and
+    where that satellite is in the spectrum it is evidence that the peak is
+    the composition claimed rather than an unrelated ion of the same mass —
+    which no ppm figure can say, since an isobar is inside the tolerance by
+    definition.
+
+    Four things make the answer honest rather than tidy.
+
+    **A monoisotopically isolated precursor has no satellites to give.**
+    Measured first (`precursor_isolation`), and where Q1 kept the
+    monoisotopic ion alone every fragment's verdict is *none expected*
+    rather than a disagreement — the fragments of a 12C-only precursor
+    cannot carry a 13C, and reading their flat M+1 as evidence against the
+    structure would be reading the instrument's own selection. On all seven
+    ZenoTOF bile-acid infusions that is what the data say: transmission
+    0.00 – 0.43%, against `ISOLATION_TRANSMITTED`.
+
+    **A satellite window that holds another predicted ion reads that ion.**
+    A deuterium is 1.00628 Da from the hydrogen it replaced and a neutron
+    1.00336, so the same piece carrying one more label sits 2.9 mDa from
+    where its M+1 belongs: on the bile acids the `-1D` rungs read M+1 shares
+    of 2.2, 7.9, 12.6 and 40.5 — their `+4D` neighbours, not their
+    satellites. Those ions are unmeasurable and say so.
+
+    **An unmeasurable satellite is not a disagreement.** The predicted M+1
+    of an ion of 300 counts on a spectrum whose noise is 40 is not something
+    the spectrum can be asked about, and `detectable` is where the asking
+    stops.
+
+    **A disagreement does not remove the match.** It is printed beside it.
+    An unexpected satellite has several innocent causes and one guilty one,
+    and the ranking is not the place to decide between them.
+
+    The figures are in `lipid-maps.md`.
+    """
+    from .chemistry import PATTERN_AGREES, adduct_from_name, pattern_agreement
+
+    mz = np.asarray(mz, dtype=float)
+    intensity = np.asarray(intensity, dtype=float)
+    floor = noise_floor(intensity) * float(detectable)
+    isolation = precursor_isolation(explanation, mz, intensity, tolerance_ppm,
+                                    floor)
+    stripped = isolation is not None and isolation.monoisotopic
+    adduct = adduct_from_name(explanation.adduct) if explanation.adduct else None
+    others = np.array(sorted(ion.mz for ion in explanation.ions), dtype=float)
+
+    found: dict[PredictedIon, IsotopeEvidence] = {}
+    for match in explanation.matches:
+        ion = match.ion
+        counts = ion_counts(ion, adduct)
+        if not counts:
+            found[ion] = IsotopeEvidence(
+                ion=ion, mz=match.mz, height=match.intensity,
+                note="the ion's composition is not known")
+            continue
+        pattern = _pattern_of(counts, ion.charge)
+        expected = tuple(round(a, 6) for _m, a in pattern)
+        measured = _satellite_ratios(mz, intensity, pattern, match.mz,
+                                     tolerance_ppm)
+        common = dict(ion=ion, mz=match.mz, height=match.intensity,
+                      composition=counts, measured=measured, expected=expected)
+        if stripped:
+            found[ion] = IsotopeEvidence(
+                verdict=ISOTOPES_NONE_EXPECTED,
+                note=f"none expected: {isolation.sentence}", **common)
+            continue
+        if len(expected) < 2:
+            found[ion] = IsotopeEvidence(
+                note="the composition has no satellite to predict", **common)
+            continue
+        rival = _rival_at(others, match.mz + (pattern[1][0] - pattern[0][0]),
+                          ion.mz, tolerance_ppm)
+        if rival is not None:
+            found[ion] = IsotopeEvidence(
+                note=f"another predicted ion is at {rival:.4f}, inside where "
+                     "this one's M+1 belongs: the satellite cannot be read",
+                **common)
+            continue
+        would_be = match.intensity * expected[1]
+        if would_be < floor:
+            found[ion] = IsotopeEvidence(
+                note=f"its M+1 would be {would_be:,.0f} counts, under the "
+                     f"{floor:,.0f} this spectrum can show", **common)
+            continue
+        agreement = pattern_agreement(measured, expected)
+        if agreement is None:
+            found[ion] = IsotopeEvidence(
+                note="nothing to compare at M+1", **common)
+            continue
+        found[ion] = IsotopeEvidence(
+            agreement=agreement,
+            verdict=(ISOTOPES_AGREE if agreement >= PATTERN_AGREES
+                     else ISOTOPES_DISAGREE), **common)
+    explanation.isotopes = found
+    explanation.isolation = isolation
+    return found
+
+
+def _rival_at(masses, target: float, own: float, tolerance_ppm: float
+              ) -> float | None:
+    """
+    Another predicted ion sitting where this one's M+1 would be.
+
+    The prediction is the only place a rival can be looked for: nothing else
+    knows that the same piece carrying one more deuterium is 2.9 mDa from
+    this piece's 13C satellite. The ion's own mass is excluded, since a
+    prediction offering an ion is not a rival to itself.
+    """
+    if not masses.size:
+        return None
+    window = max(target * tolerance_ppm * 1e-6, SATELLITE_WINDOW_DA)
+    lo = int(np.searchsorted(masses, target - window, side="left"))
+    hi = int(np.searchsorted(masses, target + window, side="right"))
+    for candidate in masses[lo:hi]:
+        if abs(candidate - own) > window:
+            return float(candidate)
+    return None
+
+
+def isotope_column(found: dict,
+                   isolation: "PrecursorIsolation | None" = None) -> str:
+    """
+    The same finding in a table cell: three words at most.
+
+    Empty where the spectrum was not asked, which is what a column has to
+    show for a row nothing was measured on — not a zero.
+    """
+    if not found:
+        return ""
+    total = len(found)
+    agree = sum(1 for e in found.values() if e.agrees)
+    disagree = sum(1 for e in found.values() if e.verdict == ISOTOPES_DISAGREE)
+    none = sum(1 for e in found.values()
+               if e.verdict == ISOTOPES_NONE_EXPECTED)
+    if none == total:
+        return "none expected"
+    if not agree and not disagree:
+        return f"0 of {total} measurable"
+    said = f"{agree} of {total} agree"
+    return f"{said}, {disagree} disagree" if disagree else said
+
+
+def isotope_sentence(found: dict,
+                     isolation: "PrecursorIsolation | None" = None) -> str:
+    """
+    What the satellites of the matched ions came to, in a sentence.
+
+    Empty where nothing was asked, because a count of nothing reads as an
+    answer and it is not one.
+    """
+    if not found:
+        return ""
+    total = len(found)
+    agree = sum(1 for e in found.values() if e.agrees)
+    disagree = sum(1 for e in found.values() if e.verdict == ISOTOPES_DISAGREE)
+    none = sum(1 for e in found.values()
+               if e.verdict == ISOTOPES_NONE_EXPECTED)
+    if none == total:
+        said = isolation.sentence if isolation is not None else ""
+        return (f"None of the {total} matched ion(s) can carry a satellite: "
+                f"{said}." if said
+                else f"None of the {total} matched ion(s) can carry a satellite.")
+    rest = total - agree - disagree - none
+    parts = [f"{agree} of {total} matched ion(s) have a satellite that agrees, "
+             f"{disagree} disagree, {rest} unmeasurable"]
+    if none:
+        parts.append(f"{none} could not carry one")
+    said = "; ".join(parts) + "."
+    if isolation is not None and isolation.measured is None:
+        said += (f" What the quadrupole passed was not measured: "
+                 f"{isolation.note}.")
+    if disagree:
+        said += (" A disagreeing satellite is printed, not removed: the "
+                 "isolation may have stripped it.")
+    return said

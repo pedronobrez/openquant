@@ -139,6 +139,7 @@ INDEX: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Analytics", (
         "analytics-workspace", "peak-review", "integration-parameters",
         "integration-algorithms", "compare-algorithms", "compare-batches",
+        "compare-infusions",
         "signal-to-noise",
         "results-table", "calibration", "acceptance-criteria", "statistics",
         "metric-plot", "batch-qc", "mass-drift", "mass-recalibration",

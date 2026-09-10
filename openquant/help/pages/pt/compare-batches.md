@@ -43,4 +43,7 @@ pergunta que um agendamento, uma edição de método ou uma coluna nova coloca, 
 aquela que um único lote não consegue responder sobre si mesmo.
 
 O mesmo formato de [[compare-algorithms]], que põe três algoritmos lado a lado
-em um lote; esta põe dois lotes lado a lado em um método.
+em um lote; esta põe dois lotes lado a lado em um método. Uma bandeja de
+padrões infundidos é um lote de outro tipo, e o [[compare-infusions]] põe dois
+dias desses lado a lado — correspondidos por composto e por energia de colisão,
+e pontuados sobre os espectros em vez das áreas.

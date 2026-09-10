@@ -258,3 +258,10 @@ própria biblioteca, e o [[standard-history]] lê os registros acumulados de
 um composto como um gráfico de controle: o cosseno contra o primeiro
 registro, o pico base em ppm a partir dele, e a altura do pico base, ao
 longo dos dias em que foram adquiridos.
+
+A bandeja inteira é a outra metade dessa pergunta, e o
+[[compare-infusions]] é onde ela é feita: esta tabela contra a que um
+projeto de referência salvou, correspondida por composto e por condições.
+Pressione **Measure** antes de salvar um projeto e o projeto guarda estes
+números e a lista de picos média de cada linha, que é contra o que um dia
+posterior é comparado.

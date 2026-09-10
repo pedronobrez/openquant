@@ -547,6 +547,18 @@ UV detector, is not implemented there) — untested on real Windows.
   says why it exists — `Sphingosine C14:0` holds to 52 ppm across 25
   injections at 156 ppm from its formula, one steady ion that is not the
   compound. `check_method` cannot make this check: it never reads a survey.
+- **A printed label goes beside a peak or nowhere.** The print places what
+  `labels.choose` picked with a rule of its own: above the apex, never
+  inside the peak, never over another label and never over any trace's
+  ink — the topmost and bottommost point each trace reaches in every
+  column of the drawing. A taken slot lifts the label one text height with
+  a leader to its apex; past `MAX_LIFT` (6) it is dropped and
+  `LabelLayout.dropped` counts it; `HEADROOM_LIFTS` (3) is taken out of
+  the plot before the traces are drawn. Measured by counting trace-coloured
+  pixels under every label: two CA-d4 product-ion averages 28 drawn with
+  10 on the ink → 30 drawn, 13 lifted, 1 dropped, none on the ink; two
+  surveys 21 with 13 on the ink → 17, 8 lifted, 8 dropped (the isotopes of
+  a base peak that reaches the top), none on the ink.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

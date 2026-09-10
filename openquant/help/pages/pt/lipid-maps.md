@@ -283,6 +283,91 @@ cresce à medida que as hidroxilas saem: 5,2% no precursor, 5,0% após uma
 então maior do que o que reteve todas. Qual hidroxila saiu em qual degrau
 posicionaria as marcações; a enumeração ainda não acompanha isso.
 
+## A margem
+
+Uma parcela sozinha não se lê. "Explica 63,6%" não diz nada enquanto outra
+coisa não tiver sido pontuada sobre os mesmos picos: uma lista de massas
+previstas suficientemente longa cobre um espectro por acaso, e o tamanho
+dessa lista depende do composto, não da evidência. Por isso toda explicação
+passa a trazer a sua **margem** — o que o composto escolhido explica, menos
+o que explica o melhor dos seus impostores mais próximos — na linha sob as
+tabelas, na seção por composto do [[infusion-report]] e como uma coluna da
+aba Infusions:
+
+> explains 63.6%; the best of 17 neighbour(s) (TG 17:1/18:4/18:4 as
+> [M+2H]2+) explains 21.7%: a margin of 41.9 points
+
+Os impostores são os registros do LIPID MAPS que cabem no precursor
+**escrito** em qualquer aduto que a polaridade do canal permita — o mesmo
+conjunto de onde sai a tabela ranqueada, com a mesma comporta — com dois
+tipos de fora:
+
+- **O próprio composto**, em qualquer aduto.
+- **Qualquer coisa com a mesma fórmula.** Mesma fórmula, mesmo precursor,
+  mesmas perdas neutras: a mesma aritmética, e contraste nenhum. Pontuá-la
+  colocaria o número do próprio composto escolhido na coluna do impostor e
+  reportaria margem zero para um espectro que nunca esteve em dúvida. Em
+  lipidômica esse é o caso ordinário e não a exceção — cada um dos quatro
+  esfingolipídios nomeados abaixo tem um ou dois — de modo que a frase diz
+  quantos ficaram de fora, e uma margem medida sobre dezesseis vizinhos
+  quando dezoito foram encontrados não se apresenta como medida sobre
+  dezoito.
+
+Cada impostor é pontuado **do mesmo modo que o composto foi**: uma fórmula
+contra fórmulas, um desenho contra desenhos. Isso não é asseio. Pontuado ao
+contrário — as 56 massas previstas de um ácido biliar contra estruturas do
+LIPID MAPS oferecendo de 700 a 2.900 cada — o impostor venceu em cinco das
+seis infusões reais de ácidos biliares, por até 33 pontos, em espectros nos
+quais nada estava errado. Uma lista de duas mil massas cobre por acaso um
+espectro de sessenta picos. Enumerados do mesmo jeito, o composto verdadeiro
+venceu nas seis.
+
+Abaixo de **10 pontos** a margem é chamada de *thin* (estreita), e a frase
+diz que o espectro não distingue os dois compostos. Dez é onde está a lacuna
+nos onze espectros reais em que isso foi medido.
+
+### O que ela diz em dados reais
+
+Seis infusões de ácidos biliares deuterados, cada uma explicada a partir da
+sua fórmula pelo aduto que o precursor escrito do canal nomeia:
+
+| Infusão | Escrito | Explica | Melhor impostor | Ele explica | Margem |
+|---|---|---|---|---|---|
+| CA-d4, CID 45 eV | 430,35 | 24,2% | TG 17:1/18:4/18:4 `[M+2H]2+` | 0,0% | **+24,2** |
+| CA-d4, EAD 22 eV | 430,34 | 63,6% | TG 17:1/18:4/18:4 `[M+2H]2+` | 21,7% | **+41,9** |
+| DCA-d4, CID 40 eV | 414,34 | 17,0% | 3-hidroxipalmitoleoilcarnitina `[M+H]+` | 1,6% | **+15,3** |
+| DCA-d4, EAD 22 eV | 414,34 | 70,4% | ácido wuhânico `[M+NH4]+` | 56,5% | **+13,9** |
+| TDCA-d4, CID 30 eV | 504,32 | 72,7% | uma espirostenona `[M+NH4]+` | 1,5% | **+71,2** |
+| TDCA-d4, EAD 22 eV | 504,32 | 78,4% | PC O-16:0/0:0 `[M+Na]+` | 72,3% | **+6,1** *thin* |
+
+E os quatro esfingolipídios nomeados de uma injeção de um lote de 26,
+explicados a partir dos seus desenhos do LIPID MAPS, onde os precursores
+escritos ficam de 36 a 264 ppm dos próprios compostos:
+
+| Canal | Composto | Explica | Melhor impostor | Ele explica | Margem |
+|---|---|---|---|---|---|
+| 703,60 | SM(d18:1/16:0) | 31,9% | PG 13:0/18:3 `[M+H]+` | 15,7% | **+16,2** |
+| 731,70 | SM(d18:1/18:0) | 19,4% | PA 16:0/22:1 `[M+H]+` | 17,3% | **+2,1** *thin* |
+| 538,60 | Cer(d18:1/16:0) | 9,5% | PE 22:0/0:0 `[M+H]+` | 12,4% | **−3,0** *thin* |
+| 648,80 | Cer(d18:1/24:1) | 9,2% | calixosídeo `[M+H]+` | 7,1% | **+2,1** *thin* |
+
+Essas quatro linhas devem ser lidas como foram pensadas. A ceramida em 538,6
+está naquele frasco — é um componente do método, com tempo de retenção, e o
+lote foi quantificado sobre ela — mas *este espectro* não a identifica: três
+lisofosfolipídios de outra fórmula explicam mais dos mesmos picos. A margem
+não diz que o composto está errado. Ela diz que o composto não foi
+distinguido aqui, e que o que sustenta a atribuição tem de vir de outro
+lugar: o tempo de retenção, a massa exata do espectro de varredura, um
+registro de [[spectral-library]].
+
+O mesmo vale para o TDCA-d4 com 6,1 pontos. Aquilo é um padrão puro
+pulverizado de um frasco, e a sinalização continua certa: ele é conhecido
+pelo rótulo, não pelo espectro, e antes de a margem ser medida nada na
+página dizia isso.
+
+Uma margem é medida sobre 16 a 29 vizinhos nesses espectros e custa menos de
+meio segundo — um décimo disso pela rota da fórmula.
+
 ## Adutos
 
 Um precursor é uma molécula mais o que quer que a tenha carregado, e qual

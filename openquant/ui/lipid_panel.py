@@ -56,6 +56,17 @@ class LipidPanel(QtWidgets.QWidget):
         #: it off the written precursor, and a report that printed the box
         #: instead would name an ion nothing was scored against
         self.explanation_adduct = ""
+        #: what the selected explanation is worth against its nearest
+        #: impostors — `margin.cross_validate`, or None where nothing has
+        #: been explained or nothing could be contrasted with it. Measured
+        #: on the peaks the explanation was scored on, so the report and the
+        #: basis line under the table cannot disagree about it.
+        self.explanation_margin = None
+        #: True while the ranked table is being filled. Filling it selects
+        #: the first row, which is a selection change like any other and
+        #: would measure the margin a second time for the same candidate —
+        #: half a second, twice, for one answer.
+        self._filling = False
         #: the survey scan of the same acquisition over the same range, as
         #: `(mz, intensity)`, or None where the sample has no full-scan
         #: channel. What turns the adduct from arithmetic on a typed number
@@ -911,6 +922,7 @@ class LipidPanel(QtWidgets.QWidget):
         self._record_context = precursor
         self.explanation_basis = ""
         self.explanation_adduct = ""
+        self.explanation_margin = None
         self._show_ranked(ranked, precursor, EVERY_ADDUCT if auto else chosen)
 
     def _load_own_structure(self) -> None:
@@ -1071,11 +1083,14 @@ class LipidPanel(QtWidgets.QWidget):
         self._show_purity(molecule, formula, adduct, deuterium)
         labelled = f", {deuterium} unplaced label(s)" if deuterium else ""
         lead = f"{note}. " if note else ""
+        contrast = self._measure_margin(explanation)
+        margin_said = f" Margin: {contrast}." if contrast else ""
         self._report(f"{lead}{explanation.name}: {explanation.share * 100:.1f}% of "
                      f"the spectrum from {basis}{labelled}; "
                      f"{explanation.matched} of {explanation.predicted} "
                      f"predicted ion(s) matched, "
-                     f"{len(explanation.unexplained(peaks))} peak(s) not.")
+                     f"{len(explanation.unexplained(peaks))} peak(s) not."
+                     f"{margin_said}")
 
     def _with_axis(self, basis: str) -> str:
         """
@@ -1151,7 +1166,42 @@ class LipidPanel(QtWidgets.QWidget):
         self.purity = None
         self.explanation_basis = ""
         self.explanation_adduct = ""
+        self.explanation_margin = None
         self._report(f"Nothing explained: {reason}.")
+
+    def _measure_margin(self, explanation, precursor=None) -> str:
+        """
+        What the selected explanation is worth against its neighbours.
+
+        Off `self._spectrum` — the arrays the peaks were taken from — rather
+        than off `self._peaks`, so the rivals are scored on exactly the peak
+        list the explanation was scored on and the two shares share a
+        denominator. Silent about its own failures: a database that is not
+        installed, or a reader that throws, leaves the margin unmeasured and
+        the basis line says only what it did measure.
+        """
+        from .. import margin as margin_module
+
+        self.explanation_margin = None
+        spectrum = getattr(self, "_spectrum", None)
+        if explanation is None or spectrum is None:
+            return ""
+        if precursor is None:
+            precursor = getattr(self, "_record_context", None)
+        if precursor is None:
+            text = self.explain_precursor.text().strip().replace(",", ".")
+            try:
+                precursor = float(text)
+            except ValueError:
+                precursor = None
+        try:
+            result = margin_module.cross_validate(
+                spectrum[0], spectrum[1], explanation, precursor,
+                self._polarity or "")
+        except Exception:                       # a database that will not read
+            return ""
+        self.explanation_margin = result
+        return result.sentence()
 
     def current_explanation(self):
         """
@@ -1199,6 +1249,13 @@ class LipidPanel(QtWidgets.QWidget):
     def _show_ranked(self, ranked, precursor, adduct) -> None:
         self.explain_tree.clear()
         self.match_tree.clear()
+        self._filling = True
+        try:
+            self._fill_ranked(ranked, precursor, adduct)
+        finally:
+            self._filling = False
+
+    def _fill_ranked(self, ranked, precursor, adduct) -> None:
         for explanation in ranked:
             row = QtWidgets.QTreeWidgetItem(self.explain_tree, [
                 explanation.name,
@@ -1231,8 +1288,13 @@ class LipidPanel(QtWidgets.QWidget):
             forms = list(dict.fromkeys(e.adduct for e in ranked if e.adduct))
             over = (f" Found as {', '.join(forms)}." if len(forms) > 1
                     else f" Found as {forms[0]}." if forms else "")
+            # the contrast for the row that is selected, which is the first:
+            # `setCurrentItem` above has already run `_show_explanation` and
+            # its status line is about to be written over by this one
+            contrast = self._measure_margin(top, precursor)
+            said = f" {top.name} {contrast}." if contrast else ""
             self._report(f"{len(ranked)} candidate(s) at that precursor."
-                         + over + tie)
+                         + over + tie + said)
         else:
             self.sigMatches.emit([])
             where = ("as any adduct of this channel's polarity"
@@ -1268,8 +1330,18 @@ class LipidPanel(QtWidgets.QWidget):
         self.match_tree.clear()
         self._record_basis(explanation)
         if explanation is None:
+            self.explanation_margin = None
             self.sigMatches.emit([])
             return
+        # the margin belongs to the candidate that is selected, not to the
+        # one that ranked first: an analyst who picks the fourth row is
+        # asking what *that* one is worth against the other three. Not while
+        # the table is being filled: the row it selects is the one the
+        # caller is about to measure itself.
+        if not self._filling:
+            contrast = self._measure_margin(explanation)
+            if contrast:
+                self._report(f"{explanation.name} {contrast}.")
         for match in sorted(explanation.matches, key=lambda m: -m.intensity):
             route = match.route
             support = (f"{len(route.seen)}/{len(route.companions)}"

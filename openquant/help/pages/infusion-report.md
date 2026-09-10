@@ -63,6 +63,21 @@ table of its own, **the peaks it does not account for**: the honest half of
 the answer, and where a co-infused impurity or the wrong compound shows
 itself.
 
+Under the matched ions the section carries **the margin** — what this
+compound explains against what the best of its nearest impostors explains,
+on the same peaks and by the same arithmetic:
+
+> Margin — CA-d4 explains 63.6%; the best of 17 neighbour(s)
+> (TG 17:1/18:4/18:4 as [M+2H]2+) explains 21.7%: a margin of 41.9 points
+
+A share is not evidence until something else has been scored beside it, and
+under ten points the sentence says so: the spectrum did not tell the two
+compounds apart, whatever the share was. The Infusions tab carries the same
+figure as a **Margin** column, with the whole list of rivals in its tooltip.
+[[lipid-maps]] sets out which records count as impostors, why an isomer of
+the same formula is not one, and the eleven real spectra the ten-point line
+was measured on.
+
 **The isotopic purity**, when the compound carries labels and an adduct was
 identified — the number on the certificate that nobody measures. The block is
 the envelope itself: every rung from d0 to dn with its *m/z*, its intensity,

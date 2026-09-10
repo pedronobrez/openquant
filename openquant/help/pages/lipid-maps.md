@@ -272,6 +272,88 @@ water, 8.0% after two, and 104% after three — the ion that lost a label is
 then larger than the one that kept them all. Which hydroxyl left at which
 rung would place the labels; the enumeration does not track that yet.
 
+## The margin
+
+A share on its own cannot be read. "Explains 63.6%" says nothing until
+something else has been scored on the same peaks: a long enough list of
+predicted masses covers a spectrum by accident, and how long that list is
+depends on the compound, not on the evidence. So every explanation now
+carries its **margin** — what the chosen compound explains, less what the
+best of its nearest impostors explains — in the line under the tables, in
+the per-compound section of the [[infusion-report]], and as a column of the
+Infusions tab:
+
+> explains 63.6%; the best of 17 neighbour(s) (TG 17:1/18:4/18:4 as
+> [M+2H]2+) explains 21.7%: a margin of 41.9 points
+
+The impostors are the LIPID MAPS records that fit the **written** precursor
+at any adduct the channel's polarity allows — the same set the ranked table
+draws from, gated the same way — with two kinds left out:
+
+- **The compound itself**, at any adduct.
+- **Anything carrying the same formula.** Same formula, same precursor, same
+  neutral losses: the same arithmetic, and no contrast. Scoring it would put
+  the chosen compound's own number in the impostor column and report a
+  margin of zero for a spectrum that was never in doubt. In lipidomics this
+  is the ordinary case rather than an edge one — each of the four named
+  sphingolipids below has one or two — so the sentence says how many were
+  left out, and a margin measured over sixteen neighbours where eighteen
+  were found is not passed off as one measured over eighteen.
+
+Each impostor is scored **the same way the compound was**: a formula against
+formulas, a drawing against drawings. That is not tidiness. Scored the other
+way round — a bile acid's 56 predicted masses against LIPID MAPS structures
+offering 700 to 2,900 each — the impostor won five of the six real bile-acid
+infusions, by up to 33 points, on spectra where nothing was wrong. A list of
+two thousand masses covers a sixty-peak spectrum by accident. Enumerated
+alike, the true compound won all six.
+
+Under **10 points** the margin is called *thin*, and the sentence says the
+spectrum does not tell the two compounds apart. Ten is where the gap is in
+the eleven real spectra it was measured on.
+
+### What it says on real data
+
+Six infusions of deuterated bile acids, each explained from its formula
+through the adduct its channel's written precursor names:
+
+| Infusion | Written | Explains | Best impostor | It explains | Margin |
+|---|---|---|---|---|---|
+| CA-d4, CID 45 eV | 430.35 | 24.2% | TG 17:1/18:4/18:4 `[M+2H]2+` | 0.0% | **+24.2** |
+| CA-d4, EAD 22 eV | 430.34 | 63.6% | TG 17:1/18:4/18:4 `[M+2H]2+` | 21.7% | **+41.9** |
+| DCA-d4, CID 40 eV | 414.34 | 17.0% | 3-hydroxypalmitoleoylcarnitine `[M+H]+` | 1.6% | **+15.3** |
+| DCA-d4, EAD 22 eV | 414.34 | 70.4% | Wuhanic acid `[M+NH4]+` | 56.5% | **+13.9** |
+| TDCA-d4, CID 30 eV | 504.32 | 72.7% | a spirostenone `[M+NH4]+` | 1.5% | **+71.2** |
+| TDCA-d4, EAD 22 eV | 504.32 | 78.4% | PC O-16:0/0:0 `[M+Na]+` | 72.3% | **+6.1** *thin* |
+
+And the four named sphingolipids of one injection of a 26-injection batch,
+explained from their LIPID MAPS drawings, where the written precursors sit
+36 to 264 ppm from the compounds themselves:
+
+| Channel | Compound | Explains | Best impostor | It explains | Margin |
+|---|---|---|---|---|---|
+| 703.60 | SM(d18:1/16:0) | 31.9% | PG 13:0/18:3 `[M+H]+` | 15.7% | **+16.2** |
+| 731.70 | SM(d18:1/18:0) | 19.4% | PA 16:0/22:1 `[M+H]+` | 17.3% | **+2.1** *thin* |
+| 538.60 | Cer(d18:1/16:0) | 9.5% | PE 22:0/0:0 `[M+H]+` | 12.4% | **−3.0** *thin* |
+| 648.80 | Cer(d18:1/24:1) | 9.2% | Calyxoside `[M+H]+` | 7.1% | **+2.1** *thin* |
+
+Read those four rows as they are meant to be read. The ceramide at 538.6 is
+in that vial — it is a method component with a retention time, and the batch
+was quantified on it — but *this spectrum* does not identify it: three
+lysophospholipids of another formula account for more of the same peaks.
+The margin does not say the compound is wrong. It says the compound was not
+distinguished here, and that whatever supports the assignment has to come
+from somewhere else: the retention time, the survey scan's exact mass, a
+[[spectral-library]] record.
+
+The same applies to TDCA-d4 at 6.1 points. That is a pure standard sprayed
+from a vial, and the flag is still right: it is known from the bottle, not
+from the spectrum, and before the margin was measured nothing on the page
+said so.
+
+A margin is measured over 16 to 29 neighbours on those spectra and costs
+under half a second — a tenth of that on the formula route.
+
 ## Adducts
 
 A precursor is a molecule plus whatever charged it, and which one decides

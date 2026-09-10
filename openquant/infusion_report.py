@@ -70,6 +70,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from . import infusion as _infusion
+from . import margin as _margin
 from . import precursor as _precursor
 from . import purity as _purity
 from . import spectra_compare
@@ -738,6 +739,11 @@ class InfusionReport:
     #: measurement's own finding and belongs on the page beside the rest
     purity: "_purity.Purity | None" = None
     hit: LibraryHit | None = None
+    #: what the compound explains against what its nearest impostors explain
+    #: — `margin.cross_validate`. None where nothing was explained, or where
+    #: there was no database, no precursor or no neighbour to contrast with;
+    #: the object then says which in its own words.
+    margin: "_margin.Margin | None" = None
     library: str = ""
     compared: list[Compared] = field(default_factory=list)
     taken: _dt.datetime = field(default_factory=_dt.datetime.now)
@@ -1273,6 +1279,11 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
         confirm_adduct(entry, report, formula, deuterium)
     _measure_purity(report, mz, intensity)
 
+    # what the explanation is worth against its neighbours. Here rather than
+    # in the caller because this is where the spectrum it was scored on is
+    # — the same centroids `_sticks` hands the library search.
+    report.margin = _margin.for_report(report, _sticks(report))
+
     mine = (report.spectrum.peaks(report.trace, most=SCORE_PEAKS,
                                   min_relative=SCORE_SHARE)
             if report.trace is not None else [])
@@ -1526,6 +1537,9 @@ def from_explorer(explorer, compound: str = "", others=(),
     if callable(explanation):
         explanation = explanation()
     basis = getattr(lipids, "explanation_basis", "") or ""
+    # the panel measured it against the peaks it explained; measuring it a
+    # second time here would cost the same seconds to reach the same answer
+    measured_margin = getattr(lipids, "explanation_margin", None)
     deuterium = 0
     adduct = ""
     if lipids is not None:
@@ -1581,7 +1595,7 @@ def from_explorer(explorer, compound: str = "", others=(),
             corrected = session.correction_for(ref.entry.key) is not None
         except Exception:
             corrected = False
-    return report_for(
+    report = report_for(
         ref.entry, ref.channel, compound=compound, explanation=explanation,
         basis=basis, deuterium=deuterium, hit=hit, library=library,
         adduct=adduct, others=others, label_floor=float(floor),
@@ -1591,6 +1605,9 @@ def from_explorer(explorer, compound: str = "", others=(),
         session=session, recalibrated=corrected,
         include_unstable=bool(getattr(explorer, "include_unstable_scans",
                                       lambda: False)()))
+    if measured_margin is not None and report.explanation is not None:
+        report.margin = measured_margin
+    return report
 
 
 def infusions_open(source) -> "list[tuple[SampleEntry, object]]":
@@ -1643,7 +1660,8 @@ COUNTED_SCORE = 0.60
 SUMMARY_COLUMNS = (
     "Compound", "Sample", "Isolated", "Mode", "CE (eV)", "Scans",
     "Base peak m/z", "Precursor written", "Found m/z", "Δ ppm", "Height",
-    "Adduct", "Ions found", "Library record", "Score", "Reverse", "Matched",
+    "Adduct", "Ions found", "Margin", "Library record", "Score", "Reverse",
+    "Matched",
     "Record Δ ppm", "Record CE", "Other infusions", "Mass axis", "File")
 
 #: the columns of `SUMMARY_COLUMNS` that hold a number, and what to sort each
@@ -1651,7 +1669,7 @@ SUMMARY_COLUMNS = (
 #: and inserting a column in the middle then moved every sort key one cell to
 #: the right without anything failing.
 _SORT_KEYS = ("CE (eV)", "Scans", "Base peak m/z", "Precursor written",
-              "Found m/z", "Δ ppm", "Height", "Ions found", "Score",
+              "Found m/z", "Δ ppm", "Height", "Ions found", "Margin", "Score",
               "Reverse", "Matched", "Record Δ ppm", "Mass axis")
 
 #: what goes in the report's table. A4 does not hold nineteen columns and a
@@ -1822,6 +1840,21 @@ class InfusionRow:
         return f"{name}, no survey"
 
     @property
+    def margin(self) -> str:
+        """
+        What the explanation is worth against its neighbours, in one cell.
+
+        A share on its own is not readable — see `margin.py` — so the table
+        carries the contrast beside "Ions found" rather than under it. The
+        cell says why it is empty when it is: no explanation, no database,
+        no other structure at that precursor.
+        """
+        result = self.report.margin
+        if result is None:
+            return self.explanation_note or "nothing run"
+        return result.column()
+
+    @property
     def score(self) -> float | None:
         return None if self.report.hit is None else self.report.hit.score
 
@@ -1872,6 +1905,7 @@ class InfusionRow:
              if explanation is not None and explanation.predicted
              else f"{explanation.matched}" if explanation is not None
              else self.explanation_note or "nothing run"),
+            self.margin,
             hit.entry.name if hit is not None
             else self.library_note or "no record",
             f"{hit.score * 100:.0f}" if hit is not None else "—",
@@ -1918,6 +1952,8 @@ class InfusionRow:
             "Height": found[1] if found else None,
             "Ions found": (float(explanation.matched)
                            if explanation is not None else None),
+            "Margin": (report.margin.points
+                       if report.margin is not None else None),
             "Score": hit.score if hit is not None else None,
             "Reverse": hit.reverse if hit is not None else None,
             "Matched": float(hit.matched) if hit is not None else None,
@@ -2477,6 +2513,9 @@ def summarise(session, library=None, explanations=None,
                         session, report, entry, sticks=raw)[0]
             hit, library_note = _best_record(library, report)
             report.hit = hit
+            # the explanation only reached the report after `report_for`
+            # returned, so its margin is measured here instead
+            report.margin = _margin.for_report(report, _sticks(report))
             row = InfusionRow(
                 report=report,
                 peaks=(report.spectrum.peaks(report.trace, most=SCORE_PEAKS,
@@ -2872,6 +2911,11 @@ def _explanation_block(report: InfusionReport,
         f'<p class="foot">{explanation.matched:,} ion(s) matched{predicted}, '
         f'accounting for {explanation.share * 100:.1f}% of the intensity of '
         f'the {explanation.considered:,} peak(s) that were scored.</p>')
+    # the contrast: a share is not evidence until something else has been
+    # scored on the same peaks. `margin.py` says what and by how much.
+    if report.margin is not None:
+        parts.append(f'<p class="foot">Margin — {_escape(explanation.name)} '
+                     f'{_escape(report.margin.sentence())}.</p>')
 
     left = report.unexplained()
     parts.append(_sub("Peaks it does not account for", breaks))

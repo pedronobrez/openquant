@@ -55,6 +55,11 @@ RECALIBRATION = "Mass recalibration"
 INFUSION_REPORT = "Infusion report"
 #: the method read every way it can be read before it is run, written out
 METHOD_REPORT = "Method report"
+#: the ratio of an analyte to its internal standard in a spray, written into
+#: the Results table. A separate event from `PROCESSED` because it is a
+#: separate kind of number: a height in one averaged spectrum, not an
+#: integrated peak, and the trail has to say which the rows are.
+INFUSION_QUANTITATION = "Infusion quantitation"
 PROJECT_SAVED = "Project saved"
 
 EVENTS: tuple[str, ...] = (
@@ -64,7 +69,8 @@ EVENTS: tuple[str, ...] = (
     NAME_RENAMED, METHOD_DEFAULT,
     SAMPLE_EDITED,
     PROCESSED, REPROCESSED,
-    RECALIBRATION, INFUSION_REPORT, METHOD_REPORT, PROJECT_SAVED,
+    RECALIBRATION, INFUSION_REPORT, METHOD_REPORT, INFUSION_QUANTITATION,
+    PROJECT_SAVED,
 )
 
 #: the columns of the trail, in the order the panel, the report and the CSV

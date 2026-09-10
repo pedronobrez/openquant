@@ -548,3 +548,10 @@ projeto de referência salvou, correspondida por composto e por condições.
 Pressione **Measure** antes de salvar um projeto e o projeto guarda estes
 números e a lista de picos média de cada linha, que é contra o que um dia
 posterior é comparado.
+
+## De uma verificação para uma medida
+
+Este relatório pergunta se um frasco é o que o rótulo diz. O **Quantify…** na
+mesma aba faz outra pergunta — quanto há de um composto contra outro no mesmo
+spray — e a responde com as duas respostas, a interferência isotópica entre
+elas e a razão. Veja a [[infusion-quantitation]].

@@ -539,3 +539,11 @@ reference project saved, matched by compound and by conditions. Press
 **Measure** before saving a project and the project keeps these figures and
 every row's averaged peak list, which is what a later day is compared
 against.
+
+## From a verification to a measurement
+
+This report asks whether a vial is what its label says. **Quantify…** on the
+same tab asks a different question — how much of one compound there is
+against another in the same spray — and answers it with the two responses,
+the isotope cross-talk between them and the ratio. See
+[[infusion-quantitation]].

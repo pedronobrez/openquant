@@ -153,6 +153,20 @@ tinha — a regra que valia antes — dava à corrida **oito pontos para 164
 espectros**. O total estava certo e a forma era ficção, e a forma é
 exatamente o que [[direct-infusion]] lê para decidir o que uma amostra é.
 
+Um cromatograma de íon extraído precisa de todos os scans do seu canal, e
+cada scan é decodificado direto dos bytes do arquivo — as posições e as
+codificações dos vetores são localizadas na primeira vez que um scan é
+pedido, e o analisador de XML não volta a correr para ele. Um canal já
+decodificado fica guardado para o próximo componente que o pedir, sob um
+orçamento de 256 MB para o processo inteiro, saindo primeiro o canal mais
+antigo; o arquivo em si é mapeado em vez de lido para a memória, de modo
+que um lote com muitos arquivos abertos custa o cache de arquivos do
+sistema e não a aplicação. Medido em uma corrida sintética de 81 canais e
+19.440 espectros no Windows 11: uma extração passou de 32 ms para 11 ms
+onde o canal precisou ser decodificado e para 0,1 ms onde já tinha sido,
+e integrar 80 componentes em seis dessas injeções de 15,5 s para 4,8 s.
+Nada muda nos números: os mesmos pontos são somados.
+
 ## Infusões a partir de mzML
 
 Uma infusão de outro instrumento passa por todo o [[direct-infusion]] —

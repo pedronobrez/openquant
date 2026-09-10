@@ -28,9 +28,12 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import itertools
+import mmap
 import os
 import re
 import zlib
+from collections import OrderedDict
 from dataclasses import dataclass
 from xml.etree import ElementTree as ET
 
@@ -183,6 +186,124 @@ def _arrays(element) -> dict[str, np.ndarray]:
     return out
 
 
+#: how much decoded data one file keeps for extraction, in bytes. A
+#: chromatogram is made by decoding every scan of its channel, and a batch
+#: asks the same channel for one component after another — 141 components
+#: over 81 channels on the real method — so a channel once decoded is kept
+#: until the budget pushes it out, oldest first. A TOF channel of a real
+#: run is some 14 MB decoded, so this holds a dozen or so of them; the
+#: whole run would be a gigabyte, which is why it is a budget and not a
+#: switch.
+DECODED_BUDGET = 256 * 2 ** 20
+
+#: the decoded channels of every open file, keyed by (file, channel), oldest
+#: first. One budget for the process: a batch has dozens of files open, and a
+#: budget per file would be the budget times the batch
+_DECODED: OrderedDict[tuple[int, int], tuple] = OrderedDict()
+_DECODED_BYTES = 0
+_TOKENS = itertools.count()
+
+
+def _hold_decoded(key: tuple[int, int], held: tuple) -> None:
+    """Keep a decoded channel, letting the oldest go past the budget."""
+    global _DECODED_BYTES
+    size = sum(int(a.nbytes) for a in held)
+    while _DECODED and _DECODED_BYTES + size > DECODED_BUDGET:
+        _, gone = _DECODED.popitem(last=False)
+        _DECODED_BYTES -= sum(int(a.nbytes) for a in gone)
+    _DECODED[key] = held
+    _DECODED_BYTES += size
+
+
+def _drop_decoded(file_id: int) -> None:
+    """Forget every decoded channel of one file."""
+    global _DECODED_BYTES
+    for key in [k for k in _DECODED if k[0] == file_id]:
+        _DECODED_BYTES -= sum(int(a.nbytes) for a in _DECODED.pop(key))
+
+
+@dataclass(frozen=True)
+class _Binary:
+    """Where one binary array's base64 text sits in the file, and how to decode it."""
+
+    kind: str | None            # "mz", "intensity", "time", or None: not read
+    start: int                  # byte range of the base64 text; empty when start == end
+    end: int
+    zlib: bool
+    bits: int                   # 64 or 32
+
+
+_ACCESSION = re.compile(rb'accession="([^"]*)"')
+_NUMPRESS_BYTES = tuple(a.encode() for a in NUMPRESS)
+_BIT_64_BYTES, _BIT_32_BYTES, _ZLIB_BYTES = (
+    BIT_64.encode(), BIT_32.encode(), ZLIB.encode())
+_KIND_BYTES = ((MZ_ARRAY.encode(), "mz"), (INTENSITY_ARRAY.encode(), "intensity"),
+               (TIME_ARRAY.encode(), "time"))
+
+
+def _binaries_of(fragment: bytes, base: int) -> tuple[_Binary, ...] | None:
+    """
+    The binary arrays of one spectrum, located by scanning its bytes.
+
+    An extracted chromatogram needs every scan of a channel, and reading a
+    scan through the XML parser — the element built, every cvParam walked
+    twice — cost more than decoding its numbers did: measured on a synthetic
+    81-channel run, 20 s of extraction were 11 s of XML and 4 s of base64
+    and zlib. The description of each array is fixed at open time, so it is
+    found once here, and `_spectrum_arrays` then goes straight from the
+    file's bytes to the numbers.
+
+    Returns None for a spectrum this does not read that way — a numpress
+    array, an array declaring neither precision — and the XML path stands in,
+    with its own errors.
+    """
+    # `find` rather than a regular expression: the body of an array is
+    # kilobytes of base64, and a pattern that has to walk it cost more than
+    # the XML parse it was replacing. Measured: 2.2 s of a 5 s open, against
+    # 0.3 s this way.
+    found: list[_Binary] = []
+    position = 0
+    while True:
+        start = fragment.find(b"<binaryDataArray", position)
+        if start < 0:
+            break
+        after = fragment[start + 16:start + 17]
+        if after not in (b" ", b">", b"\t", b"\n", b"\r"):     # …List, or a longer name
+            position = start + 16
+            continue
+        stop = fragment.find(b"</binaryDataArray>", start)
+        if stop < 0:
+            break
+        position = stop + 18
+        opening = fragment.find(b"<binary", start, stop)
+        # `<binaryDataArray`'s own name begins with `<binary`, so the search
+        # starts past it
+        while 0 <= opening < stop and fragment[opening + 7:opening + 8] not in (b">", b"/", b" "):
+            opening = fragment.find(b"<binary", opening + 7, stop)
+        head = fragment[start:opening if opening >= 0 else stop]
+        accessions = set(_ACCESSION.findall(head))
+        if any(a in accessions for a in _NUMPRESS_BYTES):
+            return None
+        if _BIT_64_BYTES in accessions:
+            bits = 64
+        elif _BIT_32_BYTES in accessions:
+            bits = 32
+        else:
+            return None
+        kind = next((name for accession, name in _KIND_BYTES
+                     if accession in accessions), None)
+        text_start = text_end = 0
+        if opening >= 0:
+            close = fragment.find(b">", opening, stop)
+            if close > 0 and fragment[close - 1:close] != b"/":
+                closing = fragment.find(b"</binary>", close, stop)
+                if closing >= 0:
+                    text_start, text_end = base + close + 1, base + closing
+        found.append(_Binary(kind, text_start, text_end,
+                             _ZLIB_BYTES in accessions, bits))
+    return tuple(found)
+
+
 @dataclass(frozen=True)
 class _ScanHeader:
     """What is known about a spectrum without decoding its arrays."""
@@ -300,14 +421,43 @@ class MzmlChannel:
             tolerance: float = 0.1) -> tuple[np.ndarray, np.ndarray]:
         lo = self.info.start_mass if mz_min is None else mz_min
         hi = self.info.end_mass if mz_max is None else mz_max
-        times, values = [], []
+        mz, intensity, scan = self._decoded()
+        inside = (mz >= lo) & (mz <= hi)
+        values = np.zeros(len(self._headers), dtype=float)
+        np.maximum.at(values, scan[inside], intensity[inside])
+        return self._times(), values
+
+    def _times(self) -> np.ndarray:
+        return np.array([h.rt for h in self._headers], dtype=float)
+
+    def _decoded(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Every scan of the channel decoded and laid end to end: the masses,
+        the intensities, and for each point the scan it belongs to.
+
+        Held by the file under `DECODED_BUDGET`, so the second component
+        extracted from a channel does not decode it again. Extraction is
+        then two vectorised passes over the channel rather than a Python
+        loop over its scans.
+        """
+        key = (self._sample._file._token, self.index)
+        held = _DECODED.get(key)
+        if held is not None:
+            _DECODED.move_to_end(key)
+            return held
+        masses, intensities = [], []
         for header in self._headers:
             arrays = self._read(header)
-            mz, intensity = arrays["mz"], arrays["intensity"]
-            inside = (mz >= lo) & (mz <= hi)
-            times.append(header.rt)
-            values.append(float(intensity[inside].max()) if inside.any() else 0.0)
-        return np.array(times), np.array(values)
+            masses.append(arrays["mz"])
+            intensities.append(arrays["intensity"])
+        counts = np.fromiter((m.size for m in masses), dtype=np.int64,
+                             count=len(masses))
+        mz = np.concatenate(masses) if masses else np.zeros(0)
+        intensity = np.concatenate(intensities) if intensities else np.zeros(0)
+        scan = np.repeat(np.arange(len(masses), dtype=np.int32), counts)
+        held = (mz, intensity, scan)
+        _hold_decoded(key, held)
+        return held
 
     def xic(self, mz: float, tolerance: float = 0.02,
             unit: str = "Da") -> tuple[np.ndarray, np.ndarray]:
@@ -338,14 +488,11 @@ class MzmlChannel:
         ion current and chromatographic integration all round-trip exactly.
         """
         lo, hi = sorted((float(mz_min), float(mz_max)))
-        times, values = [], []
-        for header in self._headers:
-            arrays = self._read(header)
-            mz, intensity = arrays["mz"], arrays["intensity"]
-            inside = (mz >= lo) & (mz <= hi)
-            times.append(header.rt)
-            values.append(float(intensity[inside].sum()) if inside.any() else 0.0)
-        return np.array(times), np.array(values)
+        mz, intensity, scan = self._decoded()
+        inside = (mz >= lo) & (mz <= hi)
+        values = np.bincount(scan[inside], weights=intensity[inside],
+                             minlength=len(self._headers)).astype(float)
+        return self._times(), values
 
     # -- spectra -------------------------------------------------------------- #
     def _read(self, header: _ScanHeader) -> dict[str, np.ndarray]:
@@ -581,9 +728,24 @@ class MzmlFile:
         self.path = os.path.realpath(str(path))
         if not os.path.exists(self.path):
             raise FileNotFoundError(self.path)
+        # mapped rather than read: a batch is dozens of these files open at
+        # once, and a gigabyte read into the process is a gigabyte the
+        # machine has to find, where a mapping is the system's own file
+        # cache and is given back under pressure. Everything below takes
+        # byte slices, which copy, so nothing ever points into the map.
+        self._data: bytes | mmap.mmap = b""
+        # names this file in the decoded cache; not `id()`, which a later
+        # file could be given again once this one is collected
+        self._token = next(_TOKENS)
+        #: where each spectrum's arrays sit, by index, once looked for
+        self._binaries: dict[int, tuple[_Binary, ...] | None] = {}
         with open(self.path, "rb") as handle:
-            self._data = handle.read()
-        if b"<mzML" not in self._data[:4096] and b"<indexedmzML" not in self._data[:4096]:
+            if os.fstat(handle.fileno()).st_size:
+                self._data = mmap.mmap(handle.fileno(), 0,
+                                       access=mmap.ACCESS_READ)
+        head = bytes(self._data[:4096])
+        if b"<mzML" not in head and b"<indexedmzML" not in head:
+            self.close()
             raise MzmlError(f"{self.filename} does not look like mzML")
 
         self.run_id = ""
@@ -599,8 +761,8 @@ class MzmlFile:
     # -- file-level metadata --------------------------------------------------- #
     def _read_header(self) -> None:
         """Everything before the spectra: who wrote it, from what, and when."""
-        head = self._data[:self._data.find(b"<spectrumList")
-                          if b"<spectrumList" in self._data else len(self._data)]
+        cut = self._data.find(b"<spectrumList")
+        head = bytes(self._data[:cut if cut >= 0 else len(self._data)])
         for match in re.finditer(rb'<run[^>]*>', head):
             attributes = match.group(0).decode("utf-8", "replace")
             self.run_id = _attribute(attributes, "id") or self.run_id
@@ -715,10 +877,34 @@ class MzmlFile:
             experiment_name=params.get(EXPERIMENT_NAME_PARAM, ""),
         )
 
+    def _binaries_for(self, header: _ScanHeader) -> tuple[_Binary, ...] | None:
+        """
+        Where a spectrum's arrays sit, found the first time it is decoded.
+
+        Not at open time: locating them for every spectrum cost 0.26 s of a
+        1.5 s open on a 19,440-spectrum file, paid on every project load
+        for scans most of which are never decoded. Found once here, it is
+        a few microseconds on a channel's first extraction.
+        """
+        try:
+            return self._binaries[header.index]
+        except KeyError:
+            pass
+        fragment = self._data[header.offset:header.end]
+        cut = fragment.find(b"<binaryDataArrayList")
+        found = (None if cut < 0
+                 else _binaries_of(fragment[cut:], header.offset + cut))
+        self._binaries[header.index] = found
+        return found
+
     def _spectrum_arrays(self, header: _ScanHeader) -> dict[str, np.ndarray]:
-        element = ET.fromstring(self._data[header.offset:header.end])
-        arrays = _arrays(element)
-        length = int(element.get("defaultArrayLength", 0) or 0)
+        binaries = self._binaries_for(header)
+        if binaries is not None:
+            arrays = self._decode(binaries)
+        else:
+            element = ET.fromstring(self._data[header.offset:header.end])
+            arrays = _arrays(element)
+        length = header.n_points
         mz = arrays.get("mz", np.zeros(0))
         intensity = arrays.get("intensity", np.zeros(0))
         if length and (mz.size != length or intensity.size != length):
@@ -771,7 +957,30 @@ class MzmlFile:
             self._samples[index] = MzmlSample(self)
         return self._samples[index]
 
+    def _decode(self, binaries: tuple[_Binary, ...]) -> dict[str, np.ndarray]:
+        """Straight from the file's bytes to the numbers; see `_binaries_of`."""
+        out: dict[str, np.ndarray] = {}
+        for binary in binaries:
+            if binary.kind is None:
+                continue
+            if binary.end <= binary.start:
+                out[binary.kind] = np.zeros(0, dtype=np.float64)
+                continue
+            raw = base64.b64decode(self._data[binary.start:binary.end])
+            if binary.zlib:
+                raw = zlib.decompress(raw)
+            out[binary.kind] = np.frombuffer(
+                raw, dtype="<f8" if binary.bits == 64 else "<f4"
+            ).astype(np.float64)
+        return out
+
     def close(self) -> None:
+        _drop_decoded(self._token)
+        if isinstance(self._data, mmap.mmap):
+            try:
+                self._data.close()
+            except (OSError, ValueError):
+                pass
         self._data = b""
 
     def __repr__(self) -> str:

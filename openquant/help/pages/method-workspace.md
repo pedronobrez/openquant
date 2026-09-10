@@ -76,6 +76,12 @@ method six months later, and [[infusion-report]] describes what writes it.
   with the dwell a target cycle leaves each transition, see
   [[acquisition-schedule]].
 
+A row can also arrive from a vial rather than from this table: **File ▸ New
+standard…** takes a name, a lot number and an infusion of that standard and
+writes the component here — formula, adduct, exact precursor, fragment,
+provenance — together with the record in your own library that gives it a
+history. See [[new-standard]].
+
 ## Fill formulas from names
 
 A formula is what turns a component into a lock mass for the

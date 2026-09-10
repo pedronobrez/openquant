@@ -77,6 +77,12 @@ nesse texto; ele está ali para quem for ler o método daqui a seis meses, e o
   o dwell time que um ciclo alvo deixa a cada transição, ver
   [[acquisition-schedule]].
 
+Uma linha também pode chegar de um frasco, e não desta tabela: **File ▸ New
+standard…** recebe um nome, um número de lote e uma infusão daquele padrão e
+escreve o componente aqui — fórmula, aduto, precursor exato, fragmento,
+procedência — junto com o registro na sua própria biblioteca que lhe dá um
+histórico. Veja [[new-standard]].
+
 ## Fill formulas from names
 
 Uma fórmula é o que transforma um componente numa lock mass para a

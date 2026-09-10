@@ -856,13 +856,19 @@ _COMMENT_FILE = re.compile(r"[^\s·|,;]+\.(?:wiff2?|mzml|mzxml|raw|d)\b",
 _COMMENT_SCANS = re.compile(r"(\d[\d,]*)\s+scans?", re.IGNORECASE)
 _COMMENT_RT = re.compile(r"RT\s*([\d.]+)\s*[–—-]\s*([\d.]+)")
 _COMMENT_ADDED = re.compile(r"\badded\s+(\S+)", re.IGNORECASE)
+#: the bottle a standard was infused from, as the New standard dialog writes
+#: it. The one thing about a record that is not in the acquisition at all: two
+#: records of the same compound six months apart are the same standard only if
+#: they are the same lot, and nothing but the person holding the vial can say
+_COMMENT_LOT = re.compile(r"\blot\s+(\S+)", re.IGNORECASE)
 
 #: pieces of a comment that say how the spectrum was made rather than where
 #: it came from. What is left, in order, is the sample and the channel.
 #: Matched as whole words: `^CE` alone would take `CEramide` for a collision
 #: energy, and a sample is named by whoever ran it.
 _COMMENT_NOTE = re.compile(
-    r"^(added|recalibrated|background|average|scans?|RT|CE)\b", re.IGNORECASE)
+    r"^(added|recalibrated|background|average|scans?|RT|CE|lot)\b",
+    re.IGNORECASE)
 
 #: how the report names the formula and the adduct it identified, in the
 #: sentence it prints under the table. Read rather than worked out again:
@@ -894,6 +900,11 @@ class Provenance:
     rt_range: tuple[float, float] | None = None
     #: the day the record was written, as the comment says it
     added: str = ""
+    #: the bottle the standard was infused from, where the record says. Not a
+    #: measurement and not recoverable from the acquisition: it is what the
+    #: analyst typed when the standard was entered, and the one field that
+    #: says whether two records months apart are of the same material.
+    lot: str = ""
 
     @property
     def key(self) -> tuple[str, str]:
@@ -925,7 +936,7 @@ class Provenance:
 def provenance_comment(file: str = "", sample: str = "", channel: str = "",
                        scans: int = 0,
                        rt_range: "tuple[float, float] | None" = None,
-                       added: str = "", note: str = "") -> str:
+                       added: str = "", note: str = "", lot: str = "") -> str:
     """
     The comment a record of one's own carries, in the shape read back.
 
@@ -934,6 +945,11 @@ def provenance_comment(file: str = "", sample: str = "", channel: str = "",
     pane title with the file and the date after it, which is what one
     spectrum added by hand has always written. `note` goes on the end for
     anything done to the axis, which at present is the mass recalibration.
+
+    `lot` is the bottle, and it is the one piece here that no acquisition
+    holds: it is written when the standard is entered and read back by
+    `provenance_of`, so that a history of one compound can say whether it is
+    a history of one material.
     """
     pieces = [p for p in (str(sample or "").strip(),
                           str(channel or "").strip()) if p]
@@ -944,6 +960,8 @@ def provenance_comment(file: str = "", sample: str = "", channel: str = "",
         pieces.append(f"RT {low:.4f}–{high:.4f} min")
     if file:
         pieces.append(os.path.basename(str(file)))
+    if lot:
+        pieces.append(f"lot {str(lot).strip()}")
     if note:
         pieces.append(str(note).strip())
     if added:
@@ -978,6 +996,7 @@ def provenance_of(entry: LibraryEntry) -> Provenance:
     scans = _COMMENT_SCANS.search(comment)
     times = _COMMENT_RT.search(comment)
     added = _COMMENT_ADDED.search(comment)
+    lot = _COMMENT_LOT.search(comment)
     return Provenance(
         file=file,
         sample=plain[0] if plain else "",
@@ -986,6 +1005,7 @@ def provenance_of(entry: LibraryEntry) -> Provenance:
         rt_range=((float(times.group(1)), float(times.group(2)))
                   if times else None),
         added=added.group(1) if added else "",
+        lot=lot.group(1) if lot else "",
     )
 
 
@@ -1088,7 +1108,8 @@ class OwnRecords:
 
 
 def records_from_summary(rows, existing=(), added: str = "",
-                         identify=None, acquired=None) -> OwnRecords:
+                         identify=None, acquired=None,
+                         lot: str = "") -> OwnRecords:
     """
     One record per measured infusion, for a whole batch written in one go.
 
@@ -1113,7 +1134,8 @@ def records_from_summary(rows, existing=(), added: str = "",
     * `Acquired` is the day the instrument measured on, from `acquired` — a
       mapping from file name to acquisition time, since a report holds the
       file name and only the session holds the sample;
-    * the comment is the provenance, in the shape `provenance_of` reads.
+    * the comment is the provenance, in the shape `provenance_of` reads,
+      with `lot` — the bottle — after the file where one is given.
 
     A row whose acquisition and channel are already in `existing` — the keys
     `provenance_keys` gives for the file being appended to — is skipped
@@ -1151,7 +1173,7 @@ def records_from_summary(rows, existing=(), added: str = "",
             file=os.path.basename(file),
             sample=str(getattr(report, "sample", "") or ""),
             channel=channel, scans=int(getattr(report, "scans", 0) or 0),
-            rt_range=getattr(report, "rt_range", None))
+            rt_range=getattr(report, "rt_range", None), lot=str(lot or ""))
         if provenance.keyed and provenance.key in seen:
             made.skipped.append(Skipped(
                 label, f"already in the file from {provenance.file}"))
@@ -1168,7 +1190,7 @@ def records_from_summary(rows, existing=(), added: str = "",
                 comment=provenance_comment(
                     file=provenance.file, sample=provenance.sample,
                     channel=channel, scans=provenance.scans,
-                    rt_range=provenance.rt_range, added=added),
+                    rt_range=provenance.rt_range, added=added, lot=lot),
                 acquired=str(times.get(provenance.file, "")
                              or getattr(report, "acquired", "") or ""))
         except ValueError as exc:

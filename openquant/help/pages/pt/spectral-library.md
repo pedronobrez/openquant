@@ -221,6 +221,16 @@ calcula a massa real do íon a partir deles, mede o Δ ppm contra ela, e recusa
 o registro a uma varredura da polaridade oposta. Um registro seu é o único
 registro de biblioteca do qual se pode ter certeza de que os traz.
 
+### Um padrão, a partir do frasco
+
+Uma terceira porta de entrada, e a que parte do frasco em vez de partir de um
+espectro já na tela: o [[new-standard]] pede o nome, o lote e o arquivo de
+infusão e escreve o registro e o componente do método juntos, de modo que um
+padrão cadastrado uma vez fique pesquisável, quantificável e com histórico a
+partir do mesmo instante. O registro que ele escreve carrega um campo que
+estes dois não carregam — o **lote**, no comentário — que é o que diz que dois
+registros com meses de diferença são do mesmo material.
+
 ### Uma pasta inteira de uma vez
 
 Uma pasta de infusões são nove espectros, e acrescentá-los um a um pelo

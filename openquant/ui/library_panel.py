@@ -372,6 +372,22 @@ class LibraryPanel(QtWidgets.QWidget):
         self.settings.setValue(SETTING_OWN_PATH, path)
         self._refresh_own_label()
 
+    def refresh_own(self) -> None:
+        """
+        Read the library of one's own again: its count, and its records.
+
+        Called by anything that appends to the file from outside this panel —
+        *File ▸ New standard…* does — so the count under the button and, when
+        the file written to is the one loaded, the searchable records are
+        what is on disk rather than what was on disk when the tab was built.
+        """
+        path = self.own_path
+        if (path and self.library is not None and self.library.path
+                and os.path.abspath(self.library.path) == os.path.abspath(path)
+                and os.path.exists(path)):
+            self.load(path)
+        self._refresh_own_label()
+
     def _refresh_own_label(self) -> None:
         path = self.own_path
         if not path:

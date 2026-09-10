@@ -111,6 +111,14 @@ class InfusionsPanel(QtWidgets.QWidget):
             "overwritten and nothing is written until it is ticked")
         self.btn_method.setEnabled(False)
         bar.addWidget(self.btn_method)
+        self.btn_new_standard = QtWidgets.QPushButton("New standard…")
+        self.btn_new_standard.setToolTip(
+            "The whole path from a bottle to a standard, in one place: the "
+            "component in the method, the record in your own library and "
+            "with it the newest entry of that standard’s history. Takes the "
+            "selected row’s acquisition where one is selected, and asks for "
+            "a file where none is — it does not need a Measure")
+        bar.addWidget(self.btn_new_standard)
         self.btn_csv = QtWidgets.QPushButton("Export CSV…")
         self.btn_csv.setToolTip("The table as it stands, every column")
         self.btn_csv.setEnabled(False)
@@ -165,6 +173,7 @@ class InfusionsPanel(QtWidgets.QWidget):
         layout.addWidget(self.status)
 
         self.btn_measure.clicked.connect(self.measure)
+        self.btn_new_standard.clicked.connect(self.new_standard)
         self.btn_report.clicked.connect(self.write_report)
         self.btn_csv.clicked.connect(self.export_csv)
         self.btn_compare.clicked.connect(self.compare_infusions)
@@ -454,6 +463,33 @@ class InfusionsPanel(QtWidgets.QWidget):
                          f"the first left empty.")
             self._report(said)
         return dialog.applied
+
+    def new_standard(self):
+        """
+        The New standard dialog, on the selected row's acquisition.
+
+        Not gated on a Measure: entering a standard reads one file and this
+        table is a summary of many, so the dialog asks for a file of its own
+        where nothing is selected. Where one row is selected its acquisition
+        is handed over, since that is the infusion the analyst is looking at.
+        """
+        from .new_standard_dialog import NewStandardDialog
+
+        rows = self.chosen()
+        row = rows[0] if len(rows) == 1 else None
+        path, name = "", ""
+        if row is not None:
+            name = row.compound
+            for entry in getattr(self.session, "entries", []) or []:
+                if str(getattr(entry, "name", "")) == row.sample:
+                    path = str(getattr(entry, "path", "") or "")
+                    break
+        dialog = NewStandardDialog(self.session, self, path=path, name=name)
+        dialog.exec()
+        if dialog.component is not None or dialog.record is not None:
+            self._report(dialog.status.text())
+        dialog.deleteLater()
+        return dialog
 
     def export_csv(self, path: str = "") -> str:
         """The whole table, not the selection: a summary with rows left out

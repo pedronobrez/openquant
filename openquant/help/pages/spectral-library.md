@@ -211,6 +211,16 @@ search computes the ion's real mass from them, measures Δ ppm against it,
 and refuses the record to a scan of the other polarity. A record of your
 own is the one library record you can be sure carries them.
 
+### One standard, from its bottle
+
+A third way in, and the one that starts from the vial rather than from a
+spectrum already on screen: [[new-standard]] asks for the name, the lot and
+the infusion file and writes the record and the method's component together,
+so a standard entered once is searchable, quantifiable and has a history from
+the same moment. The record it writes carries one field these two do not —
+the **lot**, in its comment — which is what says two records months apart are
+of the same material.
+
 ### A whole folder in one go
 
 A folder of infusions is nine spectra, and adding them one at a time from

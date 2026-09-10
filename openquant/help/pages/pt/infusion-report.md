@@ -510,6 +510,11 @@ está lá discorda da infusão, a Note diz isso e o valor digitado fica —
 Cada linha marcada é uma entrada na [[audit-trail]] sob *Component from
 infusion*, com a procedência na nota.
 
+Esse caminho parte de uma tabela que já foi medida. O caminho inverso — um
+frasco na mão, nada medido ainda, e nenhum componente, registro ou histórico
+para ele — é o [[new-standard]], que pede o nome, o lote e o arquivo e
+escreve os três de uma vez.
+
 Duas coisas que o diálogo recusa fazer, ambas dignas de nota:
 
 - **um precursor em que nenhum aduto encaixa não é escrito.** A linha diz o

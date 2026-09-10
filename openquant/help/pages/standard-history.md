@@ -87,6 +87,17 @@ A record made before those existed is still read: it sorts by the order the
 file holds it in, its intensity is left off that chart, and both facts are
 said on the chart rather than passed over.
 
+A third field is written by [[new-standard]] and by nothing else: the
+**lot**, in the record's comment. It is not a measurement and nothing in an
+acquisition holds it, which is exactly why it has to be typed when the
+standard is entered — a history that spans a change of bottle is two
+histories drawn as one, and the lot is the only thing that says where the
+join is.
+
+A standard entered through that dialog has its first history entry the moment
+it is created, because the entry *is* the record: this page is the library
+read back, and nothing writes a history separately.
+
 ## What was measured
 
 Nine ZenoTOF bile-acid infusions, written into a library of their own and

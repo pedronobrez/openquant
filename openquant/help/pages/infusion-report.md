@@ -500,6 +500,11 @@ value stays — `Precursor 430.3500 written, 430.3465 from the infusion —
 kept as written`. Each row ticked is one entry in the [[audit-trail]] under
 *Component from infusion*, with the provenance in the note.
 
+That path starts from a table that has already been measured. The other way
+round — a vial in your hand, nothing measured yet, and no component, record
+or history for it at all — is [[new-standard]], which asks for the name, the
+lot and the file and writes all three at once.
+
 Two things the dialog will refuse or decline to do, both worth knowing:
 
 - **a precursor no adduct fits is not written at all.** The row says why

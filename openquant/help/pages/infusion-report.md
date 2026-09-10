@@ -61,7 +61,11 @@ matched ion with its theoretical mass, the measured mass, the error in ppm
 and, for an unplaced label, how many deuterium the fragment kept. Then, in a
 table of its own, **the peaks it does not account for**: the honest half of
 the answer, and where a co-infused impurity or the wrong compound shows
-itself.
+itself. Each of those carries what it might be — a known contaminant, a
+satellite of an ion that *was* matched, or a composition assembled from the
+precursor ion's own atoms — with the error of that guess in ppm, and the
+sentence under the table says how many were accounted for either way. See
+*What the unexplained peaks might be* below.
 
 **The isotopic purity**, when the compound carries labels and an adduct was
 identified — the number on the certificate that nobody measures. The block is
@@ -304,6 +308,80 @@ made from a run matches that run at 100, which proves the file was written and
 read back; the figures that mean anything are 6, 29, 33 and 61 — the same
 compound, the same vial, under another activation, and a record does not
 travel between them.
+
+### What the unexplained peaks might be
+
+Listing a peak nobody explained as a bare mass is honest and it is not
+useful: the reader is handed `217.1880` and left to type it into something
+else. So each of the listed peaks is offered the best of three hypotheses,
+with its error in ppm beside it — a **known contaminant or solvent
+cluster**, a **satellite of an ion that was matched** (its carbon-13 peak,
+its sodiated or potassiated form, a water or ammonia loss from it, another
+adduct or a dimer of the precursor), or a **composition built from the
+precursor ion's own atoms**.
+
+The third is the one worth explaining. A general formula search on a mass of
+300 comes back with a list nobody reads, but a product-ion spectrum is not a
+general search: a fragment cannot carry atoms the precursor has not got. The
+element ranges are therefore the precursor ion's own composition — the
+molecule's atoms plus whatever the adduct brought, with two hydrogens' slack
+upwards for a rearrangement — so the question becomes *what could this
+precursor have left behind at this mass*, and a peak with no answer at all
+is a finding: whatever it is, it is not a piece of this compound.
+
+Measured on four of the ZenoTOF bile-acid infusions, taking the strongest
+twenty-five unexplained peaks of each:
+
+| | unexplained above the floor | annotated | satellite | contaminant | composition | nothing | composition, median \|ppm\| |
+|---|---|---|---|---|---|---|---|
+| CA-d4, CID 45 eV | 126 | 25 | 1 | 0 | 24 | 0 | 8.9 |
+| CA-d4, EAD 22 eV | 20 | 20 | 0 | 0 | 20 | 0 | 3.8 |
+| DCA-d4, CID | 141 | 25 | 0 | 0 | 25 | 0 | 11.5 |
+| TDCA-d4, CID | 9 | 9 | 0 | 0 | 9 | 0 | 5.5 |
+
+Seventy-nine peaks, one satellite, no contaminant and no refusal; the
+compositions ran from 0.2 to 16.6 ppm and the whole of each file took
+between 0.02 and 0.07 s. The five strongest, one per file, are
+`217.1879 → [C16H17D4]+` at −4.6 ppm (14.8% of the base peak, CA-d4 CID),
+`78.0465 → [C6H6]+` at +0.8 ppm (22.5%, CA-d4 EAD), `95.0842 → [C7H11]+`
+at −13.5 ppm (21.2%, DCA-d4), `343.2915 → [C24H31D4O]+` at −5.5 ppm (6.8%,
+TDCA-d4) and, on the same file, `126.0211 → [C2H8NO3S]+` at −6.3 ppm — which
+is protonated taurine, the fragment a taurine conjugate is named after.
+
+Read the rest of the table with the same suspicion. Every row says how many
+*other* compositions of the same precursor reach the same mass, and on
+TDCA-d4's 343.2915 that is eleven: the constraint narrows the question, it
+does not answer it. The large errors on the CID files are the files
+themselves — those spectra sit several ppm off their own axis, which is what
+[[mass-recalibration]] is for, and correcting the axis first tightens every
+figure in the last column.
+
+Two things about that table were decided by running it, not by reading it:
+
+- **The Seven Golden Rules are not applied under 150 Da.** They bound the
+  element ratios of a *molecule*, and the one that hurts caps H/C at 3.1.
+  Protonated taurine is H/C = 4.0, so the rules refused the strongest real
+  fragment of the TDCA-d4 file and the table said "no formula within the
+  precursor's composition" about a piece the compound is named after.
+- **An odd-electron composition is offered, marked, and ranked last.**
+  `78.0465` is the strongest unexplained peak of the CA-d4 EAD run at 22.5%
+  of the base peak, and it is the benzene cation at +0.8 ppm and nothing
+  else. Electron activated dissociation makes radicals; a filter written for
+  collision-induced spectra threw the answer away. It is ranked last because
+  in a CID spectrum it is usually the wrong answer.
+
+Contaminants earned their place by being rare rather than common. Over all
+four files down to a hundredth of a per cent of the base peak — 3,187 peaks —
+the table named five: a phthalate at 149.0233, a methanol cluster twice, a
+formic acid cluster and an acetonitrile cluster. Nine were satellites of
+matched ions and 710, a little over a fifth, had no sub-formula of the
+precursor at all. A clean vial is supposed to look like that; the table is
+there for the vial that does not.
+
+The same annotations are not in the [[lipid-maps]] tab's own list, which
+still shows the unexplained peaks as masses. There was no hook in the panel
+to hang them on and the panel is being changed elsewhere; the report is where
+they are.
 
 ## A folder at once
 

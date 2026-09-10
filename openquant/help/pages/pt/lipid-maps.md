@@ -97,6 +97,20 @@ vários candidatos costumam explicar os mesmos picos, porque isômeros
 fragmentam de modo parecido, e os não explicados são a parte honesta da
 resposta.
 
+No painel eles são uma contagem. No [[infusion-report]] eles são uma tabela,
+e cada linha carrega o melhor de três palpites sobre o que o pico pode ser —
+um contaminante conhecido ou um agregado de solvente, um satélite de um íon
+que *foi* correspondido, ou uma composição montada com nada além dos
+próprios átomos do íon precursor, já que um fragmento não pode carregar um
+átomo que o precursor não tem. O último é o motivo de a tabela valer a pena:
+restringir as faixas de elementos a este precursor transforma uma busca de
+fórmula de "que massa poderia ser esta" em "o que este precursor poderia ter
+deixado aqui", e uma massa sem resposta passa a ser uma afirmação — não é um
+pedaço deste composto. Nas infusões reais de ácidos biliares ela nomeou a
+taurina protonada no conjugado de taurina e o cátion radical do benzeno num
+espectro EAD, os dois listados pelo painel como massas nuas; os números
+estão naquela página.
+
 A caixa **Adduct** ao lado do precursor diz qual íon o precursor é, e é usada
 duas vezes: para procurar a massa no banco de dados, e para dizer qual é o
 íon precursor de cada candidato e o que os seus fragmentos carregam.

@@ -92,6 +92,19 @@ the ladder. The unexplained peaks are reported too: several candidates
 usually explain the same peaks, because isomers fragment alike, and the
 unexplained ones are the honest part of the answer.
 
+In the panel they are a count. In the [[infusion-report]] they are a table,
+and each row carries the best of three guesses at what the peak might be —
+a known contaminant or solvent cluster, a satellite of an ion that *was*
+matched, or a composition assembled from nothing but the precursor ion's own
+atoms, since a fragment cannot carry an atom the precursor has not got. The
+last of those is why the table is worth having: constraining the element
+ranges to this precursor turns a formula search from "what could this mass
+be" into "what could this precursor have left behind here", and a mass with
+no answer is then a statement — it is not a piece of this compound. On the
+real bile-acid infusions it named protonated taurine on the taurine
+conjugate and the benzene radical cation on an EAD spectrum, both of which
+the panel had listed as bare masses; the figures are on that page.
+
 The **Adduct** box beside the precursor says which ion the precursor is, and
 is used twice: to look the mass up in the database, and to say what each
 candidate's own precursor ion is and what its fragments carry.

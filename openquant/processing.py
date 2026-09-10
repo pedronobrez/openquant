@@ -259,6 +259,211 @@ def centroid_spectrum(mz: np.ndarray, intensity: np.ndarray,
             np.array([p[1] for p in peaks], dtype=np.float64))
 
 
+# --------------------------------------------------------------------------- #
+# the noise floor of a spectrum
+# --------------------------------------------------------------------------- #
+#: how tall a centroid has to stand against the base peak before the mass
+#: around it counts as occupied rather than empty. A tenth of a per cent, and
+#: not the drawing's two: the second isotope of a small cluster is well under
+#: two per cent of the base peak and it is signal, and a noise floor measured
+#: with it inside the empty regions is a floor measured on the compound.
+NOISE_PEAK_RELATIVE = 0.001
+
+#: how far either side of such a centroid is left out of the empty regions.
+#: A time-of-flight peak at m/z 400 is a few tens of millidaltons wide, so
+#: this is many peak widths — and it has to be, since the exclusion is what
+#: keeps the skirt of a strong ion out of the distribution. Measured on the
+#: averaged spectrum of a real infusion (`CA-d4_TOFMSMS_Mix1`, CID 45 eV, 473
+#: scans, 572 centroids above `NOISE_PEAK_RELATIVE`): +-0.2 Da leaves 66% of
+#: the points as empty and a 99th percentile of 0.51 counts, +-0.5 leaves 25%
+#: and 0.79, +-1.0 leaves 20% and 0.55. Half a dalton is the most
+#: conservative of the three, and it is the width `precursor.SEARCH_WINDOW`
+#: reaches either side of a target.
+NOISE_EXCLUDE_DA = 0.5
+
+#: fewer measured points than this in the empty regions is not a distribution
+MIN_NOISE_POINTS = 50
+
+#: fewer local maxima than this in the empty regions and the height a noise
+#: peak reaches cannot be described either, so the percentile of the points
+#: stands in for it
+MIN_NOISE_MAXIMA = 20
+
+
+@dataclass(frozen=True)
+class SpectrumNoise:
+    """
+    What the empty mass regions of one spectrum hold.
+
+    Every figure is in the intensity units of the spectrum handed in, which
+    for an averaged spectrum is counts per scan averaged, not counts summed.
+    """
+
+    #: the typical measured point where there is nothing
+    median: float
+    #: the median absolute deviation of those points about that median
+    mad: float
+    #: the 99th percentile of those points
+    p99: float
+    #: the 99th percentile of the *local maxima* among them — the tail a
+    #: noise peak comes out of, and a taller number than `p99`, since a
+    #: maximum over fifty points is not one of fifty points. This is the one
+    #: a gate on a peak height wants: `precursor.in_spectrum` compares the
+    #: tallest point of a window against the floor, and a percentile of
+    #: single points would let most of the background through. Falls back to
+    #: `p99` where there are fewer than `MIN_NOISE_MAXIMA` maxima to describe.
+    peak_p99: float
+    #: measured points in the empty regions
+    points: int
+    #: local maxima among them
+    maxima: int
+    #: measured points in the whole spectrum
+    considered: int
+    #: centroids the empty regions were taken around
+    peaks: int
+
+    @property
+    def sigma(self) -> float:
+        """The MAD scaled to the standard deviation of a normal spread."""
+        return self.mad * 1.4826
+
+    @property
+    def share(self) -> float:
+        """What fraction of the spectrum's points were empty."""
+        return self.points / self.considered if self.considered else 0.0
+
+
+def empty_regions(mz: np.ndarray, intensity: np.ndarray,
+                  min_relative: float = NOISE_PEAK_RELATIVE,
+                  exclude: float = NOISE_EXCLUDE_DA,
+                  peaks: np.ndarray | None = None) -> np.ndarray:
+    """
+    A mask of the points that are not part of anything.
+
+    True wherever a point sits further than `exclude` from every centroid
+    standing at or above `min_relative` of the base peak — between the
+    isotope clusters and away from every peak, which is where a spectrum
+    says what it holds when it holds nothing.
+
+    `peaks` is those centroid masses where the caller already has them:
+    centroiding a quarter of a million profile points is the expensive part
+    of this, and both callers here need the same list.
+    """
+    mz = np.asarray(mz, dtype=float)
+    intensity = np.asarray(intensity, dtype=float)
+    if mz.size == 0 or mz.size != intensity.size:
+        return np.zeros(mz.size, dtype=bool)
+    if peaks is None:
+        peaks, _heights = centroid_spectrum(mz, intensity,
+                                            min_relative=min_relative)
+    peaks = np.asarray(peaks, dtype=float)
+    if peaks.size == 0:
+        return np.ones(mz.size, dtype=bool)
+    where = np.searchsorted(peaks, mz)
+    left = peaks[np.clip(where - 1, 0, peaks.size - 1)]
+    right = peaks[np.clip(where, 0, peaks.size - 1)]
+    nearest = np.minimum(np.abs(mz - left), np.abs(mz - right))
+    return nearest > float(exclude)
+
+
+def spectrum_noise(mz: np.ndarray, intensity: np.ndarray,
+                   min_relative: float = NOISE_PEAK_RELATIVE,
+                   exclude: float = NOISE_EXCLUDE_DA
+                   ) -> SpectrumNoise | None:
+    """
+    The distribution of intensities where a spectrum holds nothing.
+
+    The median, the median absolute deviation and the 99th percentile
+    describe the background; `peak_p99`, the same percentile of the local
+    maxima among those points, is the height a noise *peak* reaches, which
+    is what a gate on a peak height has to clear.
+
+    Points of exactly zero are left out, which is what makes the answer the
+    same whether or not the reader restored a vendor's stripped zeros
+    (`restore_profile_zeros`): a zero is a drawing instruction there, not a
+    measurement of the background, and counting hundreds of thousands of them
+    would put the median and the percentile on the floor whatever the
+    instrument was doing.
+
+    **None means it could not be measured**, the same discipline
+    `estimate_noise` keeps: a spectrum whose empty regions hold fewer than
+    `MIN_NOISE_POINTS` measured points — a centroided spectrum, a peak list,
+    a scan that is nothing but its precursor — has no distribution to
+    describe, and a constant invented here would be reported as a
+    measurement.
+    """
+    mz = np.asarray(mz, dtype=float)
+    intensity = np.asarray(intensity, dtype=float)
+    if mz.size < 3 or mz.size != intensity.size:
+        return None
+    measured = intensity > 0
+    considered = int(measured.sum())
+    if considered == 0:
+        return None
+    peaks, _heights = centroid_spectrum(mz, intensity,
+                                        min_relative=min_relative)
+    empty = empty_regions(mz, intensity, min_relative, exclude,
+                          peaks=peaks) & measured
+    values = intensity[empty]
+    if values.size < MIN_NOISE_POINTS:
+        return None
+    median = float(np.median(values))
+    p99 = float(np.percentile(values, 99.0))
+    where = local_maxima(intensity)
+    tops = intensity[where[empty[where]]]
+    peak_p99 = (float(np.percentile(tops, 99.0))
+                if tops.size >= MIN_NOISE_MAXIMA else p99)
+    return SpectrumNoise(
+        median=median,
+        mad=float(np.median(np.abs(values - median))),
+        p99=p99, peak_p99=max(peak_p99, p99),
+        points=int(values.size), maxima=int(tops.size),
+        considered=considered, peaks=int(peaks.size))
+
+
+def quiet_window(mz: np.ndarray, intensity: np.ndarray, width: float,
+                 min_relative: float = NOISE_PEAK_RELATIVE,
+                 exclude: float = NOISE_EXCLUDE_DA,
+                 min_points: int = 8, peaks: np.ndarray | None = None
+                 ) -> tuple[float, float] | None:
+    """
+    The quietest stretch of mass axis `width` wide that holds no peak.
+
+    Every point inside it has to be an empty-region point, and there have to
+    be at least `min_points` of them: a window the instrument reported
+    nothing in at all is not quiet, it is outside the range where the
+    detector was looking, and a chromatogram extracted over it is a row of
+    zeros whose scatter is zero.
+
+    Returns None when no such window exists.
+    """
+    mz = np.asarray(mz, dtype=float)
+    intensity = np.asarray(intensity, dtype=float)
+    width = float(width)
+    if mz.size < min_points or width <= 0 or mz[-1] - mz[0] <= width:
+        return None
+    empty = empty_regions(mz, intensity, min_relative, exclude, peaks=peaks)
+    starts = np.arange(float(mz[0]), float(mz[-1]) - width, width / 2.0)
+    if starts.size == 0:
+        return None
+    # every candidate window at once, off two prefix sums: a spectrum has a
+    # quarter of a million points and a mass axis nine hundred wide, and the
+    # obvious loop reads the whole array once per candidate
+    first = np.searchsorted(mz, starts, side="left")
+    last = np.searchsorted(mz, starts + width, side="right")
+    totals = np.concatenate(([0.0], np.cumsum(intensity)))
+    empties = np.concatenate(([0], np.cumsum(empty.astype(np.int64))))
+    held = last - first
+    usable = ((held >= int(min_points))
+              & (empties[last] - empties[first] == held))
+    if not usable.any():
+        return None
+    inside = totals[last] - totals[first]
+    low = float(starts[np.flatnonzero(usable)[
+        int(np.argmin(inside[usable]))]])
+    return low, low + width
+
+
 def integrate(x: np.ndarray, y: np.ndarray, x0: float, x1: float) -> dict:
     """
     Integrate the range [x0, x1] of a chromatogram, subtracting a straight

@@ -66,6 +66,110 @@ not track its response. So the method declares it: **Min. response** on
 the standard, read by the charts, the acceptance and the method check. See
 [[internal-standards-and-qualifiers]] and [[batch-qc]].
 
+## The noise floor of an infusion
+
+Everything above is about a chromatogram. A [[direct-infusion]] has none: what
+is looked at is the average of every scan of the run, and *noise* there means
+the height below which a peak of that average is background rather than a
+measurement. That floor used to be a hundred counts, fixed, because it was
+written for one survey scan of a TripleTOF. An average of four hundred scans
+of a ZenoTOF is not that scan, and on the nine bile-acid infusions to hand the
+**base peak of the whole averaged spectrum is 109 counts on one of them** —
+so the fixed floor was very nearly the top of the spectrum.
+
+It is now measured off the acquisition itself, two ways, and both are printed.
+
+**(a) The empty mass regions of the average.** Every centroid at or above a
+tenth of a per cent of the base peak is found and half a dalton either side of
+it set aside; what is left is between the isotope clusters and away from every
+peak. The median, the median absolute deviation and the 99th percentile of the
+measured points there describe the background, and the 99th percentile of the
+*local maxima* among them is the height a noise **peak** reaches. That last
+figure is the one the floor is taken from, because what the floor gates is the
+tallest point of a window and not a point drawn at random: a percentile of
+single points would let most of the background through. Points of exactly zero
+are left out, so a file whose stripped zeros have been restored and one whose
+have not give the same answer.
+
+**(b) The scan-to-scan scatter of a quiet window.** The quietest half-dalton
+window holding no peak at all — half a dalton because that is what the
+precursor search reaches either side of a target — is extracted over the whole
+run, the same window in every scan, and the standard deviation of its summed
+intensity taken between scans. Averaging n scans divides noise by the root of
+n, so that standard deviation is divided by it in turn, and both numbers are
+reported: what one scan does, and what the averaging bought.
+
+The floor is the larger of the two. Where neither can be measured the fixed
+hundred counts stands and the record says so; where the measurement comes out
+**under** the fixed hundred — which is every acquisition measured so far — the
+measurement is used and the report says that too, because a constant that is
+larger than the spectrum it gates is not a safety margin.
+
+### What it measures
+
+Nine ZenoTOF 7600 product-ion infusions of bile-acid standards, positive, no
+survey scan, 146 to 473 scans each, averaged whole:
+
+| | |
+|---|---|
+| base peak of the average | 109 – 12,271 counts |
+| (a), the empty regions | 0.068 – 3.53 counts |
+| (b), the scatter, scaled to the average | 0.026 – 0.36 counts |
+| the floor taken | **0.068 – 3.53 counts**, (a) on nine of nine |
+| what one scan scattered by, before averaging | 0.45 – 5.05 counts |
+| the fixed floor it replaces | 100 counts |
+
+The averaging is where the two estimates part company. On
+`CA-d4_TOFMSMS_Mix1`, 473 scans, one scan's half-dalton window moves by 5.05
+counts and the average of 473 of them by 5.05 / √473 = 0.23; the empty regions
+of that same average reach 0.96. Estimate (a) can only see what is left after
+the averaging, and (b) reads the averaging itself — which is why both are on
+the record and the larger is taken.
+
+Twelve chromatographic acquisitions for contrast, on another instrument and a
+real gradient: a TripleTOF 5600, the strongest product-ion channel of each
+averaged over the boundaries of its own largest peak. Eleven of the twelve are
+measured, at (a) 0.69 to 20.1 counts against (b) 0.23 to 3.25 — (a) the larger
+on eleven of eleven, as it was on the infusions. The loudest of them averages
+the thirteen scans of a peak 567,000 counts tall and comes out at **20.1
+counts**: three hundred times the floor of the quietest infusion, for the plain
+reason that an average of thirteen scans is not an average of four hundred. The
+fixed hundred was still five times too strict there.
+
+The twelfth is where the fallback shows, on a real file rather than in a test.
+Its strongest product channel holds a peak of 352 counts over three scans; the
+average of those three has 167 measured points in 412 and no empty region wide
+enough to measure in, so neither estimate can be made and **the fixed hundred
+counts stands**, with the reason printed beside it. A quiet acquisition and an
+acquisition with nothing in it are not the same thing, and only one of them
+gets a measurement.
+
+### Where the floor is applied
+
+- the precursor read off an averaged product-ion spectrum, in
+  [[infusion-report]] and [[accurate-precursor]] — a window holding less than
+  the floor is reported as too little to measure, with the height that was
+  found;
+- the report's list of **unexplained peaks**: a peak under the floor is
+  background and is not something the explanation failed to account for;
+- a record written to a library of your own from an infusion, which is held to
+  the floor as well as to its one per cent of the base peak — see
+  [[spectral-library]];
+- the label floor of an infusion pane, which starts at the higher of the
+  drawing's 2% and the noise floor, with the status line saying which it was.
+
+### What it does not say
+
+The floor is one number for a whole spectrum, and a background is not the same
+at every mass: on the two acquisitions of the nine that hold nothing at all,
+the empty regions are the high-mass end where the detector saw nothing, so the
+floor comes out at 0.07 and 0.13 counts and the peaks of the chemical
+background — a hundred counts of it — stand far above it. **A peak above the
+floor is a peak above the background, not the compound.** What says whether it
+is the compound is its mass: on those two files the ion in the precursor's
+window clears the floor by two orders of magnitude and sits 43 ppm from the
+written precursor, and it is the parts per million that answers the question.
+
 ## Acceptance
 
 An acceptance criterion on S/N that cannot be evaluated flags the row **S/N

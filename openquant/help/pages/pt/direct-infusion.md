@@ -190,6 +190,28 @@ um minuto. Numa infusão a medida toma o meio da corrida como âncora e
 promedia a corrida inteira tanto para o survey quanto para o espectro de íons
 produto, que é o máximo de sinal que a aquisição pode lhe dar.
 
+## O piso de ruído da média
+
+O espectro de uma infusão é a média de todas as varreduras da corrida, e
+quanto disso é fundo é uma propriedade daquela aquisição e não uma constante.
+Ele é medido, do arquivo, assim que uma infusão é aberta: as regiões vazias do
+eixo de massa da média de um lado, e a dispersão entre varreduras de uma janela
+silenciosa de meio dalton escalada para o número de varreduras promediadas do
+outro, adotando-se o maior dos dois. Nas nove infusões de ácidos biliares ele
+sai entre **0,068 e 3,53 contagens**, onde o piso fixo que ele substitui era de
+cem; numa delas cem contagens eram quase o espectro inteiro, cujo pico base é
+109. O [[signal-to-noise]] traz os dois métodos e o que eles mediram.
+
+Duas coisas o acompanham no Explorer. O **piso de rótulos** do painel de uma
+infusão começa no maior entre os 2% do pico mais alto em vista, que é a regra
+do desenho, e o piso de ruído como fração do pico base, e a linha de status diz
+qual dos dois foi e quanto o piso mediu — nas nove infusões reais o piso de
+ruído fica entre 0,017% e 0,063% do pico base, então os dois por cento vencem
+sempre e a regra é uma proteção e não uma mudança. E um registro escrito na sua
+própria biblioteca a partir de uma infusão passa a obedecer ao piso além do seu
+um por cento do pico base, de modo que o registro não pode carregar picos que
+eram fundo.
+
 ## Colocando uma no papel
 
 **Process ▸ Report this infusion…** escreve o espectro promediado, os seus

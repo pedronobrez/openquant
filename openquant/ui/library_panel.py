@@ -21,6 +21,7 @@ import os
 
 from PyQt6 import QtCore, QtWidgets
 
+from ..infusion import format_counts
 from ..library import (MIN_MATCHED, OWN_MIN_RELATIVE, PEAK_TOLERANCE_PPM,
                        PRECURSOR_TOLERANCE_DA, LibraryEntry, LibraryHit,
                        SpectralLibrary, count_records, entry_from_spectrum,
@@ -240,6 +241,21 @@ class LibraryPanel(QtWidgets.QWidget):
         """
         return str(self._context.get("polarity") or "")
 
+    def _noise_floor(self) -> float | None:
+        """
+        The absolute floor the Explorer measured for this spectrum, if any.
+
+        Only an infusion has one — the average of a whole run is the only
+        spectrum the measurement is defined for — so this is None for every
+        other, and `entry_from_spectrum` then holds the record to its
+        relative floor alone, as it always did.
+        """
+        value = self._context.get("noise_floor")
+        try:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
     def _query_precursor(self) -> float | None:
         text = self.precursor_edit.text().strip().replace(",", ".")
         try:
@@ -448,7 +464,8 @@ class LibraryPanel(QtWidgets.QWidget):
             return
         mz, intensity = self._spectrum
         try:
-            preview = entry_from_spectrum("preview", mz, intensity)
+            preview = entry_from_spectrum("preview", mz, intensity,
+                                          min_absolute=self._noise_floor())
         except ValueError as exc:
             self.status.setText(f"Nothing to write: {exc}.")
             return
@@ -485,7 +502,7 @@ class LibraryPanel(QtWidgets.QWidget):
                 name, mz, intensity, precursor=precursor,
                 precursor_type=precursor_type, formula=formula,
                 collision_energy=collision_energy, comment=comment,
-                acquired=acquired)
+                acquired=acquired, min_absolute=self._noise_floor())
             write_msp([entry], path, append=True)
         except (ValueError, OSError) as exc:
             self.status.setText(f"Could not write the record: {exc}")
@@ -494,7 +511,12 @@ class LibraryPanel(QtWidgets.QWidget):
                 os.path.abspath(self.library.path) == os.path.abspath(path):
             self.load(path)                  # searchable at once
         self._refresh_own_label()
+        floor = self._noise_floor()
+        measured = (f" and above the measured noise floor of "
+                    f"{format_counts(floor)} counts"
+                    if floor is not None else "")
         self.status.setText(
             f"{entry.name} written to {os.path.basename(path)}: {entry.peaks} "
-            f"peak(s) at or above {OWN_MIN_RELATIVE:.0%} of the base peak.")
+            f"peak(s) at or above {OWN_MIN_RELATIVE:.0%} of the base peak"
+            f"{measured}.")
         return entry

@@ -17,7 +17,8 @@ from ..chemistry import (
     rank_by_isotope_pattern,
 )
 from ..components import Component
-from ..infusion import InfusionVerdict, run_range, verdict_for
+from ..infusion import (InfusionVerdict, NoiseFloor, format_counts,
+                        noise_floor_for, run_range, verdict_for)
 from ..matching import match_channel
 from .settings import settings
 from ..processing import (centroid_spectrum, detect_peaks, integrate,
@@ -921,6 +922,47 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             return InfusionVerdict(
                 False, f"the run could not be read: {_first_line(exc)}")
 
+    def noise_floor(self, ref: ChannelRef) -> NoiseFloor | None:
+        """
+        What this channel's averaged spectrum calls noise, measured once.
+
+        Asked of an infusion and of nothing else: the floor is a statement
+        about the average of a whole run, and `infusion.noise_floor_for`
+        remembers it per channel, so the pane, the report and a record
+        written from the spectrum all read one measurement.
+        """
+        channel = getattr(ref, "channel", None)
+        if channel is None or not self.verdict(ref.entry):
+            return None
+        try:
+            return noise_floor_for(channel)
+        except Exception:                   # a reader that cannot say
+            return None
+
+    def _floor_from_noise(self, ref: ChannelRef) -> None:
+        """
+        Start an infusion's labels at the higher of 2% and the noise floor.
+
+        Two per cent of the tallest peak in view is a drawing rule and it
+        knows nothing about the acquisition; the noise floor is measured off
+        this one. Whichever is higher is the one that means something, and
+        the status line says which it was and what it was measured from —
+        a floor that moved on its own and did not say why would be worse
+        than the constant it replaced.
+        """
+        floor = self.noise_floor(ref)
+        if floor is None or not floor.measured:
+            return
+        share = floor.relative or 0.0
+        wanted = max(label_rule.LABEL_MIN_RELATIVE, share)
+        self.floor_spin.setValue(wanted * 100.0)
+        which = ("the noise floor" if share >= label_rule.LABEL_MIN_RELATIVE
+                 else f"the drawing's {label_rule.LABEL_MIN_RELATIVE:.0%}")
+        self._update_status(
+            f"Label floor {wanted:.2%}, {which}: {floor.describe()} "
+            f"That is {share:.3%} of the base peak "
+            f"({format_counts(floor.value)} counts).")
+
     def open_as_infusion(self, ref: ChannelRef) -> None:
         """
         Land on an infusion's own channel, showing the whole run at once.
@@ -952,8 +994,11 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             return
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
         try:
+            infused = bool(self.verdict(ref.entry))
             self._show_average(*window, whole_run=True,
-                               tag=" (infusion)" if self.verdict(ref.entry) else "")
+                               tag=" (infusion)" if infused else "")
+            if infused:
+                self._floor_from_noise(ref)
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
 
@@ -1897,6 +1942,12 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                 context["channel"] = info.label
                 context["polarity"] = info.polarity
                 context["collision_energy"] = info.collision_energy
+            # a record made off an infusion gets the acquisition's own floor
+            # as well as the relative one: 1% of a base peak of a hundred
+            # counts is one count, which on that average is the background
+            floor = self.noise_floor(self.active_ref)
+            if floor is not None and floor.measured:
+                context["noise_floor"] = float(floor.value)
         return mz, intensity, precursor, context
 
     def _lipid_fragment(self, name: str, lm_id: str, route: str,

@@ -258,3 +258,10 @@ própria biblioteca, e o [[standard-history]] lê os registros acumulados de
 um composto como um gráfico de controle: o cosseno contra o primeiro
 registro, o pico base em ppm a partir dele, e a altura do pico base, ao
 longo dos dias em que foram adquiridos.
+
+## De uma verificação para uma medida
+
+Este relatório pergunta se um frasco é o que o rótulo diz. O **Quantify…** na
+mesma aba faz outra pergunta — quanto há de um composto contra outro no mesmo
+spray — e a responde com as duas respostas, a interferência isotópica entre
+elas e a razão. Veja a [[infusion-quantitation]].

@@ -252,3 +252,11 @@ own library, and [[standard-history]] reads the accumulated records of one
 compound back as a control chart: the cosine against the first record, the
 base peak's ppm from it, and the base peak's height, over the days they
 were acquired.
+
+## From a verification to a measurement
+
+This report asks whether a vial is what its label says. **Quantify…** on the
+same tab asks a different question — how much of one compound there is
+against another in the same spray — and answers it with the two responses,
+the isotope cross-talk between them and the ratio. See
+[[infusion-quantitation]].

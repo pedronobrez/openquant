@@ -121,7 +121,7 @@ INDEX: tuple[tuple[str, tuple[str, ...]], ...] = (
     )),
     ("Explorer", (
         "explorer", "chromatograms-and-spectra", "direct-infusion",
-        "infusion-report",
+        "infusion-report", "infusion-quantitation",
         "contour-view", "manual-xic",
         "explorer-components-and-results", "sample-information",
     )),

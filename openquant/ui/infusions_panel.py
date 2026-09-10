@@ -95,6 +95,14 @@ class InfusionsPanel(QtWidgets.QWidget):
         self.btn_csv.setToolTip("The table as it stands, every column")
         self.btn_csv.setEnabled(False)
         bar.addWidget(self.btn_csv)
+        self.btn_quantify = QtWidgets.QPushButton("Quantify…")
+        self.btn_quantify.setToolTip(
+            "Measure each analyte against the internal standard the method "
+            "gives it, in the averaged spectrum of every open infusion: the "
+            "two responses, the isotope cross-talk between them and the "
+            "ratio. Independent of the table above — it needs a component "
+            "table with an internal standard set, not a Measure")
+        bar.addWidget(self.btn_quantify)
         bar.addStretch(1)
         layout.addLayout(bar)
 
@@ -121,6 +129,7 @@ class InfusionsPanel(QtWidgets.QWidget):
         self.btn_measure.clicked.connect(self.measure)
         self.btn_report.clicked.connect(self.write_report)
         self.btn_csv.clicked.connect(self.export_csv)
+        self.btn_quantify.clicked.connect(self.quantify)
         session.sigSamplesChanged.connect(self._invalidate)
 
         from .help_window import describe
@@ -329,6 +338,23 @@ class InfusionsPanel(QtWidgets.QWidget):
         self._report(f"{len(summary.rows)} row(s) written to "
                      f"{os.path.basename(written)}.")
         return written
+
+    # -- quantitation ---------------------------------------------------------- #
+    def quantify(self):
+        """
+        Open the ratio dialog: analyte over internal standard, in the spray.
+
+        Not gated on the summary above having been measured. The two answer
+        different questions — that one asks whether a vial is what its label
+        says, this one asks how much of one compound there is against
+        another — and they read the files independently.
+        """
+        from .infusion_quant_dialog import InfusionQuantDialog
+
+        dialog = InfusionQuantDialog(self.session, self)
+        dialog.measure()
+        dialog.exec()
+        return dialog
 
     def _report(self, text: str) -> None:
         self.status.setText(text)

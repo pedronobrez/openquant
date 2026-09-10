@@ -102,11 +102,122 @@ LABEL_GAP = 5.0
 LABEL_POOL = 200
 
 #: how far down the pool reaches, as a fraction of the trace's base peak.
-#: A label still needs `labels.LABEL_MIN_RELATIVE` of the tallest peak *in
-#: view*; this is only the floor on what is worth remembering, so that a
-#: stretch a hundred times below the base peak is not empty when it fills
-#: the window.
+#: A label still needs the pane's label floor — `labels.LABEL_MIN_RELATIVE`
+#: until the reader moves the handle — of the tallest peak *in view*; this is
+#: only the floor on what is worth remembering, so that a stretch a hundred
+#: times below the base peak is not empty when it fills the window.
+#:
+#: It is exactly a tenth of the default floor, and `SpectrumView._pool_floor`
+#: keeps it that way as the handle moves: the floor is measured against the
+#: tallest peak *in view* and the pool against the base peak of the whole
+#: spectrum, so zoomed into a quiet stretch the pool is the lower of the two
+#: and a floor dragged down with a fixed pool changes nothing at all. It was
+#: measured changing nothing: over eighteen 100 Da windows of a real survey,
+#: 57 labels at a 2% floor and 57 at 0.5% before the pool followed.
 POOL_MIN_RELATIVE = 0.002
+
+#: the most maxima the pool may hold once the floor has taken it below
+#: `POOL_MIN_RELATIVE`. The pool is filled tallest first, so a cap reached
+#: on a dense spectrum starves the quiet end of the axis of candidates —
+#: which is the very thing the region budget exists to prevent.
+MAX_POOL = 4000
+
+#: the label floor, as a fraction of the tallest peak in view, may be dragged
+#: between these — a hundredth of a per cent of the base peak, and the base
+#: peak itself. The bottom is not zero because the pool below it is every
+#: local maximum of a profile spectrum, noise included, and naming noise is
+#: not what the reader is asking for.
+FLOOR_MIN = 0.0001
+FLOOR_MAX = 1.0
+
+#: the handle beside the Y axis, in pixels: the triangle's width and height,
+#: and the clear space the axis margin is widened by to hold it. The left
+#: `pg.AxisItem` reserves `tickTextOffset` pixels between its tick text and
+#: the axis line — five, measured — which is not room for a triangle, so the
+#: offset is raised by this much and the triangle drawn in what that opens
+#: up. Widening the margin rather than drawing over the plot is the point:
+#: the handle must never cover data.
+HANDLE_WIDTH = 9.0
+HANDLE_HEIGHT = 12.0
+HANDLE_SPACE = 12.0
+
+
+class LabelThresholdHandle(QtWidgets.QGraphicsObject):
+    """
+    The triangle in the axis margin that sets the label floor, PeakView-style.
+
+    It is a scene item rather than a plot item because it lives *outside* the
+    view box, in the space the axis reserves — an item added to the box would
+    be inside the data and would move with the data.
+
+    It reports where it was dragged to in scene pixels and knows nothing
+    about intensities; `SpectrumView` turns that into a fraction of the
+    tallest peak in view, which is what a floor is stored as.
+    """
+
+    sigDragged = QtCore.pyqtSignal(float)   # scene y, while the mouse is down
+    sigReleased = QtCore.pyqtSignal()
+    sigReset = QtCore.pyqtSignal()          # double-clicked
+
+    def __init__(self, colour: str | None = None, parent=None):
+        super().__init__(parent)
+        self._colour = colour or theme.accent()
+        self._hover = False
+        self.setZValue(200)
+        self.setAcceptHoverEvents(True)
+        self.setCursor(QtCore.Qt.CursorShape.SizeVerCursor)
+        self.setToolTip(
+            "Drag to set the intensity below which peaks are not labelled.\n"
+            "Double-click to put it back where it started."
+        )
+
+    def set_colour(self, colour: str) -> None:
+        self._colour = colour
+        self.update()
+
+    def boundingRect(self) -> QtCore.QRectF:
+        # the apex is the origin, so the triangle hangs to the left of it
+        return QtCore.QRectF(-HANDLE_WIDTH - 1.0, -HANDLE_HEIGHT / 2.0 - 1.0,
+                             HANDLE_WIDTH + 2.0, HANDLE_HEIGHT + 2.0)
+
+    def paint(self, painter, *_args) -> None:
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        colour = QtGui.QColor(self._colour)
+        painter.setBrush(QtGui.QBrush(colour))
+        painter.setPen(QtGui.QPen(colour.lighter(150) if self._hover
+                                  else colour, 1.0))
+        painter.drawPolygon(QtGui.QPolygonF([
+            QtCore.QPointF(-HANDLE_WIDTH, -HANDLE_HEIGHT / 2.0),
+            QtCore.QPointF(-HANDLE_WIDTH, HANDLE_HEIGHT / 2.0),
+            QtCore.QPointF(0.0, 0.0),
+        ]))
+
+    # -- mouse ----------------------------------------------------------- #
+    def hoverEnterEvent(self, event) -> None:
+        self._hover = True
+        self.update()
+
+    def hoverLeaveEvent(self, event) -> None:
+        self._hover = False
+        self.update()
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() != QtCore.Qt.MouseButton.LeftButton:
+            event.ignore()
+            return
+        event.accept()
+
+    def mouseMoveEvent(self, event) -> None:
+        event.accept()
+        self.sigDragged.emit(float(event.scenePos().y()))
+
+    def mouseReleaseEvent(self, event) -> None:
+        event.accept()
+        self.sigReleased.emit()
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        event.accept()
+        self.sigReset.emit()
 
 
 class _DragViewBox(pg.ViewBox):
@@ -888,6 +999,7 @@ class SpectrumView(BasePlot):
     sigIdentifyRequested = QtCore.pyqtSignal(float)        # send an m/z to the finder
     sigPinRequested = QtCore.pyqtSignal()                  # keep this spectrum on screen
     sigUnpinRequested = QtCore.pyqtSignal()
+    sigLabelFloorChanged = QtCore.pyqtSignal(float)        # fraction of the tallest in view
 
     def __init__(self, parent=None):
         super().__init__("m/z", "", "Intensity, cps", parent)
@@ -898,6 +1010,14 @@ class SpectrumView(BasePlot):
         #: usually decides, and it cannot offer more than this many.
         self._n_labels = label_rule.LABEL_REGIONS * label_rule.LABEL_BUDGET
         self._show_labels = True
+        #: how tall a peak has to be, as a fraction of the tallest peak *in
+        #: view*, to be worth a label. A fraction and not an intensity so
+        #: that it survives a zoom, a normalise and the next spectrum.
+        self._label_floor = label_rule.LABEL_MIN_RELATIVE
+        #: the floor the pool was last filled at, so that lowering the floor
+        #: past it refills rather than searching a pool that never held the
+        #: small peaks
+        self._pool_at: float | None = None
         # re-labelling removes and adds items, and removing one asks the box
         # to re-check its auto-range, which can come straight back here
         self._thinning = False
@@ -906,12 +1026,42 @@ class SpectrumView(BasePlot):
         self._overlay: tuple[list[tuple[float, float]], str, str] | None = None
         self._overlay_items: list[pg.GraphicsObject] = []
         self.legend.setVisible(False)  # the title already names the spectrum
+
+        # the label floor's handle, in the margin the axis reserves rather
+        # than over the data — see LabelThresholdHandle
+        axis = self.plot.getAxis("left")
+        axis.setStyle(
+            tickTextOffset=int(axis.style["tickTextOffset"][0] + HANDLE_SPACE))
+        self.floor_handle = LabelThresholdHandle()
+        self.floor_handle.hide()
+        self.plot.scene().addItem(self.floor_handle)
+        self.floor_handle.sigDragged.connect(self._floor_dragged)
+        self.floor_handle.sigReleased.connect(self._floor_released)
+        self.floor_handle.sigReset.connect(self.reset_label_floor)
+        #: shown only while the handle is being dragged: a floor that stayed
+        #: drawn across the spectrum would be one more line to mistake for
+        #: data
+        self.floor_line = pg.InfiniteLine(
+            angle=0, movable=False,
+            pen=pg.mkPen(theme.accent(), width=1,
+                         style=QtCore.Qt.PenStyle.DotLine))
+        self.floor_line.setZValue(80)
+        self.floor_line.hide()
+        self.plot.addItem(self.floor_line, ignoreBounds=True)
+        self.viewbox.sigResized.connect(self._resized_handle)
+
         # which labels fit depends on how far apart the peaks are on screen,
         # so it is decided again whenever the view moves
         self.viewbox.sigRangeChanged.connect(self._thin_labels)
 
     def _y_label_raw(self) -> str:
         return "Intensity, cps"
+
+    def retheme(self) -> None:
+        super().retheme()
+        self.floor_handle.set_colour(theme.accent())
+        self.floor_line.setPen(pg.mkPen(theme.accent(), width=1,
+                                        style=QtCore.Qt.PenStyle.DotLine))
 
     def _format_readout(self, x: float, y: float) -> str:
         return f"m/z {x:.4f}    {y:,.0f}"
@@ -966,6 +1116,119 @@ class SpectrumView(BasePlot):
         self._n_labels = max(0, int(n))
         self._after_traces_changed()
         self._refresh_headroom()
+
+    # -- the label floor and its handle ---------------------------------- #
+    @property
+    def label_floor(self) -> float:
+        """The floor, as a fraction of the tallest peak in view."""
+        return self._label_floor
+
+    def set_label_floor(self, fraction: float, notify: bool = True,
+                        refill: bool = True) -> None:
+        """
+        Move the floor. `fraction` is of the tallest peak *in view*.
+
+        The pool is refilled when the floor moves, because a peak the pool
+        never held cannot be named however low the floor goes — but only
+        when `refill` allows it. A drag says no: filling the pool walks every
+        point of the spectrum, 255,000 of them on an infusion's averaged
+        product-ion scan, and it was measured at half a second. So the labels
+        follow the mouse out of the pool as it stands and the pool is filled
+        again when the button comes up.
+        """
+        try:
+            value = float(fraction)
+        except (TypeError, ValueError):
+            return
+        if not np.isfinite(value):
+            return
+        value = min(max(value, FLOOR_MIN), FLOOR_MAX)
+        changed = value != self._label_floor
+        self._label_floor = value
+        if refill and self._pool_floor() != self._pool_at:
+            self._after_traces_changed()
+        else:
+            self._thin_labels()
+        self._place_floor_handle()
+        if changed and notify:
+            self.sigLabelFloorChanged.emit(value)
+
+    def reset_label_floor(self) -> None:
+        """Back to the default — 2% of the tallest peak in view."""
+        self.set_label_floor(label_rule.LABEL_MIN_RELATIVE)
+
+    def _pool_floor(self) -> float:
+        """
+        How far down the pool has to reach for this floor: a tenth of it,
+        which is what `POOL_MIN_RELATIVE` already was for the default 2%.
+        """
+        return min(POOL_MIN_RELATIVE, max(self._label_floor, FLOOR_MIN) / 10.0)
+
+    def _pool_size(self) -> int:
+        """How many maxima to keep, once the floor has taken the pool down."""
+        floor = max(self._pool_floor(), FLOOR_MIN)
+        room = int(LABEL_POOL * POOL_MIN_RELATIVE / floor)
+        return int(min(MAX_POOL, max(LABEL_POOL, room)))
+
+    def _tallest_in_view(self) -> float | None:
+        """
+        The tallest candidate between the ends of the visible mass axis.
+
+        The same ceiling `labels.choose` measures the floor against, read
+        here so the handle sits exactly where the rule cuts.
+        """
+        if not self._candidates:
+            return None
+        (x_low, x_high), _y = self.viewbox.viewRange()
+        heights = [height for mz, height, _below in self._candidates
+                   if x_low <= mz <= x_high]
+        top = max(heights) if heights else 0.0
+        return top if top > 0 else None
+
+    def _resized_handle(self, *_args) -> None:
+        """
+        The handle's place is in pixels, so a resize moves it even when the
+        range has not changed.
+
+        A hidden pane is skipped for the reason `_resized` gives: a stacked
+        rebuild resizes the panes it is destroying, and they arrive here
+        hidden.
+        """
+        if self.isVisible():
+            self._place_floor_handle()
+
+    def _place_floor_handle(self, *_args) -> None:
+        """Put the handle at the floor's screen position, on every change."""
+        top = self._tallest_in_view()
+        if top is None or not self._show_labels or not self._n_labels:
+            self.floor_handle.hide()
+            self.floor_line.hide()
+            return
+        value = top * self._label_floor
+        rect = self.viewbox.sceneBoundingRect()
+        y = float(self.viewbox.mapViewToScene(
+            QtCore.QPointF(0.0, value)).y())
+        # a floor above the top of the view, or below its bottom, still has a
+        # handle: it is dragged back from the edge it is pinned to
+        y = min(max(y, rect.top()), rect.bottom())
+        self.floor_handle.setPos(rect.left() - 1.0, y)
+        self.floor_handle.show()
+        self.floor_line.setPos(value)
+
+    def _floor_dragged(self, scene_y: float) -> None:
+        top = self._tallest_in_view()
+        if not top:
+            return
+        point = QtCore.QPointF(self.viewbox.sceneBoundingRect().left(),
+                               float(scene_y))
+        value = float(self.viewbox.mapSceneToView(point).y())
+        self.floor_line.show()
+        self.set_label_floor(value / top, refill=False)
+
+    def _floor_released(self) -> None:
+        self.floor_line.hide()
+        if self._pool_floor() != self._pool_at:
+            self._after_traces_changed()
 
     def peaks_of_current(self, max_peaks: int = 50) -> list[tuple[float, float]]:
         traces = self.traces
@@ -1062,13 +1325,14 @@ class SpectrumView(BasePlot):
         """
         self._draw_overlay()
         self._candidates = []
+        self._pool_at = self._pool_floor()
         if self._show_labels and self._n_labels:
             for n, trace in enumerate(self.traces):
                 x, y = self._display(trace, n)
                 below = bool(self._mirror and n % 2 == 1)
                 for mz, intensity in pick_peaks(x, np.abs(y),
-                                                max_peaks=LABEL_POOL,
-                                                min_relative=POOL_MIN_RELATIVE,
+                                                max_peaks=self._pool_size(),
+                                                min_relative=self._pool_floor(),
                                                 min_distance=0.05):
                     self._candidates.append((mz, intensity, below))
         self._thin_labels()
@@ -1111,6 +1375,7 @@ class SpectrumView(BasePlot):
         for item in self._labels:
             self.plot.removeItem(item)
         self._labels.clear()
+        self._place_floor_handle()
         if not self._candidates:
             return
         box = self.viewbox
@@ -1121,7 +1386,7 @@ class SpectrumView(BasePlot):
         chosen = label_rule.choose(
             self._candidates, x_low, x_high,
             most=self._n_labels or None,
-            min_relative=label_rule.LABEL_MIN_RELATIVE)
+            min_relative=self._label_floor)
         scale = width / (x_high - x_low)
         taken: list[tuple[float, float]] = []
         for mz, intensity, below in chosen:
@@ -1169,6 +1434,9 @@ class SpectrumView(BasePlot):
         clear_markers.setEnabled(bool(self._arrows))
         clear_overlay = menu.addAction("Clear theoretical overlay")
         clear_overlay.setEnabled(self.has_overlay)
+        reset_floor = menu.addAction("Reset label floor")
+        reset_floor.setEnabled(
+            self._label_floor != label_rule.LABEL_MIN_RELATIVE)
         menu.addSeparator()
         pin = menu.addAction("Pin this spectrum")
         pin.setEnabled(any(t.key == "spec" for t in self._traces))
@@ -1186,6 +1454,8 @@ class SpectrumView(BasePlot):
             self.clear_markers()
         elif chosen is clear_overlay:
             self.clear_overlay()
+        elif chosen is reset_floor:
+            self.reset_label_floor()
         elif chosen is pin:
             self.sigPinRequested.emit()
         elif chosen is unpin:

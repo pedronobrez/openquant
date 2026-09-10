@@ -31,7 +31,9 @@ from .lipid_panel import LipidPanel
 from .mass_calc_panel import MassCalcPanel
 from ..contour import Contour, build_contour
 from .contour_view import ContourView
+from . import plots
 from .plots import SpectrumView, Trace, colour
+from .. import labels as label_rule
 from .results_panel import Result, ResultsPanel
 from .sample_info import SampleInfoPanel
 
@@ -435,6 +437,22 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                        self.act_relative, self.act_legend):
             view.addAction(action)
         view.addSeparator()
+        # beside the label switches, because that is what it belongs to, and
+        # ahead of the cascade so it is the cascade that goes into the
+        # toolbar's overflow on a narrow window
+        view.addWidget(QtWidgets.QLabel(" Label floor (%): "))
+        self.floor_spin = QtWidgets.QDoubleSpinBox()
+        self.floor_spin.setRange(plots.FLOOR_MIN * 100.0, plots.FLOOR_MAX * 100.0)
+        self.floor_spin.setDecimals(2)
+        self.floor_spin.setSingleStep(0.25)
+        self.floor_spin.setValue(label_rule.LABEL_MIN_RELATIVE * 100.0)
+        self.floor_spin.setToolTip(
+            "How tall a peak must be, against the tallest one in view, to be "
+            "labelled with its m/z.\nThe same as the triangle beside the "
+            "spectrum's Y axis; either moves the other."
+        )
+        view.addWidget(self.floor_spin)
+        view.addSeparator()
         view.addWidget(QtWidgets.QLabel(" Cascade x (min): "))
         self.offset_x_spin = QtWidgets.QDoubleSpinBox()
         self.offset_x_spin.setRange(-10.0, 10.0)
@@ -622,6 +640,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.baseline_spin.valueChanged.connect(self.chrom.set_baseline)
         self.offset_x_spin.valueChanged.connect(self._set_offsets)
         self.offset_y_spin.valueChanged.connect(self._set_offsets)
+        self.floor_spin.valueChanged.connect(self._set_label_floor)
+        self.spectrum.sigLabelFloorChanged.connect(self._label_floor_moved)
 
         self.tree.itemChanged.connect(self._on_tree_changed)
         self.tree.currentItemChanged.connect(self._on_tree_selection)
@@ -706,6 +726,11 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.act_centroid.setChecked(flag("view/centroid", False))
         self.offset_x_spin.setValue(s.value("view/offset_x", 0.0, type=float))
         self.offset_y_spin.setValue(s.value("view/offset_y", 0.0, type=float))
+        # kept as the per cent the spin box shows, which is what the reader
+        # typed; the pane stores it as a fraction
+        self.floor_spin.setValue(s.value(
+            "view/label_floor", label_rule.LABEL_MIN_RELATIVE * 100.0,
+            type=float))
         self.smooth_spin.setValue(s.value("proc/smooth", 0.0, type=float))
         self.baseline_spin.setValue(s.value("proc/baseline", 0.0, type=float))
         self.xic_tol.setValue(s.value("xic/tolerance", 0.02, type=float))
@@ -742,6 +767,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.chrom.set_legend_visible(self.act_legend.isChecked())
         self._set_centroid(self.act_centroid.isChecked())
         self._set_offsets()
+        self._set_label_floor(self.floor_spin.value())
         self._set_smoothing(self.smooth_spin.value())
         self.chrom.set_baseline(self.baseline_spin.value())
 
@@ -760,6 +786,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         s.setValue("view/centroid", self.act_centroid.isChecked())
         s.setValue("view/offset_x", self.offset_x_spin.value())
         s.setValue("view/offset_y", self.offset_y_spin.value())
+        s.setValue("view/label_floor", self.floor_spin.value())
         s.setValue("proc/smooth", self.smooth_spin.value())
         s.setValue("proc/baseline", self.baseline_spin.value())
         s.setValue("xic/tolerance", self.xic_tol.value())
@@ -1869,7 +1896,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             normalise=self.act_norm.isChecked(),
             mirror=self.act_mirror.isChecked(),
             centroid=self.spectrum.centroided,
-            condition=self.spectrum.condition)
+            condition=self.spectrum.condition,
+            label_floor=self.spectrum.label_floor)
 
     def _comparison_title(self) -> str:
         """What the picture is called: the samples it holds, once each."""
@@ -2028,6 +2056,39 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
     def _set_overview(self, enabled: bool) -> None:
         self.chrom.set_overview_visible(enabled)
         self.spectrum.set_overview_visible(enabled)
+
+    def _set_label_floor(self, percent: float) -> None:
+        """The spin box moved: take the handle with it, and the print."""
+        self.spectrum.set_label_floor(float(percent) / 100.0)
+        self._floor_into_comparison()
+
+    def _label_floor_moved(self, fraction: float) -> None:
+        """The handle moved: take the spin box with it, and the print.
+
+        Blocked while it is set, or the spin box's own signal comes back
+        here as a second `set_label_floor` and a drag lands on the rounded
+        value rather than where the mouse is.
+        """
+        self.floor_spin.blockSignals(True)
+        try:
+            self.floor_spin.setValue(float(fraction) * 100.0)
+        finally:
+            self.floor_spin.blockSignals(False)
+        self._floor_into_comparison()
+
+    def _floor_into_comparison(self) -> None:
+        """
+        Keep the print's floor in step with the pane's.
+
+        The field is set rather than the comparison rebuilt: `from_traces`
+        copies every point of every trace, and this runs on every mouse move
+        of a drag. A comparison that does not exist yet is left alone —
+        pinning builds one, and it reads the floor as it stands.
+        """
+        comparison = getattr(getattr(self, "session", None),
+                             "spectra_comparison", None)
+        if comparison is not None:
+            comparison.label_floor = self.spectrum.label_floor
 
     def _set_relative_labels(self, enabled: bool) -> None:
         self.chrom.set_relative_labels(enabled)

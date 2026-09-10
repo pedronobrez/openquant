@@ -94,8 +94,13 @@ PRINT_SCALE = 2.0
 #: first eighth of a real survey scan.
 LABEL_PEAKS = labels.LABEL_REGIONS * labels.LABEL_BUDGET
 LABEL_MIN_RELATIVE = labels.LABEL_MIN_RELATIVE
-#: maxima kept as candidates before the budget chooses among them
+#: maxima kept as candidates before the budget chooses among them, how far
+#: down the pool reaches at the default floor, and the cap once a lower floor
+#: has taken it further down — the pane's `POOL_MIN_RELATIVE` and `MAX_POOL`
+#: under the names this module already used
 LABEL_POOL = 200
+POOL_MIN_RELATIVE = 0.002
+MAX_POOL = 4000
 #: two maxima closer than this in Da are one peak
 MIN_DISTANCE = 0.05
 
@@ -184,6 +189,11 @@ class SpectrumComparison:
     normalise: bool = False
     mirror: bool = False
     centroid: bool = False
+    #: how tall a peak has to be, as a fraction of the tallest in the drawing,
+    #: to be worth a label — the Explorer's own label floor, so what is named
+    #: on paper is what was named on screen. `labels.LABEL_MIN_RELATIVE` is
+    #: where the pane starts, and a comparison built without one keeps it.
+    label_floor: float = LABEL_MIN_RELATIVE
     taken: _dt.datetime = field(default_factory=_dt.datetime.now)
 
     @property
@@ -220,9 +230,17 @@ class SpectrumComparison:
         stretch cannot spend the whole allowance. Whether a label is
         actually drawn is still the caller's collision rule.
         """
-        pool = self.peaks(trace, most=LABEL_POOL, min_relative=0.002)
-        return labels.choose(pool, low, high, most=most,
-                             min_relative=LABEL_MIN_RELATIVE)
+        floor = min(max(float(self.label_floor), 1e-4), 1.0)
+        # the pool reaches ten times further down than the floor, as the
+        # pane's does and for the same reason: the floor is a fraction of the
+        # tallest peak in the drawing and the pool of the base peak of the
+        # whole spectrum, so a pool that did not follow would be the lower of
+        # the two and the floor would move nothing
+        pool_floor = min(POOL_MIN_RELATIVE, floor / 10.0)
+        room = int(min(MAX_POOL, max(LABEL_POOL,
+                                     LABEL_POOL * POOL_MIN_RELATIVE / pool_floor)))
+        pool = self.peaks(trace, most=room, min_relative=pool_floor)
+        return labels.choose(pool, low, high, most=most, min_relative=floor)
 
     def summary(self) -> str:
         names = ", ".join(t.label for t in self.traces if t.label)
@@ -239,7 +257,8 @@ class SpectrumComparison:
 
 def from_traces(traces, title: str = "", normalise: bool = False,
                 mirror: bool = False, centroid: bool = False,
-                condition=None) -> SpectrumComparison:
+                condition=None,
+                label_floor: float = LABEL_MIN_RELATIVE) -> SpectrumComparison:
     """
     Build a comparison from the pane's traces.
 
@@ -247,7 +266,8 @@ def from_traces(traces, title: str = "", normalise: bool = False,
     nothing about the widget, which is what lets the report be built with no
     window. `condition` is the pane's own processing — smoothing, centroiding,
     the profile zeros put back — so that what is kept is what was on screen
-    rather than what came off the disk.
+    rather than what came off the disk, and `label_floor` is where the pane's
+    handle was left, so that the same peaks are named.
     """
     kept: list[SpectrumTrace] = []
     for trace in traces:
@@ -261,7 +281,8 @@ def from_traces(traces, title: str = "", normalise: bool = False,
             intensity=np.asarray(y, dtype=np.float64).copy(),
             colour=str(getattr(trace, "colour", "#234b8c"))))
     return SpectrumComparison(traces=kept, title=title, normalise=normalise,
-                              mirror=mirror, centroid=centroid)
+                              mirror=mirror, centroid=centroid,
+                              label_floor=float(label_floor))
 
 
 # --------------------------------------------------------------------------- #
@@ -789,7 +810,7 @@ def paint(comparison: SpectrumComparison, painter, width: float,
         for mz, _height in comparison.label_peaks(trace, x0, x1):
             index = int(np.argmin(np.abs(trace.mz - mz)))
             value = float(y[index])
-            if value < top_value * LABEL_MIN_RELATIVE:
+            if value < top_value * comparison.label_floor:
                 continue
             text = f"{mz:.4f}"
             spot = slot(text, label_metrics.horizontalAdvance(text) + 4.0,

@@ -44,7 +44,7 @@ spectrum instead, and that is what the pane opens on: see
 | Gesture | Effect |
 |---|---|
 | Shift + drag | select an m/z range |
-| right-click | *Extract XIC from selection*, *Find formula for this peak*, *Add marker here*, *Clear markers*, *Clear theoretical overlay* |
+| right-click | *Extract XIC from selection*, *Find formula for this peak*, *Add marker here*, *Clear markers*, *Clear theoretical overlay*, *Reset label floor* |
 | drag / double-click | zoom / fit |
 
 **m/z labels** writes the mass beside the peaks worth naming, and which
@@ -65,6 +65,37 @@ they run the length of the axis. Because the windows follow the view,
 zooming in names more: on the same scan, seven labels over m/z 150–350
 against four before. *Compare spectra…* prints with the same rule — twenty
 labels on that pair of spectra against twelve.
+
+**The label floor**, and the triangle that sets it. A peak has to reach a
+share of the tallest peak *in view* before it is worth a label; it starts
+at 2%, which is what leaves a survey scan readable. When the peak you are
+after is a small one — a standard at a per cent of the base peak — that
+floor is what is hiding its mass. The small filled triangle beside the Y
+axis, in the margin left of it, is where the floor sits: drag it down and
+more peaks are named, drag it up and fewer are. A dotted line across the
+plot shows the level while the mouse is down. Double-click the triangle, or
+right-click ▸ *Reset label floor*, to put it back at 2%. **Label floor (%)**
+in the View toolbar is the same number typed rather than dragged, and
+either moves the other; it is remembered between sessions, and the picture
+*Compare spectra…* prints is labelled at whatever the pane was showing.
+
+It is a share of the tallest peak in view and not an intensity, so it
+survives a zoom, a *Normalise* and the next spectrum: zoomed into a quiet
+stretch the floor is measured against what is on screen, not against a base
+peak that is off it.
+
+What it is worth, measured. On the product-ion scan of a deuterated bile
+acid infused for the purpose, averaged over the whole run, the precursor
+itself — m/z 430.3197, at 1.49% of the base peak — is **not** named at 2%
+and **is** named at 0.5%: seven labels against eight over the full 50–450
+axis, and two against three zoomed to 350–440. On the TOF MS survey of a
+real acquisition the full 100–1960 axis is drawn with the same six labels
+at 2%, at 0.5% and at 0.1% — there the crowding decides and not the floor —
+while across the axis in eighteen windows of 100 Da it goes 57 labels at 2%,
+57 at 0.5% and 70 at 0.1%, and in nineteen windows of 20 Da over m/z
+100–500, 67, 95 and 95. The gain is in the quiet stretches, which is where
+a small peak is worth naming; in a crowded one the three labels a window may
+claim are what runs out first, and lowering the floor changes nothing.
 
 **Markers.** Drop a marker on a peak and the other peaks are labelled with
 their distance to it in daltons, which is how neutral losses (18.011 for

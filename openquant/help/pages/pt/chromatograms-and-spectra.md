@@ -42,7 +42,7 @@ o painel abre: ver [[direct-infusion]].
 | Gesto | Efeito |
 |---|---|
 | Shift + arrastar | selecionar um intervalo de m/z |
-| clique com o botão direito | *Extract XIC from selection*, *Find formula for this peak*, *Add marker here*, *Clear markers*, *Clear theoretical overlay* |
+| clique com o botão direito | *Extract XIC from selection*, *Find formula for this peak*, *Add marker here*, *Clear markers*, *Clear theoretical overlay*, *Reset label floor* |
 | arrastar / duplo clique | zoom / ajustar |
 
 **m/z labels** escreve a massa ao lado dos picos que valem ser nomeados, e
@@ -63,6 +63,37 @@ Por região, seis são desenhados e percorrem todo o eixo. Como as janelas segue
 a vista, dar zoom nomeia mais: no mesmo scan, sete rótulos entre m/z 150–350
 contra quatro antes. *Compare spectra…* imprime com a mesma regra — vinte
 rótulos naquele par de espectros contra doze.
+
+**O piso dos rótulos**, e o triângulo que o define. Um pico precisa alcançar uma
+fração do pico mais alto *em vista* para valer um rótulo; ele começa em 2%, que
+é o que deixa um scan de survey legível. Quando o pico que interessa é pequeno —
+um padrão a um por cento do pico base — é esse piso que está escondendo a massa
+dele. O pequeno triângulo preenchido ao lado do eixo Y, na margem à esquerda
+dele, é onde o piso está: arraste-o para baixo e mais picos são nomeados, para
+cima e menos são. Uma linha pontilhada atravessa o gráfico mostrando o nível
+enquanto o botão do mouse está pressionado. Duplo clique no triângulo, ou botão
+direito ▸ *Reset label floor*, devolve o piso aos 2%. **Label floor (%)** na
+barra View é o mesmo número digitado em vez de arrastado, e um move o outro; ele
+é lembrado entre sessões, e a figura que *Compare spectra…* imprime é rotulada
+com o que o painel estava mostrando.
+
+É uma fração do pico mais alto em vista e não uma intensidade, então sobrevive a
+um zoom, a *Normalise* e ao espectro seguinte: com zoom num trecho silencioso o
+piso é medido contra o que está na tela, não contra um pico base que está fora
+dela.
+
+Quanto isso vale, medido. No scan de íons-produto de um ácido biliar deuterado
+infundido para esse fim, com a média de toda a corrida, o próprio precursor —
+m/z 430.3197, a 1,49% do pico base — **não** é nomeado a 2% e **é** nomeado a
+0,5%: sete rótulos contra oito no eixo inteiro de 50–450, e dois contra três com
+zoom em 350–440. No survey TOF MS de uma aquisição real o eixo inteiro de
+100–1960 é desenhado com os mesmos seis rótulos a 2%, a 0,5% e a 0,1% — ali quem
+decide é o congestionamento e não o piso — enquanto ao longo do eixo, em dezoito
+janelas de 100 Da, são 57 rótulos a 2%, 57 a 0,5% e 70 a 0,1%, e em dezenove
+janelas de 20 Da entre m/z 100–500, 67, 95 e 95. O ganho está nos trechos
+silenciosos, que é onde um pico pequeno vale ser nomeado; num trecho
+congestionado os três rótulos que uma janela pode reivindicar são o que acaba
+primeiro, e baixar o piso não muda nada.
 
 **Marcadores.** Solte um marcador sobre um pico e os demais picos são rotulados
 com sua distância até ele em daltons, que é como perdas neutras (18.011 para

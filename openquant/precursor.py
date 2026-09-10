@@ -337,6 +337,40 @@ def measure(entry: SampleEntry, component: Component,
     return result
 
 
+def in_spectrum(mz, intensity, target: float,
+                window: float = SEARCH_WINDOW) -> tuple[float, float] | None:
+    """
+    The strongest thing within `window` of `target` in a spectrum already
+    read: its accurate mass and its height.
+
+    The one rule for turning a spectrum into a mass — the tallest point inside
+    the window, refined to the centre of gravity across the profile peak, the
+    same refinement the spectrum's own peak labels use. `measure` applies it
+    to the survey scan and `_surviving_precursor` to the product-ion scan; an
+    infusion report applies it to the averaged spectrum it already holds,
+    which is why this is public rather than written out three times.
+
+    The height comes back with the mass because a centroid says nothing about
+    whether there was anything there to centroid: at 45 eV a bile-acid
+    precursor leaves 84 counts of nothing in particular inside its own window,
+    and a caller that cannot see the height reports that as a mass 70 ppm out.
+    `MIN_INTENSITY` is the floor `measure` holds the survey scan to, and it is
+    the floor a caller wants here.
+
+    Returns None when the window holds nothing at all.
+    """
+    mz = np.asarray(mz, dtype=float)
+    intensity = np.asarray(intensity, dtype=float)
+    if mz.size == 0 or mz.size != intensity.size:
+        return None
+    inside = (mz >= target - window) & (mz <= target + window)
+    if not inside.any() or float(intensity[inside].max()) <= 0:
+        return None
+    local = int(np.argmax(intensity[inside]))
+    absolute = int(np.nonzero(inside)[0][local])
+    return centroid_mz(mz, intensity, absolute), float(intensity[absolute])
+
+
 def _surviving_precursor(entry: SampleEntry, component: Component,
                          start: float, end: float, apex: float,
                          window: float) -> float | None:
@@ -352,12 +386,8 @@ def _surviving_precursor(entry: SampleEntry, component: Component,
     if component.precursor > channel.info.end_mass:
         return None            # the scan range stops below the precursor
     mz, intensity = channel.spectrum_rt_range(min(start, apex), max(end, apex))
-    inside = (mz >= component.precursor - window) & (mz <= component.precursor + window)
-    if not inside.any() or float(intensity[inside].max()) <= 0:
-        return None
-    local = int(np.argmax(intensity[inside]))
-    absolute = int(np.nonzero(inside)[0][local])
-    return centroid_mz(mz, intensity, absolute)
+    found = in_spectrum(mz, intensity, component.precursor, window)
+    return None if found is None else found[0]
 
 
 def measure_across(entries: list[SampleEntry], component: Component,

@@ -81,6 +81,11 @@ FOOTER_MM = 10.0
 #: strand another, and this stops that chasing its own tail.
 MAX_REFLOWS = 3
 
+#: what Qt puts in a block's text where an inline object — a picture — sits.
+#: It is how `_orphan_headings` tells a block that cannot be split from one
+#: that can.
+OBJECT_CHARACTER = "￼"
+
 #: markers on a sample's name, explained in a legend under the table that
 #: uses them. A column of "yes / no / by hand" costs more width than it earns.
 EXCLUDED = "†"
@@ -1559,6 +1564,16 @@ def _orphan_headings(document, page_height: float) -> set[str]:
     heading is stranded when the block that follows it starts on a later
     page — which is precisely the test, and says nothing about how much space
     was left underneath.
+
+    There is a second way to be stranded and it took a rendered page to find.
+    A picture is one inline object in one block, and Qt will not split it: a
+    block holding one that runs past the foot of the page is laid out as
+    though it fitted — `blockBoundingRect` puts its top on this page — and is
+    then drawn on the next, leaving the heading alone above a third of a page
+    of nothing. So a following block that *straddles* a boundary counts as
+    stranded too, but only when it carries an object (`OBJECT_CHARACTER`):
+    text and tables split across a page perfectly well, and pushing a heading
+    over for those would break a document that was right.
     """
     from PyQt6 import QtGui
 
@@ -1571,14 +1586,17 @@ def _orphan_headings(document, page_height: float) -> set[str]:
         following = block.next()
         if level in (2, 3) and following.isValid() and block.text().strip():
             here = int(layout.blockBoundingRect(block).top() // page_height)
-            there = int(layout.blockBoundingRect(following).top() // page_height)
+            next_rect = layout.blockBoundingRect(following)
+            there = int(next_rect.top() // page_height)
             # a block already pushed to a fresh page by its own break
             # reports a bounding rect that starts where it would have been
             # without one, so the page test alone misses a heading whose
             # very next block is such a heading
             pushed = bool(following.blockFormat().pageBreakPolicy() & before) \
                 and not bool(block.blockFormat().pageBreakPolicy() & before)
-            if there > here or pushed:
+            split = (OBJECT_CHARACTER in following.text()
+                     and int(next_rect.bottom() // page_height) > there)
+            if there > here or pushed or split:
                 stranded.add(block.text().strip())
         block = block.next()
     return stranded

@@ -513,6 +513,19 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             "Average every scan of the active channel into one spectrum — "
             "what a direct infusion, which has no chromatography to select "
             "over, is meant to be looked at as")
+        self.act_inf_report = proc.addAction("Report this infusion…")
+        self.act_inf_report.setEnabled(False)
+        self.act_inf_report.setToolTip(
+            "One compound on paper: the averaged spectrum at the label floor "
+            "on screen, its peaks, the accurate precursor, whatever structure "
+            "or formula was scored in the LIPID MAPS tab and whatever the "
+            "library search found — and a verdict that sums what was checked "
+            "rather than passing or failing it")
+        self.act_inf_reports = QtGui.QAction("Report every infusion…", self)
+        self.act_inf_reports.setEnabled(False)
+        self.act_inf_reports.setToolTip(
+            "The same report for every open infusion, one section per "
+            "compound in one document")
         self.act_exp_chrom = QtGui.QAction("Export chromatograms (CSV)…", self)
         self.act_exp_spec = QtGui.QAction("Export spectrum (CSV)…", self)
         self.act_exp_cmp = QtGui.QAction("Export comparison (PNG/SVG)…", self)
@@ -601,8 +614,9 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             "Panels": list(self.panel_actions),
             "Process": [self.act_centroid, self.act_marker, self.act_marker_clear,
                         self.act_set_bg, self.act_clear_bg, self.act_explain,
-                        self.act_detect, self.act_avg_run, self.act_pin,
-                        self.act_unpin],
+                        self.act_detect, self.act_avg_run,
+                        self.act_inf_report, self.act_inf_reports,
+                        self.act_pin, self.act_unpin],
         }
 
     # -------------------------------------------------------------- signals -- #
@@ -635,6 +649,9 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.act_explain.triggered.connect(self.explain_spectrum)
         self.act_detect.triggered.connect(self._detect_peaks)
         self.act_avg_run.triggered.connect(self.average_whole_run)
+        self.act_inf_report.triggered.connect(self.report_infusion)
+        self.act_inf_reports.triggered.connect(
+            lambda: self.report_infusion(batch=True))
 
         self.smooth_spin.valueChanged.connect(self._set_smoothing)
         self.baseline_spin.valueChanged.connect(self.chrom.set_baseline)
@@ -929,6 +946,29 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
 
+    def report_infusion(self, batch: bool = False) -> None:
+        """
+        One compound on paper — the dialog picks the format, the file and
+        what it is compared against.
+
+        Offered only on an infusion: everything the report holds is the
+        average of a whole run, which is a lie about a chromatographic
+        sample. The dialog does the writing, so the flow can be exercised
+        without a modal loop.
+        """
+        if self.active_ref is None or self.active_ref.channel is None:
+            self._update_status("Pick an active channel first.")
+            return
+        from .infusion_report_dialog import InfusionReportDialog
+
+        dialog = InfusionReportDialog(self, batch=batch, parent=self)
+        dialog.exec()
+        if dialog.written:
+            self._remember_dir(dialog.written[-1])
+            self._update_status(f"Infusion report written to "
+                                f"{dialog.written[-1]}")
+        dialog.deleteLater()
+
     def _tree_items(self) -> dict:
         out = {}
         it = QtWidgets.QTreeWidgetItemIterator(self.tree)
@@ -1069,6 +1109,10 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         verdict = self.verdict(self.active_ref.entry) if self.active_ref else None
         self.infusion_label.setText("infusion" if verdict else "")
         self.infusion_label.setToolTip(verdict.reason if verdict else "")
+        # the report is of an infusion, so it is offered on one and nowhere
+        # else; the batch one needs at least one open, which is the same test
+        self.act_inf_report.setEnabled(bool(verdict))
+        self.act_inf_reports.setEnabled(bool(verdict))
         if self.active_ref is not None:
             self.sample_info.show_sample(self.active_ref.sample, channel)
 

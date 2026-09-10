@@ -89,3 +89,7 @@ The same printing machinery produces this manual's PDF, from
 A report is what you keep. What you carry on working in is the Excel
 workbook of the same sections — see [[export]], which also covers the
 Skyline transition list.
+
+This report is of a batch. One compound sprayed on its own has no batch to
+be part of, and gets a document of its own instead: [[infusion-report]],
+written from the Explorer and printed through the same machinery.

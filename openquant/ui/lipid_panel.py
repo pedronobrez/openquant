@@ -39,6 +39,10 @@ class LipidPanel(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        #: what the last explanation was predicted from, in words. A report
+        #: prints it under the fragment table, because "12 of 34 ions found"
+        #: says nothing until the reader knows what offered the 34.
+        self.explanation_basis = ""
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
@@ -656,6 +660,9 @@ class LipidPanel(QtWidgets.QWidget):
         ranked = rank_candidates(database, precursor, peaks, adduct=adduct,
                                  tolerance=PRECURSOR_MATCH_DA, unit="Da",
                                  charge=charge)
+        self.explanation_basis = (
+            f"the curated structure, one bond cut and up to two neutral "
+            f"losses, as {adduct}")
         self._show_ranked(ranked, precursor, adduct)
 
     def _load_own_structure(self) -> None:
@@ -700,7 +707,8 @@ class LipidPanel(QtWidgets.QWidget):
         if self._own_molecule is not None:
             explanation = explain_structure(self._own_molecule, peaks, name=name,
                                             charge=charge, deuterium=deuterium)
-            basis = "cleavages and losses of the drawing"
+            basis = (f"cleavages and losses of the drawing "
+                     f"({self._own_molecule.formula}) as {adduct}")
         else:
             formula = self.own_formula.text().strip()
             if not formula:
@@ -711,12 +719,26 @@ class LipidPanel(QtWidgets.QWidget):
             if not explanation.record.exact_mass:
                 self._report(f"\u201c{formula}\u201d is not a formula this can read.")
                 return
-            basis = "the precursor and its neutral losses — a formula has no bonds to cut"
+            basis = (f"the precursor {formula} as {adduct} and its neutral "
+                     f"losses — a formula has no bonds to cut")
+        self.explanation_basis = basis
         self._show_ranked([explanation], None, adduct)
         labelled = f", {deuterium} unplaced label(s)" if deuterium else ""
         self._report(f"{explanation.name}: {explanation.share * 100:.1f}% of the "
                      f"spectrum from {basis}{labelled}; {explanation.matched} "
                      f"peak(s) matched, {len(explanation.unexplained(peaks))} not.")
+
+    def current_explanation(self):
+        """
+        The explanation the analyst has selected, for a report to print.
+
+        The tree is the panel's memory of what was run: the row carries its
+        `Explanation`, so nothing has to be scored a second time to put it on
+        paper, and a report shows the candidate that was being looked at
+        rather than whichever scored best.
+        """
+        item = self.explain_tree.currentItem()
+        return item.data(0, ROLE_EXPLANATION) if item is not None else None
 
     def _show_ranked(self, ranked, precursor, adduct) -> None:
         self.explain_tree.clear()

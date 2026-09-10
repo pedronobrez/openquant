@@ -70,6 +70,11 @@ class Explanation:
     explained: float = 0.0        # intensity accounted for
     total: float = 0.0            # intensity that was there to account for
     considered: int = 0           # peaks above the noise share
+    #: how many ions the prediction offered at all — the denominator of
+    #: "n of m found". Without it `matched` is a count with nothing to be a
+    #: share of, and a report that says "12 fragments found" has said how
+    #: many were looked for only if it also says this.
+    predicted: int = 0
 
     @property
     def share(self) -> float:
@@ -223,7 +228,8 @@ def explain(record: LipidRecord, peaks, charge: int = 1,
     total = sum(height for _mz, height in peaks)
     explained = sum(m.intensity for m in matches)
     return Explanation(record=record, matches=matches, explained=explained,
-                       total=total, considered=len(peaks))
+                       total=total, considered=len(peaks),
+                       predicted=len(ions))
 
 
 # --------------------------------------------------------------------------- #
@@ -312,7 +318,8 @@ def explain_structure(molecule: Structure, peaks, name: str = "",
     total = sum(height for _mz, height in peaks)
     explained = sum(m.intensity for m in matches)
     return Explanation(record=record, matches=matches, explained=explained,
-                       total=total, considered=len(peaks))
+                       total=total, considered=len(peaks),
+                       predicted=len(ions))
 
 
 def formula_ions(formula: str, adduct_name: str, deuterium: int = 0,
@@ -397,7 +404,8 @@ def explain_formula(formula: str, adduct_name: str, peaks, name: str = "",
     total = sum(height for _mz, height in peaks)
     explained = sum(m.intensity for m in matches)
     return Explanation(record=record, matches=matches, explained=explained,
-                       total=total, considered=len(peaks))
+                       total=total, considered=len(peaks),
+                       predicted=len(ions))
 
 
 def read_molfile(text: str) -> tuple[Structure | None, str]:

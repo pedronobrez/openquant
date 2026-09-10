@@ -142,6 +142,11 @@ the average of **every scan of the run** — 473, 473 and 257 of them, over
 | what bound it | the 200 ceiling | the 200 ceiling | the 1% floor |
 | base peak | 359.2870 | 361.3017 | 468.3072 |
 
+A search of a spectrum against a record of the same compound is one of the
+three checks an [[infusion-report]] sums up, and its score, reverse score and
+the record's own provenance are printed there beside the head-to-tail
+picture.
+
 Three records, 8,144 bytes, written in under a second. Read back, all three
 returned with every field they were written with, the masses within
 5·10⁻⁶ Da and the relative intensities within 5·10⁻⁷ — the rounding of the

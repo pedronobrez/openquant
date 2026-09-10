@@ -189,3 +189,10 @@ copiado de um método cromatográfico aponta para fora de uma corrida que dura
 um minuto. Numa infusão a medida toma o meio da corrida como âncora e
 promedia a corrida inteira tanto para o survey quanto para o espectro de íons
 produto, que é o máximo de sinal que a aquisição pode lhe dar.
+
+## Colocando uma no papel
+
+**Process ▸ Report this infusion…** escreve o espectro promediado, os seus
+picos, o precursor acurado e o que quer que tenha sido rodado contra ele como
+um documento de duas a quatro páginas — ver [[infusion-report]]. Só é
+oferecido numa infusão, porque tudo nele é a média de uma corrida inteira.

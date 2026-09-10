@@ -146,6 +146,11 @@ de modo que cada registro é a média de **todos os scans da corrida** — 473,
 | o que limitou | o teto de 200 | o teto de 200 | o piso de 1% |
 | pico base | 359.2870 | 361.3017 | 468.3072 |
 
+Buscar um espectro contra um registro do mesmo composto é uma das três
+verificações que um [[infusion-report]] soma, e a sua pontuação, a pontuação
+reversa e a procedência do registro são impressas ali ao lado da figura
+cabeça contra cauda.
+
 Três registros, 8,144 bytes, escritos em menos de um segundo. Lidos de volta,
 todos os três voltaram com cada campo com que foram escritos, as massas
 dentro de 5·10⁻⁶ Da e as intensidades relativas dentro de 5·10⁻⁷ — o

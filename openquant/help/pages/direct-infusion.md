@@ -184,3 +184,10 @@ chromatographic method points outside a run that lasts a minute. On an
 infusion the measurement takes the middle of the run as its anchor and
 averages the whole run for both the survey and the product-ion spectrum,
 which is the most signal the acquisition can give it.
+
+## Putting one on paper
+
+**Process ▸ Report this infusion…** writes the averaged spectrum, its peaks,
+the accurate precursor and whatever was run against it as a document of two
+to four pages — see [[infusion-report]]. It is offered only on an infusion,
+because everything in it is the average of a whole run.

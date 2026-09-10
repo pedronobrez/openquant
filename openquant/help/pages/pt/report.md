@@ -89,3 +89,7 @@ A mesma maquinaria de impressão produz o PDF deste manual, a partir de
 Um relatório é o que se guarda. Aquilo em que se continua a trabalhar é a
 pasta de trabalho Excel com as mesmas seções — ver [[export]], que cobre
 também a lista de transições para o Skyline.
+
+Este relatório é de um lote. Um composto pulverizado sozinho não tem lote do
+qual fazer parte, e ganha um documento próprio: o [[infusion-report]],
+escrito a partir do Explorer e impresso pela mesma maquinaria.

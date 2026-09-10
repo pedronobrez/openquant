@@ -73,24 +73,40 @@ Infusions tab shows, then what was written. The exit status is 0 when at
 least one document was written and 1 otherwise, so a script can tell an empty
 folder from a reported one.
 
+The document **opens on the folder rather than on its first compound**: the
+cover in front of the per-compound pages names the folder, the day and the
+version, prints every infusion on one row, sums those rows sentence by
+sentence, lists what was left out and where each compound is — see *The cover
+of a folder report* in [[infusion-report]]. It is in the same PDF as the
+pages it introduces. `--per-compound` is the exception: there the pages are
+in one file per compound, so the cover is written on its own as
+`<out>-cover`, and lists no page numbers because it has none for them.
+
 On a machine with no display — a build server, a session over ssh — set
 `QT_QPA_PLATFORM=offscreen`: the document is drawn and laid out through Qt
 whether or not anything is shown.
 
 Measured on nine ZenoTOF bile-acid infusions, from source on macOS, with the
 three CID runs as a library of one's own and the three formulas as a
-components CSV: **32 s** for the whole folder — nine files read and one
-48-page PDF written — at **890 MB** peak resident memory (two runs: 32.0 and
-32.4 s, 886 and 896 MB), and `--per-compound` three documents of 46 pages in
-28.0 s at 704 MB. The seconds are the one figure here that is not the
-program's: the same run on the same files, while the machine was busy with
-other work, took 81 and 255 s. What is stable is what it did — nine files
-read, none skipped, 48 pages — and what it held. Nothing was skipped: all nine read as
+components CSV: **31 s** for the whole folder — nine files read and one
+58-page PDF written, a two-page cover and 56 of sections — at **1.4 GB** peak
+resident memory (two runs: 30.8 and 31.5 s, 1.42 and 1.40 GB), and
+`--per-compound` four documents of the same 58 pages, the cover two of
+them and one document per compound the other 56. Written without a cover the
+same nine sections come to 56 pages, so the cover costs the two it is. The
+seconds are the one figure here that is not the program's: the same run on
+the same files has taken anything from 27 s on an idle machine to 255 s on a
+busy one. What is stable is
+what it did — nine files read, none skipped, 58 pages — and what it held.
+Nothing was skipped: all nine read as
 infusions, including the two `_TESTEARTIGO` acquisitions, whose rows say what
 is wrong with them rather than leaving them out. The summary line is the
 Infusions tab's, to the digit: *3 compound(s) in 9 infusion(s); 4 of 9
 precursor(s) confirmed within 25 ppm; 34 of 458 predicted ion(s) found across
-7; 4 with an own record above 60*.
+7; 4 with an own record above 60*, and the cover's own paragraph sums the
+same rows a sentence at a time — *4 of 9 precursor(s) confirmed within 25
+ppm; 5 not: 2 whose method isolates 839.56, 2 with too little precursor
+surviving fragmentation, 1 at +30.3 ppm.* and two more like it.
 
 ## The bootstrap
 

@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.8.0 released. 1247 tests. Public repository.**
+**Version 0.8.0 released; 0.8.1 in progress on main. 1275 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -731,6 +731,29 @@ UV detector, is not implemented there) — untested on real Windows.
   mass correction. A pin whose file is gone stays listed as "not
   available: file missing". Saving the view is part of saving the project
   (`Session.view_source`): no separate command, no audit entry.
+- **An adduct is not an offset, it is what happens to the charge.** A
+  channel written `430.35` is `[M+NH4]+` of cholic acid-d4, and scoring its
+  drawing as `[M+H]+` puts every predicted fragment 17 Da from the
+  spectrum, while adding 18.03 to everything predicts `[M+NH4−H2O]+`,
+  which is not a species. `chemistry.Adduct.behaviour`: a **proton**
+  adduct keeps its charge on the piece; a **labile** one (NH4⁺, and
+  HCOO⁻/CH₃COO⁻/Cl⁻ in negative mode) leaves as a neutral and hands over a
+  proton, so the ladder hangs off `[M+H]+`; a **metal** one is a
+  coordinate bond, so both `[piece+Na]+` and `[piece+H]+` are offered and
+  each ion says which. `identify_adduct` reads the adduct off the written
+  precursor within `ADDUCT_MATCH_DA` (0.05 — the worst real gap is
+  0.0117 Da, DCA-d4's `414.34` for 414.3516; the same compound is `430.35`
+  in one file and `430.34` in another), gated on the channel's polarity,
+  and where nothing fits it explains nothing and names the closest misses.
+  Measured on the bile-acid infusions at 10 ppm: a formula alone on CA-d4
+  EAD 22 eV went from 1 of 31 ions and 21.7% to 8 of 56 and 63.6%, the
+  whole ladder with a −1D rung beside each; a drawing gains one ion, the
+  intact ammonium, worth 60.3% → 82.0% at 22 eV and 9.7% → 92.0% at 12 eV,
+  and nothing under CID where the precursor is gone. Those spectra sit
+  +4–7 ppm high on their own axis, so the panel's 5 ppm default gives 5 of
+  56 and the matched precursor's ppm is printed. `explain.resolve_name`
+  takes a name through a bile-acid standards table (bottle abbreviations,
+  `-d4` = four unplaced labels), then LIPID MAPS, then the shorthand.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and
@@ -940,7 +963,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-1247 tests, two skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+1275 tests, two skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `ui/settings.py` is the one place a settings object is made, and
 `tests/conftest.py` sets `OPENQUANT_SETTINGS` before any widget exists so

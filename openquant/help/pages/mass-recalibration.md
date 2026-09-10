@@ -16,7 +16,10 @@ saved with the project.
 A lock mass here is an internal standard that meets three conditions:
 
 1. it carries a **formula and an adduct** in the [[method-workspace|method]],
-   so its true mass is known;
+   so its true mass is known. *Fill formulas from names* fills the empty
+   Formula cells from the lipid shorthand in the names themselves —
+   `SM(d18:1/12:0)`, `C16:0-Ceramide`, `PC 34:1` — and keeps each one only
+   where it agrees with the precursor already written down;
 2. its precursor lies inside the survey scan's mass range, so it can be
    measured — [[check-method|Check method]] lists the ones that do not;
 3. its measured ion held together across the run, which is the same
@@ -66,43 +69,59 @@ existed reopens with it off.
 ## What the real batch said
 
 Measured on the 26-injection sphingolipid batch this was written against
-(TripleTOF 5600, a single 50–700 survey, one scan every 14.6 s):
+(TripleTOF 5600, a single 50–700 survey, one scan every 14.6 s).
+
+**Formulas.** The method carried none. *Fill formulas from names* read 125 of
+its 141 component names and 10 of its 11 internal standards, in
+milliseconds and without opening a file:
 
 | | |
 |---|---|
-| internal standards in the method | 11 |
-| carrying a formula, as the method was written | **0** |
-| lock masses, therefore | **none — nothing corrected** |
+| filled from the name | **125** of 141 |
+| refused — the name's formula is not the written precursor | 16 |
+| names that are not lipid shorthand | 0 |
+| internal standards given a formula | **10** of 11 |
 
-That is the honest answer for that batch as it stands: every injection came
-back *no usable lock mass — left as measured*.
+All sixteen refusals are the *precursor* being wrong rather than the name:
+`dHCer(d18:0/12:0)` is written 484.465 against its formula's 484.4724
+(15 ppm), `LacCER(d18:1/18:1(9Z))` exactly 2.0000 Da low, the thirteen
+`HexCer_2OH` and long-chain ceramide rows about 0.13 Da. Each is listed with
+both numbers, and the cell is left empty — see [[check-method]].
 
-Given one formula — `SM(d18:1/12:0)`, C35H71N2O6P, [M+H]+ 647.5123 — the
-picture is:
+**Lock masses.** A formula was the missing half of the question and turns
+out not to be the binding one. Of the 60 components that now carry a formula *and* lie
+inside the survey, exactly **one** measures the same ion in injection after
+injection:
 
 | | |
 |---|---|
 | injections corrected | 25 of 26 |
-| lock masses each | 1 (offset only) |
+| lock masses each | **1** (offset only) |
 | median offset | **+4.8 ppm** (−4.4 to +11.7) |
 | spread of the offsets | 16.1 ppm |
 
-The other ten standards could not be lock masses whatever formula they were
-given: nine scatter between 98 and 534 ppm across the run, and one has no
-survey covering it.
+The other ten standards fail for a reason no formula can fix: their survey
+signal is too weak, so the ±0.25 Da search window catches a different
+neighbour in each injection and they scatter by 98 to 534 ppm across the run
+— and one lies outside the survey altogether. `C17:0_Ceramide` was found in
+only five injections and its median sits 238 ppm from its own formula, which
+is a different ion rather than a badly measured one. **Several lock masses
+are not available on this batch at any formula coverage**, so the linear
+term has still never fired on real data.
 
-The figure that matters is what happens to *other* components. Fifteen
-analytes inside the survey have a mass derivable from the lipid shorthand in
-their own names. Over all 369 measurements of them the median error is
-−275 ppm before and −270 ppm after — those are interferences rather than the
-compound, and nothing at the ppm scale touches them. Over the 66 measurements
-that were within 25 ppm to begin with:
+The figure that matters is what happens to *other* components. Fifty-one
+analytes inside the survey now carry a formula — against fifteen when this
+was first measured — and were measured in every injection: 1,228
+measurements in all. Over all of them the median error is −247 ppm before and
+−241 ppm after, because most are interferences rather than the compound and
+nothing at the ppm scale touches those. Over the 197 measurements that were
+within 25 ppm to begin with:
 
 | | before | after |
 |---|---|---|
-| median error | −8.7 ppm | **−3.3 ppm** |
-| median magnitude | 9.9 ppm | **7.0 ppm** |
-| smaller after | | 43 of 66 |
+| median error | −7.0 ppm | **−1.4 ppm** |
+| median magnitude | 8.6 ppm | **6.8 ppm** |
+| smaller after | | 122 of 197 |
 
 So it moves the centre in the right direction, and it cannot be better than
 the single lock mass it came from — whose own scatter of 16 ppm across the

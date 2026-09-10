@@ -7,7 +7,8 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 from .. import lipidmaps, precursor
 from ..audit import METHOD_DEFAULT, component_changes
 from ..chemistry import ADDUCTS
-from ..components import RESPONSES, Component, load_components, save_components
+from ..components import (RESPONSES, Component, fill_formulas, load_components,
+                          save_components)
 from ..session import Session
 from . import style, theme
 from .annotate_dialog import AnnotateDialog, _looks_unnamed, propose
@@ -88,10 +89,17 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.btn_annotate.setToolTip(
             "Propose a lipid species for every component still named after its "
             "precursor mass")
+        self.btn_formulas = QtWidgets.QPushButton("Fill formulas from names")
+        self.btn_formulas.setToolTip(
+            "Read the lipid shorthand in each name — SM(d18:1/12:0), "
+            "C16:0-Ceramide, PC 34:1 — and fill the empty Formula cells with "
+            "what it implies. A formula is only kept where it agrees with the "
+            "precursor already written down; a cell that has a formula is "
+            "never touched, and no precursor is changed")
         for widget in (self.btn_add, self.btn_remove, self.btn_generate,
                        self.btn_import, self.btn_export, self.btn_check,
                        self.btn_schedule, self.btn_skyline,
-                       self.btn_suggest, self.btn_annotate):
+                       self.btn_suggest, self.btn_annotate, self.btn_formulas):
             bar.addWidget(widget)
         bar.addStretch(1)
         layout.addLayout(bar)
@@ -156,6 +164,7 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.btn_skyline.clicked.connect(self.export_skyline)
         self.btn_suggest.clicked.connect(self.suggest_from_data)
         self.btn_annotate.clicked.connect(self._annotate)
+        self.btn_formulas.clicked.connect(self.fill_formulas)
         self.table.itemChanged.connect(self._on_edit)
         self.tol_spin.valueChanged.connect(self._defaults_changed)
         self.unit_combo.currentTextChanged.connect(self._defaults_changed)
@@ -539,6 +548,59 @@ class MethodWorkspace(QtWidgets.QWidget):
             return
         listing = write_transition_list(self.session.method, path)
         self._report(f"{listing.summary()} Written to {path}")
+
+    def fill_formulas(self) -> None:
+        """
+        Fill the empty Formula cells from what the names say.
+
+        Only the empty ones: a formula somebody typed is the method's own and
+        a reading of a name is a guess about it. Nothing else on the row
+        moves — in particular not the precursor, which is both what the
+        guess was checked against and what the extraction window is built
+        from.
+        """
+        components = self.components()
+        if not components:
+            self._report("Build the component list first.")
+            return
+
+        # the database is passed unloaded: it is only consulted for a name
+        # that is not shorthand at all, and a table that is all shorthand
+        # should not wait for fifty thousand records to be read
+        fill = fill_formulas(components, database=lipidmaps.database)
+        if fill.filled:
+            self.session.set_components(components)
+
+        lines = []
+        if fill.refused:
+            lines.append(f"{len(fill.refused)} refused — the formula the name "
+                         f"implies is not the precursor the method carries, "
+                         f"and one of the two is wrong:")
+            lines += [f"    {p.component.name}: {p.reason}" for p in fill.refused]
+        if fill.underived:
+            lines.append(f"\n{len(fill.underived)} whose name is not lipid "
+                         f"shorthand, so nothing could be read from it:")
+            lines.append("    " + ", ".join(c.name for c in fill.underived))
+        standards = [c for c in components
+                     if c.is_internal_standard and not c.formula]
+        if standards:
+            lines.append(f"\n{len(standards)} internal standard(s) still "
+                         f"without a formula, so without a lock mass for the "
+                         f"mass recalibration:")
+            lines.append("    " + ", ".join(c.name for c in standards))
+
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("Fill formulas from names")
+        box.setIcon(QtWidgets.QMessageBox.Icon.Information)
+        box.setText(fill.summary())
+        box.setInformativeText(
+            "A formula is kept only where its mass agrees with the precursor "
+            "already written down, to that precursor's own last decimal. "
+            "Typed formulas and every precursor were left as they were.")
+        if lines:
+            box.setDetailedText("\n".join(lines))
+        box.exec()
+        self._report(fill.summary())
 
     def _annotate(self) -> None:
         """Name the unnamed components from their precursor masses."""

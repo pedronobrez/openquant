@@ -18,7 +18,7 @@ standard, or concentration).
 | RT | the expected retention time in minutes; empty means the whole run is searched |
 | ± RT | the half window: the apex must land within RT ± this. The default is 0.5 min |
 | Tol. and Unit | the mass window's half width, in Da or ppm; the method default when left blank |
-| Formula and Adduct | optional; with both and no precursor, the precursor is computed — `C18H30D4O4` with [M−H]⁻ is how a labelled standard is entered |
+| Formula and Adduct | optional; with both and no precursor, the precursor is computed — `C18H30D4O4` with [M−H]⁻ is how a labelled standard is entered. With both, an internal standard can also be a lock mass for the [[mass-recalibration]]; *Fill formulas from names* fills them in from the names, see below |
 | IS | ticked when the component **is** an internal standard |
 | Internal standard | the name of the internal standard this component is reported against |
 | Response | what the results table reports: `area`, `ratio` to the internal standard, or `concentration` |
@@ -48,9 +48,50 @@ The internal-standard and qualifier columns are explained in
   see [[check-method]].
 - **Annotate from LIPID MAPS…** proposes species names, see
   [[annotate-from-lipid-maps]].
+- **Fill formulas from names** reads the lipid shorthand the names already
+  carry and fills the empty Formula cells with it, see below.
 - **Export schedule…** writes the scheduled acquisition the method implies,
   with the dwell a target cycle leaves each transition, see
   [[acquisition-schedule]].
+
+## Fill formulas from names
+
+A formula is what turns a component into a lock mass for the
+[[mass-recalibration]], and a method that names its components in lipid
+shorthand has already said what they are made of. **Fill formulas from
+names** does the arithmetic: `SM(d18:1/12:0)`, `Cer(d18:1/16:0)`, `PC 34:1`,
+`LPC 18:0`, `TG 52:2`, `FA 18:1`, the class written after the chain
+(`C16:0-Ceramide`, `C14_SM`), a hydroxyl as `h24:0`, `(2OH)` or `;O3`, a
+double-bond position in brackets that says nothing about the composition,
+and unplaced deuterium as `-d4`, `d7` or `(d9)`.
+
+Three rules make it safe to press:
+
+- **only empty cells are filled.** A formula somebody typed is the method's;
+  a reading of a name is a guess about it.
+- **nothing else moves** — in particular no precursor. A formula and an
+  adduct can stand in for a precursor when a row is typed by hand, and here
+  they must not: the precursor is what this was checked against, and moving
+  it would move every extraction window in the batch without anybody asking.
+- **the precursor has to agree.** The formula's mass through the row's
+  adduct is compared with the precursor already written down, to that
+  precursor's own last decimal — one written `647.5` is good to a tenth, one
+  written `806.5624` to a ten-thousandth. Where they disagree the cell is
+  left empty and both numbers are listed, because a wrong formula is a wrong
+  lock mass, which is worse than no lock mass. A whole unit in the last
+  place is allowed rather than half, since a written mass is as often
+  truncated as rounded; the readings that are actually in question differ by
+  a double bond, a methylene or a hydroxyl, never by a tenth.
+
+A row with no adduct cannot be checked and so is not filled. The dialog
+gives the counts and lists, name by name, what was refused and why — and
+which internal standards are still without a formula, and therefore without
+a lock mass.
+
+On the method this was written against: 125 of 141 components and 10 of 11
+internal standards, in milliseconds; the 16 refusals were all the written
+precursor being wrong, not the name. [[mass-recalibration]] carries the
+figures.
 
 ## Method defaults
 
@@ -82,7 +123,7 @@ name,precursor,fragment,rt,window,tolerance,unit
 | rt | rt, retention_time, rt_min, tr, tempo |
 | rt_halfwidth | window, rt_window, rt_halfwidth, half_window, janela, meia_janela, tolerancia_rt |
 | tolerance, unit | tolerance, tol, mz_tolerance, tolerancia; unit, tol_unit, unidade |
-| formula, adduct | formula, chemical_formula, molecular_formula; adduct, aduto, ion |
+| formula, adduct | formula, chemical_formula, molecular_formula, elemental_formula, composition; adduct, aduto, ion |
 | is_internal_standard | is, is_internal_standard, internal_standard?, istd, is_istd, e_padrao_interno — true for 1, true, yes, y, sim, is, istd, x |
 | internal_standard | internal_standard, is_name, istd_name, padrao_interno |
 | response | response, response_type, resposta |

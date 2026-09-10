@@ -121,6 +121,45 @@ def test_components_without_a_retention_time_are_counted():
     assert "2 of 3" in found.summary
 
 
+def test_an_internal_standard_without_a_formula_has_no_lock_mass():
+    health = check_method(_method([
+        Component("SM(d18:1/12:0)", 647.5, 184.0733, rt=5.6, adduct="[M+H]+",
+                  formula="C35H71N2O6P", is_internal_standard=True),
+        Component("Cer1P (12:0)", 562.4, 264.2686, rt=4.9, adduct="[M+H]+",
+                  is_internal_standard=True),
+    ]))
+    found = _finding(health, "internal standard without a formula")
+    assert found is not None and found.severity == WARNING
+    assert found.components == ["Cer1P (12:0)"]
+    assert "lock mass" in found.detail
+
+
+def test_a_formula_that_is_not_the_precursor_is_serious():
+    """
+    One of the two is wrong and they are used for different things: the
+    precursor builds the extraction window, the formula is what the
+    recalibration corrects towards. `484.465` against a formula worth
+    484.4724 is the real method's own typo, 15 ppm out.
+    """
+    health = check_method(_method([
+        Component("dHCer(d18:0/12:0)", 484.465, 284.2948, rt=5.5,
+                  adduct="[M+H]+", formula="C30H61NO3"),
+        Component("SM(d18:1/12:0)", 647.5, 184.0733, rt=5.6, adduct="[M+H]+",
+                  formula="C35H71N2O6P"),
+    ]))
+    found = _finding(health, "formula against precursor")
+    assert found is not None and found.severity == SERIOUS
+    assert found.components == ["dHCer(d18:0/12:0)"]
+    assert "484.4724" in found.detail
+
+
+def test_a_formula_with_no_adduct_is_not_called_a_disagreement():
+    health = check_method(_method([
+        Component("A", 500.0, 264.2686, rt=5.0, formula="C30H61NO3"),
+    ]))
+    assert _finding(health, "formula against precursor") is None
+
+
 # --------------------------------------------------------------------------- #
 # the checks that need a file open
 # --------------------------------------------------------------------------- #

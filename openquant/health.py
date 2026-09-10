@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .components import Component
+from .components import Component, formula_disagreement
 from .method import ProcessingMethod
 from .samples import SampleEntry
 
@@ -172,6 +172,39 @@ def check_method(method: ProcessingMethod,
             "it gives when the run is right; the batch cannot derive it, "
             "though Batch QC \u25b8 Suggest floors\u2026 proposes a starting "
             "point from what it gave."))
+
+    disagreeing = [formula_disagreement(c) for c in components]
+    disagreeing = [d for d in disagreeing if d is not None]
+    if disagreeing:
+        detail = "; ".join(
+            f"{d.component.name} {d.formula} is {d.theoretical:.4f} and the "
+            f"method says {d.written:.4f}" for d in disagreeing[:4])
+        health.findings.append(Finding(
+            "formula against precursor", SERIOUS,
+            f"{len(disagreeing)} components have a formula that is not their "
+            f"precursor",
+            sorted(d.component.name for d in disagreeing),
+            f"One of the two is wrong, and they are used for different "
+            f"things: the precursor is what the extraction window is built "
+            f"from, the formula is the true mass the mass recalibration "
+            f"corrects towards. Each is further apart than the written "
+            f"precursor's own last decimal allows. {detail}."))
+
+    unlocked = sorted(name for name in internal
+                      if not next((c for c in components if c.name == name),
+                                  Component("", 1, 1)).formula)
+    if unlocked:
+        health.findings.append(Finding(
+            "internal standard without a formula", WARNING,
+            f"{len(unlocked)} internal standards carry no formula",
+            unlocked,
+            "No lock mass for the recalibration: without a formula and an "
+            "adduct nothing says where the standard's mass belongs, and the "
+            "written precursor cannot stand in for it — a value typed to one "
+            "decimal is good to a few hundred parts per million, which is a "
+            "hundred times the error being corrected. Method workspace ▸ "
+            "Fill formulas from names derives one where the name is lipid "
+            "shorthand, and refuses where the precursor disagrees."))
 
     untimed = [c.name for c in components if not c.rt]
     if untimed:

@@ -16,7 +16,11 @@ projeto.
 Uma lock mass aqui é um padrão interno que satisfaz três condições:
 
 1. ele carrega uma **fórmula e um aduto** no [[method-workspace|method]], de
-   modo que a sua massa verdadeira é conhecida;
+   modo que a sua massa verdadeira é conhecida. O *Fill formulas from names*
+   preenche as células Formula vazias a partir da notação abreviada de
+   lipídios dos próprios nomes — `SM(d18:1/12:0)`, `C16:0-Ceramide`,
+   `PC 34:1` — e guarda cada uma somente onde ela concorda com o precursor já
+   escrito;
 2. o seu precursor fica dentro da faixa de massas da varredura de survey, de
    modo que pode ser medido — o [[check-method|Check method]] lista os que
    não ficam;
@@ -70,43 +74,61 @@ de isto existir reabre com ele desligado.
 
 Medido no lote de esfingolipídios de 26 injeções contra o qual isto foi
 escrito (TripleTOF 5600, uma única varredura de survey de 50–700, um scan a
-cada 14.6 s):
+cada 14.6 s).
+
+**Fórmulas.** O método não carregava nenhuma. O *Fill formulas from names*
+leu 125 dos seus 141 nomes de componente e 10 dos seus 11 padrões internos,
+em milissegundos e sem abrir um arquivo:
 
 | | |
 |---|---|
-| padrões internos no método | 11 |
-| carregando uma fórmula, tal como o método foi escrito | **0** |
-| lock masses, portanto | **nenhuma — nada corrigido** |
+| preenchidas a partir do nome | **125** de 141 |
+| recusadas — a fórmula do nome não é o precursor escrito | 16 |
+| nomes que não são notação abreviada de lipídios | 0 |
+| padrões internos que ganharam uma fórmula | **10** de 11 |
 
-Essa é a resposta honesta para aquele lote como ele está: cada injeção voltou
-como *no usable lock mass — left as measured*.
+As dezesseis recusas são todas o *precursor* estar errado, e não o nome:
+`dHCer(d18:0/12:0)` está escrito 484.465 contra os 484.4724 da sua fórmula
+(15 ppm), `LacCER(d18:1/18:1(9Z))` exatamente 2.0000 Da abaixo, e as treze
+linhas de `HexCer_2OH` e de ceramidas de cadeia longa cerca de 0.13 Da. Cada
+uma é listada com os dois números, e a célula fica vazia — veja o
+[[check-method]].
 
-Dada uma fórmula — `SM(d18:1/12:0)`, C35H71N2O6P, [M+H]+ 647.5123 — o quadro
-é:
+**Lock masses.** Uma fórmula era a metade que faltava da questão, e não é a
+metade que limita. Dos 60 componentes que agora carregam uma fórmula *e*
+ficam dentro do survey, exatamente **um** mede o mesmo íon injeção após
+injeção:
 
 | | |
 |---|---|
 | injeções corrigidas | 25 de 26 |
-| lock masses em cada uma | 1 (somente offset) |
+| lock masses em cada uma | **1** (somente offset) |
 | offset mediano | **+4.8 ppm** (−4.4 a +11.7) |
 | dispersão dos offsets | 16.1 ppm |
 
-Os outros dez padrões não poderiam ser lock masses qualquer que fosse a
-fórmula dada a eles: nove se dispersam entre 98 e 534 ppm ao longo da
-corrida, e um não tem varredura de survey que o cubra.
+Os outros dez padrões falham por um motivo que fórmula nenhuma resolve: o
+sinal deles no survey é fraco demais, de modo que a janela de busca de
+±0.25 Da pega um vizinho diferente em cada injeção e eles se dispersam entre
+98 e 534 ppm ao longo da corrida — e um fica fora do survey por completo. O
+`C17:0_Ceramide` foi encontrado em apenas cinco injeções e a sua mediana fica
+238 ppm da sua própria fórmula, o que é um íon diferente e não um íon mal
+medido. **Várias lock masses não estão disponíveis neste lote com nenhuma
+cobertura de fórmulas**, de modo que o termo linear continua nunca tendo
+disparado em dados reais.
 
-O número que importa é o que acontece com *outros* componentes. Quinze
-analitos dentro do survey têm uma massa derivável da notação abreviada de
-lipídios dos seus próprios nomes. Sobre todas as 369 medidas deles o erro
-mediano é −275 ppm antes e −270 ppm depois — essas são interferências e não o
-composto, e nada na escala de ppm as toca. Sobre as 66 medidas que já estavam
-dentro de 25 ppm para começar:
+O número que importa é o que acontece com *outros* componentes. Cinquenta e
+um analitos dentro do survey carregam agora uma fórmula — contra quinze
+quando isto foi medido pela primeira vez — e foram medidos em cada injeção:
+1,228 medidas ao todo. Sobre todas elas o erro mediano é −247 ppm antes e
+−241 ppm depois, porque a maioria é interferência e não o composto, e nada na
+escala de ppm as toca. Sobre as 197 medidas que já estavam dentro de 25 ppm
+para começar:
 
 | | antes | depois |
 |---|---|---|
-| erro mediano | −8.7 ppm | **−3.3 ppm** |
-| magnitude mediana | 9.9 ppm | **7.0 ppm** |
-| menor depois | | 43 de 66 |
+| erro mediano | −7.0 ppm | **−1.4 ppm** |
+| magnitude mediana | 8.6 ppm | **6.8 ppm** |
+| menor depois | | 122 de 197 |
 
 Ou seja, isso move o centro na direção certa, e não pode ser melhor que a
 única lock mass de que veio — cuja própria dispersão de 16 ppm ao longo da

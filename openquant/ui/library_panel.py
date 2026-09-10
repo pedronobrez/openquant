@@ -417,10 +417,17 @@ class LibraryPanel(QtWidgets.QWidget):
         to give. The comment is the pane's own title — sample, channel and
         the scans the average was taken over — with the file and the date,
         because a record whose provenance is not written down cannot be
-        checked against the acquisition later.
+        checked against the acquisition later. Where the mass axis was
+        recalibrated the comment says so and says what the correction stood
+        on: the peaks written into the record are not the ones the
+        instrument reported, and a record that did not admit that could not
+        be compared with one written from the raw axis.
         """
         context = self._context
         parts = [str(p) for p in (context.get("title"), context.get("file")) if p]
+        axis = str(context.get("recalibration") or "")
+        if axis and axis not in " \u00b7 ".join(parts):
+            parts.append(axis)
         parts.append(f"added {datetime.date.today().isoformat()}")
         return {
             "name": str(context.get("name", "")),

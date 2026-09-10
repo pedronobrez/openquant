@@ -27,6 +27,21 @@ tem um único canal de íons produto e mais nada — o precursor é lido do
 próprio espectro de íons produto promediado, e o relatório diz isso com todas
 as letras.
 
+**O eixo de massa**, sempre — tenha ele sido corrigido ou não. Uma infusão
+direta não tem uma segunda injeção contra a qual ser lida, de modo que ela é
+recalibrada contra **si mesma**: o precursor está na média junto com os seus
+próprios fragmentos, e a aritmética já sabe onde cada um deles pertence. O
+parágrafo nomeia cada degrau encontrado, a sua massa teórica e medida, o seu
+erro antes e depois da correção e a sua altura; o deslocamento e sobre
+quantos degraus ele se apoiou; e, quando a mesma explicação foi rodada dos
+dois modos, quantos íons previstos caíram sobre um pico no eixo como medido e
+no eixo corrigido. Quando nada foi corrigido o parágrafo diz isso, com o
+motivo — um frasco que foi olhado e deixado em paz é um achado, e uma página
+que omitisse o parágrafo deixaria o leitor sem como distinguir um eixo
+corrigido de um não corrigido. As regras e o que as nove infusões reais deram
+estão em [[mass-recalibration|Uma infusão se recalibra sobre o próprio
+precursor]].
+
 **O espectro promediado**, desenhado para o papel no piso de rótulos em que o
 painel foi deixado, de modo que as massas impressas são as massas que
 estavam na tela — veja [[chromatograms-and-spectra]] para o piso e para como
@@ -103,8 +118,10 @@ scans foram promediados, o pico base, o precursor como o método o escreveu e
 como foi medido de volta com o seu erro em ppm e a sua altura, os íons
 encontrados dentre os previstos, o melhor registro da sua própria biblioteca
 com as duas pontuações e a energia de colisão do registro contra a desta
-aquisição, e as outras infusões do mesmo composto com o cosseno nos dois
-sentidos.
+aquisição, as outras infusões do mesmo composto com o cosseno nos dois
+sentidos, e a coluna **Mass axis** — a correção ajustada a partir da escada
+de precursor do próprio frasco, se ela foi aplicada, ou o motivo de não haver
+nenhuma. Veja [[mass-recalibration]].
 
 Dois desses vêm de onde o relatório de um frasco os recebe de uma pessoa:
 

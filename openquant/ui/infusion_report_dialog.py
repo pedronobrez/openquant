@@ -203,7 +203,10 @@ class InfusionReportDialog(QtWidgets.QDialog):
                 if one is not None:
                     built.append(one)
                     continue
-            built.append(infusion_report.report_for(entry, channel))
+            # the session, so each of the rest is recalibrated from its own
+            # precursor ladder and says so, the same as the active one
+            built.append(infusion_report.report_for(
+                entry, channel, session=getattr(self.explorer, "session", None)))
         return built
 
     def write(self) -> str | None:

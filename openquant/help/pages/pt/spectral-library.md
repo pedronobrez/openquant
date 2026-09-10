@@ -484,6 +484,112 @@ dele e toda a região de baixa massa, além dos fragmentos, e nada disso está
 num registro construído a partir de uma média mais limpa. O reverse é o que
 se deve ler.
 
+## Fragmentação ao longo das energias
+
+Um registro é um espectro em uma energia de colisão, e um registro não viaja
+entre energias: nas nove infusões de ácidos biliares, um registro de ácido
+cólico-d4 medido sob CID a 45 eV pontua **6** contra o mesmo frasco sob EAD a
+12 eV e **29** contra ele a 22 eV. Lido como uma lista de resultados, isso diz
+que o composto não está ali, o que é falso.
+
+Quando um composto tem registros em duas ou mais energias da mesma ativação,
+o painel acrescenta uma linha sob a lista de resultados, uma por composto e
+ativação:
+
+> compatible with CA-d4 EAD at ~18 eV (score 0.71; measured at 12 and 22)
+
+A linha responde à outra pergunta. A lista de resultados pergunta *com qual
+registro isto se parece*; esta pergunta *que condições produziriam isto*. Ela
+é acrescentada, nunca substitui: a lista de resultados não muda.
+
+### Como a linha é obtida
+
+Cada registro do composto é reduzido à fração da intensidade que os degraus da
+sua própria escada carregam — a escada de perdas de água que a `Formula` e o
+`Precursor_type` do registro preveem pela enumeração de [[lipid-maps]], mais os
+fragmentos mais intensos em que os registros concordam. **Frações do total do
+próprio perfil, nunca do pico-base do registro**, porque o próprio pico-base
+desce a escada conforme a energia sobe (veja a tabela abaixo), e um número cujo
+denominador troca de degrau não pode ser interpolado.
+
+A fração de cada degrau é então linear na energia entre as duas energias
+medidas que a cercam, e o painel varre a faixa a meio elétron-volt em busca do
+melhor ajuste. Três recusas são tão importantes quanto a resposta:
+
+* **Nada é extrapolado.** Acima da energia mais alta em arquivo a escada
+  continua descendo e nenhum registro diz a que velocidade. Um espectro medido
+  além da faixa só pode ser reportado no extremo dela.
+* **Duas ativações nunca são interpoladas entre si.** Registros de EAD e
+  registros de cela de colisão são perfis separados, e um registro cuja
+  ativação não é declarada é um terceiro — a mesma regra pela qual
+  [[standard-history]] corta suas séries.
+* **Um registro é um registro.** Com uma única energia em arquivo a linha diz
+  *one energy on file (22 eV): no profile*.
+
+A pontuação é o cosseno sobre os íons do próprio perfil, com as intensidades
+sob raiz quadrada como nas pontuações da lista de resultados. Não é o cosseno
+simples: um perfil tem uma dúzia de íons e um espectro de íons-produto tem
+centenas, de modo que o cosseno simples mediria tudo o mais que havia no
+frasco. Um `~` antes da energia significa que ela foi interpolada, e não
+medida.
+
+### Medido nas nove infusões de ácidos biliares
+
+O ácido cólico-d4 foi infundido a EAD 12 eV, EAD 22 eV e a 45 eV num arquivo
+cujo nome não declara ativação alguma. Seu perfil, em frações do total do
+próprio perfil:
+
+| Íon | m/z | EAD 12 eV | EAD 22 eV | 45 eV, não declarada |
+|---|---|---|---|---|
+| `[M+NH4]+ +4D` | 430,3465 | 83,5% | 24,6% | 0,0% |
+| `[M+H]+ (-NH3) +4D` | 413,3200 | 0,0% | 0,9% | 0,0% |
+| `[M+H-H2O]+ +4D` | 395,3094 | 0,0% | 6,5% | 0,0% |
+| `[M+H-H2O]+ +3D` | 394,3031 | 0,0% | 0,3% | 0,0% |
+| `[M+H-2H2O]+ +4D` | 377,2988 | 1,5% | 25,2% | 1,7% |
+| `[M+H-2H2O]+ +3D` | 376,2926 | 1,3% | 2,0% | 0,0% |
+| `[M+H-3H2O]+ +4D` | 359,2883 | 0,0% | 6,2% | 54,2% |
+| `[M+H-3H2O]+ +3D` | 358,2820 | 0,0% | 6,5% | 6,8% |
+| doze fragmentos compartilhados abaixo de m/z 150, juntos | | 13,7% | 27,8% | 37,2% |
+
+É a escada descendo. A 12 eV o precursor amoniado é 83,5% de tudo; a 22 eV ele
+já entregou um quarto da intensidade a `[M+H-2H2O]+`; a 45 eV o precursor
+desapareceu e `[M+H-3H2O]+` é 54,2%, com os fragmentos pequenos ficando com
+quase todo o resto. **O pico-base é um íon diferente nos três arquivos**, que é
+exatamente por que o perfil é mantido em frações do próprio total.
+
+Dois dos nove arquivos se chamam `CA-d4` e isolam 839,56 em vez de 430,34.
+Eles ficam de fora do perfil do CA-d4 com o motivo na linha — *holds fewer
+than 2 of the ladder's ions* — e nada precisou ler um nome de arquivo para
+saber disso.
+
+### O que duas energias por ativação permitem, e o que não permitem
+
+Honestamente: ainda não muito, nesses arquivos. Tire o EAD 12 eV da biblioteca
+e busque-o de volta: o perfil fica com um único registro EAD e diz *one energy
+on file (22 eV): no profile*; o registro de 45 eV não ajuda, porque sua
+ativação não é declarada e nenhuma ativação é interpolada com outra. Tire o
+EAD 22 eV e acontece o mesmo com o de 12 eV. **Dois registros de uma ativação
+é o mínimo, e tirar qualquer um deles fica abaixo do mínimo.**
+
+Com os dois registros EAD presentes, a varredura faz o que deve: o espectro de
+12 eV volta a 12 eV e o de 22 eV volta a 22 eV, ambos com pontuação 1,00, e os
+dois arquivos de 839,56 pontuam 0,10 e 0,11. O espectro de 45 eV volta a 22 eV
+— o topo da faixa EAD, já que nada é extrapolado — a 0,56, que é o mesmo 0,56
+que seu reverse contra o registro de 22 eV sozinho já era. Esse é o resultado
+honesto de dois pontos: o melhor ajuste cai sobre um dos dois registros, de
+modo que a linha acrescenta a *energia*, que uma lista de resultados não pode
+declarar, e não uma pontuação melhor. Uma terceira energia sob uma ativação é o
+que faria a interpolação valer o próprio número, e ninguém adquiriu uma ainda.
+
+O que a aritmética faz quando um espectro de fato fica entre dois registros foi
+verificado nesses degraus pedindo as frações do meio do caminho: a varredura
+responde 16,5 a 17 eV, e tudo entre 15 e 20 eV pontua dentro de um por cento do
+melhor. **Ou seja, uma proposta é boa a alguns elétron-volts, não ao passo de
+meio volt**, e é por isso que ela vem escrita com um `~`.
+
+Construir um perfil e varrê-lo leva cerca de 3 ms numa biblioteca de nove
+registros.
+
 ## O que a biblioteca não sabe
 
 Um registro é o espectro de um instrumento em uma energia de colisão. Uma
@@ -491,6 +597,10 @@ correspondência é evidência de que o espectro medido se parece com aquele
 registro; quanta semelhança basta é decisão do analista, e o
 [[accurate-precursor]] e o [[formula-finder]] são as verificações independentes
 sobre o precursor que uma correspondência de biblioteca não faz.
+
+Um perfil de energia não muda isso. Ele diz com quais das condições
+*registradas* um espectro se parece e em que energia entre elas; não diz que o
+composto é o certo, e não pode propor uma ativação que ninguém registrou.
 
 ## Ler de volta a sua própria biblioteca
 

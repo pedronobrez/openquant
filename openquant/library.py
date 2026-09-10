@@ -379,6 +379,9 @@ class SpectralLibrary:
         # never need them
         self._exact: np.ndarray | None = None
         self._polarities: np.ndarray | None = None
+        # one compound's fragmentation across energies, worked out on demand
+        # and kept only for as long as this object is: see `EnergyProfile`
+        self._profiles: dict[tuple, "EnergyProfile"] = {}
 
     def _formula_masses(self) -> np.ndarray:
         if self._exact is None:
@@ -528,6 +531,82 @@ class SpectralLibrary:
                                    basis, entry.precursor_disagrees))
         hits.sort(key=lambda hit: (-hit.score, -hit.reverse))
         return hits[:top]
+
+    def profile(self, compound: str,
+                tolerance_ppm: float = PEAK_TOLERANCE_PPM) -> "EnergyProfile":
+        """
+        One compound's fragmentation across energies, worked out once.
+
+        Cached on the library object rather than written into the records —
+        see `EnergyProfile` for why nothing is written — and dropped the
+        moment the library is reloaded, which is what happens when a record
+        is appended to a library of one's own.
+        """
+        key = (str(compound), float(tolerance_ppm))
+        if key not in self._profiles:
+            self._profiles[key] = profile_of(self, str(compound),
+                                             tolerance_ppm=tolerance_ppm)
+        return self._profiles[key]
+
+    def search_energy(self, mz: np.ndarray, intensity: np.ndarray,
+                      precursor: float | None = None,
+                      polarity=None,
+                      tolerance_ppm: float = PEAK_TOLERANCE_PPM,
+                      precursor_tolerance: float = PRECURSOR_TOLERANCE_DA,
+                      noise_share: float = NOISE_SHARE,
+                      min_matched: int = MIN_MATCHED,
+                      include_unknown_precursor: bool = False,
+                      include_other_polarity: bool = False,
+                      top: int = 20) -> list["EnergyMatch"]:
+        """
+        What energy each candidate compound's own records say this spectrum
+        was measured at — one line per compound and activation, beside the
+        ordinary hit list rather than instead of it.
+
+        `search` answers *which record is this like*, and a record does not
+        travel between energies: on the bile-acid infusions a CA-d4 record at
+        45 eV scores 6 against the same vial at 12 eV and 29 at 22. This asks
+        the other question — *what conditions would produce this* — by
+        interpolating the compound's records between the energies they were
+        measured at (`EnergyProfile`) and sweeping for the best fit. It never
+        extrapolates past the measured range and never interpolates between
+        two activations, so a compound with one record of an activation is
+        reported as having one record and not as a curve.
+
+        The candidates are the ones `search` would score, on the same
+        precursor and polarity gates, grouped by the compound their names
+        start with. Sorted best first, the compounds with nothing to say last.
+        """
+        mz = np.asarray(mz, dtype=float)
+        intensity = np.asarray(intensity, dtype=float)
+        if mz.size == 0 or intensity.size == 0:
+            return []
+        peak = float(intensity.max())
+        if peak <= 0:
+            return []
+        keep = intensity >= noise_share * peak
+        query_mz = mz[keep]
+        sign = chemistry.polarity_sign(polarity)
+        counted: dict[str, int] = {}
+        for number in self._candidates(query_mz, precursor, precursor_tolerance,
+                                       include_unknown_precursor, min_matched,
+                                       sign, include_other_polarity):
+            compound = _compound_of(self.entries[int(number)].name)
+            if compound:
+                counted[compound] = counted.get(compound, 0) + 1
+        # bounded on purpose. Building a profile reads every record of the
+        # compound, and an unfiltered search of a public library reaches
+        # thousands of compound names — the ones with the most candidate
+        # records are the ones that can have a profile at all
+        compounds = sorted(counted, key=lambda name: (-counted[name], name))
+        out: list[EnergyMatch] = []
+        for compound in compounds[:max(top, 1)]:
+            out += match_profile(self.profile(compound, tolerance_ppm),
+                                 mz, intensity, tolerance_ppm=tolerance_ppm,
+                                 noise_share=noise_share,
+                                 min_matched=min_matched)
+        out.sort(key=lambda one: (one.energy is None, -one.score))
+        return out[:top]
 
 
 def match(query_mz: np.ndarray, query_i: np.ndarray, lib_mz: np.ndarray,
@@ -1499,3 +1578,547 @@ def _window(channel, wanted) -> tuple[float, float]:
     low = float(times[int(np.argmin(np.abs(times - float(wanted[0]))))])
     high = float(times[int(np.argmin(np.abs(times - float(wanted[1]))))])
     return min(low, high), max(low, high)
+
+
+# --------------------------------------------------------------------------- #
+# one standard across collision energies
+# --------------------------------------------------------------------------- #
+#: how fine an energy is proposed, in eV. `infusion_report.ENERGY_TOLERANCE_EV`
+#: is the figure this program already uses to decide two energies are the same
+#: setting written twice — a vendor writes a nominal energy and a spread — and
+#: a proposal finer than the number's own precision is arithmetic wearing a
+#: measurement's clothes.
+ENERGY_STEP_EV = 0.5
+
+#: how many records of one activation before there is anything to interpolate
+#: between. Two is not a lot and it is the fewest a line can be drawn through;
+#: with one, `search_energy` says so instead of pretending.
+MIN_PROFILE_RECORDS = 2
+
+#: at most this many fragments beyond the predicted ladder, strongest first.
+#: The ladder is what a rung means; these are what the records agree on
+#: besides it, and a profile of two hundred peaks is the records again
+PROFILE_PEAKS = 12
+
+#: a fragment has to be in at least this many of the records to be one of the
+#: profile's rows. A peak in one record is that record, not the compound
+PROFILE_IN_RECORDS = 2
+
+#: how much better than a single record's reverse score a profile match has
+#: to be before anything mentions it. Measured: with two energies on file the
+#: sweep lands on one of the two records, so the profile *is* that record's
+#: ions and the two scores agree to the fifteenth decimal — without a margin
+#: the cell fills with floating-point noise. One point on the 0-1 scale is
+#: one point of the whole percentage the hit list prints, which is the
+#: smallest difference a reader can see.
+PROFILE_BETTER_BY = 0.01
+
+
+@dataclass(frozen=True)
+class Rung:
+    """One row of a profile: an ion, and where the profile got it."""
+
+    mz: float
+    description: str
+    #: from `explain.precursor_ions` — the compound's own ladder — rather
+    #: than from whatever the records happen to share
+    predicted: bool = False
+
+
+@dataclass(frozen=True)
+class ProfilePoint:
+    """One record's shares, at the energy and activation it was measured at."""
+
+    energy: float
+    activation: str
+    label: str
+    #: aligned with `EnergyProfile.rungs` and summing to one. Shares of the
+    #: profile's own total, never of the record's base peak — see the class
+    shares: tuple[float, ...] = ()
+    #: how many of the profile's rungs this record actually holds
+    matched: int = 0
+    base_intensity: float | None = None
+
+    @property
+    def conditions(self) -> str:
+        return f"{self.activation or 'activation unstated'} {self.energy:g} eV"
+
+
+@dataclass(frozen=True)
+class EnergyProfile:
+    """
+    How one compound's fragments divide its intensity as the energy rises.
+
+    Computed from the records present, on demand, and **not** stored in the
+    file. An `Energy_profile_id` written into each record would be a claim
+    about the other records that was true when it was written: the profile of
+    a compound changes the moment one more infusion of it is appended, which
+    is the ordinary way a library of one's own grows, and MSP has no way to
+    say a field has gone stale. So there is nothing to invalidate. The cost
+    is a pass over the compound's records — nine records here, a few dozen
+    after a year of verifications — against a field that would have to be
+    rewritten across the whole file every time one record was added.
+
+    Each rung's value is its share of **the profile's own total**, not its
+    height relative to the record's base peak. That is not a decoration: on
+    the bile-acid infusions the base peak moves down the ladder as the energy
+    rises — the ammoniated precursor at 12 eV, `[M+H-2H2O]+` at 22, and
+    `[M+H-3H2O]+` at 45 — so a vector held relative to the base peak jumps
+    when its own denominator changes rung, and a jump like that cannot be
+    interpolated through. Shares of the total move smoothly because nothing
+    underneath them moves.
+
+    Which ions are rungs is the compound's business first: the water-loss
+    ladder `explain.precursor_ions` predicts from the record's own formula
+    and adduct, kept where at least one record holds it. Then, beneath that,
+    the strongest fragments the records agree on — `PROFILE_PEAKS` of them,
+    each in at least `PROFILE_IN_RECORDS` records. A record holding fewer
+    than `MIN_MATCHED` of the resulting rungs is left out with the reason,
+    which is how the two bile-acid infusions filed under `CA-d4` that
+    isolated 839.56 rather than 430.34 stay out of CA-d4's profile without
+    anything having to parse a file name.
+    """
+
+    compound: str
+    rungs: tuple[Rung, ...] = ()
+    points: tuple[ProfilePoint, ...] = ()
+    #: the record's precursor the ladder was predicted from
+    precursor: float | None = None
+    formula: str = ""
+    adduct: str = ""
+    #: records of this compound the profile does not use, and why
+    left_out: tuple[str, ...] = ()
+    note: str = ""
+
+    # -- what it holds ------------------------------------------------------- #
+    @property
+    def predicted_rungs(self) -> int:
+        return sum(1 for rung in self.rungs if rung.predicted)
+
+    def activations(self) -> list[str]:
+        """The activations with records, the ordinary ones first."""
+        seen: list[str] = []
+        for point in self.points:
+            if point.activation not in seen:
+                seen.append(point.activation)
+        return sorted(seen, key=lambda name: (name == "", name))
+
+    def series(self, activation: str = "") -> list[ProfilePoint]:
+        """The points of one activation, by energy."""
+        return sorted((p for p in self.points if p.activation == activation),
+                      key=lambda point: point.energy)
+
+    def span(self, activation: str = "") -> tuple[float, float] | None:
+        """The energies measured for one activation, lowest and highest."""
+        points = self.series(activation)
+        if not points:
+            return None
+        return points[0].energy, points[-1].energy
+
+    def energies(self, activation: str = "") -> tuple[float, ...]:
+        return tuple(point.energy for point in self.series(activation))
+
+    # -- what it says -------------------------------------------------------- #
+    def at(self, energy: float, activation: str = "") -> tuple[float, ...] | None:
+        """
+        The shares this profile expects at an energy, or None.
+
+        Linear on each rung's share between the two measured energies that
+        bracket it, and **None outside the measured range** — above the
+        highest energy on file the ladder goes on walking downwards and there
+        is nothing in the records to say how fast, so an extrapolated share
+        would be a guess with a number attached. None is also what an
+        activation with no records gets: a profile measured under EAD says
+        nothing about a collision cell, and interpolating between the two
+        would be interpolating between two compounds' worth of chemistry.
+        """
+        points = self.series(activation)
+        if not points:
+            return None
+        low, high = points[0].energy, points[-1].energy
+        if not low <= float(energy) <= high:
+            return None
+        for first, second in zip(points, points[1:]):
+            if first.energy <= energy <= second.energy:
+                width = second.energy - first.energy
+                if width <= 0:
+                    return first.shares
+                fraction = (float(energy) - first.energy) / width
+                return tuple(a + (b - a) * fraction
+                             for a, b in zip(first.shares, second.shares))
+        return points[0].shares
+
+    def summary(self) -> str:
+        """What the profile is made of, in a sentence."""
+        if not self.rungs:
+            return f"{self.compound}: no ions to profile"
+        said = [f"{len(self.rungs)} ion(s)"]
+        if self.predicted_rungs:
+            said.append(f"{self.predicted_rungs} from the ladder")
+        for activation in self.activations():
+            energies = self.energies(activation)
+            said.append(f"{activation or 'activation unstated'} at "
+                        f"{_and_list(energies)} eV")
+        if self.left_out:
+            said.append(f"{len(self.left_out)} record(s) left out")
+        return f"{self.compound}: " + " · ".join(said)
+
+    def table(self) -> list[list[str]]:
+        """
+        The profile as a table: one row per rung, one column per record.
+
+        The header is the ion, its mass, and then each record's conditions;
+        the cells are shares of the profile's total as percentages. This is
+        what the manual prints and what a report section would.
+        """
+        points = [point for activation in self.activations()
+                  for point in self.series(activation)]
+        rows = [["Ion", "m/z"] + [point.conditions for point in points]]
+        for index, rung in enumerate(self.rungs):
+            rows.append([rung.description, f"{rung.mz:.4f}"]
+                        + [f"{point.shares[index] * 100:.1f}%"
+                           if index < len(point.shares) else "—"
+                           for point in points])
+        return rows
+
+
+def _and_list(values) -> str:
+    """`(12, 22)` written `12 and 22`, `(12, 22, 45)` written `12, 22 and 45`."""
+    texts = [f"{value:g}" if isinstance(value, (int, float)) else str(value)
+             for value in values]
+    if len(texts) <= 1:
+        return texts[0] if texts else ""
+    return ", ".join(texts[:-1]) + f" and {texts[-1]}"
+
+
+def _entries_of(library) -> list[LibraryEntry]:
+    """A `SpectralLibrary`, or any sequence of records, as records."""
+    return list(getattr(library, "entries", library) or [])
+
+
+def _compound_of(name: str) -> str:
+    from .infusion_report import compound_of
+
+    return compound_of(name)
+
+
+def _energy_of(entry) -> float | None:
+    from .infusion_report import energy_of
+
+    return energy_of(entry)
+
+
+def _activation_of(entry) -> str:
+    from .standard_history import activation_of
+
+    return activation_of(entry)
+
+
+def _ladder(entry: LibraryEntry) -> tuple[list, str, str]:
+    """
+    The ions a record's own formula and adduct predict, with both as used.
+
+    The labels a name declares but a formula does not are added the way the
+    infusion report adds them (`labelled_formula`): a d4 standard is filed as
+    `CA-d4` with the unlabelled formula beside it more often than not, and a
+    ladder predicted 4.025 Da light matches nothing at all.
+    """
+    from .infusion_report import labelled_formula
+
+    formula = str(entry.formula or "").strip()
+    adduct = str(entry.precursor_type or "").strip()
+    if not formula or not adduct:
+        return [], "", ""
+    from .explain import precursor_ions
+
+    written, _labels, _note = labelled_formula(formula, entry.name)
+    return list(precursor_ions(written, adduct)), written, adduct
+
+
+def _nearest(mz: np.ndarray, intensity: np.ndarray, centre: float,
+             tolerance_ppm: float) -> float:
+    """The tallest peak within the tolerance of a mass, or 0.0."""
+    if mz.size == 0:
+        return 0.0
+    window = abs(centre) * tolerance_ppm * 1e-6
+    near = np.flatnonzero(np.abs(mz - centre) <= window)
+    if near.size == 0:
+        return 0.0
+    return float(intensity[near].max())
+
+
+def _shared_peaks(entries: list[LibraryEntry], taken: list[float],
+                  tolerance_ppm: float, most: int) -> list[float]:
+    """
+    The masses the records agree on, beyond the ones already spoken for.
+
+    Clustered by walking the pooled peaks upwards and starting a new cluster
+    wherever the next peak is further than the tolerance from the current
+    one's centre — the same pairing rule `match` uses, applied to records
+    instead of to a query. A cluster in fewer than `PROFILE_IN_RECORDS`
+    records is one record's peak and is dropped; what is left is ranked on
+    the intensity it carries summed over the records.
+    """
+    pooled: list[tuple[float, float, int]] = []
+    for number, entry in enumerate(entries):
+        pooled += [(float(m), float(i), number)
+                   for m, i in zip(entry.mz, entry.intensity)]
+    pooled.sort()
+    clusters: list[list[tuple[float, float, int]]] = []
+    for peak in pooled:
+        if clusters and abs(peak[0] - clusters[-1][0][0]) <= \
+                clusters[-1][0][0] * tolerance_ppm * 1e-6:
+            clusters[-1].append(peak)
+        else:
+            clusters.append([peak])
+    out: list[tuple[float, float]] = []
+    for cluster in clusters:
+        if len({member[2] for member in cluster}) < PROFILE_IN_RECORDS:
+            continue
+        centre = float(np.mean([member[0] for member in cluster]))
+        if any(abs(centre - other) <= abs(centre) * tolerance_ppm * 1e-6
+               for other in taken):
+            continue
+        out.append((sum(member[1] for member in cluster), centre))
+    out.sort(key=lambda pair: -pair[0])
+    return [centre for _weight, centre in out[:most]]
+
+
+def profile_of(library, compound: str,
+               tolerance_ppm: float = PEAK_TOLERANCE_PPM,
+               most_fragments: int = PROFILE_PEAKS) -> EnergyProfile:
+    """
+    One compound's fragmentation across the energies its records were
+    measured at — see `EnergyProfile` for what is in it and why none of it
+    is written to the file.
+
+    `library` is a `SpectralLibrary` or any sequence of records; `compound`
+    is what `infusion_report.compound_of` makes of a record's name, which is
+    how the rest of this program decides two infusions are the same standard.
+    A record with no collision energy cannot be a point on a curve against
+    energy and is left out saying so.
+    """
+    entries = [entry for entry in _entries_of(library)
+               if _compound_of(entry.name) == compound]
+    if not entries:
+        return EnergyProfile(compound=compound, note="no record of this compound")
+    left_out: list[str] = []
+    dated = []
+    for entry in entries:
+        energy = _energy_of(entry)
+        if energy is None:
+            left_out.append(f"{entry.name}: no collision energy on the record")
+        else:
+            dated.append((entry, float(energy)))
+    if not dated:
+        return EnergyProfile(compound=compound, left_out=tuple(left_out),
+                             note="no record carries a collision energy")
+
+    # the ladder first, from whichever record states a formula and an adduct
+    ions, formula, adduct = [], "", ""
+    for entry, _energy in dated:
+        ions, formula, adduct = _ladder(entry)
+        if ions:
+            break
+    rungs: list[Rung] = []
+    note = ""
+    for ion in sorted(ions, key=lambda one: -one.mz):
+        if any(_nearest(entry.mz, entry.intensity, ion.mz, tolerance_ppm) > 0
+               for entry, _energy in dated):
+            rungs.append(Rung(mz=float(ion.mz), description=ion.description,
+                              predicted=True))
+    if not ions:
+        note = ("no record gives a formula and an adduct, so the profile is "
+                "the fragments the records share and not a predicted ladder")
+
+    # then what the records agree on besides it
+    kept = [entry for entry, _energy in dated]
+    if rungs:
+        # identity, never equality: a `LibraryEntry` holds numpy arrays and
+        # `entry in kept` would compare them elementwise and raise
+        kept = [entry for entry in kept
+                if sum(1 for rung in rungs
+                       if _nearest(entry.mz, entry.intensity, rung.mz,
+                                   tolerance_ppm) > 0) >= MIN_MATCHED]
+        alive = {id(entry) for entry in kept}
+        for entry, _energy in dated:
+            if id(entry) not in alive:
+                left_out.append(f"{entry.name}: holds fewer than "
+                                f"{MIN_MATCHED} of the ladder's ions — not a "
+                                f"spectrum of this precursor")
+    alive = {id(entry) for entry in kept}
+    for centre in _shared_peaks(kept or [e for e, _ in dated],
+                                [rung.mz for rung in rungs], tolerance_ppm,
+                                most_fragments):
+        rungs.append(Rung(mz=centre, description=f"{centre:.4f}"))
+    rungs.sort(key=lambda rung: -rung.mz)
+    if not rungs:
+        return EnergyProfile(compound=compound, left_out=tuple(left_out),
+                             note="nothing the records share to profile")
+
+    points: list[ProfilePoint] = []
+    for entry, energy in dated:
+        if alive and id(entry) not in alive:
+            continue
+        heights = [_nearest(entry.mz, entry.intensity, rung.mz, tolerance_ppm)
+                   for rung in rungs]
+        total = float(sum(heights))
+        if total <= 0:
+            left_out.append(f"{entry.name}: holds none of the profile's ions")
+            continue
+        points.append(ProfilePoint(
+            energy=float(energy), activation=_activation_of(entry),
+            label=entry.name,
+            shares=tuple(height / total for height in heights),
+            matched=sum(1 for height in heights if height > 0),
+            base_intensity=base_intensity_of(entry)))
+    points.sort(key=lambda point: (point.activation, point.energy))
+    precursor = next((entry.exact_precursor or entry.precursor
+                      for entry, _e in dated), None)
+    return EnergyProfile(compound=compound, rungs=tuple(rungs),
+                         points=tuple(points), precursor=precursor,
+                         formula=formula, adduct=adduct,
+                         left_out=tuple(left_out), note=note)
+
+
+@dataclass(frozen=True)
+class EnergyMatch:
+    """What one compound's profile makes of a measured spectrum."""
+
+    compound: str
+    activation: str
+    #: the energy the profile fits best, or None when it could not say
+    energy: float | None = None
+    #: the cosine over the profile's own ions — the figure the energy is
+    #: chosen on, and the one `line` prints. The plain cosine is `over_all`
+    #: and it is not the right question here: a profile holds a dozen ions
+    #: and a measured product spectrum holds hundreds, so the plain cosine
+    #: measures how much else was in the vial
+    score: float = 0.0
+    over_all: float = 0.0
+    matched: int = 0
+    of_profile: int = 0
+    #: the energies the records were actually measured at
+    measured: tuple[float, ...] = ()
+    note: str = ""
+
+    @property
+    def interpolated(self) -> bool:
+        """Whether the energy is between two measured ones rather than one
+        of them."""
+        return (self.energy is not None
+                and not any(abs(self.energy - one) < ENERGY_STEP_EV / 2
+                            for one in self.measured))
+
+    @property
+    def at_edge(self) -> str:
+        """
+        `"low"`, `"high"` or `""` — whether the best fit sits on the end of
+        the measured range.
+
+        It matters because nothing is extrapolated: a spectrum measured
+        *past* the highest energy on file can only be reported at that
+        highest energy, and on the bile-acid infusions it was — the 45 eV
+        record fitted CA-d4's EAD profile best at 22 eV, the top of the
+        range, at 0.56. The energy is what the records can say; this says
+        that the records ran out there.
+        """
+        if self.energy is None or not self.measured:
+            return ""
+        if abs(self.energy - min(self.measured)) < ENERGY_STEP_EV / 2:
+            return "low"
+        if abs(self.energy - max(self.measured)) < ENERGY_STEP_EV / 2:
+            return "high"
+        return ""
+
+    def line(self) -> str:
+        """The one line this adds to a hit list."""
+        where = f"{self.compound} {self.activation or 'activation unstated'}"
+        if self.energy is None:
+            return f"{where}: {self.note or 'nothing to say'}"
+        about = "~" if self.interpolated else ""
+        return (f"compatible with {where} at {about}{self.energy:g} eV "
+                f"(score {self.score:.2f}; measured at "
+                f"{_and_list(self.measured)})")
+
+    def cell(self) -> str:
+        """The same thing narrow enough for a table cell."""
+        if self.energy is None:
+            return self.note or "—"
+        about = "~" if self.interpolated else ""
+        return (f"{self.activation or 'activation unstated'} "
+                f"{about}{self.energy:g} eV, {self.score:.2f}")
+
+
+def match_profile(profile: EnergyProfile, mz, intensity,
+                  tolerance_ppm: float = PEAK_TOLERANCE_PPM,
+                  noise_share: float = NOISE_SHARE,
+                  min_matched: int = MIN_MATCHED,
+                  step_ev: float = ENERGY_STEP_EV) -> list[EnergyMatch]:
+    """
+    The energy each of a profile's activations would have to be at for the
+    measured spectrum to look like this, one `EnergyMatch` per activation.
+
+    The search is a sweep over the measured range at `step_ev`, scoring the
+    interpolated shares against the spectrum with `match` — the same pairing
+    and the same square-rooted cosine a library search uses, so "how alike
+    are two spectra" has one answer in this program. The energy is chosen on
+    the reverse cosine, which asks only whether the profile's ions are there
+    in those proportions; the plain cosine over everything the spectrum holds
+    is reported beside it and would otherwise elect whichever energy happened
+    to predict the fewest ions.
+
+    Activations are never mixed. Each is swept over its own records' range
+    and an activation with one record is reported as one record, since a line
+    through one point is a point.
+    """
+    mz = np.asarray(mz, dtype=float)
+    intensity = np.asarray(intensity, dtype=float)
+    out: list[EnergyMatch] = []
+    if mz.size == 0 or intensity.size == 0 or not profile.rungs:
+        return out
+    top = float(intensity.max())
+    if top <= 0:
+        return out
+    keep = intensity >= noise_share * top
+    query_mz, query_i = mz[keep], intensity[keep] / top
+    rung_mz = np.array([rung.mz for rung in profile.rungs], dtype=float)
+    for activation in profile.activations():
+        points = profile.series(activation)
+        energies = tuple(point.energy for point in points)
+        if len(points) < MIN_PROFILE_RECORDS:
+            out.append(EnergyMatch(
+                compound=profile.compound, activation=activation,
+                measured=energies, of_profile=len(profile.rungs),
+                note=f"one energy on file ({_and_list(energies)} eV): "
+                     f"no profile"))
+            continue
+        low, high = energies[0], energies[-1]
+        grid = sorted(set(list(np.arange(low, high + step_ev / 2, step_ev))
+                          + list(energies)))
+        best = None
+        for energy in grid:
+            shares = profile.at(float(energy), activation)
+            if shares is None:
+                continue
+            score, reverse, pairs = match(query_mz, query_i, rung_mz,
+                                          np.asarray(shares, dtype=float),
+                                          tolerance_ppm)
+            if len(pairs) < max(min_matched, 1):
+                continue
+            if best is None or reverse > best[1]:
+                best = (float(energy), reverse, score, len(pairs))
+        if best is None:
+            out.append(EnergyMatch(
+                compound=profile.compound, activation=activation,
+                measured=energies, of_profile=len(profile.rungs),
+                note=f"fewer than {max(min_matched, 1)} of the profile's ions "
+                     f"are in this spectrum"))
+            continue
+        energy, reverse, score, matched = best
+        out.append(EnergyMatch(
+            compound=profile.compound, activation=activation, energy=energy,
+            score=reverse, over_all=score, matched=matched,
+            of_profile=len(profile.rungs), measured=energies))
+    out.sort(key=lambda one: (one.energy is None, -one.score))
+    return out

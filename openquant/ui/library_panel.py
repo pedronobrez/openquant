@@ -154,6 +154,23 @@ class LibraryPanel(QtWidgets.QWidget):
             "high reverse with a low score is a compound present with company")
         layout.addWidget(self.hits, 3)
 
+        self.energies = QtWidgets.QLabel("")
+        self.energies.setWordWrap(True)
+        self.energies.setProperty("role", "hint")
+        self.energies.setTextInteractionFlags(
+            QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.energies.setToolTip(
+            "A record does not travel between collision energies: on the "
+            "bile-acid infusions a CA-d4 record at 45 eV scored 6 against "
+            "the same vial at 12 eV. Where a compound has records at two or "
+            "more energies of one activation, this interpolates between them "
+            "and says which energy the spectrum on screen fits best. It never "
+            "goes past the energies on file and never mixes two activations, "
+            "so a compound with one record of an activation says so. The "
+            "score is the cosine over the profile's own ions")
+        self.energies.hide()
+        layout.addWidget(self.energies)
+
         self.pairs = QtWidgets.QTreeWidget()
         self.pairs.setHeaderLabels(["Measured", "Library", "ppm", "Measured %",
                                     "Library %"])
@@ -281,6 +298,7 @@ class LibraryPanel(QtWidgets.QWidget):
             include_unknown_precursor=self.unknown_precursor.isChecked(),
             polarity=polarity,
             include_other_polarity=self.other_polarity.isChecked())
+        self._show_energies(mz, intensity, polarity)
         self.hits.clear()
         self.pairs.clear()
         for hit in self._hits:
@@ -333,6 +351,41 @@ class LibraryPanel(QtWidgets.QWidget):
             self.status.setText("No record matched. Widen the tolerances, or "
                                 "the compound is not in this library.")
         self.btn_overlay.setEnabled(bool(self._hits))
+
+    def _show_energies(self, mz, intensity, polarity) -> None:
+        """
+        The energy-profile lines under the hit list, one per compound and
+        activation the library can say anything about.
+
+        Additional to the hit list and never a replacement for it: the hits
+        answer *which record is this like*, these answer *what conditions
+        would produce this*. Hidden entirely where no compound has more than
+        one record, which is every public library — a line saying nothing on
+        every search is a line nobody reads.
+        """
+        self._energies = []
+        if self.library is None:
+            self.energies.hide()
+            return
+        try:
+            self._energies = self.library.search_energy(
+                mz, intensity, self._query_precursor(),
+                tolerance_ppm=self.peak_tol.value(),
+                precursor_tolerance=self.precursor_tol.value(),
+                min_matched=self.min_matched.value(),
+                include_unknown_precursor=self.unknown_precursor.isChecked(),
+                polarity=polarity,
+                include_other_polarity=self.other_polarity.isChecked())
+        except Exception as exc:            # a library that cannot profile
+            # said rather than swallowed: a line that quietly disappears on
+            # some files and not others is worse than one that says why
+            self._energies = []
+            self.energies.setText(f"No energy profile could be built: {exc}")
+            self.energies.show()
+            return
+        said = [one.line() for one in self._energies]
+        self.energies.setText("\n".join(said))
+        self.energies.setVisible(bool(said))
 
     def _current_hit(self) -> LibraryHit | None:
         item = self.hits.currentItem()

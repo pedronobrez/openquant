@@ -1746,6 +1746,10 @@ class InfusionRow:
     explanation_note: str = ""
     library_note: str = ""
     others_note: str = ""
+    #: what the compound's own records across energies make of this spectrum
+    #: (`library.EnergyMatch`), or None where they could not say. Beside the
+    #: single best record rather than instead of it — see `record`
+    energy: object | None = None
 
     # -- what it is ---------------------------------------------------------- #
     @property
@@ -1826,6 +1830,36 @@ class InfusionRow:
         return None if self.report.hit is None else self.report.hit.score
 
     @property
+    def record(self) -> str:
+        """
+        The own-library cell: the best single record, and the energy profile
+        where the profile says more than the record did.
+
+        Mentioned only when it beats the record by `PROFILE_BETTER_BY`, and
+        beaten is measured against the record's **reverse** score rather than
+        its plain one. Both are the same question — are these ions there in
+        these proportions — asked of the library's peaks; the plain cosine is
+        dragged down by everything else in the vial, and a profile of a dozen
+        ions compared against a record's plain score over hundreds would win
+        every time by holding less. On the bile-acid infusions this fires on
+        nothing: with two energies on file the sweep lands on one of them,
+        and the profile then *is* that record's ions, scoring 0.56 where the
+        record scored 0.56 and 1.00 where it scored 1.00.
+        """
+        from .library import PROFILE_BETTER_BY
+
+        hit = self.report.hit
+        name = hit.entry.name if hit is not None else (
+            self.library_note or "no record")
+        match = self.energy
+        if match is None or getattr(match, "energy", None) is None:
+            return name
+        if hit is not None and (float(match.score)
+                                < float(hit.reverse) + PROFILE_BETTER_BY):
+            return name
+        return f"{name} · {match.cell()}"
+
+    @property
     def mass_axis(self) -> str:
         """
         What the recalibration did to this vial, in one cell.
@@ -1872,8 +1906,7 @@ class InfusionRow:
              if explanation is not None and explanation.predicted
              else f"{explanation.matched}" if explanation is not None
              else self.explanation_note or "nothing run"),
-            hit.entry.name if hit is not None
-            else self.library_note or "no record",
+            self.record,
             f"{hit.score * 100:.0f}" if hit is not None else "—",
             f"{hit.reverse * 100:.0f}" if hit is not None else "—",
             f"{hit.matched} of {hit.of_library}" if hit is not None else "—",
@@ -1948,8 +1981,7 @@ class InfusionRow:
                      if found and error is not None
                      else f"{found[0]:,.4f}" if found
                      else self.precursor_note or "not measurable")
-        record = hit.entry.name if hit is not None else (
-            self.library_note or "no record")
+        record = self.record
         if gap is not None:
             record += f" — {gap[1]:g} eV against this run’s {gap[0]:g}"
         return [
@@ -2390,6 +2422,57 @@ def _best_record(library, report: InfusionReport):
     return hits[0], ""
 
 
+def _energy_match(library, report: InfusionReport, compound: str):
+    """
+    What the compound's own records across energies make of this spectrum.
+
+    `_best_record` asks which single record this is like, and a record does
+    not travel between energies. This asks the other question —
+    `library.search_energy`'s — of the one compound the row is grouped under,
+    and returns the best-scoring activation that could say anything, or None.
+
+    The activation is chosen by score rather than declared, because a `.wiff`
+    does not carry one: `ChannelInfo.activation` is empty on every file this
+    program has read, and a row cannot say whether its own infusion was EAD
+    or a collision cell. What the profile can say is which of the recorded
+    activations the spectrum looks like, at which energy, and that is what
+    comes back.
+
+    The compound is looked for under the **file name on disk** as well as
+    under the name the row is grouped by, and for the reason
+    `infusion_compare` gives: `samples.shorten_names` strips the prefix every
+    open sample shares, so three infusions of one standard opened together
+    are grouped as `EAD` and `Mix1` while the same three opened beside
+    another compound are grouped as `CA-d4`. A library's records are named
+    after the compound, so the file name is the one that finds them.
+    """
+    from .library import match_profile, profile_of
+
+    if library is None or not len(library):
+        return None
+    sticks = _sticks(report)
+    if sticks is None:
+        return None
+    wanted: list[str] = []
+    for name in (compound, compound_of(report.file)):
+        if name and name not in wanted:
+            wanted.append(name)
+    # a `SpectralLibrary` caches its profiles and every row of a compound
+    # asks for the same one; anything else duck-typed as a list of records
+    # still works, without the cache
+    cached = getattr(library, "profile", None)
+    for name in wanted:
+        profile = (cached(name) if callable(cached)
+                   else profile_of(library, name))
+        if not profile.points:
+            continue
+        matches = match_profile(profile, sticks[0], sticks[1])
+        found = next((one for one in matches if one.energy is not None), None)
+        if found is not None:
+            return found
+    return None
+
+
 def _precursor_reason(report: InfusionReport) -> str:
     """Why there is no measured precursor, short enough for a cell."""
     if not report.written_precursor:
@@ -2484,7 +2567,8 @@ def summarise(session, library=None, explanations=None,
                        if report.spectrum is not None
                        and report.trace is not None else []),
                 explanation_note=note, library_note=library_note,
-                precursor_note=_precursor_reason(report))
+                precursor_note=_precursor_reason(report),
+                energy=_energy_match(library, report, compound))
             made.append(row)
             done += 1
             if progress is not None and not progress(done, total):

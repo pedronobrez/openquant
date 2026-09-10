@@ -50,6 +50,9 @@ The internal-standard and qualifier columns are explained in
   [[annotate-from-lipid-maps]].
 - **Fill formulas from names** reads the lipid shorthand the names already
   carry and fills the empty Formula cells with it, see below.
+- **Repair precursors…** is the way out of what that refuses: where a formula
+  and the precursor written beside it disagree, it offers the formula's mass
+  for the precursor, row by row, see below.
 - **Export schedule…** writes the scheduled acquisition the method implies,
   with the dwell a target cycle leaves each transition, see
   [[acquisition-schedule]].
@@ -89,9 +92,98 @@ which internal standards are still without a formula, and therefore without
 a lock mass.
 
 On the method this was written against: 125 of 141 components and 10 of 11
-internal standards, in milliseconds; the 16 refusals were all the written
-precursor being wrong, not the name. [[mass-recalibration]] carries the
-figures.
+internal standards, in milliseconds. Thirteen of the 16 refusals were the
+written precursor, typed to fewer places than it deserved; the other three
+are a whole dalton or more out, and on that batch the instrument had acquired
+the mass as it was written, which makes the *name* the thing in question.
+*Repair precursors…*, below, is where either is settled.
+[[mass-recalibration]] carries the figures.
+
+## Repair precursors from formulas
+
+A refusal leaves a stand-off: the formula and the precursor cannot both be
+right, and *Fill formulas from names* deliberately declines to guess which.
+**Repair precursors…** — also offered on the refusals dialog — is where that
+is settled, by hand. It lists every component whose formula contradicts its
+precursor, from either direction: one the method already carries, and one the
+name implies that the fill refused to write.
+
+Each row shows the name, the precursor as written, the mass the formula gives
+through the row's adduct, the difference in mDa and in ppm, the extraction
+window before and after, and a note. **Apply** writes the formula *and* the
+precursor for the ticked rows, one [[audit-trail|audit]] entry each —
+`precursor 484.465 → 484.4724`, with the formula in the note. A row that is
+not ticked is not touched, and neither is any row that was not listed.
+
+The ticking is the argument of the dialog:
+
+- **under half a dalton, ticked.** That is one compound written down to fewer
+  places — `484.465` for 484.4724, a mass typed to one decimal — and taking
+  the formula's is arithmetic.
+- **half a dalton or more, offered unticked.** That is two different
+  compounds: a hydrogen, a double bond, a dropped digit. Which of the name
+  and the mass is the mistake is not something arithmetic can settle, and
+  the row says so rather than deciding.
+
+### What a precursor actually moves
+
+Two things, and the smaller one is the obvious one:
+
+- the **extraction window**, but only where the row has no fragment. A row
+  that names one extracts on the fragment, so the window stays exactly where
+  it was; the dialog shows both windows so this is visible rather than
+  assumed.
+- **which acquisition channel is read.** The channel is chosen by precursor,
+  within 0.7 Da of the channel's own. A repair larger than that moves the
+  component onto a different channel — or off every product-ion channel, in
+  which case it falls back to the survey scan and reports a number that is
+  not the compound at all.
+
+So process the batch again afterwards, and run [[check-method]] again too.
+
+### Measured, on the 26-injection batch
+
+Sixteen components refused; thirteen under half a dalton, three whole.
+Applying the thirteen:
+
+| | |
+|---|---|
+| components repaired | 13 of 16 |
+| how far the written mass was out | 3.0 to 260 mDa, −235 to +392 ppm |
+| acquisition channel changed | none — every one stayed within 0.7 Da |
+| extraction windows moved | none — all 141 rows carry a fragment |
+| rows with a peak, before → after | identical, component by component |
+| median area, before → after | identical, component by component |
+| rows that moved at all | 0 of 338, the largest area difference 0.000 |
+
+That is the honest result: on this batch the thirteen repairs do not move a
+single number. What they buy is the formula beside them. The method goes from
+125 formulas to 138 of 141, and from 10 of its 11 internal standards carrying
+one to all 11 — the last standard without a possible lock mass for the
+[[mass-recalibration]] was `dHCer(d18:0/12:0)`, the row 15 ppm out. Eight of
+the thirteen repaired precursors lie inside the 50–700 survey, which is where
+a lock mass has to be measurable at all; whether any of them is strong enough
+to measure is a separate question, and [[mass-drift]] answers it.
+
+The *formula against precursor* finding in [[check-method]] does not change
+here, and cannot: it reads a formula the table already carries, and *Fill
+formulas from names* refuses to write the sixteen. The refusals dialog is
+where they are reported on this batch; the finding is what a typed or
+imported formula produces.
+
+The three whole-dalton rows are why the rest are offered unticked. Applied,
+against a batch acquired with the masses as they were written:
+
+| Component | Written → repaired | What the repair did |
+|---|---|---|
+| `C18:1 Cer` | 464.4 → 564.5350 | left the acquired 464.6 channel for no channel at all; fell back to the survey scan, and 22 rows with a peak of median 9 counts became 10 rows of median 55 — a number that is not the compound |
+| `LacCER(d18:1/18:1(9Z))` | 886.6407 → 888.6407 | the same: 888.64 was never acquired, 886.6 was; 21 rows of median 2 became 25 rows of median 32, off the survey |
+| `LacCER(d18:0/18:1)` | 889.6563 → 890.6563 | landed on a real channel — the one the method's own `LacCER(d18:1/18:0)` already uses, the same formula and the same fragment. 16 rows of median 2 became 25 of median 4, indistinguishable from its isomer |
+
+Each of those says the same thing: the instrument acquired the mass as it was
+written, so the written mass is the one the data is under and the *name* is
+what wants correcting. No arithmetic could have known that, which is why
+nothing there is ticked.
 
 ## Method defaults
 

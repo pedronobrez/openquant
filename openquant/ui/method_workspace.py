@@ -8,7 +8,7 @@ from .. import lipidmaps, precursor
 from ..audit import METHOD_DEFAULT, component_changes
 from ..chemistry import ADDUCTS
 from ..components import (RESPONSES, Component, fill_formulas, load_components,
-                          save_components)
+                          precursor_repairs, save_components)
 from ..session import Session
 from . import style, theme
 from .annotate_dialog import AnnotateDialog, _looks_unnamed, propose
@@ -96,10 +96,17 @@ class MethodWorkspace(QtWidgets.QWidget):
             "what it implies. A formula is only kept where it agrees with the "
             "precursor already written down; a cell that has a formula is "
             "never touched, and no precursor is changed")
+        self.btn_repair = QtWidgets.QPushButton("Repair precursors…")
+        self.btn_repair.setToolTip(
+            "Where a formula and the precursor written beside it disagree, "
+            "take the precursor from the formula — row by row, ticked by "
+            "hand, each one recorded. The only thing in the workspace that "
+            "moves a precursor for you")
         for widget in (self.btn_add, self.btn_remove, self.btn_generate,
                        self.btn_import, self.btn_export, self.btn_check,
                        self.btn_schedule, self.btn_skyline,
-                       self.btn_suggest, self.btn_annotate, self.btn_formulas):
+                       self.btn_suggest, self.btn_annotate, self.btn_formulas,
+                       self.btn_repair):
             bar.addWidget(widget)
         bar.addStretch(1)
         layout.addLayout(bar)
@@ -165,6 +172,7 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.btn_suggest.clicked.connect(self.suggest_from_data)
         self.btn_annotate.clicked.connect(self._annotate)
         self.btn_formulas.clicked.connect(self.fill_formulas)
+        self.btn_repair.clicked.connect(self.repair_precursors)
         self.table.itemChanged.connect(self._on_edit)
         self.tol_spin.valueChanged.connect(self._defaults_changed)
         self.unit_combo.currentTextChanged.connect(self._defaults_changed)
@@ -599,8 +607,48 @@ class MethodWorkspace(QtWidgets.QWidget):
             "Typed formulas and every precursor were left as they were.")
         if lines:
             box.setDetailedText("\n".join(lines))
+        # the way out of the stand-off the refusals leave behind: the formula
+        # may be the right one and the written mass the mistake. Offered here
+        # because this is where the disagreement is found, and never done
+        # here, because moving a precursor is a decision per row
+        repair = None
+        if fill.refused:
+            repair = box.addButton("Repair precursors…",
+                                   QtWidgets.QMessageBox.ButtonRole.ActionRole)
         box.exec()
         self._report(fill.summary())
+        if repair is not None and box.clickedButton() is repair:
+            self.repair_precursors()
+
+    def repair_precursors(self) -> None:
+        """
+        Take the precursor from the formula, where the two disagree.
+
+        The mirror of *Fill formulas from names*, which refuses a formula the
+        written precursor contradicts and leaves the row as it found it. Every
+        one of those refusals is one of two mistakes and only one of them can
+        be fixed by arithmetic; the dialog says which is which, ticks the
+        ones that are arithmetic, and applies nothing that is not ticked.
+        """
+        from .repair_dialog import RepairPrecursorsDialog
+
+        components = self.components()
+        if not components:
+            self._report("Build the component list first.")
+            return
+        repairs = precursor_repairs(components, database=lipidmaps.database)
+        if not repairs:
+            QtWidgets.QMessageBox.information(
+                self, "Repair precursors from formulas",
+                "Every component whose formula can be read agrees with the "
+                "precursor written beside it. There is nothing to repair.")
+            self._report("No precursor contradicts its formula.")
+            return
+
+        dialog = RepairPrecursorsDialog(self.session, repairs, components, self)
+        dialog.exec()
+        self._report(dialog.summary())
+        dialog.deleteLater()
 
     def _annotate(self) -> None:
         """Name the unnamed components from their precursor masses."""

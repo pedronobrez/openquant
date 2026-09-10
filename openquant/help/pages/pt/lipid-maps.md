@@ -212,6 +212,20 @@ vários candidatos costumam explicar os mesmos picos, porque isômeros
 fragmentam de modo parecido, e os não explicados são a parte honesta da
 resposta.
 
+No painel eles são uma contagem. No [[infusion-report]] eles são uma tabela,
+e cada linha carrega o melhor de três palpites sobre o que o pico pode ser —
+um contaminante conhecido ou um agregado de solvente, um satélite de um íon
+que *foi* correspondido, ou uma composição montada com nada além dos
+próprios átomos do íon precursor, já que um fragmento não pode carregar um
+átomo que o precursor não tem. O último é o motivo de a tabela valer a pena:
+restringir as faixas de elementos a este precursor transforma uma busca de
+fórmula de "que massa poderia ser esta" em "o que este precursor poderia ter
+deixado aqui", e uma massa sem resposta passa a ser uma afirmação — não é um
+pedaço deste composto. Nas infusões reais de ácidos biliares ela nomeou a
+taurina protonada no conjugado de taurina e o cátion radical do benzeno num
+espectro EAD, os dois listados pelo painel como massas nuas; os números
+estão naquela página.
+
 A caixa **Adduct** ao lado do precursor diz qual íon o precursor é, e é usada
 duas vezes: para procurar a massa no banco de dados, e para dizer qual é o
 íon precursor de cada candidato e o que os seus fragmentos carregam.
@@ -235,6 +249,111 @@ qualquer coisa no espectro.
 
 **Explain spectrum** na barra de ferramentas Processing faz o mesmo a partir
 do cromatograma: toma o espectro do scan atual e o precursor do seu canal.
+
+### Os satélites de um fragmento encontrado
+
+Um valor em ppm não consegue dizer que um pico encontrado é a composição
+alegada. Um isóbaro está dentro da tolerância por definição, e a 20 ppm um
+espectro de produtos oferece vários deles. O **satélite isotópico** do
+próprio pico consegue: um fragmento com vinte carbonos deve um M+1 de cerca
+de 22% de si mesmo, e um pico que mostra esse satélite em proporção é um
+pico com aproximadamente esse número de carbonos.
+
+Essa é a verificação que o survey já faz sobre o *precursor* — ver *O survey
+confirma*, abaixo — feita agora a cada **fragmento** encontrado, no próprio
+espectro de produtos. A coluna **Isotopes** da tabela de candidatos carrega a
+contagem, e a sua dica de contexto, a frase:
+
+> 2 of 2 agree
+>
+> 2 of 2 matched ion(s) have a satellite that agrees, 0 disagree, 0
+> unmeasurable.
+
+São quatro veredictos, e o último é o que mais importa:
+
+- **agrees** — o M+1, e o M+2 quando existe, estão em proporção.
+- **disagrees** — não estão. O achado é **mantido e impresso**: um satélite
+  inesperado tem causas inocentes (um vizinho coeluindo a um milidalton de
+  distância, um detector no topo da sua faixa) além das culpadas, e a
+  classificação não é o lugar de decidir entre elas.
+- **no satellite measurable** — o M+1 previsto do próprio íon seria menor do
+  que este espectro consegue mostrar, ou outro íon previsto está dentro da
+  janela onde o M+1 dele deveria estar. Nenhum dos dois é uma discordância, e
+  dizer isso é justamente o ponto.
+- **none expected: precursor isolated monoisotopically** — o quadrupolo
+  passou o precursor monoisotópico e mais nada, então nenhum fragmento deste
+  espectro veio de uma molécula com um 13C dentro. Não há satélite a
+  procurar, e uma coluna de discordâncias seria um retrato da seleção do
+  próprio instrumento, não uma evidência sobre a estrutura.
+
+Qual deles vale é medido antes de qualquer fragmento ser lido, sobre o
+**próprio M+1 do precursor** no mesmo espectro — do mesmo jeito que a
+solução da pureza isotópica e o termo de cross-talk da infusão já se recusam
+a si mesmos. Quando a energia de colisão consumiu o precursor, o **fragmento
+encontrado mais intenso** responde à mesma pergunta, e a frase diz qual dos
+dois foi lido.
+
+#### O que os dados dizem
+
+A medição que motivou tudo isto. Nas sete infusões de ácidos biliares no
+ZenoTOF 7600 — aquisições de produtos, sem survey nenhum — o M+1 transmitido
+do precursor é **0,00 a 0,26% do que a composição dele exige**, que é 26,4 a
+30,0%:
+
+| Infusão | CE | lido em | altura | M+1 medido | previsto | transmitido |
+|---|---|---|---|---|---|---|
+| CA-d4 | 45 | fragmento mais intenso | 5.638 | 0,068% | 26,4% | 0,26% |
+| CA-d4 | 22 | precursor | 9.415 | 0,000% | 27,0% | 0,00% |
+| CA-d4 | 12 | precursor | 12.271 | 0,000% | 27,0% | 0,00% |
+| DCA-d4 | 40 | fragmento mais intenso | 3.019 | 0,060% | 26,4% | 0,23% |
+| DCA-d4 | 22 | precursor | 5.582 | 0,000% | 26,9% | 0,00% |
+| TDCA-d4 | 30 | precursor | 123 | 0,000% | 30,0% | 0,00% |
+| TDCA-d4 | 22 | precursor | 5.235 | 0,000% | 30,0% | 0,00% |
+
+Por isso os **34 íons encontrados nas sete** leem *none expected*, e nenhum
+deles é chamado de discordância. Todos os 34 tiveram uma composição que pôde
+ser resolvida, e **12 dos 34** têm outro íon previsto dentro da janela onde
+o M+1 deles deveria estar — a mesma peça carregando mais uma marcação. Um
+deutério está a 1,00628 Da do hidrogênio que substituiu, contra 1,00336 do
+nêutron, então o "M+1" de um degrau `+3D` é o vizinho `+4D` dele, a 2,9 mDa:
+lidos como satélite, esses doze dão M+1 de 0,96, 1,12, 2,20, 2,63, 4,51,
+7,99, 8,61, 11,27, 12,44, 12,57, 19,98 e 40,54 vezes o próprio pico. São
+imensuráveis, e dizem isso.
+
+A pergunta que uma aquisição de produtos não responde sozinha é se alguma
+janela de isolamento chega a passar o M+1. Uma injeção de esfingolipídios em
+TripleTOF 5600 responde, porque adquire um survey de 50–700 ao lado dos
+canais de produtos. Sobre os mesmos dois scans no ápice de SM(d18:1/12:0):
+
+| | precursor | altura | M+1 medido | previsto | transmitido |
+|---|---|---|---|---|---|
+| o canal de produtos 647.5 | 647,5121 | 1.064 | 0,31% | 39,6% | **0,8%** |
+| o survey, os mesmos scans | 647,5103 | 58.462 | 29,23% | 39,6% | **73,7%** |
+
+A janela não passa: duas ordens de grandeza entre as duas leituras do mesmo
+íon na mesma aquisição. No survey a mesma regra encontra então para que
+serve — os dois íons encontrados **concordam**, a 0,70 e 0,99 — e no canal de
+produtos os dois leem *none expected*. O canal da ceramida da mesma injeção
+mostra o terceiro veredicto: um pico base de 163 contagens, cujo precursor
+teria um M+1 de 4 contagens contra as 10 que aquele espectro consegue
+mostrar, então nada é afirmado em nenhuma direção.
+
+Uma composição é o que um satélite precisa para ser previsto, e um íon
+previsto não carrega uma simplesmente: uma clivagem guarda a fórmula da peça
+com os hidrogênios que ela moveu e os neutros que ela depois perdeu anotados
+ao lado, enquanto uma forma do precursor guarda a composição que ela já é,
+com os átomos do aduto por fora. Então cada leitura é proposta e convertida
+de volta em m/z, e só é aceita quando reproduz a massa do próprio íon. Nos
+mesmos dois espectros de CA-d4 pontuados contra o desenho do PubChem em vez
+de contra uma fórmula — 882 íons previstos, 20 encontrados — todos os 20
+voltaram com uma composição, e o isolamento foi lido no precursor a 22 eV e
+no fragmento mais intenso a 45, onde o precursor já se foi.
+
+Uma coisa que um satélite concordante não faz é confirmar a rota. Naquele
+survey o segundo íon concordante é `[M+H-2CO-CO2]+` em 547,5229, que pontua
+0,99 porque é *algum* íon com aproximadamente aquele número de carbonos — e
+é, seja lá o que o produziu. O satélite limita a composição; a escada e os
+picos não explicados são o que argumenta pela rota.
 
 ### Uma estrutura ou fórmula de sua autoria
 

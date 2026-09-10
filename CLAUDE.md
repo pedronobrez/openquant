@@ -99,6 +99,8 @@ openquant/
                   ranked alike, every route listed
   energy.py       which collision energy for identification, for
                   quantitation, for a record — three answers with reasons
+  unexplained.py  a hypothesis for every strong peak nothing explained:
+                  contaminant, satellite, or a sub-formula of the precursor
   audit.py        the trail of hand edits saved with the project
   labels.py       which peaks get a label: a budget per region of the
                   visible axis, shared by the pane and the print
@@ -1023,6 +1025,55 @@ UV detector, is not implemented there) — untested on real Windows.
   (85.0% at EAD 12 eV against 63.6% at 22, the surviving precursor being
   82% of that spectrum). Nothing between two measured energies is offered;
   a row the method contradicts is shown, greyed, never recommended.
+- **A peak nobody explained is worth a hypothesis, and the precursor is
+  what makes it a short one.** `unexplained.annotate` offers each strong
+  unmatched peak the best of a tabulated contaminant (Keller et al. 2008),
+  a satellite of an ion that *was* matched (13C, +Na−H at 21.982 and +K−H
+  at 37.956 — an exchange, not an addition — a water or ammonia loss, an
+  adduct or dimer of the precursor), or a composition constrained to a
+  sub-formula of the precursor ion. Two constants came out of the four
+  bile-acid infusions, both of which had been hiding real answers: the
+  Seven Golden Rules are not applied under `GOLDEN_RULE_MASS` (150),
+  because they cap H/C at 3.1 and protonated taurine — `[C2H8NO3S]+`,
+  126.0211 at −6.3 ppm on TDCA-d4 — is 4.0; and odd-electron compositions
+  are offered, marked and ranked last, because 78.0465 is the strongest
+  unexplained peak of the CA-d4 EAD run at 22.5% of the base peak and it is
+  `[C6H6]+` at +0.8 ppm. On 79 peaks: 1 satellite, 0 contaminants, 78
+  compositions at 0.2–16.6 ppm, 0.02–0.07 s a file; every row carries how
+  many other sub-formulas reach the same mass. The report carries the
+  table; the Explain tab still shows bare masses.
+- **Two corrections are not two axes.** A record of one's own carries the
+  correction in force when it was written (`LibraryEntry.recalibrated_ppm`
+  from its comment) and a search is told the query's. The first version
+  called the difference between two corrections a gap between two axes —
+  measured on the three bile-acid standards, the pair whose corrections
+  were furthest apart (+2.0 against −7.5 ppm) agreed best of all, 2.0 ppm
+  per paired peak: each spectrum stands where its own lock masses put it.
+  What is apart by construction is a correction one side carries and the
+  other does not (`library.axis_gap`), which is what is warned on, what
+  *Re-search with the axis matched* removes, and what splits a
+  `standard_history` series past `PEAK_TOLERANCE_PPM`. Both corrected beats
+  every other combination on all four queries — the median gap per paired
+  peak falls from 9.8–13.0 ppm to 2.1–4.3 at 20 ppm, and at 5 ppm three of
+  four queries have no hit with neither side corrected. Matching is a
+  diagnosis, not a repair (61.0 → no hit onto an uncorrected record);
+  *Rewrite from files…* is the repair.
+- **A fragment's own isotope satellite is evidence, and usually there is
+  none to have.** `explain.isotope_evidence` asks of every matched ion what
+  `adduct_evidence` asks of the precursor: is the M+1 in proportion to the
+  ion's own composition (`ion_counts`, each reading kept only where it
+  reproduces the ion's m/z). A disagreement is printed beside the match
+  and never removes it. On the seven ZenoTOF bile-acid infusions the
+  precursor transmits 0.00–0.26% of the 26–30% M+1 its composition
+  demands, so all 34 matched ions read *none expected* — fragments of a
+  monoisotopically isolated precursor cannot carry a 13C. A survey-bearing
+  TripleTOF injection answered whether any window passes the M+1: 0.8% in
+  the 647.5 product-ion channel against 73.7% in the survey, where both
+  matched ions agree at 0.70 and 0.99. Two gates: a satellite window must
+  not hold another predicted ion (a `+3D` rung's "M+1" is its `+4D`
+  neighbour 2.9 mDa away — 12 of 34 read 0.96–40× their own peak), and a
+  predicted M+1 under `SATELLITE_DETECTABLE` × the median height is
+  unmeasurable, not a disagreement.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

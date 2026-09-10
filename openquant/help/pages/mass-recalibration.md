@@ -296,6 +296,38 @@ each is corrected against its own precursor. CA-d4's pair was 0.3 ppm apart
 to begin with and does not move, which is the control: the correction does
 not manufacture agreement where there already was some.
 
+### And the record says which axis it was written from
+
+That table compares two spectra treated the same way. A library is not
+treated all at once: it is appended to over months, some of it while this
+was switched on and some of it while it was off. So a record of your own
+**carries the correction that was in force when it was written**, in its
+own comment — `recalibrated −5.2 ppm`, with what the correction stood on —
+whether it was written from the spectrum pane, from a whole folder of
+infusions at once, or by *Rewrite from files…*. A record that says nothing
+was written from the numbers the instrument gave, and every record made
+before this existed is exactly that.
+
+From there it is read back rather than assumed:
+
+- a **search** says which axis each side was written from and how the two
+  combine, and warns where a correction one side carries and the other does
+  not is wider than the tolerance its peaks were paired within. *Re-search
+  with the axis matched* asks again with both on one axis;
+- a **[[standard-history]]** keeps such records in separate series, so a
+  correction is never charted as the standard changing;
+- **Rewrite from files…** writes every record whose acquisition is still on
+  disk from the axis in force now, which is what puts a library that was
+  filled in both states back onto one.
+
+The four combinations of a record's axis and a query's — both corrected,
+neither, and each of the two mixtures — are measured on these same
+acquisitions in [[spectral-library]]. The short version is that both
+corrected is the best of the four every time, that neither is the worst,
+and that **two spectra corrected by different amounts are not two axes**:
+the pair whose corrections were 9.5 ppm apart agreed to 2.0 ppm per peak,
+better than any other combination of that compound.
+
 ## See also
 
 - [[direct-infusion]] — what makes a sample an infusion at all

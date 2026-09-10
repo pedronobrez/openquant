@@ -64,6 +64,11 @@ um registro curado, um desenho próprio, ou uma fórmula e as suas perdas. Cada
 marcação não posicionada, quantos deutérios o fragmento reteve. Depois, numa
 tabela própria, **os picos que ela não explica**: a metade honesta da
 resposta, e onde uma impureza co-infundida ou o composto errado aparece.
+Cada um deles carrega o que pode ser — um contaminante conhecido, um
+satélite de um íon que *foi* correspondido, ou uma composição montada com os
+próprios átomos do íon precursor — com o erro desse palpite em ppm, e a
+frase embaixo da tabela diz quantos foram explicados de um jeito ou de
+outro. Veja *O que os picos não explicados podem ser*, mais abaixo.
 
 **A pureza isotópica**, quando o composto carrega marcações e um aduto foi
 identificado — o número do certificado que ninguém mede. O bloco é o próprio
@@ -315,6 +320,82 @@ de uma corrida bate com essa corrida em 100, o que prova que o arquivo foi
 escrito e lido de volta; os números que significam alguma coisa são 6, 29, 33
 e 61 — o mesmo composto, o mesmo frasco, sob outra ativação, e um registro não
 viaja entre elas.
+
+### O que os picos não explicados podem ser
+
+Listar um pico que ninguém explicou como uma massa nua é honesto e não é
+útil: o leitor recebe `217,1880` e fica com a tarefa de digitá-lo em outro
+lugar. Então cada um dos picos listados recebe a melhor de três hipóteses,
+com o seu erro em ppm ao lado — um **contaminante conhecido ou um agregado
+de solvente**, um **satélite de um íon que foi correspondido** (o seu pico
+de carbono-13, a sua forma sodiada ou potassiada, uma perda de água ou de
+amônia a partir dele, outro aduto ou um dímero do precursor), ou uma
+**composição montada com os próprios átomos do íon precursor**.
+
+A terceira é a que vale explicar. Uma busca geral de fórmula para uma massa
+de 300 volta com uma lista que ninguém lê, mas um espectro de íons produto
+não é uma busca geral: um fragmento não pode carregar átomos que o precursor
+não tem. As faixas de elementos são, portanto, a própria composição do íon
+precursor — os átomos da molécula mais o que o aduto trouxe, com a folga de
+dois hidrogênios para cima para um rearranjo — de modo que a pergunta passa
+a ser *o que este precursor poderia ter deixado nesta massa*, e um pico sem
+resposta nenhuma é um achado: seja o que for, não é um pedaço deste
+composto.
+
+Medido em quatro das infusões de ácidos biliares no ZenoTOF, tomando os
+vinte e cinco picos não explicados mais intensos de cada uma:
+
+| | não explicados acima do piso | anotados | satélite | contaminante | composição | nada | composição, mediana \|ppm\| |
+|---|---|---|---|---|---|---|---|
+| CA-d4, CID 45 eV | 126 | 25 | 1 | 0 | 24 | 0 | 8,9 |
+| CA-d4, EAD 22 eV | 20 | 20 | 0 | 0 | 20 | 0 | 3,8 |
+| DCA-d4, CID | 141 | 25 | 0 | 0 | 25 | 0 | 11,5 |
+| TDCA-d4, CID | 9 | 9 | 0 | 0 | 9 | 0 | 5,5 |
+
+Setenta e nove picos, um satélite, nenhum contaminante e nenhuma recusa; as
+composições foram de 0,2 a 16,6 ppm e cada arquivo inteiro levou entre 0,02
+e 0,07 s. Os mais intensos, um por arquivo, são
+`217,1879 → [C16H17D4]+` a −4,6 ppm (14,8% do pico-base, CA-d4 CID),
+`78,0465 → [C6H6]+` a +0,8 ppm (22,5%, CA-d4 EAD), `95,0842 → [C7H11]+`
+a −13,5 ppm (21,2%, DCA-d4), `343,2915 → [C24H31D4O]+` a −5,5 ppm (6,8%,
+TDCA-d4) e, no mesmo arquivo, `126,0211 → [C2H8NO3S]+` a −6,3 ppm — que é a
+taurina protonada, o fragmento que dá nome a um conjugado de taurina.
+
+Leia o resto da tabela com a mesma desconfiança. Cada linha diz quantas
+*outras* composições do mesmo precursor chegam à mesma massa, e no 343,2915
+do TDCA-d4 são onze: a restrição estreita a pergunta, não a responde. Os
+erros grandes dos arquivos CID são dos próprios arquivos — aqueles espectros
+estão vários ppm fora do seu próprio eixo, que é para o que serve a
+[[mass-recalibration]], e corrigir o eixo antes aperta todos os números da
+última coluna.
+
+Duas coisas dessa tabela foram decididas rodando-a, e não lendo-a:
+
+- **As Sete Regras de Ouro não são aplicadas abaixo de 150 Da.** Elas limitam
+  as razões entre elementos de uma *molécula*, e a que atrapalha limita H/C
+  a 3,1. A taurina protonada tem H/C = 4,0, então as regras recusaram o
+  fragmento real mais intenso do arquivo TDCA-d4 e a tabela dizia "nenhuma
+  fórmula dentro da composição do precursor" a respeito de um pedaço que dá
+  nome ao composto.
+- **Uma composição de elétron ímpar é oferecida, marcada, e fica em último
+  lugar.** `78,0465` é o pico não explicado mais intenso da corrida CA-d4
+  EAD, a 22,5% do pico-base, e é o cátion do benzeno a +0,8 ppm e mais nada.
+  A dissociação ativada por elétrons faz radicais; um filtro escrito para
+  espectros de dissociação induzida por colisão jogava a resposta fora. Fica
+  em último lugar porque num espectro CID costuma ser a resposta errada.
+
+Os contaminantes ganharam o seu lugar por serem raros, não por serem comuns.
+Nos quatro arquivos, até um centésimo de por cento do pico-base — 3.187
+picos — a tabela nomeou cinco: um ftalato em 149,0233, um agregado de
+metanol duas vezes, um agregado de ácido fórmico e um de acetonitrila. Nove
+eram satélites de íons correspondidos e 710, pouco mais de um quinto, não
+tinham nenhuma subfórmula do precursor. Um frasco limpo deve mesmo parecer
+com isso; a tabela existe para o frasco que não parece.
+
+As mesmas anotações não estão na lista da própria aba [[lipid-maps]], que
+continua mostrando os picos não explicados como massas. Não havia um ponto
+de encaixe no painel para pendurá-las e o painel está sendo mexido em outro
+lugar; o relatório é onde elas estão.
 
 ## Uma pasta de uma vez
 

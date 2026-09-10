@@ -34,6 +34,45 @@ otherwise — `..._EAD_22CE_...` — because no field this program reads from a
 `Product`, and the electron energy appears only in the file name. A record
 whose name does not say is grouped as *unstated*, never as CID.
 
+### And by the mass axis it was written from
+
+A record written while [[mass-recalibration]] was switched on carries peaks
+the instrument never reported: they were moved by a few parts per million
+first, and the record's comment says so. Scoring such a record against one
+written from the instrument's own axis measures the correction and reports
+it as the standard changing, so the axis is a series attribute exactly as
+the energy is. The **Mass axis** column on the table says which each record
+was, and a corrected series carries `axis corrected −5.2 ppm` in its name.
+
+Two rules keep that from splitting histories that ought to be whole:
+
+- **Two corrected records are one axis, however far apart the corrections
+  were.** Each stands where its own acquisition's lock masses put it. Only
+  a correction that one record carries and another does not can separate
+  them — see the four-way measurement in [[spectral-library]], where the
+  pair whose corrections were furthest apart agreed best of all.
+- **And only when it is larger than the 20 ppm a search pairs peaks
+  within.** Under that the two put every peak in the same window as each
+  other, and two series would be a history broken in half over a fiftieth
+  of a peak width; the difference still shows on the mass chart, which
+  warns at 10 ppm and flags at 20.
+
+Where a compound does come out as two series for this reason, the line
+under the charts says which series there are, how much correction one
+carries and the other does not, and that the repair is **Rewrite from
+files…** — which reads every record whose acquisition is still on disk
+again and writes them all from the axis in force now. The button is offered
+on this window when that is what is wrong, and does the writing back on the
+[[spectral-library]] tab, which owns the file.
+
+On the real infusions nothing splits: the corrections their own precursor
+ladders give are **+2.0 to −8.6 ppm**, every one of them inside the 20 ppm,
+so a corrected record and an uncorrected one of the same standard stay one
+series and say so in the series name — *axis corrected +6.6 ppm for 1 of 2,
+the rest on the instrument's own*. That is the intended outcome. The split
+itself is exercised only on made-up records, and the manual says so rather
+than implying a measurement that was not made.
+
 ## The three charts
 
 The first record of a series is the **reference**, and everything is

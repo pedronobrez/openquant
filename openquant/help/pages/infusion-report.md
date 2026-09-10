@@ -245,6 +245,59 @@ read back; the figures that mean anything are 6, 29, 33 and 61 — the same
 compound, the same vial, under another activation, and a record does not
 travel between them.
 
+## A folder at once
+
+**File ▸ Report infusions in a folder…** asks the same question of a folder
+that came off the instrument this morning, with nothing opened in the
+[[explorer]] and no batch on screen. Point it at the folder, say where the
+document goes, and — if you have them — an MSP of your own and a component
+table, either a project or a components CSV; it writes the same per-compound
+document, and the same summary table as a CSV if that is ticked.
+
+Nothing is added to what is open. Each file is opened into a session of its
+own, measured, and closed again before the next one is opened, so a folder of
+thirty infusions never holds thirty readers; and a project already open is
+left exactly as it was, with one line in its [[audit-trail]] saying a folder
+was reported. With no project open there is no trail to write into, and none
+is made.
+
+The folder is looked over by [[checking-files]] before anything is opened. A
+`.wiff` whose `.wiff.scan` is not beside it is **skipped**, because its
+spectra cannot be read and the report is a spectrum; a `.wiff2` is reported as
+ignored; a run that does not read as a [[direct-infusion]] is left out with
+the flatness figures that say why. Every skip is listed with its reason: a
+folder of nine reported as eight is only honest if the other one comes back
+with the reason.
+
+The same run is on the command line, for a folder that arrives every week —
+see [[command-line]]:
+
+```
+OpenQuant --infusion-report ~/data/bile-acids --out ~/reports/bile.pdf \
+          --library ~/library/own-bileomics.msp --csv ~/reports/bile.csv
+```
+
+### Measured, on the same nine files
+
+The whole folder from the command line, with the three CID runs as the own
+library and the three formulas as a components CSV: **9 files read, nothing
+skipped, one 48-page PDF in 32 s** on an otherwise idle machine at 890 MB
+peak memory; `--per-compound` gives three documents, 46 pages, 28.0 s. Every row is the one the Infusions
+tab measured with the nine files open — 2 of 56 ions under CID and 8 of 56
+under EAD for CA-d4, 29 and 6 and 61 against the own records, +14.6 to
++30.3 ppm where the precursor survived — which is the point: the folder route
+and the open-batch route are the same measurement, and they agree to the
+digit.
+
+The two `_TESTEARTIGO` acquisitions are **not** skipped, and that is the
+answer to the obvious question about them. They read as infusions, because
+they are: 294 and 311 scans of a steady spray. What is wrong with them is not
+visible from the chromatogram at all — their method isolates 839.56, their
+base peak is 839.23, nine and seventeen counts sit in the precursor window,
+and their explanation cell says *839.56 is none of the adducts of C24H36D4O5
+within ±0.05 Da — closest [M+K]+ at 451.2758*. A rule that dropped them would
+have to have known that in advance; the report is where it is found.
+
 ## The same standard, next month
 
 This report is one verification. The record it names is written into your

@@ -251,6 +251,59 @@ escrito e lido de volta; os números que significam alguma coisa são 6, 29, 33
 e 61 — o mesmo composto, o mesmo frasco, sob outra ativação, e um registro não
 viaja entre elas.
 
+## Uma pasta de uma vez
+
+**File ▸ Report infusions in a folder…** faz a mesma pergunta a uma pasta que
+saiu do instrumento hoje de manhã, sem nada aberto no [[explorer]] e sem lote
+na tela. Aponte para a pasta, diga para onde vai o documento e — se os tiver —
+um MSP seu e uma tabela de componentes, seja um projeto ou um CSV de
+componentes; ele escreve o mesmo documento por composto, e a mesma
+tabela-resumo como CSV se isso estiver marcado.
+
+Nada é acrescentado ao que está aberto. Cada arquivo é aberto em uma sessão
+própria, medido, e fechado de novo antes de o próximo ser aberto, de modo que
+uma pasta de trinta infusões nunca mantém trinta leitores; e um projeto já
+aberto fica exatamente como estava, com uma linha em seu [[audit-trail]]
+dizendo que uma pasta foi relatada. Sem projeto aberto não há trilha em que
+escrever, e nenhuma é criada.
+
+A pasta é examinada por [[checking-files]] antes de qualquer abertura. Um
+`.wiff` cujo `.wiff.scan` não está ao lado é **excluído**, porque seus
+espectros não podem ser lidos e o relatório é um espectro; um `.wiff2` é
+relatado como ignorado; uma corrida que não lê como [[direct-infusion]] fica
+de fora com os números de planura que dizem por quê. Cada exclusão é listada
+com o seu motivo: uma pasta de nove relatada como oito só é honesta se a outra
+voltar com a razão.
+
+A mesma execução está na linha de comando, para uma pasta que chega toda
+semana — veja [[command-line]]:
+
+```
+OpenQuant --infusion-report ~/dados/acidos --out ~/relatorios/acidos.pdf \
+          --library ~/biblioteca/own-bileomics.msp --csv ~/relatorios/acidos.csv
+```
+
+### Medido, nos mesmos nove arquivos
+
+A pasta inteira pela linha de comando, com as três corridas CID como
+biblioteca própria e as três fórmulas como CSV de componentes: **9 arquivos
+lidos, nada excluído, um PDF de 48 páginas em 32 s** numa máquina ociosa, com
+890 MB de pico de memória; `--per-compound` dá três documentos, 46 páginas, 28,0 s. Cada linha é
+a que a aba Infusions mediu com os nove arquivos abertos — 2 de 56 íons sob
+CID e 8 de 56 sob EAD para o CA-d4, 29 e 6 e 61 contra os registros próprios,
++14,6 a +30,3 ppm onde o precursor sobreviveu — que é justamente o ponto: o
+caminho da pasta e o caminho do lote aberto são a mesma medida, e concordam
+dígito por dígito.
+
+As duas aquisições `_TESTEARTIGO` **não** são excluídas, e essa é a resposta à
+pergunta óbvia sobre elas. Elas leem como infusões, porque são: 294 e 311
+varreduras de um spray estável. O que há de errado com elas não é visível no
+cromatograma — seu método isola 839,56, seu pico-base é 839,23, nove e
+dezessete contagens estão na janela do precursor, e sua célula de explicação
+diz *839.56 is none of the adducts of C24H36D4O5 within ±0.05 Da — closest
+[M+K]+ at 451.2758*. Uma regra que as descartasse teria de saber disso de
+antemão; o relatório é onde isso se descobre.
+
 ## O mesmo padrão, no mês que vem
 
 Este relatório é uma verificação. O registro que ele nomeia é escrito na sua

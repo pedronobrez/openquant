@@ -8,6 +8,8 @@ instalador é o executável dentro da aplicação — no macOS
 
 ```
 OpenQuant [files...] [--selftest] [--digest]
+OpenQuant --infusion-report CAMINHO... --out ARQUIVO [--library ARQUIVO]
+          [--components ARQUIVO] [--html] [--per-compound] [--csv ARQUIVO]
 ```
 
 | Argumento | Efeito |
@@ -15,6 +17,13 @@ OpenQuant [files...] [--selftest] [--digest]
 | `files` | arquivos de dados brutos a abrir — `.wiff`, `.mzML` — na janela, em lugar do prompt inicial |
 | `--selftest` | abre os arquivos, relata o que foi lido, e sai sem janela |
 | `--digest` | imprime uma impressão digital numérica de cada arquivo, para comparar uma build com outra, e sai |
+| `--infusion-report` | relata todas as infusões diretas nos arquivos e pastas dados, e sai sem janela |
+| `--out` | onde esse relatório é escrito; obrigatório com `--infusion-report` |
+| `--library` | um MSP ou MGF seu, para buscar cada espectro médio contra ele |
+| `--components` | um projeto (`.oqproj`) ou um CSV de componentes, para as fórmulas a partir das quais os compostos são explicados |
+| `--html` | escreve o relatório como HTML em vez de PDF |
+| `--per-compound` | um documento por composto, em vez de um com uma seção para cada |
+| `--csv` | escreve também a tabela-resumo, uma linha por infusão |
 
 ## --selftest
 
@@ -36,6 +45,52 @@ código no macOS, a partir da imagem de disco da CI e a partir do instalador do
 Windows sob o CrossOver, cinco aquisições reais deram a mesma saída até o último
 dígito. A build do Windows escreve terminações de linha CRLF, que é a única
 diferença que o `diff` mostrará.
+
+## --infusion-report
+
+O [[infusion-report]] de uma pasta inteira, sem abrir nada no [[explorer]]:
+
+```
+OpenQuant --infusion-report ~/dados/acidos-biliares \
+          --out ~/relatorios/acidos-biliares.pdf \
+          --library ~/biblioteca/own-bileomics.msp \
+          --components ~/metodos/acidos-biliares.csv \
+          --csv ~/relatorios/acidos-biliares.csv
+```
+
+Um caminho pode ser uma pasta ou um único arquivo, e pode haver vários. A
+pasta é examinada antes por [[checking-files]], de modo que um `.wiff` sem o
+seu `.wiff.scan` é nomeado e **não é aberto** — seus espectros não podem ser
+lidos e o relatório é um espectro — e um `.wiff2` ao lado dos dados é relatado
+como ignorado em vez de lido. Cada arquivo restante é aberto sozinho e fechado
+de novo antes do próximo, de modo que uma pasta de trinta infusões nunca
+mantém trinta leitores. Uma corrida que não é uma infusão fica de fora com os
+números que dizem por quê, nas palavras que [[direct-infusion]] usa.
+
+Cada exclusão é impressa com o seu motivo, depois a mesma linha-resumo que a
+aba Infusions mostra, depois o que foi escrito. O código de saída é 0 quando
+ao menos um documento foi escrito e 1 caso contrário, de modo que um script
+distingue uma pasta vazia de uma pasta relatada.
+
+Em uma máquina sem tela — um servidor de build, uma sessão por ssh — defina
+`QT_QPA_PLATFORM=offscreen`: o documento é desenhado e paginado pelo Qt haja
+ou não algo a mostrar.
+
+Medido em nove infusões de ácidos biliares em um ZenoTOF, a partir do código
+no macOS, com as três corridas CID como biblioteca própria e as três fórmulas
+como CSV de componentes: **32 s** para a pasta inteira — nove arquivos lidos
+e um PDF de 48 páginas escrito — com **890 MB** de pico de memória residente
+(duas execuções: 32,0 e 32,4 s, 886 e 896 MB), e `--per-compound` três
+documentos de 46 páginas em 28,0 s com 704 MB. Os segundos são o único número
+aqui que não é do programa: a mesma execução sobre os mesmos arquivos, com a
+máquina ocupada com outro trabalho, levou 81 e 255 s. O que é estável é o que
+ela fez — nove arquivos lidos, nenhum excluído, 48 páginas — e o que ela
+manteve na memória. Nada foi excluído:
+todos os nove leem como infusões, inclusive as duas aquisições `_TESTEARTIGO`,
+cujas linhas dizem o que há de errado com elas em vez de deixá-las de fora. A
+linha-resumo é a da aba Infusions, dígito por dígito: *3 compound(s) in 9
+infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm; 34 of 458 predicted
+ion(s) found across 7; 4 with an own record above 60*.
 
 ## O bootstrap
 

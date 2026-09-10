@@ -277,6 +277,12 @@ class MainShell(QtWidgets.QMainWindow):
             "What a folder holds and what would go wrong — a .wiff without "
             "its .wiff.scan, a .scan under the wrong name, files no reader "
             "here can open — before anything is opened")
+        self.act_infusion_folder = file_menu.addAction(
+            "Report infusions in a folder…")
+        self.act_infusion_folder.setToolTip(
+            "The per-compound infusion report for every acquisition in a "
+            "folder that reads as a direct infusion — read one file at a "
+            "time and closed again, adding nothing to what is open here")
         self.act_close = file_menu.addAction("Close all")
         self.act_report = file_menu.addAction("Export report…")
         self.act_report.setToolTip(
@@ -325,6 +331,7 @@ class MainShell(QtWidgets.QMainWindow):
         # both signals carry a checked flag, which is not a list of paths
         self.act_open.triggered.connect(lambda: self.open_files())
         self.act_check_folder.triggered.connect(self.check_folder)
+        self.act_infusion_folder.triggered.connect(self.report_infusion_folder)
         self.act_close.triggered.connect(self.close_all)
         self.act_open_project.triggered.connect(self.open_project)
         self.act_save_project.triggered.connect(self.save_project)
@@ -394,6 +401,57 @@ class MainShell(QtWidgets.QMainWindow):
         self.settings.setValue("io/last_dir", folder)
         for path in self.check_paths([folder], always_show=True):
             self.load_file(path)
+
+    def report_infusion_folder(self) -> None:
+        """
+        File ▸ Report infusions in a folder…: a folder reported, not opened.
+
+        Nothing here is added to the batch on screen — the run opens each
+        file into a session of its own and closes it again — so this works
+        with a project open and with nothing open at all. An audit entry is
+        made only in the first case: a trail belongs to a project, and there
+        is nothing to write one into when the window is empty.
+        """
+        from .infusion_batch_dialog import InfusionBatchDialog
+
+        dialog = InfusionBatchDialog(self, start_dir=self._last_dir())
+        accepted = dialog.exec()
+        result = dialog.result
+        if accepted and result is not None and result.documents:
+            folder = dialog.output_folder
+            self.settings.setValue("io/last_dir", folder)
+            if self.session.project_path:
+                from .. import audit
+
+                source = os.path.basename(
+                    dialog.folder_edit.text().strip().rstrip(os.sep))
+                self.session.record(
+                    audit.INFUSION_REPORT,
+                    ", ".join(result.compounds) or "a folder",
+                    after=os.path.basename(result.documents[0]),
+                    note=f"{result.rows} infusion(s) read from {source}, "
+                         f"without opening them")
+            self.statusBar().showMessage(result.line())
+            self._offer_folder(result, folder)
+        dialog.deleteLater()
+
+    def _offer_folder(self, result, folder: str) -> None:
+        """Say what was written, and offer to open where it was written."""
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("Infusion report")
+        box.setText(result.line())
+        detail = [os.path.basename(p) for p in result.documents]
+        if result.csv:
+            detail.append(os.path.basename(result.csv))
+        detail += [f"skipped {skip}" for skip in result.skipped]
+        box.setDetailedText("\n".join(detail))
+        show = box.addButton("Show the folder",
+                             QtWidgets.QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QtWidgets.QMessageBox.StandardButton.Close)
+        box.exec()
+        if box.clickedButton() is show:
+            QtGui.QDesktopServices.openUrl(
+                QtCore.QUrl.fromLocalFile(folder))
 
     def load_file(self, path: str) -> None:
         opened = None

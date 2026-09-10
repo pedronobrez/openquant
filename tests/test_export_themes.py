@@ -371,11 +371,16 @@ def test_a_dark_report_is_for_the_screen_and_says_so(qapp, tmp_path):
 
 
 def _pixels(image) -> np.ndarray:
+    # copied before `image` goes out of scope: `frombuffer` is a view on the
+    # QImage's own memory, and a view handed out of the function outlives the
+    # converted image it looks into. On macOS that read freed memory and got
+    # away with it; on Windows it was an access violation that took the whole
+    # suite down with it
     image = image.convertToFormat(QtGui.QImage.Format.Format_RGB32)
     bits = image.constBits()
     bits.setsize(image.sizeInBytes())
     return np.frombuffer(bits, np.uint8).reshape(
-        image.height(), image.bytesPerLine() // 4, 4)[:, :image.width(), :3]
+        image.height(), image.bytesPerLine() // 4, 4)[:, :image.width(), :3].copy()
 
 
 def test_the_printed_black_and_white_page_has_no_colour_on_it(qapp, tmp_path):

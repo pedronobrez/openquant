@@ -26,7 +26,13 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6 import QtCore, QtWidgets
+# the offscreen platform finds no fonts on Windows and draws every glyph as
+# a box, which a test measuring ink off a rendered page reads as ink
+from openquant.api import offscreen_fonts
+
+offscreen_fonts()
+
+from PyQt6 import QtCore, QtWidgets  # noqa: E402
 
 # Every settings object the suite constructs would otherwise write to the
 # person's real preferences: a test of the library panel left a pytest
@@ -45,6 +51,38 @@ os.environ["OPENQUANT_SETTINGS"] = os.path.join(
 # warm one. See spectrum_cache.ENV_DIR.
 os.environ["OPENQUANT_CACHE_DIR"] = tempfile.mkdtemp(
     prefix="openquant-test-cache-")
+
+
+# A widget left to the collector on Windows is torn down by Qt after its
+# Python side is gone, and the layout of a plot being destroyed asks its
+# title for a size hint, a bounding rectangle and a resize on the way out.
+# pyqtgraph answers those from attributes its __init__ set, and the wrapper
+# sip makes for a C++ object whose Python wrapper was collected has never
+# run __init__ — so the suite's teardown printed AttributeErrors from
+# inside Qt's event loop and pytest-qt called seven tests errors for it,
+# on Windows only. Nothing in the application reaches this: measured by
+# rebuilding stacked panes in a real window, which prints nothing. A ghost
+# is given what the originals give an unknown hint: nothing.
+import pyqtgraph as _pyqtgraph  # noqa: E402
+from pyqtgraph.graphicsItems.GraphicsWidget import GraphicsWidget as _GraphicsWidget  # noqa: E402
+
+
+def _unless_a_ghost(cls, name, attribute, nothing):
+    original = getattr(cls, name)
+
+    def method(self, *args, **kwargs):
+        if not hasattr(self, attribute):
+            return nothing() if callable(nothing) else nothing
+        return original(self, *args, **kwargs)
+
+    setattr(cls, name, method)
+
+
+_unless_a_ghost(_pyqtgraph.LabelItem, "sizeHint", "_sizeHint",
+                lambda: QtCore.QSizeF(0, 0))
+_unless_a_ghost(_pyqtgraph.LabelItem, "resizeEvent", "item", None)
+_unless_a_ghost(_GraphicsWidget, "boundingRect", "_previousGeometry",
+                lambda: QtCore.QRectF())
 
 
 @pytest.fixture(autouse=True)

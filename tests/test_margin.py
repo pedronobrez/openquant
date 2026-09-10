@@ -279,7 +279,7 @@ def test_the_measurement_travels_from_the_panel_to_the_report():
     from openquant import infusion_report
 
     assert "explanation_margin" in Path(
-        infusion_report.__file__).read_text()
+        infusion_report.__file__).read_text(encoding="utf-8")
     assert hasattr(margin_module, "for_report")
 
 

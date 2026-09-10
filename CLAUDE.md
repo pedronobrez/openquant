@@ -383,20 +383,29 @@ UV detector, is not implemented there) — untested on real Windows.
   02 put the right record first 14 of 14 times at reverse 45–96, every
   other record at most 42. The bile-acid infusions were on an unmounted
   drive; that measurement is still owed.
-- **An infusion is flat twice, and one flatness is not enough.**
-  `infusion.is_infusion` needs the fraction of the sample's TIC at or above
-  half its maximum *and* the same on the strongest product-ion channel both
-  at `FLAT_FRACTION` (0.75), from chromatograms only — the verdict holds
-  without the `.wiff.scan` and reads the same through either reader. Over
-  39 chromatographic acquisitions none flagged and the smaller figure never
-  passed 0.098: a column equilibration reaches 0.267 on the total but 0.006
-  on its channel, a blank 0.295 on its channel but 0.049 on the total. Three
-  rules measured and dropped: the scan-to-scan cosine reads 0.85–0.99 on the
-  product channels of ordinary gradients, the TIC's CV has no margin against
-  a blank, and `detect_peaks` finds three peaks in a flat trace with 3%
-  noise. The infusion side was on the unmounted drive, so the margin claimed
-  is the chromatographic one, and a wrong verdict only changes what is shown
-  first.
+- **An infusion is flat twice, against its 99th-percentile scan, not its
+  largest.** `infusion.is_infusion` needs the fraction of the sample's TIC
+  at or above half its reference *and* the same on the strongest
+  product-ion channel both at `FLAT_FRACTION` (0.75), from chromatograms
+  only. The infusion side was reasoned before it was measured, and when
+  the nine ZenoTOF bile-acid infusions were read three came back at
+  0.0021–0.0063 on both figures — below every one of 39 chromatographic
+  runs: one spray transient at 0.0084 min, 2.8–4.4× the run's median, and
+  half of a spike is above everything else in a flat run. So the reference
+  is the 99th-percentile scan (`REFERENCE_PERCENTILE`): infusions
+  0.9937–1.0000, the chromatographic smaller figure never past 0.1148, a
+  gap of 0.879 and 48 of 48 called correctly; 99.5 fails (three spiked
+  scans are 0.63% of 473) and below 99 real apices are set aside. Below
+  about a hundred scans the percentile is the largest scan again — a
+  stated gap; the default on doubt is "not an infusion". Three rules were
+  measured and dropped earlier: the scan-to-scan cosine (0.85–0.99 on
+  product channels of gradients), the TIC's CV, and `detect_peaks` on a
+  flat trace. The own library on the same files: records from the CID
+  infusions of CA-d4, DCA-d4 and TDCA-d4 searched by the same compounds
+  under EAD 22 eV put their own record first at 29.2, 33.3 and 61.5
+  against a best wrong record of 14.1; a record does not travel between
+  activations — CA-d4 at 12 eV scores 6.4 against the CID record. The
+  ranking survives; the number beside it does not.
 - **A correction the size of its own uncertainty is still worth having, and
   still has to say so.** `recalibrate.py` fits a per-injection offset from
   the standards' measured precursors against their formula masses, reusing

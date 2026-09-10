@@ -190,6 +190,25 @@ edge rule are in the history and neither survived being tested on windows
 other than the ones it was derived from — the second was a coin toss, better
 on 41 channels and worse on 38.
 
+**Windows 11 from source agrees with the suite, and found four things.**
+Measured on a Ryzen 5 5500 with Python 3.12.10, PyQt6 6.11, pyqtgraph
+0.14, pythonnet 3.1 on .NET Framework 4.8 (no .NET 8 installed; the SCIEX
+assemblies load in 0.06 s warm, 13.7 s the first time). The suite: 1698
+passed, 9 skipped, 0 errors, 3 min 04 s. There was no `.wiff` on the
+machine, so the SCIEX read path is still measured only on macOS; the
+numbers below are from a synthetic six-injection mzML batch shaped like
+the real acquisition (81 channels, 19,440 spectra and 134 MB a file, 80
+components), built by a script and never committed. What the machine
+found: (1) `test_export_themes._pixels` returned a numpy view on a
+`QImage` that had already gone — an access violation that took the whole
+suite down, luck on macOS; (2) a `read_text()` with no encoding read the
+source as cp1252; (3) Qt's offscreen platform has **no fonts on Windows**,
+so every headless PDF was boxes (below); (4) seven teardown errors from
+pyqtgraph ghost wrappers (below). The application itself: window up in
+2.3 s, 1.8 s an mzML file, tab switches under the 250 ms measurement
+floor, 555 MB private with six files open, 1.4 GB working set after
+processing. Repository in OneDrive costs nothing measurable at import.
+
 **ProteoWizard agrees.** msconvert reads what this writes, and its own mzML
 written from that reads back here with identical spectra and chromatograms.
 Converting a `.wiff` with msconvert itself fails under Wine (`getTWC()`, the
@@ -199,6 +218,53 @@ UV detector, is not implemented there) — untested on real Windows.
 
 ## Things that are subtle and will look like bugs
 
+- **An mzML extraction reads bytes, not XML, and the file is a mapping.**
+  `MzmlChannel.xic_range` decoded every scan of the channel through
+  `ET.fromstring` on every call — 20.8 s of a 480-row synthetic batch were
+  11 s of XML and `_params` walked 6.5 M tags — and nothing was kept, so
+  the second component on a channel paid it again. Now `_binaries_of`
+  finds each array's base64 span and encoding by `find` (a regex over the
+  base64 body cost 2.2 s of a 5 s open, so no regex), the first time a
+  scan is decoded (`MzmlFile._binaries_for`; at open it was 0.26 s of a
+  1.5 s open on 19,440 spectra, for scans mostly never read); `_decode`
+  goes slice → base64 → zlib → `frombuffer`, with the XML path kept for
+  numpress and anything else it does not read; a channel's decoded scans
+  are held flat (`_decoded`: masses, intensities, scan index) under
+  `DECODED_BUDGET` (256 MB) **for the process** — one budget per file was
+  the budget times the batch, 1.6 GB on six files — keyed by a per-file
+  token, not `id()`, which a later file can be given again; an XIC is
+  `np.bincount`, a BPC `np.maximum.at`. Measured: an XIC 32 ms → 11 ms
+  cold, 0.1 ms held; 80 components × 6 injections 15.5 s → 7.0 s (4.8 s
+  with the lookup at open time, which is where the 0.26 s a file went
+  instead); the file is `mmap`ed rather than `read()` so a batch of many
+  files is the system's cache and not the process — `close()` must close
+  the map or Windows will not delete the file, and a test checks that.
+  Open time is unchanged at 1.5 s a file, all of it the header parse
+  (`ET` per spectrum, 1.4 s); a sidecar index would make a project reopen
+  instant and is the next thing worth doing there.
+- **Qt's offscreen platform finds no fonts on Windows.** `QFontDatabase`
+  comes up with zero families, every glyph draws as a box, and a batch
+  report written through `api.Batch.report` was 47 pages of black
+  rectangles with no text to extract; the greyscale test of the printed
+  comparison failed reading those boxes as ink at L 60. macOS and Linux
+  read the desktop's font directories offscreen; Windows reads none.
+  `api.offscreen_fonts()` sets `QT_QPA_FONTDIR` to the system's `Fonts`
+  directory on Windows when the platform in force is offscreen and
+  nothing has set it — called by `headless()`, `infusion_batch._app` and
+  `tests/conftest.py` before the application is made. With it: 54
+  families, the report 29 pages with text, the test at L 8 / 102. The
+  GUI's own export is not affected: the windows platform has 149 families.
+- **A widget left to the collector on Windows is torn down by Qt after its
+  Python side is gone.** A `ChromatogramArea` built in a test with no
+  parent and no `close()` sits in a reference cycle (lambdas capturing the
+  views); `gc.collect()` in `_settle_qt` frees the wrappers in whatever
+  order, and the C++ destruction of a `PlotItem` then asks its title
+  `LabelItem` for `sizeHint`, `boundingRect` and a `resizeEvent` — on a
+  wrapper sip has just re-made, whose `__init__` never ran. Seven
+  teardown errors on Windows only, on pyqtgraph 0.13.7 and 0.14.0 alike,
+  none under the windows platform in a real window rebuilding stacked
+  panes. `conftest.py` guards the three methods for ghosts; the
+  application is not touched.
 - **A profile spectrum from mzML has fewer points than the same one from
   `.wiff`.** SCIEX strips the zeros when storing and puts them back when
   drawing. `processing.restore_profile_zeros` does the same for anything else,
@@ -1330,10 +1396,23 @@ view (`contour.py`), and integration algorithms with a comparison mode
   than about this software.
 - **The Windows installer has never been run on real Windows.** CI builds it
   and proves the bundle starts and reads a `.wiff` on a GitHub runner; nobody
-  has installed the MSI on a machine.
+  has installed the MSI on a machine. The source tree has now run on a
+  Windows 11 desktop (suite, window, mzML batch): see *Verified facts*.
 - **Reading a `.wiff` has only ever been done on macOS.** Linux and Windows
   run the suite and start the application; the SCIEX path is checked only as
-  far as "the assemblies load".
+  far as "the assemblies load" — on the Windows 11 desktop they load on
+  .NET Framework 4.8 with no .NET 8 present, and `python -m
+  openquant.bootstrap --install` used to refuse that machine for having no
+  .NET 8 (`_main` now installs only off Windows). Copying one `.wiff` to
+  that machine would close this question.
+- **Two things measured on Windows and left for later.** Opening an mzML is
+  1.5 s a file, all header parsing, so a 26-injection project reopens in
+  about 40 s; a sidecar index beside the file (headers pickled with the
+  file's size and mtime) would make that seconds. And the four workspaces
+  with their sixteen pyqtgraph plots are built before the window shows
+  (1.1 s of the 2.3 s to a first frame, warm); building a tab when it is
+  first shown would halve that, and `addTab` under the application's
+  stylesheet is 150 ms of it on its own.
 - **The portability plan had phases 1, 2 and 4** which were described in an
   earlier session and are not written down anywhere in the repository. Phase 0
   (CI) and phase 3 (packaging) are done.

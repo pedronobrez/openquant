@@ -148,6 +148,454 @@ def compound_of(name: str) -> str:
     return first or stem
 
 
+# --------------------------------------------------------------------------- #
+# what the method isolates, against what the name says it should
+# --------------------------------------------------------------------------- #
+#: at most this many other compounds are named as fitting one isolated
+#: precursor, the rest counted rather than listed. Measured on the real
+#: 141-component method with its formulas filled in, asked about each of its
+#: own written precursors: 97 of 141 have nought or one fit, 30 have two,
+#: nine have three, one has four and two have five — so four lists every fit
+#: for 139 of the 141 and elides one for the other two. Isobars are ordinary
+#: in lipidomics and a cell that names nine of them has stopped being an
+#: answer.
+MOST_FITS = 4
+
+
+def labelled_formula(formula: str, *names: str) -> tuple[str, int, str]:
+    """
+    A formula with the labels its name declares but its formula does not.
+
+    A d4 standard is bought, named and filed as `CA-d4`, and the formula
+    beside it is usually the unlabelled one: nothing in a component table
+    has a column for four deuteriums. The name has them, and
+    `chemistry.split_labels` reads a trailing `-d4`. Without this the
+    arithmetic is out by 4.025 Da and no adduct fits the written precursor
+    at all — which is a true statement about the formula as typed and a
+    useless one about the compound.
+
+    A formula that already spells its labels out is left alone: it has said
+    what it is. Returns the formula, how many labels were added, and the
+    clause that says so.
+    """
+    from .chemistry import (FormulaError, format_formula, parse_formula,
+                            split_labels)
+
+    try:
+        counts = dict(parse_formula(formula))
+    except (FormulaError, ValueError):
+        return formula, 0, ""
+    if counts.get("D"):
+        return formula, 0, ""
+    for written in names:
+        _stem, labels = split_labels(written or "")
+        if labels and counts.get("H", 0) >= labels:
+            counts["D"] = labels
+            counts["H"] -= labels
+            return (format_formula(counts), labels,
+                    f", with the {labels} label(s) {written} is named for")
+    return formula, 0, ""
+
+
+@dataclass(frozen=True)
+class Fit:
+    """One compound and adduct whose mass is the precursor a method isolates."""
+
+    name: str
+    formula: str
+    adduct: str
+    mz: float
+    error_ppm: float
+    #: where the candidate came from, in words: the component table, your
+    #: library, or the name on the file. A fit is worth exactly as much as
+    #: the list it was found in, so the list travels with it
+    source: str = ""
+
+    def __str__(self) -> str:
+        adduct = f" {self.adduct}" if self.adduct else ""
+        return f"{self.name}{adduct} ({self.mz:.4f}, {self.error_ppm:+.1f} ppm)"
+
+
+@dataclass(frozen=True)
+class Isolation:
+    """One product-ion channel: the precursor it isolates, and what fits it."""
+
+    channel: int = 0
+    channel_name: str = ""
+    precursor: float = 0.0
+    start_mass: float = 0.0
+    end_mass: float = 0.0
+    polarity: str = ""
+    collision_energy: float | None = None
+    #: how far a candidate could sit and still be counted, in daltons
+    tolerance: float = 0.0
+    #: adducts of the compound the file name proposes that fit this precursor
+    named: tuple[Fit, ...] = ()
+    #: everything else that fits, the component table before the library
+    others: tuple[Fit, ...] = ()
+    #: how many fits there were beyond the ones listed
+    more: int = 0
+
+    @property
+    def agrees(self) -> bool:
+        """Does the name's own compound have an adduct at this precursor?"""
+        return bool(self.named)
+
+    @property
+    def fit(self) -> Fit | None:
+        """The best of the other compounds that fit, or None."""
+        return self.others[0] if self.others else None
+
+    @property
+    def window(self) -> str:
+        return f"{self.start_mass:g}–{self.end_mass:g}"
+
+    def __str__(self) -> str:
+        return f"{self.precursor:g} over {self.window}"
+
+
+@dataclass(frozen=True)
+class IsolationVerdict:
+    """
+    Whether the compound a file is named after is the one its method isolates.
+
+    The name is a proposal and the method is a measurement, and this is the
+    arithmetic between them: the compound the name resolves to, its formula,
+    and every adduct of that formula against the precursor each product-ion
+    channel actually isolates. Where the name does not fit, the same
+    precursor is offered to the component table and to the library of one's
+    own, so the answer is not only *not this* but, where anything knows,
+    *this instead*.
+
+    Nothing here reads a spectrum. It compares two numbers that were both
+    written down before the vial was sprayed, which is why it can be shown
+    beside a file the moment it is opened.
+    """
+
+    #: the compound `compound_of` proposed from the file name
+    proposed: str = ""
+    #: what that name resolved to, labels included
+    formula: str = ""
+    #: in words: the standards table, LIPID MAPS, the lipid shorthand
+    resolved_from: str = ""
+    labels: int = 0
+    isolations: tuple[Isolation, ...] = ()
+    #: why nothing could be judged, when nothing could
+    note: str = ""
+    #: the same in a few words, for the cell the sentence will not fit in.
+    #: Written where the note is written rather than cut out of it: a reason
+    #: truncated at whatever punctuation happens to come first is a reason
+    #: that changes meaning when somebody rewords the sentence
+    brief: str = ""
+
+    def __bool__(self) -> bool:
+        return self.judged
+
+    @property
+    def judged(self) -> bool:
+        return bool(self.formula and self.isolations)
+
+    @property
+    def agrees(self) -> bool:
+        """Every product-ion channel isolates an adduct of the named compound."""
+        return self.judged and all(i.agrees for i in self.isolations)
+
+    @property
+    def disagrees(self) -> bool:
+        """No product-ion channel does. A method with several channels where
+        only some fit is neither: it says so per channel instead."""
+        return self.judged and not any(i.agrees for i in self.isolations)
+
+    @property
+    def fit(self) -> Fit | None:
+        """The compound the method fits instead, where anything fits."""
+        for isolation in self.isolations:
+            if isolation.fit is not None:
+                return isolation.fit
+        return None
+
+    # -- in words ------------------------------------------------------------- #
+    def sentence(self) -> str:
+        """
+        What the name and the method say about each other, in one sentence.
+
+        The sentence that goes on the report, into the tooltip and into the
+        warning the shell puts up when a file is opened. It never says a file
+        is wrong: it says what the name proposed, what the method isolates,
+        and whether the two are the same arithmetic.
+        """
+        if not self.judged:
+            return self.note
+        joined = "; ".join(self._clause(i) for i in self.isolations)
+        conjunction = "and" if self.agrees else "but"
+        return (f"The file is named {self.proposed} {conjunction} the method "
+                f"isolates {joined}.")
+
+    def _clause(self, isolation: Isolation) -> str:
+        """One channel's half of the sentence."""
+        if isolation.agrees:
+            fit = isolation.named[0]
+            return (f"{isolation.precursor:g}, which is {fit.adduct} of "
+                    f"{self.formula} ({fit.mz:.4f}, {fit.error_ppm:+.1f} ppm)")
+        return (f"{isolation}, which is no adduct of {self.formula} within "
+                f"±{isolation.tolerance:g} Da; it fits "
+                f"{self._fits_text(isolation)}")
+
+    @staticmethod
+    def _fits_text(isolation: Isolation) -> str:
+        if not isolation.others:
+            return "nothing in the component table or the library"
+        listed = ", ".join(f"{fit} from {fit.source}"
+                           for fit in isolation.others)
+        if isolation.more:
+            listed += f", and {isolation.more} other(s)"
+        return listed
+
+    def column(self) -> str:
+        """
+        The same answer short enough for a cell, with the reason in the
+        tooltip. A table column is a few characters wide and the sentence is
+        a sentence; what has to survive the width is the precursor and
+        whether it is the compound on the label.
+        """
+        if not self.judged:
+            return self.brief or "not checked"
+        parts = []
+        for isolation in self.isolations:
+            if isolation.agrees:
+                fit = isolation.named[0]
+                parts.append(f"{isolation.precursor:g} = {fit.adduct} of "
+                             f"{self.proposed}")
+            elif isolation.fit is not None:
+                fit = isolation.fit
+                parts.append(f"{isolation.precursor:g} = {fit.adduct} of "
+                             f"{fit.name}, not {self.proposed}")
+            else:
+                parts.append(f"{isolation.precursor:g} — no adduct of "
+                             f"{self.formula}, nothing fits")
+        return "; ".join(parts)
+
+
+def _library_fits(library, precursor: float, tolerance: float,
+                  sign: int | None) -> list[Fit]:
+    """
+    Records of the analyst's own library whose precursor is this one.
+
+    The record's **formula and adduct** where it carries them and the typed
+    `PrecursorMZ` otherwise, which is `LibraryEntry.exact_precursor`'s whole
+    reason for existing. The typed value is the coarse filter — the two agree
+    to under a part per million in 96.8% of a real library — so a record far
+    away is skipped before its formula is ever parsed, which is what keeps
+    this cheap enough to run on every channel of every file.
+    """
+    from .chemistry import mass_error_ppm
+
+    out: list[Fit] = []
+    for entry in getattr(library, "entries", ()) or ():
+        written = entry.precursor
+        if written is not None and abs(float(written) - precursor) > tolerance + 0.5:
+            continue
+        mz = entry.exact_precursor
+        if mz is None:
+            mz = written
+        if mz is None or abs(float(mz) - precursor) > tolerance:
+            continue
+        polarity = entry.polarity
+        if sign is not None and polarity is not None and polarity != sign:
+            continue
+        out.append(Fit(name=entry.name, formula=entry.formula,
+                       adduct=entry.precursor_type, mz=float(mz),
+                       error_ppm=mass_error_ppm(precursor, float(mz)),
+                       source="your library"))
+    return out
+
+
+def _component_fits(components, precursor: float, polarity) -> list[Fit]:
+    """Components of the method whose formula has an adduct at this precursor."""
+    from .chemistry import adducts_matching
+
+    out: list[Fit] = []
+    for component in components or ():
+        written = str(getattr(component, "formula", "") or "")
+        if not written:
+            continue
+        name = str(getattr(component, "name", "") or "")
+        formula, _labels, _note = labelled_formula(written, name)
+        for match_ in adducts_matching(formula, precursor, polarity or None):
+            if match_.within:
+                out.append(Fit(name=name or formula, formula=formula,
+                               adduct=match_.name, mz=match_.mz,
+                               error_ppm=match_.error_ppm,
+                               source="the component table"))
+    return out
+
+
+def resolution_is_exact(resolved) -> bool:
+    """
+    Did the name resolve to *that* compound, or merely to one containing it?
+
+    `lipidmaps.find_by_name` is a substring search, which is the right
+    behaviour for somebody typing into a box and the wrong one for a check
+    that fires by itself on every file opened. Measured against the installed
+    LMSD: `PC` answers *PCTR3*, `CE` answers *cedrol*, `Cer` answers
+    *Cerasin* and `TESTOL` answers *testolactone* — four sample names of the
+    most ordinary kind, each resolved to a compound nobody was infusing, and
+    each of them would then have contradicted whatever the method isolated.
+
+    So a LIPID MAPS resolution counts only when the record's own name,
+    abbreviation or LM_ID **is** the name, punctuation and case aside. The
+    standards table is an exact key lookup and the lipid shorthand is parsed
+    rather than searched, so both are exact by construction — and they are
+    re-derived here rather than read off `NamedCompound.source`, whose
+    wording is prose.
+    """
+    from .chemistry import formula_from_name, standard_named
+
+    if resolved is None:
+        return False
+    compound = resolved.compound
+    if standard_named(compound) is not None or formula_from_name(compound):
+        return True
+    record = resolved.record
+    if record is None:
+        return False
+    want = _flat(compound)
+    return any(_flat(getattr(record, field, "")) == want
+               for field in ("name", "abbrev", "lm_id"))
+
+
+def _isolation_for(channel, proposed: str, formula: str, components,
+                   library) -> Isolation:
+    """One product-ion channel measured against a formula and two lists."""
+    from .chemistry import (ADDUCT_MATCH_DA, adducts_matching, polarity_sign)
+    from .lipidmaps import mass_precision
+
+    info = channel.info
+    precursor = float(info.precursor)
+    polarity = str(getattr(info, "polarity", "") or "")
+    # `chemistry.adducts_matching`'s own tolerance, made explicit here so the
+    # library half of the answer is asked the same question as the formula
+    # half: `ADDUCT_MATCH_DA`, widened where the precursor was typed to fewer
+    # places than that — `647.5` is known to ±0.05 and nothing closer can be
+    # asked of it, while `430.35`'s own ±0.005 is finer and 0.05 stands
+    tolerance = max(ADDUCT_MATCH_DA, mass_precision(precursor))
+    named = tuple(
+        Fit(name=proposed, formula=formula, adduct=m.name, mz=m.mz,
+            error_ppm=m.error_ppm, source="the name on the file")
+        for m in adducts_matching(formula, precursor, polarity or None)
+        if m.within)
+    others = (_component_fits(components, precursor, polarity)
+              + _library_fits(library, precursor, tolerance,
+                              polarity_sign(polarity) if polarity else None))
+    others.sort(key=lambda fit: abs(fit.error_ppm))
+    return Isolation(
+        channel=int(info.index), channel_name=str(info.name or ""),
+        precursor=precursor, start_mass=float(info.start_mass),
+        end_mass=float(info.end_mass), polarity=polarity,
+        collision_energy=info.collision_energy, tolerance=tolerance,
+        named=named, others=tuple(others[:MOST_FITS]),
+        more=max(len(others) - MOST_FITS, 0))
+
+
+def what_the_method_isolates(sample, components=(), library=None,
+                             name: str = "") -> IsolationVerdict:
+    """
+    Whether the compound in a file's name is the one its method isolates.
+
+    `sample` is any reader's sample; `name` is the file's name, since a
+    `.wiff` written by a manual acquisition calls its own sample `sample` and
+    the compound is only ever in the file name. `components` is the method's
+    table and `library` the analyst's own `SpectralLibrary`, both optional
+    and both only ever consulted about a precursor the name does not fit —
+    an answer of *not this, and nothing here knows what* is still an answer,
+    and a much better one than silence.
+
+    Every reason for not judging is returned rather than raised: a name
+    nothing recognises, an acquisition with no product-ion channel, a
+    formula that will not parse. The verdict then carries `note` and
+    `judged` is False, because "the name could not be checked" and "the name
+    is wrong" are different findings and a program that confuses them is
+    worse than one that says neither.
+    """
+    from .chemistry import FormulaError, parse_formula
+    from .explain import resolve_name
+
+    written = str(name or getattr(sample, "name", "") or "")
+    proposed = compound_of(written)
+    if not proposed:
+        return IsolationVerdict(note="the file has no name to propose a "
+                                     "compound from",
+                                brief="no name")
+    channels = [c for c in getattr(sample, "channels", [])
+                if getattr(c.info, "precursor", None) is not None]
+    resolved = resolve_name(proposed)
+    if resolved is None or not resolution_is_exact(resolved):
+        near = ("" if resolved is None else
+                f" — the nearest is {resolved.formula}, which is a compound "
+                f"whose name merely contains it and not the compound itself")
+        return IsolationVerdict(
+            proposed=proposed,
+            note=f"nothing knows the name {proposed} exactly: not the "
+                 f"standards table, not LIPID MAPS and not the lipid "
+                 f"shorthand, so there is no formula to check the method "
+                 f"against{near}",
+            brief=f"{proposed} is not a compound this knows")
+    # the labels the name declares and the formula does not: `resolve_name`
+    # answers `CA-d4` with cholic acid's own C24H40O5 and a count of four,
+    # and four deuteriums are 4.025 Da — the difference between an adduct
+    # that fits the written precursor and one that misses every one of them
+    formula, labels, _note = labelled_formula(resolved.formula, proposed)
+    try:
+        parse_formula(formula)
+    except (FormulaError, ValueError):
+        return IsolationVerdict(
+            proposed=proposed,
+            note=f"{proposed} resolves to {formula!r}, which is not a "
+                 f"formula this can read",
+            brief=f"{formula} is not a readable formula")
+    if not channels:
+        return IsolationVerdict(
+            proposed=proposed, formula=formula,
+            resolved_from=resolved.source, labels=labels,
+            note="this acquisition has no product-ion channel, so there is "
+                 "no isolated precursor to check the name against",
+            brief="nothing is isolated")
+    return IsolationVerdict(
+        proposed=proposed, formula=formula, resolved_from=resolved.source,
+        labels=labels,
+        isolations=tuple(
+            _isolation_for(c, proposed, formula, components, library)
+            for c in channels))
+
+
+def name_disagreements(entries, components=(), library=None) -> list[str]:
+    """
+    One sentence per open infusion whose name and method disagree.
+
+    What the shell puts up when a file is opened, and nothing else: an
+    acquisition that is not an infusion is not asked (a chromatographic run
+    is named after a sample, not a compound), a name nothing recognises is
+    not a disagreement, and a method that isolates an adduct of the named
+    compound says nothing at all.
+    """
+    said: list[str] = []
+    for entry in entries or ():
+        sample = getattr(entry, "sample", None)
+        if sample is None:
+            continue
+        try:
+            if not verdict_for(sample):
+                continue
+            verdict = what_the_method_isolates(
+                sample, components, library,
+                name=str(getattr(entry, "name", "") or ""))
+        except Exception:               # a reader that cannot say
+            continue
+        if verdict.disagrees:
+            said.append(f"{entry.name}: {verdict.sentence()}")
+    return said
+
+
 def energy_of(hit_or_entry) -> float | None:
     """
     The collision energy a library record carries, or None.
@@ -214,6 +662,9 @@ class InfusionReport:
     rt_range: tuple[float, float] | None = None
     adduct: str = ""
     verdict: InfusionVerdict | None = None
+    #: whether the compound the file is named after is the one the method
+    #: isolates — `what_the_method_isolates`, or None where nobody asked
+    isolation: IsolationVerdict | None = None
     # -- the accurate precursor ---------------------------------------------- #
     #: `precursor.measure`, which reads the survey scan
     measurement: _precursor.PrecursorMeasurement | None = None
@@ -243,6 +694,26 @@ class InfusionReport:
     @property
     def title(self) -> str:
         return self.compound or self.sample or "Infusion"
+
+    @property
+    def named_compound(self) -> str:
+        """
+        The compound this is, once the method has had its say.
+
+        `compound_of` reads a file name, which is a proposal: somebody typed
+        it, and on a manual acquisition it is the only place a compound is
+        written at all. The method's isolated precursor is a measurement of
+        the same question, so where the two disagree this reads the compound
+        the method fits and flags the name — and where nothing fits, it says
+        the name is not confirmed rather than repeating it as though it were.
+        """
+        verdict = self.isolation
+        if verdict is None or not verdict.disagrees:
+            return self.compound
+        fit = verdict.fit
+        if fit is not None:
+            return f"{fit.name}, not {self.compound}"
+        return f"not {self.compound}"
 
     @property
     def trace(self) -> spectra_compare.SpectrumTrace | None:
@@ -309,6 +780,11 @@ class InfusionReport:
         file.
         """
         said: list[str] = []
+        # first, because it is the one check that can invalidate the others:
+        # a precursor confirmed to a part per million and a library record at
+        # 96 are both about whatever the method isolated, and if that is not
+        # the compound on the label then neither sentence is about this vial
+        said += self._isolation_sentences()
         said += self._precursor_sentences()
         said += self._fragment_sentences()
         said += self._library_sentences()
@@ -319,6 +795,20 @@ class InfusionReport:
                 "was searched. What follows is the averaged spectrum and its "
                 "peaks, which is all this report claims to be.")
         return said
+
+    def _isolation_sentences(self) -> list[str]:
+        """
+        What the name and the method say about each other, where it was asked.
+
+        Silent when the verdict agrees and the name was resolved from a table
+        rather than measured: a report that opens by saying the file is named
+        what it is named has spent its first sentence on nothing. It speaks
+        when the two disagree, which is the case worth a page.
+        """
+        verdict = self.isolation
+        if verdict is None or not verdict.judged or verdict.agrees:
+            return []
+        return [verdict.sentence()]
 
     def _precursor_sentences(self) -> list[str]:
         written = (f"the written {self.written_precursor:.4f}"
@@ -502,7 +992,8 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
                label_floor: float = LABEL_MIN_RELATIVE,
                centroid: bool = False,
                spectrum: tuple | None = None,
-               measure_precursor: bool = True) -> InfusionReport:
+               measure_precursor: bool = True,
+               components=(), own_library=None) -> InfusionReport:
     """
     A report for one open infusion, reading the file for what it needs.
 
@@ -510,6 +1001,12 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
     spectrum on screen — the Explorer does, conditioned the way the pane
     conditions it — and None to read and average it here. `others` are the
     infusions to compare against, each an `(entry, channel)` pair.
+
+    `components` and `own_library` are what the isolation verdict is offered
+    when the compound the file is named after does not fit the precursor the
+    method isolates. Both are optional and neither is read for anything else:
+    without them the verdict can still say *not this*, and with them it can
+    sometimes say what instead.
     """
     sample = getattr(entry, "sample", None)
     channel = channel if channel is not None else (
@@ -530,6 +1027,12 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
             report.verdict = verdict_for(sample)
         except Exception:                       # a reader that cannot say
             report.verdict = None
+        try:
+            report.isolation = what_the_method_isolates(
+                sample, components, own_library,
+                name=str(getattr(entry, "name", "") or ""))
+        except Exception:                       # a reader that cannot say
+            report.isolation = None
     if info is not None:
         report.polarity = str(getattr(info, "polarity", "") or "")
         report.channel = info.label
@@ -688,12 +1191,17 @@ def from_explorer(explorer, compound: str = "", others=(),
     panel = getattr(explorer, "library_panel", None)
     hit = None
     library = ""
+    own = None
     if panel is not None:
         try:
             hit = panel._current_hit()
-            library = os.path.basename(getattr(panel.library, "path", "") or "")
+            own = panel.library
+            library = os.path.basename(getattr(own, "path", "") or "")
         except Exception:
-            hit, library = None, ""
+            hit, library, own = None, "", None
+
+    session = getattr(explorer, "session", None)
+    components = getattr(getattr(session, "method", None), "components", ())
 
     floor = getattr(getattr(explorer, "spectrum", None), "label_floor",
                     LABEL_MIN_RELATIVE)
@@ -704,7 +1212,8 @@ def from_explorer(explorer, compound: str = "", others=(),
         basis=basis, deuterium=deuterium, hit=hit, library=library,
         adduct=adduct, others=others, label_floor=float(floor),
         centroid=centroid, spectrum=spectrum,
-        measure_precursor=measure_precursor)
+        measure_precursor=measure_precursor,
+        components=components, own_library=own)
 
 
 def infusions_open(source) -> "list[tuple[SampleEntry, object]]":
@@ -755,10 +1264,18 @@ COUNTED_SCORE = 0.60
 #: the columns of the summary, in the order they are shown and exported.
 #: One definition for the table, the CSV and the row's own sort keys.
 SUMMARY_COLUMNS = (
-    "Compound", "Sample", "Mode", "CE (eV)", "Scans", "Base peak m/z",
-    "Precursor written", "Found m/z", "Δ ppm", "Height", "Ions found",
-    "Library record", "Score", "Reverse", "Matched", "Record Δ ppm",
-    "Record CE", "Other infusions", "File")
+    "Compound", "Sample", "Isolated", "Mode", "CE (eV)", "Scans",
+    "Base peak m/z", "Precursor written", "Found m/z", "Δ ppm", "Height",
+    "Ions found", "Library record", "Score", "Reverse", "Matched",
+    "Record Δ ppm", "Record CE", "Other infusions", "File")
+
+#: the columns of `SUMMARY_COLUMNS` that hold a number, and what to sort each
+#: on. Keyed by the column's **name**: `keys()` used to hold the positions,
+#: and inserting a column in the middle then moved every sort key one cell to
+#: the right without anything failing.
+_SORT_KEYS = ("CE (eV)", "Scans", "Base peak m/z", "Precursor written",
+              "Found m/z", "Δ ppm", "Height", "Ions found", "Score",
+              "Reverse", "Matched", "Record Δ ppm")
 
 #: what goes in the report's table. A4 does not hold nineteen columns and a
 #: table squeezed into it is a table nobody reads, so the precursor and the
@@ -836,7 +1353,23 @@ class InfusionRow:
     # -- what it is ---------------------------------------------------------- #
     @property
     def compound(self) -> str:
+        """
+        What the row is grouped and compared under: the file name's proposal.
+
+        Deliberately the proposal and not `report.named_compound`. Grouping
+        is what decides which infusions are scored against each other, and
+        two files named after the same compound are worth comparing whatever
+        their methods isolate — the pair that turned out not to be CA-d4 is
+        only visible as a pair *because* they were still scored against the
+        real ones. The cell says which is which; the grouping does not.
+        """
         return self.report.compound
+
+    @property
+    def isolated(self) -> str:
+        """What the method isolates, short enough for a cell."""
+        verdict = self.report.isolation
+        return "not checked" if verdict is None else verdict.column()
 
     @property
     def sample(self) -> str:
@@ -881,8 +1414,9 @@ class InfusionRow:
         base = report.base_peak()
         gap = report.energy_gap()
         return [
-            report.compound,
+            report.named_compound,
             report.sample,
+            self.isolated,
             self.mode,
             "—" if report.collision_energy is None
             else f"{report.collision_energy:g}",
@@ -921,6 +1455,10 @@ class InfusionRow:
         A table sorted on its text puts 9 after 100 and "not measurable"
         wherever the alphabet says, which on a column of measurements is
         worse than not sorting at all.
+
+        Keyed by column name through `_SORT_KEYS`: the positions were written
+        out here once, and a column inserted in the middle then moved every
+        one of them onto the cell next door with nothing failing.
         """
         report = self.report
         found = self.found
@@ -930,24 +1468,27 @@ class InfusionRow:
         base = report.base_peak()
         cells = self.cells()
         numbers = {
-            3: report.collision_energy,
-            4: float(report.scans) if report.scans else None,
-            5: base[0] if base else None,
-            6: report.written_precursor,
-            7: found[0] if found else None,
-            8: error,
-            9: found[1] if found else None,
-            10: float(explanation.matched) if explanation is not None else None,
-            12: hit.score if hit is not None else None,
-            13: hit.reverse if hit is not None else None,
-            14: float(hit.matched) if hit is not None else None,
-            15: hit.delta_ppm if hit is not None else None,
+            "CE (eV)": report.collision_energy,
+            "Scans": float(report.scans) if report.scans else None,
+            "Base peak m/z": base[0] if base else None,
+            "Precursor written": report.written_precursor,
+            "Found m/z": found[0] if found else None,
+            "Δ ppm": error,
+            "Height": found[1] if found else None,
+            "Ions found": (float(explanation.matched)
+                           if explanation is not None else None),
+            "Score": hit.score if hit is not None else None,
+            "Reverse": hit.reverse if hit is not None else None,
+            "Matched": float(hit.matched) if hit is not None else None,
+            "Record Δ ppm": hit.delta_ppm if hit is not None else None,
         }
         keys: list = list(cells)
-        for column, value in numbers.items():
+        for name in _SORT_KEYS:
+            value = numbers[name]
             # a cell with no number sorts to the end either way round, which
             # is where a reason belongs in a column of measurements
-            keys[column] = float("inf") if value is None else float(value)
+            keys[SUMMARY_COLUMNS.index(name)] = (
+                float("inf") if value is None else float(value))
         return keys
 
     def report_cells(self) -> list[str]:
@@ -968,7 +1509,11 @@ class InfusionRow:
         if gap is not None:
             record += f" — {gap[1]:g} eV against this run’s {gap[0]:g}"
         return [
-            report.compound, report.sample,
+            # the flagged name here too: the printed table is narrower than
+            # the tab and carries no Isolated column, so this is the only
+            # place on the page before the compound's own section where a
+            # name the method contradicts can say so
+            report.named_compound, report.sample,
             self.mode + (f", {report.collision_energy:g} eV"
                          if report.collision_energy is not None else ""),
             f"{report.scans:,}" if report.scans else "—",
@@ -1137,24 +1682,14 @@ def _headless_labels(component, report: InfusionReport):
 
     A formula that already spells its labels out is left alone: it has said
     what it is.
-    """
-    from .chemistry import (FormulaError, format_formula, parse_formula,
-                            split_labels)
 
-    try:
-        counts = dict(parse_formula(component.formula))
-    except (FormulaError, ValueError):
-        return component.formula, 0, ""
-    if counts.get("D"):
-        return component.formula, 0, ""
-    for written in (component.name, report.compound):
-        _stem, labels = split_labels(written or "")
-        if labels and counts.get("H", 0) >= labels:
-            counts["D"] = labels
-            counts["H"] -= labels
-            return (format_formula(counts), labels,
-                    f", with the {labels} label(s) {written} is named for")
-    return component.formula, 0, ""
+    The arithmetic is `labelled_formula`'s, which the isolation verdict uses
+    on the same component table: a formula labelled one way here and another
+    way there would have the report and the verdict disagreeing about the
+    same compound.
+    """
+    return labelled_formula(component.formula, component.name,
+                            report.compound)
 
 
 def _headless_adduct(component, report: InfusionReport,
@@ -1281,13 +1816,16 @@ def summarise(session, library=None, explanations=None,
     given = {str(k): v for k, v in (explanations or {}).items()}
     name = os.path.basename(getattr(library, "path", "") or "") if library \
         else ""
+    method = getattr(session, "method", None)
     rows: list[InfusionRow] = []
     done, total = 0, len(infusions)
     for compound, members in groups.items():
         made: list[InfusionRow] = []
         for entry, channel in members:
             report = report_for(entry, channel, compound=compound,
-                                library=name)
+                                library=name,
+                                components=getattr(method, "components", ()),
+                                own_library=library)
             explanation = given.get(compound)
             note = ""
             if explanation is not None:
@@ -1395,6 +1933,7 @@ def _identity(report: InfusionReport) -> str:
         ["Scans averaged", f"{report.scans:,}" if report.scans else "—",
          "Over", span],
         ["Adduct", value(report.adduct), "Read as", _read_as(report)],
+        ["Named", value(report.compound), "Isolated", _isolated(report)],
     ]
     cells = []
     for number, row in enumerate(rows):
@@ -1421,6 +1960,21 @@ def _sub(title: str, breaks: set[str] | None = None) -> str:
     """
     css = ' class="break"' if breaks and title in breaks else ""
     return f"<h3{css}>{_escape(title)}</h3>"
+
+
+def _isolated(report: InfusionReport) -> str:
+    """
+    What the method isolates, in the header cell beside the name it was
+    filed under.
+
+    The header is the block that says what this is *from the file rather
+    than from the file name*, and the name is on it. Which of the two the
+    reader should believe is exactly this cell's job.
+    """
+    verdict = report.isolation
+    if verdict is None:
+        return "not checked"
+    return _escape(verdict.column())
 
 
 def _read_as(report: InfusionReport) -> str:

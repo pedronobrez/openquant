@@ -219,7 +219,9 @@ Four things in that table are worth reading rather than skipping:
   **73** against each other and **5 to 10** against the three real CA-d4
   files. The name prefix said one compound and the method said another, and
   the row is where that shows — which is the whole reason the compound is
-  never anything but a proposal.
+  never anything but a proposal. The *Isolated* column now says it before
+  anything is measured, and what the two files actually are is the section
+  *When the name and the method disagree*, below.
 - **the precursor survives the soft activations and not the hard ones.** Every
   EAD run measured its precursor; two of the three CID runs had too little
   left to call a mass. That is an ordinary finding about collision energy, and
@@ -244,6 +246,107 @@ made from a run matches that run at 100, which proves the file was written and
 read back; the figures that mean anything are 6, 29, 33 and 61 — the same
 compound, the same vial, under another activation, and a record does not
 travel between them.
+
+## When the name and the method disagree
+
+A `.wiff` written by a manual acquisition names its own sample `sample` and
+its method `Untitled 1.msm`. Read by reflection, its experiment offers a
+polarity, a mass range, a fixed mass, DP, CE, DPS and CES — and a
+`TargetedCompoundInfo` that is empty, which is the field SCIEX OS writes a
+compound into when a method has one. **On the nine real infusions nothing in
+the file says what was sprayed.** The compound is in the file name and
+nowhere else.
+
+So the name is a proposal, and the precursor the method isolates is the one
+measurement of the same question the file actually holds. OpenQuant compares
+them. The compound the name starts with is resolved to a formula — the
+standards table of bile acids and their conjugates, then LIPID MAPS, then
+the lipid shorthand, the same three [[lipid-maps]] uses, with a trailing
+`-d4` read as four labels the formula does not carry — and every adduct of
+that formula is measured against the written precursor, at the precision the
+precursor was typed with. Where the name fits, the **Isolated** column of the
+Infusions tab and the report's header read *430.35 = [M+NH4]+ of CA-d4*.
+Where it does not, the same precursor is offered to the component table and
+to your own library, and the answer is one of two sentences:
+
+> The file is named CA-d4 but the method isolates 839.56 over 100–1000,
+> which is no adduct of C24H36D4O5 within ±0.05 Da; it fits nothing in the
+> component table or the library.
+
+> …it fits DCA-d4 [M+NH4]+ (414.3516, +2.0 ppm) from the component table.
+
+The row's **Compound** cell then stops repeating the name: it reads *not
+CA-d4*, or *DCA-d4, not CA-d4* where something fits, with the whole sentence
+in the tooltip. The grouping does not change — two files named for the same
+compound are worth scoring against each other whatever their methods isolate,
+and the pair below is only visible *as* a pair because they still were.
+
+The same check runs when a file is opened, and warns once per file, beside
+the warning for a `.wiff` with no `.wiff.scan`. **It reads no spectrum**, so
+it arrives before anything has been measured: on the nine real infusions it
+takes **32 ms a file**, nearly all of it looking the name up in LIPID MAPS,
+against the seconds the file itself takes to open. The component table costs
+nothing measurable on top — 125 formulas through every adduct came to the
+same 32 ms.
+
+**A name is only accepted when it is the compound exactly.** LIPID MAPS is
+searched by substring, which is right for somebody typing into a box and
+wrong for a check that fires by itself: against the installed database `PC`
+answers *PCTR3*, `CE` answers *cedrol*, `Cer` answers *Cerasin* and `TESTOL`
+answers *testolactone*. Four sample names of the most ordinary kind, each
+resolved to a compound nobody was infusing, and each would then have
+contradicted whatever its method isolated. So a database name counts only
+when the record's own name, abbreviation or LM_ID *is* the name; the
+standards table is an exact lookup and the shorthand is parsed rather than
+searched. A name nothing recognises is reported as *not checked* — which is
+a different finding from *the name is wrong*, and the two are never
+conflated.
+
+### What the two `TESTEARTIGO` files are
+
+They are the acquisitions this check was written for, and they are not
+cholic acid-d4.
+
+| | the two `_TESTEARTIGO` | `CA-d4_TOFMSMS_EAD_12CE_…_mix1` |
+|---|---|---|
+| isolated precursor | **839.56** | 430.34 |
+| mass range | 100 – 1000 | 50 – 500 |
+| declaration factor | 80 and 44 | 44 |
+| base peak | 839.2316 / 839.2343 | 430.3490 |
+| base peak height | **109 / 234 counts** | **12,271 counts** |
+| centroids in the averaged spectrum | 7,101 / 5,281 | 234 |
+| total ion current of the average | 18,537 / 40,453 | 156,716 |
+
+Thousands of centroids at tens of counts each is what an empty acquisition
+looks like: a spectrum of noise, centroided. The real infusion beside it has
+234 centroids and one of them is fifty times taller than everything in the
+other two files put together.
+
+**Nothing anywhere fits 839.56 and nothing in the file supports what does.**
+Every positive adduct of cholic, deoxycholic and taurodeoxycholic acid,
+their glycine and taurine conjugates, each labelled and unlabelled, as
+monomer and as dimer — seventy-two masses — gives exactly one hit at ±0.05
+Da: **[2M+Na]+ of *unlabelled* cholic acid, 839.5644, −5.2 ppm**. LIPID MAPS
+at ±0.01 Da adds seventeen records over two formulas, `C43H83O13P` as
+`[M+H]+` and `C45H76NO10P` as `[M+NH4]+` — phosphatidylinositols and
+phosphatidylserines, which nobody was infusing. And the file itself refuses
+all of them: within ±0.05 Da of 839.56 the tallest centroid is **9 counts**
+in one file and **17** in the other, 8% and 7% of a base peak that is itself
+109 and 234. The one ion in the isolation window that is really there sits at
+839.23, a third of a dalton — some four hundred parts per million — below
+what the method asked for, so it is a neighbour the ±0.5 Da window caught and
+not the target.
+
+The conclusion the tab draws is the one the arithmetic supports: **the method
+isolated a mass that was typed for something else, and got nothing.** The two
+score 73 against each other — two noise spectra from the same source, taken
+two minutes apart — and 5 to 10 against the three real CA-d4 files. The file
+name is the only thing in either of them that says CA-d4, and it is wrong.
+
+One smaller disagreement of the same kind, visible in the table above: the
+12 eV file is named `…_44DP_…` and its method carries a declaration potential
+of **80**. The name is a note somebody typed, in both cases, and the method
+is what the instrument did.
 
 ## The same standard, next month
 

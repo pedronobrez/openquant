@@ -185,9 +185,46 @@ infusion the measurement takes the middle of the run as its anchor and
 averages the whole run for both the survey and the product-ion spectrum,
 which is the most signal the acquisition can give it.
 
+## What the file says it is, and what its method does
+
+An infusion is usually acquired by hand, and a manual acquisition writes down
+almost nothing. Read by reflection, the nine real ZenoTOF files call their
+sample `sample`, name their method `Untitled 1.msm` and leave
+`TargetedCompoundInfo` — the field a targeted method puts a compound name in —
+empty. What the experiment does carry is a polarity, a mass range, a fixed
+mass, and DP, CE, DPS and CES. **No compound, anywhere in the file.** The one
+place a compound is written is the file name, which is why the *Compound*
+column everywhere in OpenQuant is called a proposal.
+
+The method's isolated precursor is a second answer to the same question, and
+it is the instrument's rather than a typist's. When an infusion is opened,
+the compound its name starts with is resolved to a formula and every adduct
+of that formula is measured against the precursor the method isolates. Where
+they disagree the shell says so once, when the file is opened, beside the
+warning for a `.wiff` with no `.wiff.scan`:
+
+> CA-d4_TOFMSMS_EAD_12CE_44DP_13KE_TESTEARTIGO: The file is named CA-d4 but
+> the method isolates 839.56 over 100–1000, which is no adduct of
+> C24H36D4O5 within ±0.05 Da; it fits nothing in the component table or the
+> library.
+
+That warning reads no spectrum and took 32 ms, so it arrives before anything
+has been measured — and on the two files it was written for, it is the whole
+finding: see *When the name and the method disagree* in
+[[infusion-report]] for what they turned out to be and for the rule that
+stops an ordinary sample name resolving to a lipid it merely resembles.
+
+The folder check before an open cannot make this check and is not asked
+to: it reads names and never opens a file, by design — see
+[[checking-files]]. Nor can [[check-method]], which looks at the processing
+method and never at an acquisition. The disagreement is between a file name
+and a file, so the place to find it is where files are opened.
+
 ## Putting one on paper
 
 **Process ▸ Report this infusion…** writes the averaged spectrum, its peaks,
 the accurate precursor and whatever was run against it as a document of two
 to four pages — see [[infusion-report]]. It is offered only on an infusion,
-because everything in it is the average of a whole run.
+because everything in it is the average of a whole run. Its header carries
+the *Named* and *Isolated* pair, so the two claims about what the vial holds
+are printed side by side.

@@ -31,11 +31,13 @@ from .settings import settings
 
 HELP_PAGE = "infusion-report"
 
-#: the two columns whose cell is an abbreviation of a sentence, by name
-#: rather than by position: a column added in the middle would otherwise
-#: move the tooltip onto the wrong cell without anything failing
+#: the columns whose cell is an abbreviation of a sentence, by name rather
+#: than by position: a column added in the middle would otherwise move the
+#: tooltip onto the wrong cell without anything failing
 FOUND_COLUMN = SUMMARY_COLUMNS.index("Found m/z")
 OTHERS_COLUMN = SUMMARY_COLUMNS.index("Other infusions")
+ISOLATED_COLUMN = SUMMARY_COLUMNS.index("Isolated")
+COMPOUND_COLUMN = SUMMARY_COLUMNS.index("Compound")
 
 #: the setting the analyst's own library is remembered under, written by the
 #: Explorer's library panel. Read rather than owned: there is one library of
@@ -227,6 +229,12 @@ class InfusionsPanel(QtWidgets.QWidget):
             return (row.report.survivor_note
                     or getattr(row.report.measurement, "note", "")
                     or text)
+        if column in (ISOLATED_COLUMN, COMPOUND_COLUMN):
+            # the whole sentence, on both cells the verdict writes: a reader
+            # who notices the flagged name should not have to guess which
+            # other column explains it
+            verdict = row.report.isolation
+            return verdict.sentence() if verdict is not None else text
         if column == OTHERS_COLUMN and row.others:
             return "\n".join(
                 f"{label}: score {score * 100:.0f}, reverse "

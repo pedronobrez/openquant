@@ -26,9 +26,23 @@ padrão interno, ou concentração).
 | Qualifier of | o quantificador que esta transição confirma, quando ela é um qualificador |
 | Ion ratio % e ± ratio % | a razão de áreas qualificador/quantificador esperada, e a tolerância que sobrepõe a do método |
 | Min. response | para um padrão interno: a menor área que ele tem de dar em uma injeção antes que uma razão a ele signifique alguma coisa — ver [[internal-standards-and-qualifiers]] |
+| Provenance | não é uma coluna: de onde a linha veio, mostrado na dica de tela da célula Name — veja abaixo |
 
 As colunas de padrão interno e de qualificador são explicadas em
 [[internal-standards-and-qualifiers]].
+
+### De onde veio a linha
+
+Uma linha escrita pelo **Use in method…**, na aba Infusions, carrega a sua
+procedência: de qual infusão foi lida, o canal, a energia de colisão, o
+arquivo, a hora de aquisição e o registro da sua própria biblioteca com que o
+espectro bateu. Ela não tem coluna — é uma frase, e uma coluna de frases é uma
+tabela que ninguém lê — então aparece na **dica de tela da célula Name**,
+embaixo do nome, e é salva com o projeto e escrita no CSV como `provenance`.
+Uma linha que você digitou não carrega nenhuma, que é a resposta verdadeira
+para ela: a dica é então só o nome. Nada no programa decide nada com base
+nesse texto; ele está ali para quem for ler o método daqui a seis meses, e o
+[[infusion-report]] descreve o que o escreve.
 
 ## Construir a tabela
 
@@ -297,6 +311,7 @@ name,precursor,fragment,rt,window,tolerance,unit
 | regression, weighting | regression, curve, fit, regressao; weighting, weight, ponderacao, peso |
 | lm_id | lm_id, lipidmaps, lipidmaps_id, lmid |
 | min_response | min_response, response_floor, min_area, floor, piso_resposta, resposta_minima, area_minima |
+| provenance | provenance, source, origin, procedencia, proveniencia, origem — texto livre, escrito pelo *Use in method…*; veja acima |
 
 Os parâmetros de integração próprios de um componente e os seus critérios de
 aceitação não estão no CSV; eles são salvos no projeto.

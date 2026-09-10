@@ -80,4 +80,6 @@ with half the checks unrun has not passed.
 
 The check runs on the method as it is, so it can be run again after each
 correction. The same findings appear at the head of the [[report]]'s
-method section, so a report carries its own warnings.
+method section, so a report carries its own warnings, and the whole of
+what is here — grouped by severity, with every flagged row marked in the
+component table — is the second section of the [[method-report]].

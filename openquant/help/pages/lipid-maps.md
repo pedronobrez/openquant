@@ -27,8 +27,18 @@ LIPID MAPS**. Results are grouped **by species, then by structure**: a
 species — `PC 34:1`, say — with the isomers that share its formula listed
 underneath, because a mass cannot separate them and a list that pretended
 otherwise would be claiming more than was measured. Each row carries the
-formula, the error in mDa and ppm, and the LM_ID; the tooltip gives the
-systematic name.
+formula, the error in mDa and ppm, the LM_ID and the **adduct** it was found
+at; the tooltip on the species gives the systematic name, and the one on the
+adduct says what that adduct does when the ion breaks up.
+
+The Adduct box starts on **every adduct**, its first entry: the mass is then
+searched at each adduct the channel's polarity allows. That is the honest
+default for a measured mass, because which ion the number *is* is the
+question — 876.8015
+out of a liver DIA run answers one species, `TG 52:2`, C55H102O6, as
+`[M+NH4]+` at +0.0 ppm and 51 structures, and the same number searched as
+`[M+H]+` answers nothing at all. A product spectrum then ranks what a mass
+alone cannot separate: see *Explain*, below.
 
 Right-clicking a spectrum peak and choosing **Find formula for this peak**
 sends its mass here as well as to the [[formula-finder]].
@@ -82,9 +92,25 @@ the ladder. The unexplained peaks are reported too: several candidates
 usually explain the same peaks, because isomers fragment alike, and the
 unexplained ones are the honest part of the answer.
 
-The **Adduct** box beside the precursor is used twice: to look the mass up in
-the database, and to say what each candidate's own precursor ion is and what
-its fragments carry — see *Adducts*, below.
+The **Adduct** box beside the precursor says which ion the precursor is, and
+is used twice: to look the mass up in the database, and to say what each
+candidate's own precursor ion is and what its fragments carry.
+
+Left on **from the precursor**, where it starts, the database is searched at
+every adduct the channel's polarity allows and each candidate carries the one
+that found it — the **Adduct** column, with that adduct's behaviour in its
+tooltip, and **ppm**, how far the written precursor sits from that candidate
+through that adduct. The line under the table says it in words, the same
+sentence the own-structure path writes from the same code:
+
+> 703.6 is [M+H]+ of C39H79N2O6P (703.5749, +35.7 ppm); [M+NH4]+ would be
+> 720.6014
+
+Selecting another candidate rewrites it, because on this path each row may
+have been found at a different adduct. Picking an adduct by hand searches
+that one only. See *Adducts*, below: it is not a detail, since an ammoniated
+precursor scored as a protonated one predicts every fragment 17 Da away from
+anything in the spectrum.
 
 **Explain spectrum** on the Processing toolbar does the same from the
 chromatogram: it takes the spectrum of the current scan and its channel's
@@ -323,6 +349,105 @@ channel is never offered a negative adduct. With no precursor written at all
 there is nothing to read it off, and the Adduct box at the top of the tab —
 the one the database search uses — stands in, said out loud.
 
+### The survey confirms it
+
+Everything above is arithmetic on a number somebody typed. Where the
+acquisition has a **survey scan** — a full-scan TOF MS channel covering the
+precursor — the adduct stops being a deduction and becomes a measurement,
+and the panel says which of the two you are looking at.
+
+The survey of the same acquisition, averaged over the same scans as the
+spectrum on screen, is asked about every candidate: the exact mass of the
+ion, within 25 ppm and above 100 counts, and the isotope pattern of the
+ion's own composition — the adduct's atoms included, since `[M+NH4]+`
+carries a nitrogen the molecule has not got. The line under the button then
+reads
+
+> 647.5 is [M+H]+ of C35H71N2O6P (647.5123, −18.9 ppm); [M+NH4]+ would be
+> 664.5388; confirmed by the survey: 647.5112, −1.6 ppm, isotopes agree, and
+> the survey also shows [M+Na]+ 13%, [M+K]+ 0%
+
+or, when it does not,
+
+> …; the survey does not show it (the nearest peak is +69.9 ppm away, past
+> ±25), so it is chosen from the written mass alone
+
+The second clause is the point. A product-ion scan cannot check this at all:
+Q1 passed one mass and threw the isotope satellites away with everything
+else, so the spectrum on screen has no pattern to read. Nine bile-acid
+infusions to hand were acquired as product-ion scans only, and on them this
+sentence says *no survey scan covering 430.35, so nothing independent says
+which ion it is* — which is what the adduct always was there, now written
+down.
+
+**The map is worth as much as the answer.** A survey usually shows a
+compound as several ions at once, and each is reported with its height as a
+share of the strongest: on the sphingolipid batch both the sphingomyelin and
+the C16 ceramide run at about `[M+H]+` 100%, `[M+Na]+` 13%. An eighth of the
+signal is on a channel nobody acquired, and a compound whose sodium adduct is
+the bigger one will be quantified badly by anyone who assumed otherwise.
+
+**The pattern decides what the mass cannot.** Two things can sit at one
+mass: an ion, and the M+1 of something a dalton lighter. The ceramide's
+`[M+NH4]+` above is 21.5 ppm out — inside the 25 ppm that says "the same
+ion" — and 170 counts, over the 100 that says "measurable"; its M+1 and M+2
+come back at 1.00 and 1.00 of its M, which is flat noise and not an isotope
+pattern, and it ranks last. A d4 standard and its d3 impurity, 1.0063 Da
+apart, are the same problem in reverse: both are on the mass to within
+1 ppm, and only the pattern — 0.97 against 0.06 — says which of them the
+peak belongs to.
+
+The figures, the two real compounds and what the M+2 of a lipid actually
+holds are on [[accurate-precursor]].
+
+### A database candidate says which adduct found it
+
+The same model runs on the database route, so a triacylglycerol annotated
+`[M+NH4]+` is scored with the intact ammonium, the `[M+H]+` it hands over,
+and the ladder off *that*, its diacylglycerol ions carrying a proton; a
+`[M+Na]+` candidate offers both carriers. It is the own-structure path with
+the drawing taken out of LMSD rather than off the disk — one enumeration, one
+scoring, one sentence.
+
+What the record route needs and the own route does not is a **gate**. A
+product-ion channel is looked up over the isolation window, half a dalton,
+because a method writes its precursor rounded — 538.6 for a ceramide whose
+precursor is 538.52. At 700 Da half a dalton is 700 ppm and holds hundreds of
+species, so running five adducts over it multiplies the candidates that
+explain a noisy spectrum by accident. An adduct other than the proton one
+therefore has to *name* the precursor — the same ±0.05 Da above — while the
+proton adduct keeps the whole window, because it is the reading the method
+wrote down and needs no identifying.
+
+Measured on the sphingolipid batch's four named compounds, whole run
+averaged and centroided, and on the ZenoTOF DIA window holding TG 52:2:
+
+| channel | compound | as [M+H]+ | every adduct, gated |
+|---|---|---|---|
+| 703.6 | SM(d18:1/16:0) | rank 1, 31.9%, 6 of 885 | rank 1, 31.9%, 6 of 885 |
+| 538.6 | Cer(d18:1/16:0) | rank 4, 9.5%, 6 of 779 | rank 4, 9.5%, 6 of 779 |
+| 648.8 | Cer(d18:1/24:1) | rank 1, 9.2%, 6 of 1,153 | rank 1, 9.2%, 6 of 1,153 |
+| 731.7 | SM(d18:1/18:0) | rank 1, 19.4%, 4 of 968 | rank 1, 19.4%, 4 of 968 |
+| 876.80 | TG 52:2 | not listed | rank 2, 24.0%, 9 of 1,123 |
+
+The four sphingolipids do not move, which is the point of the gate: their
+written precursors sit 36 to 264 ppm from the compounds themselves, so no
+mass rule can promote them and none should demote them either. Ungated they
+went to ranks 1, 5, 5, 3, the new top rows being a doubly charged
+glycosphingolipid at −171 ppm and a potassiated ceramide at +356 ppm, each
+offering two to three times as many predicted ions.
+
+The triacylglycerol is what the gate is for. A DIA window at 876.80 searched
+as `[M+H]+` does not list `TG 52:2` at all — it is not a lipid at that
+adduct, and the best candidate is a phosphatidylserine explaining 7.7%.
+Searched at every adduct it comes back at −1.7 ppm explaining 24.0% of the
+spectrum, with the intact `[M+NH4]+` at 876.8051 (+4.2 ppm) and the
+diacylglycerol ions carrying protons: 577.5219 (+4.9), 603.5363 (+2.6),
+605.5520 (+2.8). Above it sits a potassiated ceramide with 3,291 predicted
+ions explaining 43.2% at +25.0 ppm — the long-list-by-accident caveat this
+page keeps making, and the ppm column is what separates the two by a factor
+of fifteen. A search takes 0.2 to 0.8 s either way.
+
 ### What it did on the real infusions
 
 Three bile-acid standards infused on a ZenoTOF 7600 in **positive** mode,
@@ -429,6 +554,123 @@ Those shares are the highest on this page and mean the least, for the reason
 *Where the labels are* gives above: four unplaced labels multiply the masses on offer
 fivefold, and a long enough list of possible masses covers a spectrum by
 accident. Read them beside the placed drawing's, not instead of it.
+
+## Isotopic purity
+
+A bottle of cholic acid-d4 comes with a certificate saying `98 atom % D`, and
+nobody ever measures it. Where the compound carries labels — declared in
+*Deuterium, unplaced*, spelt into the formula, placed by a drawing, or read
+off a `-d4` on the end of a name — and an adduct was identified, a line
+appears under the label inference:
+
+    Isotopic purity: d4 96.2%, ≥d3 99.1% (from the precursor at 430.35; ±0.8%)
+
+The number matters for a reason that has nothing to do with identity. An
+internal standard that is four per cent d3 puts four per cent of its response
+one dalton below where the method looks for it, and no other check in a batch
+can see that.
+
+**It is a deconvolution and not a set of ratios.** The d4 ion and the d3 ion
+are 1.00628 apart, the mass a deuterium adds over the hydrogen it replaced.
+The **carbon-13 satellite of the d3 ion** sits 1.00335 above it — 2.9 mDa
+below the d4 ion — and on these acquisitions the precursor peak is 10.2 mDa
+wide at half height (R = 42,000 at *m/z* 430). Those two are one peak, and no
+instrument in an ordinary laboratory separates them. On a 24-carbon skeleton
+that satellite is 27% of whatever the species below holds, so every rung of
+the ladder leaks into the rung above it. The envelope is therefore solved —
+each species' natural pattern, from the formula, fitted as a non-negative
+least squares — rather than read.
+
+Reading the peaks instead is not wrong the way one expects. Measured on exact
+synthetic envelopes of a d4 material that is 95% pure: the heights normalised
+over d0 – d4 give d4 = 94.81% where it is 95.00%, because the leak onto d4
+also inflates the denominator and the two nearly cancel. **What does not
+cancel is the impurity**, which is the number a purity is bought on: d3
+against d4 reads 4.44% where it is 4.21%, five per cent high, and on a d7
+sphingolipid with 45 carbons it reads 4.63% against 4.21%, ten per cent high.
+
+**Two numbers, and they are not the same number.** `d4 96.2%` is the fraction
+of molecules carrying all four labels. `98 atom % D` is the fraction of the
+*labelled positions* that hold a deuterium, which counts the three that a d3
+molecule does carry — so a material that is 96% d4 and 4% d3 is 99.0 atom % D.
+The line gives the species pair; the report block underneath gives the atom
+per cent as well, because that is what the certificate states.
+
+### When it says it cannot
+
+The check is free, because the natural pattern is already in hand: **the
+fully-labelled ion's own M+1 satellite has to be there**, at roughly the share
+the formula demands. Where it is not, the line says so instead of giving a
+number:
+
+    Isotopic purity: not measured — the d4 ion's own M+1 satellite is 0.006%
+    of it where the formula says 26.6% …
+
+That is not a rare case. It is what a **product-ion scan** looks like: the
+quadrupole isolated the precursor before the collision cell, and a window
+narrow enough to pick one species out of the d-ladder has already thrown away
+the satellites the solve needs. Measured on the nine bile-acid infusions, all
+of them product-ion scans with no survey scan at all:
+
+| infusion | CE | M+1 measured | formula says | ratio |
+|---|---|---|---|---|
+| CA-d4 EAD | 12 eV | 0.006% | 26.6% | 0.0002 |
+| CA-d4 EAD | 22 eV | 0.028% | 26.6% | 0.0010 |
+| CA-d4 CID | 45 eV | 0.095% | 26.6% | 0.0036 |
+| DCA-d4 EAD | 22 eV | 0.015% | 26.5% | 0.0006 |
+| DCA-d4 CID | 40 eV | 0.150% | 26.5% | 0.0057 |
+| TDCA-d4 EAD | 22 eV | 0.020% | 30.0% | 0.0007 |
+| TDCA-d4 CID | 30 eV | 0.206% | 30.0% | 0.0069 |
+
+Three orders of magnitude, on every file, under both activations. The same
+threshold catches the other case it should: a precursor too weak for its own
+27% satellite to rise out of the noise is a precursor whose envelope would be
+read off noise.
+
+The refusal is also what the files themselves argue for. On the 12 eV cholic
+acid-d4 run, transmission one dalton *above* the precursor is 0.0002 of
+transmission at it; a quadrupole window symmetric about its centre would pass
+the d3 rung one dalton below at about the same share, and the 0.763% actually
+measured there would then mean a d3 fraction of 3,300%. Either the window is
+asymmetric by three orders of magnitude — in which case the rungs below d4 are
+scaled by a transmission nobody knows — or what sits at that position is not
+d3 at all. And the second is what the energy says: that residue is 0.763% of
+the precursor at 12 eV, 0.328% at 22 eV and 0.067% at 45 eV, so the same
+bottle would be 98.32%, 98.77% and 98.98% pure depending on how hard the ion
+was hit. An isotopic composition cannot do that. What is there is a
+fragmentation channel — a hydrogen atom lost from the ammoniated molecule,
+which EAD makes freely, and 1.5 mDa from where d3 would be.
+
+**What this needs is an MS1 survey scan**, or a full-scan infusion with no
+quadrupole isolation in front of it. Acquire one minute of TOF MS beside the
+product-ion channel and the same line answers.
+
+### The ladder, and why it is only a floor
+
+Where the precursor did not survive its collision energy at all, the same
+arithmetic is offered on the strongest fully-labelled rung of the water-loss
+ladder — `[M+H-3H2O]+` and its −1D rung — and the line says *a lower bound*.
+It answers a different question: a dehydration can leave with a label, so a d4
+molecule that shed a labelled hydroxyl hydrogen arrives at the d3 position and
+is counted as an impurity that was never in the bottle. Measured on the same
+files with the satellite check switched off, the ladder gives d4 fractions of
+36.7%, 90.1% and 85.0% for cholic acid-d4 at 12, 22 and 45 eV, against
+98.3 – 99.0% from the precursors of those very acquisitions — up to a fifth of
+the fully-labelled molecules leave a label behind with the water. On these
+files the ladder cannot even do that much, because the fragments inherit the
+mass filter that made them: the ladder rung's own M+1 satellite is
+0.015 – 0.63% where the formula says 26 – 30%.
+
+### Where it goes
+
+The line is in the panel; the **infusion report** carries the whole envelope —
+every rung with its *m/z*, its intensity, its share of the fully-labelled ion
+and its fitted fraction — with the atom per cent underneath, or the reason
+there is none. See [[infusion-report]]. And *Add spectrum to library…* writes
+it into the record as `Isotopic_purity`, because a record keeps its peaks
+above one per cent of the base peak and an isotope envelope lives at tenths of
+one per cent: nothing can recover the purity from a record afterwards, so it
+is written while it is still known. See [[spectral-library]].
 
 ## Against a library
 

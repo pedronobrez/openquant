@@ -160,6 +160,19 @@ contém nada não são a mesma coisa, e só uma das duas ganha uma medida.
 - o piso de rótulos do painel de uma infusão, que começa no maior entre os 2% do
   desenho e o piso de ruído, com a linha de status dizendo qual dos dois foi.
 
+O piso é medido sobre **a mesma média que quem pergunta está olhando**, e é
+por isso que dois deles podem divergir num mesmo arquivo. O painel do Explorer
+promedia a corrida inteira; o [[infusion-report]] promedia o trecho estável do
+spray (*Scans que a pulverização perdeu*, em [[direct-infusion]]), então as
+varreduras que um spray instável contribuiu ficam fora da média dele e também
+fora do piso dele. Nas nove
+infusões os pisos da corrida inteira vão de 0,068 a 3,53 contagens e os do
+relatório de 0,068 a 4,27 — iguais nas seis corridas que a máscara não mexeu,
+e maiores nas três que ela aparou, porque jogar varreduras fora é jogar fora
+parte da promediação. Isso é a resposta estar certa e não os números
+discordarem: um piso que descrevesse um espectro diferente do que foi impresso
+seria o piso errado.
+
 ### O que ele não diz
 
 O piso é um número só para um espectro inteiro, e um fundo não é o mesmo em

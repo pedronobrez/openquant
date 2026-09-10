@@ -69,3 +69,12 @@ Um padrão interno é fortificado na mesma quantidade em cada padrão, de modo q
 sua resposta contra a concentração é plana e uma curva através dela não
 significa nada. O relatório rotula tal curva como sem significado, e a página de
 limites deixa os padrões internos de fora.
+
+## Uma curva a partir de infusões
+
+Uma curva não precisa de cromatograma. Uma série de diluições pulverizada em
+vez de injetada se ajusta aqui exatamente do mesmo jeito — a resposta é uma
+altura num espectro médio e a razão para o padrão interno é tomada nesse
+único espectro, que é o que a [[infusion-quantitation]] mede. As linhas
+chegam sem tempo de retenção e com um *Algorithm* igual a `infusion`, e tudo
+nesta página vale sem mudança.

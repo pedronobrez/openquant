@@ -138,8 +138,21 @@ class FakeSample:
         return {"Sample": self.name}
 
 
+def _survey_peaks(scale: float = 30_000.0) -> dict:
+    """The precursor's whole isotope ladder, as a survey would show it.
+
+    A survey carries the satellites and a product-ion scan does not, which
+    is the difference the adduct evidence is built on: without them there
+    is a mass and nothing to say whether it is a monoisotopic ion.
+    """
+    from openquant.chemistry import ADDUCTS_BY_NAME, ion_pattern
+
+    return {mz: scale * abundance for mz, abundance
+            in ion_pattern(FORMULA, ADDUCTS_BY_NAME[ADDUCT], max_peaks=3)}
+
+
 def _entry(name="TESTOL_infusion_A", survives=True, energy=20.0,
-           with_survey=False, stray_only=False):
+           with_survey=False, stray_only=False, survey_peaks=None):
     """
     One infused standard.
 
@@ -153,11 +166,12 @@ def _entry(name="TESTOL_infusion_A", survives=True, energy=20.0,
     if stray_only:
         peaks = {STRAY: 900.0}
     peaks[precursor] = 9_000.0 if survives else MIN_INTENSITY / 10.0
-    mz = _grid(list(peaks))
+    survey = dict(_survey_peaks() if survey_peaks is None else survey_peaks)
+    mz = _grid(list(peaks) + (list(survey) if with_survey else []))
     channels = []
     if with_survey:
-        channels.append(FakeChannel(0, mz, {precursor: 30_000.0},
-                                    precursor=None, name="TOF MS"))
+        channels.append(FakeChannel(0, mz, survey, precursor=None,
+                                    name="TOF MS"))
     channels.append(FakeChannel(len(channels), mz, peaks, precursor=precursor,
                                 collision_energy=energy))
     entry = SampleEntry(f"/d/{name}.wiff", 0, name)
@@ -263,6 +277,68 @@ def test_a_survey_scan_is_preferred_to_the_product_ion_scan(qapp):
     assert report.measurement is not None and report.measurement.found
     assert report.survivor is None            # not needed, so not taken
     assert "the survey scan puts" in report.sentences()[0]
+
+
+def test_the_survey_confirms_which_adduct_the_precursor_is(qapp):
+    """The header cell and the verdict say the same thing, and both say it
+    was measured rather than deduced."""
+    entry, channel = _entry(with_survey=True)
+    report = ir.report_for(entry, channel, formula=FORMULA,
+                           measure_precursor=False)
+
+    assert report.adduct == ADDUCT and report.adduct_confirmed
+    assert report.survey_channel.startswith("TOF MS")
+    assert [e.name for e in report.evidence][0] == ADDUCT
+    said = [s for s in report.sentences() if "Adduct" in s]
+    assert len(said) == 1
+    assert said[0].startswith("Adduct confirmed by the survey:")
+    assert "isotopes agree" in said[0]
+    row = ir.InfusionRow(report=report)
+    assert row.adduct == f"{ADDUCT} confirmed"
+    assert "confirmed by the survey" in ir._adduct_cell(report)
+    assert ir._identity(report).count("Adduct evidence") == 1
+
+
+def test_without_a_survey_the_adduct_is_read_from_the_written_mass(qapp):
+    """The nine bile-acid infusions to hand: product-ion scans only. The
+    adduct is unchanged and the cell says why it is not a confirmation."""
+    entry, channel = _entry()
+    report = ir.report_for(entry, channel, formula=FORMULA,
+                           measure_precursor=False)
+
+    assert report.adduct == ADDUCT
+    assert not report.adduct_confirmed and report.evidence == []
+    assert report.survey_channel == ""
+    said = [s for s in report.sentences() if "Adduct" in s]
+    assert len(said) == 1
+    assert said[0].startswith("Adduct read from the written precursor alone")
+    assert "no survey scan covering" in said[0]
+    assert ir.InfusionRow(report=report).adduct == f"{ADDUCT}, no survey"
+    assert ir._adduct_cell(report) == "no survey — see below"
+
+
+def test_no_formula_means_the_adduct_is_not_claimed_at_all(qapp):
+    entry, channel = _entry(with_survey=True)
+    report = ir.report_for(entry, channel, measure_precursor=False)
+
+    assert report.adduct_note == "" and report.evidence == []
+    assert not [s for s in report.sentences() if "Adduct" in s]
+    assert ir._adduct_cell(report) == "—"
+
+
+def test_a_survey_showing_another_ion_does_not_confirm_the_adduct(qapp):
+    """The survey covers the mass and holds something else: a single peak
+    a tenth of a dalton away, with no pattern to it."""
+    entry, channel = _entry(with_survey=True,
+                            survey_peaks={_ions()[0] + 0.1: 30_000.0})
+    report = ir.report_for(entry, channel, formula=FORMULA,
+                           measure_precursor=False)
+
+    assert report.evidence and not report.adduct_confirmed
+    said = [s for s in report.sentences() if "Adduct" in s][0]
+    assert said.startswith("Adduct not confirmed by the survey")
+    assert "the survey does not show it" in said
+    assert ir.InfusionRow(report=report).adduct.endswith("not confirmed")
 
 
 def test_the_fragments_are_counted_against_what_was_predicted(qapp):
@@ -616,6 +692,224 @@ def test_what_the_explorer_hands_over_is_what_is_on_screen(qapp):
     # the pane's own conditioned spectrum, not a second average off the disk
     on_screen = explorer._current_spectrum()
     assert report.trace.mz.size == on_screen[0].size
+
+    explorer.deleteLater()
+    qapp.processEvents()
+
+
+# --------------------------------------------------------------------------- #
+# the mass axis, fitted from the infusion's own precursor ladder
+# --------------------------------------------------------------------------- #
+def _shifted(name="TESTOL_infusion_A", ppm=6.0, rungs=3):
+    """
+    One infused standard whose whole mass axis reads `ppm` high.
+
+    The precursor and the first `rungs - 1` loss ions are put in, every one
+    of them shifted by the same amount, which is what a mis-set axis looks
+    like — as against one peak in the wrong place, which is an interference.
+    """
+    ions = _ions()
+    precursor = ions[0]
+    shift = 1.0 + ppm * 1e-6
+    heights = [9_000.0, 4_000.0, 2_000.0, 1_500.0]
+    peaks = {ions[i] * shift: heights[i] for i in range(rungs)}
+    peaks[STRAY * shift] = 900.0
+    mz = _grid(list(peaks))
+    channel = FakeChannel(0, mz, peaks, precursor=precursor)
+    entry = SampleEntry(f"/d/{name}.wiff", 0, name)
+    entry.sample = FakeSample([channel], name=name)
+    return entry, channel
+
+
+def _method_session(formula=FORMULA, adduct=ADDUCT, name="TESTOL"):
+    from openquant.components import Component
+
+    session = Session()
+    session.method.replace_all(
+        [Component(name=name, precursor=_ions()[0], formula=formula,
+                   adduct=adduct)])
+    return session
+
+
+def test_an_infusion_is_recalibrated_from_its_own_ladder():
+    entry, channel = _shifted(ppm=6.0)
+    session = _method_session()
+    session.entries.append(entry)
+
+    correction = ir.fit_axis(session, entry, channel)
+    assert correction is not None and correction.usable
+    assert len(correction.lock_masses) == 3
+    assert correction.offset_ppm == pytest.approx(-6.0, abs=0.5)
+    assert correction.source == "from the precursor ladder"
+    # it lives where every other correction lives, and is fitted once
+    assert session.mass_corrections[entry.key] is correction
+    assert ir.fit_axis(session, entry, channel) is correction
+
+
+def test_the_report_carries_the_mass_axis_paragraph():
+    entry, channel = _shifted(ppm=6.0)
+    session = _method_session()
+    session.entries.append(entry)
+    session.set_recalibrate(True)
+
+    report = ir.report_for(entry, channel, compound="TESTOL", session=session)
+    assert report.correction is not None and report.correction.usable
+    assert report.recalibrated
+    report.explanation, report.basis, _note = ir._headless_explanation(
+        session, report)
+    raw = ir.raw_sticks(report)
+    assert raw is not None
+    report.raw_explanation = ir._headless_explanation(
+        session, report, sticks=raw)[0]
+
+    html = ir.build_html(report)
+    assert "Mass axis" in html
+    assert "It <b>is</b> applied to every mass on these pages." in html
+    assert "rung" in html
+    # the rungs' own errors, before and after
+    assert "Δ ppm before" in html and "Δ ppm after" in html
+    # and what the correction bought the explanation
+    assert "the axis as measured accounted for" in html
+
+
+def test_the_report_says_so_when_the_axis_was_left_alone():
+    """A vial that was looked at and left alone is a finding, not a blank."""
+    entry, channel = _shifted(ppm=6.0, rungs=1)
+    session = _method_session()
+    session.entries.append(entry)
+    session.set_recalibrate(True)
+
+    report = ir.report_for(entry, channel, compound="TESTOL", session=session)
+    assert report.correction is not None and not report.correction.usable
+    assert not report.recalibrated
+    html = ir.build_html(report)
+    assert "Mass axis" in html
+    assert "It is <b>not</b> applied" in html
+    assert "fewer than the 2" in html
+
+
+def test_the_switch_off_leaves_the_report_identical():
+    """
+    The fit still happens — the row and the paragraph say what the axis is
+    doing — but not one printed mass moves.
+    """
+    entry, channel = _shifted(ppm=6.0)
+    off = _method_session()
+    off.entries.append(entry)
+    quiet = ir.report_for(entry, channel, compound="TESTOL", session=off)
+
+    plain = ir.report_for(entry, channel, compound="TESTOL")
+    assert plain.correction is None
+    assert quiet.correction is not None and quiet.correction.usable
+    assert not quiet.recalibrated
+    assert quiet.peaks() == plain.peaks()
+    assert quiet.base_peak() == plain.base_peak()
+    assert np.array_equal(quiet.trace.mz, plain.trace.mz)
+
+
+def test_a_compound_the_method_does_not_hold_is_read_from_its_name():
+    """
+    A guessed formula is a bad denominator for "n of m" and a safe source of
+    a lock mass, because a lock mass has to be *found*. `CA-d4` is in the
+    standards table and `430.34` is its ammonium adduct.
+    """
+    subject = ir.axis_subject(Session(), "CA-d4", 430.34, "Positive")
+    assert subject
+    assert subject.formula == "C24H36D4O5"
+    assert subject.adduct == "[M+NH4]+"
+    assert "standards table" in subject.why
+
+
+def test_a_channel_isolating_something_else_gets_no_ladder():
+    """
+    The two real `_TESTEARTIGO` acquisitions are named for cholic acid-d4
+    and isolate 839.56, which is none of that formula's adducts.
+    """
+    subject = ir.axis_subject(Session(), "CA-d4", 839.56, "Positive")
+    assert not subject
+    assert "none of the adducts" in subject.why
+
+
+def test_the_summary_carries_a_mass_axis_column():
+    entry, channel = _shifted(ppm=6.0)
+    session = _method_session()
+    session.entries.append(entry)
+    session.set_recalibrate(True)
+
+    summary = ir.summarise(session)
+    assert summary is not None and len(summary.rows) == 1
+    column = ir.SUMMARY_COLUMNS.index("Mass axis")
+    cell = summary.rows[0].cells()[column]
+    assert "recalibrated" in cell and "rungs" in cell
+    assert "not applied" not in cell
+    assert ir.REPORT_COLUMNS.index("Mass axis") == len(ir.REPORT_COLUMNS) - 1
+    assert summary.rows[0].report_cells()[-1] == cell
+    # and the column sorts on the offset rather than on its text
+    assert isinstance(summary.rows[0].keys()[column], float)
+
+
+def test_the_summary_column_says_when_a_fit_stands_unapplied():
+    entry, channel = _shifted(ppm=6.0)
+    session = _method_session()
+    session.entries.append(entry)
+
+    summary = ir.summarise(session)
+    column = ir.SUMMARY_COLUMNS.index("Mass axis")
+    assert "not applied" in summary.rows[0].cells()[column]
+
+
+def test_the_basis_line_prints_the_raw_and_the_corrected_error(qapp):
+    """The Explorer's sentence, on the panel that scores the spectrum."""
+    from openquant.ui.lipid_panel import LipidPanel
+
+    entry, channel = _shifted(ppm=6.0)
+    session = _method_session()
+    session.entries.append(entry)
+    session.set_recalibrate(True)
+    correction = ir.fit_axis(session, entry, channel)
+
+    panel = LipidPanel()
+    mz, intensity = channel.spectrum_rt_range(0.0, 1.5)
+    from openquant.processing import centroid_spectrum
+
+    cmz, cit = centroid_spectrum(mz, intensity)
+    panel.set_spectrum(correction.apply(cmz), cit, channel.info.precursor,
+                       "Positive", recalibration=correction.basis_sentence())
+    panel.own_formula.setText(FORMULA)
+    panel.own_adduct.setCurrentText(ADDUCT)
+    panel.own_name.setText("Testol")
+    panel.explain_own()
+
+    basis = panel.explanation_basis
+    assert "recalibrated" in basis and "rungs" in basis
+    assert "ppm raw" in basis and "ppm corrected" in basis
+    panel.deleteLater()
+    qapp.processEvents()
+
+
+def test_the_explorer_names_the_rungs_in_the_title(qapp):
+    entry, channel = _shifted(ppm=6.0)
+    session, explorer = _explorer(qapp, [entry])
+    from openquant.components import Component
+
+    # the tree lands on an infusion and averages it, which is where the fit
+    # happens — so the method is filled in afterwards here on purpose, to
+    # exercise `Session._forget_ladder_corrections`
+    session.set_components(
+        [Component(name="TESTOL", precursor=_ions()[0], formula=FORMULA,
+                   adduct=ADDUCT)])
+    assert entry.key not in session.mass_corrections
+    session.set_recalibrate(True)
+    explorer.average_whole_run()
+    correction = session.mass_corrections.get(entry.key)
+    assert correction is not None and correction.usable
+    assert "recalibrated" in explorer.spectrum.title
+    assert f"from {len(correction.lock_masses)} rungs" in explorer.spectrum.title
+    # and the record written from it carries the same words
+    prefill = explorer.library_panel.own_prefill
+    explorer.library_panel.set_spectrum(*explorer._library_spectrum()[:3],
+                                        explorer._library_spectrum()[3])
+    assert "recalibrated" in prefill()["comment"]
 
     explorer.deleteLater()
     qapp.processEvents()

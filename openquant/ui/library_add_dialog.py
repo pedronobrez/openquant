@@ -88,6 +88,19 @@ class AddToLibraryDialog(QtWidgets.QDialog):
             "file, so it is not typed here")
         form.addRow("Acquired", self.acquired_edit)
 
+        self.purity_edit = QtWidgets.QLineEdit(
+            str(prefill.get("isotopic_purity", "")))
+        self.purity_edit.setReadOnly(True)
+        self.purity_edit.setPlaceholderText(
+            "not measured — explain the spectrum with a labelled formula first")
+        self.purity_edit.setToolTip(
+            "The isotopic purity measured from this very spectrum, as the "
+            "Explain tab last read it. Written as the record's "
+            "Isotopic_purity field, so a record of a labelled standard says "
+            "what the material was rather than only what it fragments to. "
+            "Measured, so it is not typed here")
+        form.addRow("Isotopic purity", self.purity_edit)
+
         self.comment_edit = QtWidgets.QLineEdit(str(prefill.get("comment", "")))
         self.comment_edit.setToolTip(
             "Where the record came from: the file, the sample, the scans "
@@ -131,6 +144,7 @@ class AddToLibraryDialog(QtWidgets.QDialog):
             "collision_energy": self._number(self.energy_edit.text()),
             "comment": self.comment_edit.text().strip(),
             "acquired": self.acquired_edit.text().strip(),
+            "isotopic_purity": self.purity_edit.text().strip(),
         }
 
 

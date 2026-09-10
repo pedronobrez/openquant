@@ -20,11 +20,13 @@ from openquant.mass_drift import mass_drift  # noqa: E402
 from openquant.method import ProcessingMethod  # noqa: E402
 from openquant.quantify import extract_xic, integrate_component, process  # noqa: E402
 from openquant.precursor import CONSENSUS_SPREAD_PPM  # noqa: E402
-from openquant.recalibrate import (LockMass, MassCorrection,  # noqa: E402
-                                   MAX_LOCK_ERROR_PPM, MIN_MASS_SPAN,
-                                   MIN_SLOPE_LOCK_MASSES, describe,
-                                   dropped_lock_masses, fit_batch,
-                                   fit_correction, lock_mass_refusal,
+from openquant.recalibrate import (BATCH_SOURCE, LADDER_SOURCE,  # noqa: E402
+                                   LockMass, MassCorrection,
+                                   MAX_LOCK_ERROR_PPM, MIN_LADDER_RUNGS,
+                                   MIN_MASS_SPAN, MIN_SLOPE_LOCK_MASSES,
+                                   describe, dropped_lock_masses, fit_batch,
+                                   fit_correction, fit_infusion,
+                                   ladder_rungs, lock_mass_refusal,
                                    lock_masses_from_drift)
 from openquant.samples import SampleEntry  # noqa: E402
 from openquant.session import Session  # noqa: E402
@@ -524,8 +526,9 @@ def test_the_panel_fits_and_shows_the_corrections(qt_app):
     panel.measure()
     assert panel.corrections.rowCount() == 6
     assert panel.recalibrate.isEnabled()
-    assert "corrected by" in panel.corrections.item(0, 7).text()
-    assert panel.corrections.item(0, 1).text() == "1"
+    assert "corrected by" in panel.corrections.item(0, 8).text()
+    assert panel.corrections.item(0, 2).text() == "1"
+    assert panel.corrections.item(0, 1).text() == BATCH_SOURCE
     assert "corrected" in panel.correction_status.text()
 
     panel.recalibrate.setChecked(True)
@@ -620,3 +623,217 @@ def test_the_report_names_the_refused_standard_too():
     html = build_html(session, sections=["mass"])
     assert "not the ion the formula names" in html
     assert f"{MAX_LOCK_ERROR_PPM:g} ppm from its" in html
+
+
+# --------------------------------------------------------------------------- #
+# an infusion, fitted from its own precursor ladder
+# --------------------------------------------------------------------------- #
+#: cholic acid-d4 as the nine real infusions carry it: the ammonium adduct
+#: the channel's 430.34 names, with the four labels spelt into the formula
+LADDER_FORMULA = "C24H36D4O5"
+LADDER_ADDUCT = "[M+NH4]+"
+
+
+def _rungs_of(count: int):
+    from openquant.explain import precursor_ions
+
+    return sorted(precursor_ions(LADDER_FORMULA, LADDER_ADDUCT, 0),
+                  key=lambda ion: -ion.mz)[:count]
+
+
+def _ladder(offset_ppm: float, heights=None, rungs: int = 4,
+            skew: dict[int, float] | None = None):
+    """
+    A synthetic infusion average: the top `rungs` of the real ladder, as
+    centroids, every one of them `offset_ppm` from where the formula puts it.
+
+    `skew` moves one rung further, by index into the ladder, which is how an
+    ion that is not the compound is written into the spectrum.
+    """
+    ions = _rungs_of(rungs)
+    heights = heights or [10_000.0 - 1_000.0 * i for i in range(len(ions))]
+    mz, intensity = [], []
+    for index, ion in enumerate(ions):
+        ppm = offset_ppm + (skew or {}).get(index, 0.0)
+        mz.append(ion.mz * (1 + ppm * 1e-6))
+        intensity.append(float(heights[index]))
+    order = np.argsort(mz)
+    return np.array(mz)[order], np.array(intensity)[order]
+
+
+def test_a_ladder_gives_back_the_offset_it_was_built_with():
+    mz, intensity = _ladder(+6.0, rungs=4)
+    correction = fit_infusion(mz, intensity, LADDER_FORMULA, LADDER_ADDUCT,
+                              sample_key="k", sample_name="CA-d4")
+    assert correction.usable
+    assert len(correction.lock_masses) == 4
+    assert correction.offset_ppm == pytest.approx(-6.0, abs=1e-6)
+    assert correction.source == LADDER_SOURCE
+    assert correction.unit == "rung"
+    assert "4 rungs" in correction.verdict
+    assert correction.short == "recalibrated -6.0 ppm from 4 rungs"
+    # every rung lands on its formula's mass afterwards
+    for lock in correction.lock_masses:
+        assert float(correction.apply(lock.measured)) == pytest.approx(
+            lock.theoretical, rel=1e-10)
+    # the reason there is no slope is the span, and it names it
+    assert "span" in correction.note and "extrapolation" in correction.note
+    assert correction.span_da < MIN_MASS_SPAN
+
+
+def test_one_rung_is_one_too_few():
+    """
+    A batch's one lock mass still has twenty-five other injections beside it.
+    An infusion's has nothing at all, so two is the floor.
+    """
+    assert MIN_LADDER_RUNGS == 2
+    mz, intensity = _ladder(+6.0, rungs=1)
+    correction = fit_infusion(mz, intensity, LADDER_FORMULA, LADDER_ADDUCT)
+    assert correction is not None
+    assert not correction.usable
+    assert "1 rung" in correction.note
+    assert "fewer than the 2" in correction.note
+    # and it leaves every mass exactly where it was
+    axis = np.array([100.0, 430.3465, 900.0])
+    assert np.array_equal(correction.apply(axis), axis)
+    assert "fewer than" in correction.verdict
+
+
+def test_a_rung_that_disagrees_with_the_rest_is_dropped_and_named():
+    """One window holding a different ion cannot decide the axis."""
+    mz, intensity = _ladder(+6.0, rungs=4, skew={3: -40.0})
+    correction = fit_infusion(mz, intensity, LADDER_FORMULA, LADDER_ADDUCT,
+                              tolerance_ppm=60.0)
+    assert correction.usable
+    assert len(correction.lock_masses) == 3
+    assert correction.offset_ppm == pytest.approx(-6.0, abs=1e-6)
+    assert "dropped, disagreeing" in correction.note
+    assert f"{CONSENSUS_SPREAD_PPM:g} ppm" in correction.note
+    # and the one dropped is named, by the ion it claimed to be
+    offered = {ion.description for ion in _rungs_of(4)}
+    kept = {lock.component for lock in correction.lock_masses}
+    assert len(offered - kept) == 1
+    assert (offered - kept).pop() in correction.note
+
+
+def test_a_ladder_far_from_its_formula_is_not_this_compound():
+    """
+    Past `MAX_LOCK_ERROR_PPM` it is a different ion series, not a mis-set
+    axis. The default matching window is narrower than the ceiling, so this
+    can only be reached by widening it — which is the case the ceiling is
+    there for.
+    """
+    mz, intensity = _ladder(+120.0, rungs=4)
+    correction = fit_infusion(mz, intensity, LADDER_FORMULA, LADDER_ADDUCT,
+                              tolerance_ppm=200.0)
+    assert not correction.usable
+    assert f"{MAX_LOCK_ERROR_PPM:g} ppm" in correction.note
+    assert "different ion series" in correction.note
+
+
+def test_a_ladder_outside_the_window_is_simply_not_found():
+    mz, intensity = _ladder(+120.0, rungs=4)
+    correction = fit_infusion(mz, intensity, LADDER_FORMULA, LADDER_ADDUCT)
+    assert not correction.usable
+    assert "no rung" in correction.note
+
+
+def test_a_rung_under_the_intensity_floor_is_not_a_measurement():
+    from openquant.precursor import MIN_INTENSITY
+
+    mz, intensity = _ladder(+6.0, rungs=4,
+                            heights=[10_000.0, 9_000.0, MIN_INTENSITY - 1, 1.0])
+    rungs = ladder_rungs(mz, intensity, LADDER_FORMULA, LADDER_ADDUCT)
+    assert len(rungs) == 2
+
+
+def test_the_weighted_median_follows_the_peaks_worth_believing():
+    """
+    A hundred-count rung and a twelve-thousand-count one do not locate their
+    centroids equally well, and the offset is weighted accordingly.
+    """
+    heights = [12_000.0, 200.0, 150.0, 120.0]
+    mz, intensity = _ladder(+6.0, rungs=4, heights=heights)
+    strong = fit_infusion(mz, intensity, LADDER_FORMULA, LADDER_ADDUCT)
+    assert strong.offset_ppm == pytest.approx(-6.0, abs=1e-6)
+    # the same ladder with the strongest rung 8 ppm from the other three: the
+    # weight puts the answer on it rather than on the three weak ones, and it
+    # is inside the spread limit so nothing is dropped
+    mz, intensity = _ladder(+6.0, rungs=4, heights=heights, skew={0: 8.0})
+    pulled = fit_infusion(mz, intensity, LADDER_FORMULA, LADDER_ADDUCT,
+                          tolerance_ppm=40.0)
+    assert len(pulled.lock_masses) == 4
+    assert pulled.offset_ppm == pytest.approx(-14.0, abs=1e-6)
+
+
+def test_nothing_to_fit_from_comes_back_as_none():
+    """A formula this cannot read has no ladder, and that is not a refusal."""
+    mz, intensity = _ladder(+6.0, rungs=4)
+    assert fit_infusion(mz, intensity, "not a formula", LADDER_ADDUCT) is None
+    assert fit_infusion(mz, intensity, LADDER_FORMULA, "[M+Xx]+") is None
+    assert fit_infusion(np.zeros(0), np.zeros(0), LADDER_FORMULA,
+                        LADDER_ADDUCT) is None
+
+
+def test_the_basis_sentence_prints_the_raw_and_the_corrected_error():
+    """
+    Either number alone misleads: the corrected one is a residual the fit
+    was made to produce, and the raw one does not say the axis moved.
+    """
+    mz, intensity = _ladder(+6.0, rungs=4)
+    correction = fit_infusion(mz, intensity, LADDER_FORMULA, LADDER_ADDUCT)
+    said = correction.basis_sentence()
+    assert "recalibrated -6.0 ppm from 4 rungs" in said
+    assert "+6.0 ppm raw" in said
+    # the residual is the correction's own square: 3.6e-5 ppm at 6 ppm
+    assert "0.0 ppm corrected" in said
+    # the rung quoted is the strongest one, which is what the offset rests on
+    strongest = max(correction.lock_masses, key=lambda lock: lock.intensity)
+    assert strongest.component in said
+
+
+def test_a_refusal_says_so_where_a_basis_sentence_is_asked_for():
+    mz, intensity = _ladder(+6.0, rungs=1)
+    correction = fit_infusion(mz, intensity, LADDER_FORMULA, LADDER_ADDUCT)
+    assert "fewer than the 2" in correction.basis_sentence()
+
+
+def test_the_ladder_correction_sits_in_the_same_place_as_a_batch_one():
+    """
+    Everything downstream reads `session.mass_corrections`, so an infusion's
+    correction has to live there and obey the same switch.
+    """
+    mz, intensity = _ladder(+6.0, rungs=4)
+    correction = fit_infusion(mz, intensity, LADDER_FORMULA, LADDER_ADDUCT,
+                              sample_key="k", sample_name="CA-d4")
+    session = Session()
+    session.mass_corrections = {"k": correction}
+    assert session.correction_for("k") is None       # the switch is off
+    session.set_recalibrate(True)
+    assert session.correction_for("k") is correction
+    assert correction.to_dict()["source"] == LADDER_SOURCE
+
+
+def test_the_panel_shows_an_infusion_row_with_its_own_source(qt_app):
+    """
+    The mass-drift panel's table is where every correction is reviewed, and
+    an infusion's has to appear there with no drift measured at all.
+    """
+    from openquant.ui.mass_drift_panel import MassDriftPanel
+
+    session = Session()
+    entry = _entry("CA-d4", 0.0)
+    session.entries = [entry]
+    mz, intensity = _ladder(+6.0, rungs=4)
+    session.mass_corrections = {entry.key: fit_infusion(
+        mz, intensity, LADDER_FORMULA, LADDER_ADDUCT,
+        sample_key=entry.key, sample_name="CA-d4")}
+
+    panel = MassDriftPanel(session)
+    panel.reload()
+    assert session.mass_drift is None
+    assert panel.corrections.rowCount() == 1
+    assert panel.corrections.item(0, 1).text() == LADDER_SOURCE
+    assert panel.corrections.item(0, 2).text() == "4"
+    assert "4 rungs" in panel.corrections.item(0, 8).text()
+    panel.deleteLater()

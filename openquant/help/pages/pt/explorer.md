@@ -67,7 +67,9 @@ selecionada do cromatograma como branco e subtrai o seu espectro médio de
 todo espectro mostrado; *Explain spectrum* pontua candidatos do LIPID MAPS
 contra o espectro (ver [[lipid-maps]]); *Detect peaks* integra todos os
 traços do cromatograma e preenche a aba Results; *Average whole run* promedia
-todos os scans do canal ativo num único espectro (ver [[direct-infusion]]).
+todos os scans do canal ativo num único espectro, e *Δ from average* — apenas
+numa infusão — desenha o scan em tela menos essa média, com a média espelhada
+por baixo (ambos ver [[direct-infusion]]).
 
 ## Os controles de scan
 

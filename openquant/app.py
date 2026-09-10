@@ -27,8 +27,37 @@ def main(argv: list[str] | None = None) -> int:
         "--digest", action="store_true",
         help="print a numeric fingerprint of each file, for comparing one "
              "build against another; implies --selftest's silence")
+    parser.add_argument(
+        "--infusion-report", nargs="+", metavar="PATH", default=None,
+        help="report every direct infusion in the given files and folders, "
+             "one section per compound, and exit without a window")
+    parser.add_argument(
+        "--out", metavar="FILE",
+        help="where the infusion report is written (.pdf, or .html with "
+             "--html)")
+    parser.add_argument(
+        "--library", metavar="FILE",
+        help="a spectral library of your own (.msp, .mgf) to search each "
+             "averaged spectrum against")
+    parser.add_argument(
+        "--components", metavar="FILE",
+        help="a project (.oqproj) or a components CSV, for the formulas and "
+             "adducts the compounds are explained from")
+    parser.add_argument(
+        "--html", action="store_true",
+        help="write the infusion report as HTML rather than PDF")
+    parser.add_argument(
+        "--per-compound", action="store_true",
+        help="one document per compound rather than one for all of them")
+    parser.add_argument(
+        "--csv", metavar="FILE",
+        help="also write the infusion summary table as a CSV")
     args = parser.parse_args(argv)
 
+    if args.infusion_report is not None:
+        if not args.out:
+            parser.error("--infusion-report needs --out to write to")
+        return _infusion_report(args)
     if args.digest:
         return _digest(args.files)
     if args.selftest:
@@ -89,6 +118,50 @@ def _shut_down(app, window) -> None:
     app.processEvents()
     del window
     gc.collect()
+
+
+def _infusion_report(args) -> int:
+    """
+    A folder of infusions reported from the command line, with no window.
+
+    The document is drawn and printed through Qt, so an application object is
+    made whether or not anything is shown — `QT_QPA_PLATFORM=offscreen` is
+    what makes that work on a machine with no display, and is what the
+    installers' own runs set.
+
+    Everything the run left out is printed with the reason it was left out. A
+    silent skip is the failure mode that matters here: a folder of nine
+    reported as eight, with nothing on screen to say which one went and why,
+    is worse than an error.
+    """
+    from .infusion_batch import run
+
+    def note(done: int, total: int, name: str) -> bool:
+        if name:
+            print(f"[{done + 1}/{total}] {name}", flush=True)
+        return True
+
+    try:
+        result = run(args.infusion_report, args.out, library=args.library,
+                     components=args.components,
+                     fmt="html" if args.html else "pdf", csv=args.csv,
+                     progress=note, per_compound=args.per_compound)
+    except (OSError, ValueError) as exc:
+        print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
+
+    for finding in result.findings:
+        print(f"  {finding.kind}: {finding.finding}")
+    for skip in result.skipped:
+        print(f"  skipped {skip}")
+    if result.summary is not None and result.summary.rows:
+        print(result.summary.summary())
+    for path in result.documents:
+        print(f"wrote {path}")
+    if result.csv:
+        print(f"wrote {result.csv}")
+    print(result.line())
+    return 0 if result.documents else 1
 
 
 def _digest(files: list[str]) -> int:

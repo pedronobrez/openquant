@@ -80,3 +80,10 @@ rule exactly — see [[measured-facts]] for the one place the two disagree,
 by how much, and why the plain rule ships. Everything else in the feature
 lists of both vendor programs is here, and the [[design-principles]] say
 what was chosen when the two could not both be had.
+
+## Without the window
+
+Everything the application does can be scripted: see [[python-api]] for the
+ten-line versions of a batch reprocessed and exported, a spectrum
+explained and a library searched, and [[command-line]] for what the
+application itself answers to on the command line.

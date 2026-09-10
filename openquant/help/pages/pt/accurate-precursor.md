@@ -46,6 +46,111 @@ Em dados reais a diferença decide a resposta. Uma transição escrita como
 coloca o íon em 325.1887 e a varredura de íons produto concorda dentro de
 1 ppm, o que descarta essa espécie a 41 ppm.
 
+## O survey confirma o aduto
+
+O survey responde a uma segunda pergunta que a varredura de íons produto não
+consegue. Um canal escrito `647.5` é uma massa; qual *íon* essa massa é —
+protonado, amoniado, sodiado — é uma dedução a partir da fórmula da molécula,
+e ela está errada no instante em que a fórmula estiver. O Q1 deixou passar uma
+massa e jogou fora os isótopos junto com todo o resto, de modo que a varredura
+de íons produto não pode decidir. O survey guarda as duas metades da resposta:
+a massa exata de cada aduto que a molécula poderia ter produzido, e o padrão
+isotópico que diz se o que está ali é um íon monoisotópico ou o satélite de
+outra pessoa.
+
+De cada aduto candidato pedem-se duas coisas:
+
+1. **Está ali?** O pico mais próximo dentro de ±0.05 Da da massa exata do
+   íon, centroidizado, tem de ficar dentro de **25 ppm** — o mesmo número que
+   o consenso acima usa para dizer que duas medidas são do mesmo íon — e ter
+   ao menos 100 contagens.
+2. **Parece esse íon?** M, M+1 e M+2 teóricos são calculados para a
+   **composição do próprio íon**, átomos do aduto incluídos: `[M+NH4]+`
+   carrega um nitrogênio e quatro hidrogênios que a molécula não tem, e
+   `[M+Cl]-` carrega um M+2 de 32% que a molécula também não tem. Cada
+   satélite é pontuado contra o maior entre medido e esperado, e os satélites
+   são promediados com peso pelo quanto cada um é do padrão — o que coloca
+   cerca de cinco sextos do peso no M+1 para um lipídio.
+
+Ambas são reportadas para todos os candidatos, presentes ou não, porque um
+aduto que o survey não mostra também é uma medida.
+
+### O que foi medido
+
+Injeção 01 de um lote de 26 injeções de esfingolipídios num TripleTOF 5600,
+positivo, com survey TOF MS 50–700. O survey é promediado sobre as mesmas
+varreduras que o espectro de produto — duas delas, a uma varredura a cada
+14.6 s.
+
+Estas são corridas **cromatográficas**, não infusões: não havia nenhuma
+infusão com varredura de survey em mãos, então o survey foi promediado sobre
+a própria eluição de cada composto, que é a mesma medida que uma infusão faz
+sobre a corrida inteira. Nada aqui se limita a infusões — qualquer aquisição
+cujo método tenha um canal de varredura completa sobre o precursor recebe a
+mesma resposta.
+
+`SM(d18:1/12:0)`, C35H71N2O6P, escrito `647.5`, sobre seu pico em 5.60 min:
+
+| aduto | exata | encontrado | Δ ppm | altura | do mais forte | M+1 medido / esperado | padrão |
+|---|---|---|---|---|---|---|---|
+| `[M+H]+` | 647.5123 | 647.5112 | −1.6 | 51.341 | 100% | 0.37 / 0.40 | 0.87 |
+| `[M+Na]+` | 669.4942 | 669.4956 | +2.1 | 6.443 | 12.5% | 0.53 / 0.40 | 0.76 |
+| `[M+K]+` | 685.4681 | 685.4571 | −16.1 | 223 | 0.4% | 2.76 / 0.40 | 0.13 |
+| `[M+NH4]+` | 664.5388 | — | mais próximo a 69 ppm | — | — | — | — |
+
+`Cer(d18:1/16:0)`, C34H67NO3, escrito `538.6`, sobre seu pico em 4.89 min:
+
+| aduto | exata | encontrado | Δ ppm | altura | do mais forte | M+1 medido / esperado | padrão |
+|---|---|---|---|---|---|---|---|
+| `[M+H]+` | 538.5194 | 538.5197 | +0.6 | 7.690 | 100% | 0.33 / 0.38 | 0.77 |
+| `[M+Na]+` | 560.5013 | 560.5071 | +10.4 | 1.025 | 13.3% | 0.67 / 0.38 | 0.55 |
+| `[M+NH4]+` | 555.5459 | 555.5340 | −21.5 | 170 | 2.2% | 1.00 / 0.38 | 0.33 |
+| `[M+K]+` | 576.4753 | — | mais próximo a 60 ppm | — | — | — | — |
+
+Três coisas nessas duas tabelas são toda a razão de o padrão ser perguntado.
+
+**A massa sozinha admite um íon que não está ali.** O `[M+NH4]+` da ceramida
+está a 21.5 ppm, dentro dos 25 que dizem "mesmo íon", e tem 170 contagens,
+acima das 100 que dizem "mensurável". Seu M+1 e seu M+2 voltam a 1.00 e 1.00
+do seu M, que é a cara de um trecho de ruído plano e de mais nada. O padrão
+lhe dá 0.33 e ele fica em último.
+
+**Um satélite é onde um lipídio guarda a própria família.** O `[M+H]+`
+verdadeiro da ceramida tem um M+2 quatro vezes grande demais — 0.29 contra
+0.076 — porque a janela em 540.53 contém a **diidroceramida** coeluente,
+C34H69NO3 em 540.5350, a 17 ppm do próprio M+2 da ceramida em 540.5259 e
+dentro dos mesmos 0.02 Da. Uma regra que somasse os erros dos satélites daria
+0.43 ao aduto do próprio composto e o chamaria de discordância; ponderada por
+satélite ela dá 0.77. Toda classe de lipídio tem seu análogo saturado dois
+daltons acima, então isto não é um acidente de um lote.
+
+**Vários adutos de uma molécula é o caso comum, não a exceção.** Os dois
+compostos ficam em cerca de `[M+H]+` 100%, `[M+Na]+` 13%, e isso vale saber:
+um oitavo do sinal está num canal que ninguém adquiriu.
+
+### Quando não confirma
+
+O mesmo canal 647.5 tem um pico **maior** em 9.26 min do que em 5.60. O survey
+em 9.26 não mostra nada dentro de 25 ppm de nenhum aduto da fórmula da
+esfingomielina: seu pico mais próximo é 647.5575, +69.9 ppm do `[M+H]+`, e
+nenhuma fórmula que este programa consegue montar o explica como aquela
+molécula. O aduto é então reportado como lido apenas da massa escrita, que é
+o que ele sempre foi.
+
+Onde a aquisição **não tem survey algum** — as nove infusões de ácidos
+biliares, adquiridas só como varreduras de íons produto — nada muda e o
+relatório diz isso: *nenhum survey cobrindo 430.35, então nada independente
+diz que íon é este*. Isso não é uma falha; é a diferença entre um aduto
+medido e um aduto deduzido, escrita.
+
+A única coisa que o survey pode passar por cima é um precursor escrito que
+não cabe em **nada**. A ceramida acima está escrita `538.6` para um íon de
+538.5194 — 0.08 Da fora, oitenta vezes o que se permite a um aduto. Sem
+survey isso é recusado, porque um erro de digitação e um arredondamento não
+podem ser distinguidos. Com survey, o instrumento já disse que íon estava
+ali, então é lido como `[M+H]+` e a frase diz por quê: *0.0806 Da da massa
+escrita, dentro dos ±0.7 Da que o quadrupolo deixa passar*.
+
 ## Onde aparece
 
 - [[annotate-from-lipid-maps]] — cada proposta diz se sua massa veio do survey
@@ -58,3 +163,8 @@ coloca o íon em 325.1887 e a varredura de íons produto concorda dentro de
   uma fórmula. Com ela ligada, esta medida é reportada crua e corrigida lado
   a lado: o valor medido nunca é sobrescrito, porque a correção foi ajustada
   a partir dele.
+- a caixa Adduct da aba [[lipid-maps]], em *from the precursor* — a linha
+  abaixo diz se o survey confirmou o aduto, e o cabeçalho do
+  [[infusion-report]] e a aba Infusions carregam o mesmo numa célula cada.
+  Um registro escrito numa biblioteca sua diz no comentário qual dos dois
+  foi.

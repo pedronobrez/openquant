@@ -112,19 +112,38 @@ class MainShell(QtWidgets.QMainWindow):
         PDF for handing over, HTML for keeping: the second opens in a browser
         long after this application is gone, which is the point of a report as
         against an export.
+
+        The theme is asked for on the same dialog: paper, or the black and
+        white a journal prints in — which is the document and its pictures
+        both, since a black and white report holding a four-colour spectrum
+        is not a black and white report. There is no dark report to print:
+        `report.print_document` refuses one, and the reason is that a
+        printer handed a dark page lays down a whole sheet of toner.
         """
-        from ..report import write_html, write_pdf
+        from ..report import PRINTABLE_THEMES, write_html, write_pdf
+        from .export_theme import add_theme_box, chosen_theme, remember
+        from .help_window import describe
 
         if not self.session.entries:
             self.statusBar().showMessage("Open a batch before reporting on it.")
             return
         stem = (os.path.splitext(os.path.basename(self.session.project_path))[0]
                 if self.session.project_path else "batch")
-        path, chosen = QtWidgets.QFileDialog.getSaveFileName(
+        dialog = QtWidgets.QFileDialog(
             self, "Export report", os.path.join(self._last_dir(), f"{stem}.pdf"),
             "PDF (*.pdf);;Web page (*.html)")
-        if not path:
+        dialog.setAcceptMode(QtWidgets.QFileDialog.AcceptMode.AcceptSave)
+        theme_box = add_theme_box(dialog, self.settings,
+                                  allowed=PRINTABLE_THEMES)
+        describe(dialog, "report")
+        wanted = dialog.exec() and dialog.selectedFiles()
+        path = dialog.selectedFiles()[0] if wanted else ""
+        chosen = dialog.selectedNameFilter()
+        theme = chosen_theme(theme_box)
+        dialog.deleteLater()
+        if not wanted:
             return
+        remember(theme, self.settings)
         self.settings.setValue("io/last_dir", os.path.dirname(path))
         wants_html = path.lower().endswith(".html") or "html" in chosen.lower()
         if not os.path.splitext(path)[1]:
@@ -139,7 +158,7 @@ class MainShell(QtWidgets.QMainWindow):
         QtWidgets.QApplication.processEvents()
         try:
             writer = write_html if wants_html else write_pdf
-            writer(self.session, path, title=title)
+            writer(self.session, path, title=title, theme=theme)
         except Exception as exc:
             QtWidgets.QMessageBox.warning(self, "Report failed", str(exc))
             return
@@ -277,6 +296,12 @@ class MainShell(QtWidgets.QMainWindow):
             "What a folder holds and what would go wrong — a .wiff without "
             "its .wiff.scan, a .scan under the wrong name, files no reader "
             "here can open — before anything is opened")
+        self.act_infusion_folder = file_menu.addAction(
+            "Report infusions in a folder…")
+        self.act_infusion_folder.setToolTip(
+            "The per-compound infusion report for every acquisition in a "
+            "folder that reads as a direct infusion — read one file at a "
+            "time and closed again, adding nothing to what is open here")
         self.act_close = file_menu.addAction("Close all")
         self.act_report = file_menu.addAction("Export report…")
         self.act_report.setToolTip(
@@ -325,6 +350,7 @@ class MainShell(QtWidgets.QMainWindow):
         # both signals carry a checked flag, which is not a list of paths
         self.act_open.triggered.connect(lambda: self.open_files())
         self.act_check_folder.triggered.connect(self.check_folder)
+        self.act_infusion_folder.triggered.connect(self.report_infusion_folder)
         self.act_close.triggered.connect(self.close_all)
         self.act_open_project.triggered.connect(self.open_project)
         self.act_save_project.triggered.connect(self.save_project)
@@ -395,6 +421,57 @@ class MainShell(QtWidgets.QMainWindow):
         for path in self.check_paths([folder], always_show=True):
             self.load_file(path)
 
+    def report_infusion_folder(self) -> None:
+        """
+        File ▸ Report infusions in a folder…: a folder reported, not opened.
+
+        Nothing here is added to the batch on screen — the run opens each
+        file into a session of its own and closes it again — so this works
+        with a project open and with nothing open at all. An audit entry is
+        made only in the first case: a trail belongs to a project, and there
+        is nothing to write one into when the window is empty.
+        """
+        from .infusion_batch_dialog import InfusionBatchDialog
+
+        dialog = InfusionBatchDialog(self, start_dir=self._last_dir())
+        accepted = dialog.exec()
+        result = dialog.result
+        if accepted and result is not None and result.documents:
+            folder = dialog.output_folder
+            self.settings.setValue("io/last_dir", folder)
+            if self.session.project_path:
+                from .. import audit
+
+                source = os.path.basename(
+                    dialog.folder_edit.text().strip().rstrip(os.sep))
+                self.session.record(
+                    audit.INFUSION_REPORT,
+                    ", ".join(result.compounds) or "a folder",
+                    after=os.path.basename(result.documents[0]),
+                    note=f"{result.rows} infusion(s) read from {source}, "
+                         f"without opening them")
+            self.statusBar().showMessage(result.line())
+            self._offer_folder(result, folder)
+        dialog.deleteLater()
+
+    def _offer_folder(self, result, folder: str) -> None:
+        """Say what was written, and offer to open where it was written."""
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("Infusion report")
+        box.setText(result.line())
+        detail = [os.path.basename(p) for p in result.documents]
+        if result.csv:
+            detail.append(os.path.basename(result.csv))
+        detail += [f"skipped {skip}" for skip in result.skipped]
+        box.setDetailedText("\n".join(detail))
+        show = box.addButton("Show the folder",
+                             QtWidgets.QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QtWidgets.QMessageBox.StandardButton.Close)
+        box.exec()
+        if box.clickedButton() is show:
+            QtGui.QDesktopServices.openUrl(
+                QtCore.QUrl.fromLocalFile(folder))
+
     def load_file(self, path: str) -> None:
         opened = None
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
@@ -406,15 +483,51 @@ class MainShell(QtWidgets.QMainWindow):
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
         if opened is not None:
-            # a .wiff without its .wiff.scan opens and draws its chromatograms;
-            # the first sign that its spectra cannot be read should not be an
-            # empty pane half an hour later
-            problems = dict.fromkeys(
-                e.problem for e in self.session.entries
-                if e.path == opened.path and e.problem)
-            if problems:
-                QtWidgets.QMessageBox.warning(
-                    self, "Spectra cannot be read", "\n\n".join(problems))
+            self.warn_about(opened.path)
+
+    def warn_about(self, path: str) -> None:
+        """
+        What the samples of one just-opened file say about themselves.
+
+        Two warnings, each about something the file volunteers and neither
+        visible from a pane: spectra that cannot be read, and a name whose
+        compound is not the one its method isolates. Both are put up here
+        rather than at the point of use because both are cheap to ask now and
+        expensive to discover later — the second is arithmetic on two numbers
+        the file already holds, and the first is one scan.
+
+        Split out from `load_file` so it can be exercised with no file dialog
+        and no file: it reads the session's entries and nothing else.
+        """
+        for title, said in zip(("Spectra cannot be read",
+                                "The name and the method disagree"),
+                               self.file_warnings(path), strict=True):
+            if said:
+                QtWidgets.QMessageBox.warning(self, title, "\n\n".join(said))
+
+    def file_warnings(self, path: str) -> tuple[list[str], list[str]]:
+        """
+        The two warnings for one file, as text: unreadable spectra, then
+        names their methods contradict.
+
+        Returned rather than shown, so the wording is testable without a
+        modal dialog — which offscreen would block the suite rather than
+        fail it.
+        """
+        from ..infusion_report import name_disagreements
+
+        mine = [e for e in self.session.entries if e.path == path]
+        # a .wiff without its .wiff.scan opens and draws its chromatograms;
+        # the first sign that its spectra cannot be read should not be an
+        # empty pane half an hour later
+        problems = list(dict.fromkeys(e.problem for e in mine if e.problem))
+        # the library of one's own is not consulted here: it lives behind a
+        # setting the Explorer owns and reading it is seconds, which is not
+        # what an open should spend. The Infusions tab asks the same question
+        # with the library in hand
+        disagreements = name_disagreements(
+            mine, getattr(self.session.method, "components", ()))
+        return problems, disagreements
 
     def close_all(self) -> None:
         # close_all drops the batch and the project link, so unsaved work would

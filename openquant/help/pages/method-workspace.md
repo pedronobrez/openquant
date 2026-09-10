@@ -26,9 +26,23 @@ standard, or concentration).
 | Qualifier of | the quantifier this transition confirms, when it is a qualifier |
 | Ion ratio % and ± ratio % | the expected qualifier/quantifier area ratio, and the tolerance that overrides the method's |
 | Min. response | for an internal standard: the smallest area it has to give in an injection before a ratio to it means anything — see [[internal-standards-and-qualifiers]] |
+| Provenance | not a column: where the row came from, shown in the Name cell's tooltip — see below |
 
 The internal-standard and qualifier columns are explained in
 [[internal-standards-and-qualifiers]].
+
+### Where a row came from
+
+A row written by **Use in method…** on the Infusions tab carries its
+provenance: which infusion it was read off, the channel, the collision
+energy, the file, the acquisition time and the record of your own that the
+spectrum matched. It has no column — it is a sentence, and a column of
+sentences is a table nobody can read — so it is shown in the **tooltip of
+the Name cell**, under the name, and it is saved with the project and
+written to the CSV as `provenance`. A row you typed carries none, which is
+the truthful answer for it: the tooltip is then the name alone. Nothing in
+the program branches on the text; it is there for the person reading the
+method six months later, and [[infusion-report]] describes what writes it.
 
 ## Building the table
 
@@ -46,6 +60,9 @@ The internal-standard and qualifier columns are explained in
   open injections, see [[suggest-from-data]].
 - **Check method** reads the method against itself and the open files,
   see [[check-method]].
+- **Method report…** writes all of that, and the formulas, the lock-mass
+  candidates, the channel serving each component and the schedule the
+  method implies, as one PDF or HTML document: [[method-report]].
 - **Annotate from LIPID MAPS…** proposes species names, see
   [[annotate-from-lipid-maps]].
 - **Fill formulas from names** reads the lipid shorthand the names already
@@ -286,6 +303,7 @@ name,precursor,fragment,rt,window,tolerance,unit
 | regression, weighting | regression, curve, fit, regressao; weighting, weight, ponderacao, peso |
 | lm_id | lm_id, lipidmaps, lipidmaps_id, lmid |
 | min_response | min_response, response_floor, min_area, floor, piso_resposta, resposta_minima, area_minima |
+| provenance | provenance, source, origin, procedencia, proveniencia, origem — free text, written by *Use in method…*; see above |
 
 A component's own integration settings and acceptance criteria are not in
 the CSV; they are saved in the project.

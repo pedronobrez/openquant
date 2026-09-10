@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from .. import lipidmaps, precursor
@@ -19,6 +21,14 @@ COLUMNS = ["Name", "Group", "Precursor", "Fragment", "RT", "± RT", "Tol.",
            "Conc. unit", "Qualifier of", "Ion ratio %", "± ratio %",
            "Min. response"]
 COL = {name: i for i, name in enumerate(COLUMNS)}
+
+#: where a row's provenance is kept while it is in the table. It has no
+#: column of its own — it is a sentence, and a column of sentences is a
+#: table nobody can read — so it rides on the Name cell and is shown in that
+#: cell's tooltip. It has to be kept *somewhere* in the widget: the table is
+#: committed whole on every keystroke (`_commit`), so a component field the
+#: table does not carry is a field the next edit erases.
+PROVENANCE_ROLE = QtCore.Qt.ItemDataRole.UserRole + 1
 
 #: widest a column is made when fitted to its contents; past this the
 #: analyst widens it themselves rather than losing the rest of the table
@@ -96,6 +106,14 @@ class MethodWorkspace(QtWidgets.QWidget):
             "what it implies. A formula is only kept where it agrees with the "
             "precursor already written down; a cell that has a formula is "
             "never touched, and no precursor is changed")
+        self.btn_method_report = QtWidgets.QPushButton("Method report…")
+        self.btn_method_report.setToolTip(
+            "Everything this can say about the method before it is run, on "
+            "one document: the component table with the flagged rows marked, "
+            "the findings of Check method, the formulas it carries and could "
+            "carry, the standards that could be lock masses, and — with a "
+            "file open — which channel serves what and the schedule the "
+            "method implies")
         self.btn_repair = QtWidgets.QPushButton("Repair precursors…")
         self.btn_repair.setToolTip(
             "Where a formula and the precursor written beside it disagree, "
@@ -106,7 +124,7 @@ class MethodWorkspace(QtWidgets.QWidget):
                        self.btn_import, self.btn_export, self.btn_check,
                        self.btn_schedule, self.btn_skyline,
                        self.btn_suggest, self.btn_annotate, self.btn_formulas,
-                       self.btn_repair):
+                       self.btn_repair, self.btn_method_report):
             bar.addWidget(widget)
         bar.addStretch(1)
         layout.addLayout(bar)
@@ -173,6 +191,7 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.btn_annotate.clicked.connect(self._annotate)
         self.btn_formulas.clicked.connect(self.fill_formulas)
         self.btn_repair.clicked.connect(self.repair_precursors)
+        self.btn_method_report.clicked.connect(self.export_method_report)
         self.table.itemChanged.connect(self._on_edit)
         self.tol_spin.valueChanged.connect(self._defaults_changed)
         self.unit_combo.currentTextChanged.connect(self._defaults_changed)
@@ -194,6 +213,9 @@ class MethodWorkspace(QtWidgets.QWidget):
         # F1 on the Skyline button opens the page about exporting rather
         # than the one about the component table it happens to sit above
         describe(self.btn_skyline, "export")
+        # and F1 on the report button opens the page about the document
+        # rather than the one about the table it is built from
+        describe(self.btn_method_report, "method-report")
 
         session.sigMethodChanged.connect(self.reload)
         self.reload()
@@ -239,6 +261,13 @@ class MethodWorkspace(QtWidgets.QWidget):
                 # readable without making the analyst widen the column
                 item.setToolTip(text)
             self.table.setItem(row, column, item)
+
+        name_item = self.table.item(row, COL["Name"])
+        if name_item is not None:
+            name_item.setData(PROVENANCE_ROLE, c.provenance)
+            if c.provenance:
+                name_item.setToolTip(
+                    f"{c.name}\n\n{c.provenance}" if c.name else c.provenance)
 
         check = QtWidgets.QTableWidgetItem()
         check.setFlags(QtCore.Qt.ItemFlag.ItemIsUserCheckable
@@ -348,6 +377,9 @@ class MethodWorkspace(QtWidgets.QWidget):
                 numbers[field] = None
 
         is_item = self.table.item(row, COL["IS"])
+        name_item = self.table.item(row, COL["Name"])
+        provenance = ("" if name_item is None
+                      else str(name_item.data(PROVENANCE_ROLE) or ""))
         component = Component(
             name=name,
             precursor=numbers.get("precursor") or 0.0,
@@ -369,6 +401,7 @@ class MethodWorkspace(QtWidgets.QWidget):
             ion_ratio=numbers.get("ion_ratio"),
             ion_ratio_tolerance=numbers.get("ion_ratio_tolerance") or 0.0,
             min_response=numbers.get("min_response"),
+            provenance=provenance,
         )
         return component if component.is_valid else None
 
@@ -536,6 +569,61 @@ class MethodWorkspace(QtWidgets.QWidget):
         dialog = ScheduleDialog(self.session, self)
         if dialog.exec() and dialog.saved_path:
             self._report(f"Schedule written to {dialog.saved_path}")
+
+    def export_method_report(self) -> None:
+        """
+        Write the method report: the checks that exist, on one document.
+
+        The acquisition is the first open sample, because that is what the
+        checks needing one already use — `health.check_method` reads the
+        sampling and the survey off `entries[0]` — and the batch is whatever
+        the session has processed, which is only used to start the schedule's
+        target cycle from a measured peak width rather than a round number.
+        Neither is required: with nothing open the document says what a
+        method alone can say, and says which sections are missing for want of
+        a file.
+        """
+        from ..audit import METHOD_REPORT
+        from ..method_report import build, write_html, write_pdf
+
+        if not self.components():
+            self._report("Build the component list first.")
+            return
+        path, chosen = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Export method report", "method-report.pdf",
+            "PDF (*.pdf);;HTML (*.html)")
+        if not path:
+            return
+        session = self.session
+        loaded = session.loaded_entries
+        batch = session if len(session.results) else None
+        QtWidgets.QApplication.setOverrideCursor(
+            QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
+        try:
+            report = build(session.method,
+                           acquisition_sample=loaded[0] if loaded else None,
+                           batch=batch, database=lipidmaps.database)
+            if path.lower().endswith(".html") or "HTML" in chosen:
+                if not path.lower().endswith(".html"):
+                    path += ".html"
+                write_html(report, path)
+            else:
+                if not path.lower().endswith(".pdf"):
+                    path += ".pdf"
+                write_pdf(report, path)
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+
+        health = report.health
+        session.record(
+            METHOD_REPORT, target=f"{len(report.components)} component(s)",
+            after=os.path.basename(path),
+            note=(f"{len(health.serious)} serious, {len(health.warnings)} "
+                  f"warning(s); "
+                  + (f"against {report.acquisition.name or report.acquisition.file}"
+                     if report.acquisition is not None
+                     else "no acquisition open")))
+        self._report(f"Method report written to {path}")
 
     def export_skyline(self) -> None:
         """

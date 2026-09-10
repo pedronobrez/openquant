@@ -611,6 +611,14 @@ ACQUIRED_FIELD = "Acquired"
 #: hand; a record made before this existed has none and says so.
 BASE_INTENSITY_FIELD = "Base_peak_intensity"
 
+#: the isotopic purity of a labelled standard, as `purity.Purity.field`
+#: writes it: the species distribution, the atom % D and the ion it was read
+#: from. A record of a d4 standard says what it fragments to and nothing at
+#: all about what the material was; this is the missing half, and it can only
+#: be written here because the measurement needs the profile spectrum the
+#: record does not keep.
+PURITY_FIELD = "Isotopic_purity"
+
 #: what another exporter may spell those two under, matched whole and
 #: without regard to case, underscores or spaces
 _ACQUIRED_KEYS = frozenset({"acquired", "acquisitiondate", "acquisitiontime",
@@ -682,6 +690,7 @@ def entry_from_spectrum(name: str, mz, intensity, precursor: float | None = None
                         precursor_type: str = "", formula: str = "",
                         collision_energy: float | None = None,
                         comment: str = "", acquired: str = "",
+                        isotopic_purity: str = "",
                         min_relative: float = OWN_MIN_RELATIVE,
                         max_peaks: int = OWN_MAX_PEAKS,
                         min_absolute: float | None = None) -> LibraryEntry:
@@ -714,6 +723,14 @@ def entry_from_spectrum(name: str, mz, intensity, precursor: float | None = None
     rather than the day the record was made, and `Base_peak_intensity`, the
     absolute height the relative peaks are shares of. See
     `standard_history.py`, which reads both.
+
+    `isotopic_purity` is a third of the same kind and it is why this
+    parameter exists rather than being folded into the comment: the purity is
+    measured from the **profile** spectrum, whose isotope envelope sits at
+    tenths of a per cent of the base peak — under `min_relative`, and so
+    thrown away by the very next line of this function. A record cannot be
+    asked afterwards what the material's purity was, so it is written when it
+    is still known. `purity.Purity.field` is the text.
     """
     name = _one_line(name)
     if not name:
@@ -743,6 +760,8 @@ def entry_from_spectrum(name: str, mz, intensity, precursor: float | None = None
     # the base peak's height is known here and nowhere afterwards, since
     # what is stored is every peak as a share of it
     fields[BASE_INTENSITY_FIELD] = f"{top:.6g}"
+    if isotopic_purity:
+        fields[PURITY_FIELD] = _one_line(isotopic_purity)
     if comment:
         fields["Comment"] = _one_line(comment)
     return LibraryEntry(
@@ -814,3 +833,680 @@ def count_records(path: str | os.PathLike) -> int:
         return len(load_library(path))
     except OSError:
         return 0
+
+
+# --------------------------------------------------------------------------- #
+# a batch of infusions at once, and rewriting what was written
+# --------------------------------------------------------------------------- #
+#: what separates the pieces of a record's comment. The Explorer's spectrum
+#: pane already titles itself "sample · channel · average of n scans · RT a–b
+#: min", and a record made from it keeps those words; a whole batch written
+#: at once writes the same shape, so one parser reads both.
+PROVENANCE_SEPARATOR = " · "
+
+#: how many decimals a computed precursor is written with. A mass worked
+#: out from a formula is a float with seventeen significant figures and no
+#: instrument has ever measured one: `504.32914261554896` in a record is a
+#: claim nobody can hold it to, and five decimals is what the peak list
+#: beside it is written with — 0.02 ppm at m/z 500, finer than any mass
+#: spectrometer's own agreement with itself.
+EXACT_DECIMALS = 5
+
+#: how far apart two peaks have to be before they are two peaks, in Da. The
+#: figure `spectra_compare.MIN_DISTANCE` picks an infusion's peaks with,
+#: because a record rewritten from the file has to come back with the peaks
+#: the record was written with — a second opinion about where a centroid
+#: lies would show up as the standard having changed.
+OWN_MIN_DISTANCE = 0.05
+
+#: the acquisition a comment names, taken by its extension rather than by
+#: position: the pieces around it hold separators of their own. The same
+#: rule `standard_history.file_of` reads a history's files with.
+_COMMENT_FILE = re.compile(r"[^\s·|,;]+\.(?:wiff2?|mzml|mzxml|raw|d)\b",
+                           re.IGNORECASE)
+_COMMENT_SCANS = re.compile(r"(\d[\d,]*)\s+scans?", re.IGNORECASE)
+_COMMENT_RT = re.compile(r"RT\s*([\d.]+)\s*[–—-]\s*([\d.]+)")
+_COMMENT_ADDED = re.compile(r"\badded\s+(\S+)", re.IGNORECASE)
+
+#: pieces of a comment that say how the spectrum was made rather than where
+#: it came from. What is left, in order, is the sample and the channel.
+#: Matched as whole words: `^CE` alone would take `CEramide` for a collision
+#: energy, and a sample is named by whoever ran it.
+_COMMENT_NOTE = re.compile(
+    r"^(added|recalibrated|background|average|scans?|RT|CE)\b", re.IGNORECASE)
+
+#: how the report names the formula and the adduct it identified, in the
+#: sentence it prints under the table. Read rather than worked out again:
+#: see `identity_of`.
+_IDENTITY = re.compile(r"formula\s+(\S+?)\s+as\s+(\[[^\]]+\][-+]?\d*[-+]?)")
+
+
+def _flat_label(text) -> str:
+    """A label with its spacing and case set aside, for comparing two."""
+    return " ".join(str(text or "").split()).lower()
+
+
+@dataclass(frozen=True)
+class Provenance:
+    """
+    Where a record of one's own came from, as its own comment says.
+
+    Nothing else in a record can say: a library format holds a name, a
+    precursor and peaks, and the comment is the only field left to write an
+    acquisition into. So the comment is written in a fixed shape and read
+    back here, and everything that has to know which measurement a record
+    *is* — the duplicate check, the rewrite — asks this rather than the text.
+    """
+
+    file: str = ""
+    sample: str = ""
+    channel: str = ""
+    scans: int = 0
+    rt_range: tuple[float, float] | None = None
+    #: the day the record was written, as the comment says it
+    added: str = ""
+
+    @property
+    def key(self) -> tuple[str, str]:
+        """
+        What makes two records the same measurement: **the acquisition file
+        and the channel inside it**, both as the comment names them, with
+        case and spacing set aside.
+
+        Not the compound and not the name: the same vial infused twice is
+        two measurements and belongs in the file twice, while the same
+        channel of the same file written twice is one measurement written
+        down twice, which is what turns a history into a chart of nothing.
+        A record whose comment names no file has no key — see `keyed`.
+        """
+        return (self.file.lower(), _flat_label(self.channel))
+
+    @property
+    def keyed(self) -> bool:
+        """
+        Whether this provenance can decide anything.
+
+        A record that does not name its acquisition — somebody else's
+        library, or one written before the comment carried one — is never
+        called a duplicate of anything. Silence is not a match.
+        """
+        return bool(self.file)
+
+
+def provenance_comment(file: str = "", sample: str = "", channel: str = "",
+                       scans: int = 0,
+                       rt_range: "tuple[float, float] | None" = None,
+                       added: str = "", note: str = "") -> str:
+    """
+    The comment a record of one's own carries, in the shape read back.
+
+    The pieces are the sample, the channel, how much of the run was
+    averaged, the file and the day the record was made — the Explorer's own
+    pane title with the file and the date after it, which is what one
+    spectrum added by hand has always written. `note` goes on the end for
+    anything done to the axis, which at present is the mass recalibration.
+    """
+    pieces = [p for p in (str(sample or "").strip(),
+                          str(channel or "").strip()) if p]
+    if scans:
+        pieces.append(f"average of {int(scans):,} scans")
+    if rt_range is not None:
+        low, high = min(rt_range), max(rt_range)
+        pieces.append(f"RT {low:.4f}–{high:.4f} min")
+    if file:
+        pieces.append(os.path.basename(str(file)))
+    if note:
+        pieces.append(str(note).strip())
+    if added:
+        pieces.append(f"added {added}")
+    return _one_line(PROVENANCE_SEPARATOR.join(pieces))
+
+
+def provenance_of(entry: LibraryEntry) -> Provenance:
+    """
+    What a record's comment says about where it came from.
+
+    The file is found by its extension and the times and the scan count by
+    the words around them, so a comment whose pieces were reordered still
+    reads; the sample and the channel are the first two pieces that describe
+    neither, in that order, which is the one thing here that is positional.
+    A comment written by another program gives an empty provenance rather
+    than a wrong one.
+    """
+    comment = field_value(entry, {"comment"})
+    if not comment:
+        return Provenance()
+    found = _COMMENT_FILE.search(comment)
+    file = os.path.basename(found.group()) if found else ""
+    plain: list[str] = []
+    for piece in comment.split("·"):
+        piece = piece.strip()
+        if not piece or _COMMENT_NOTE.match(piece):
+            continue
+        if _COMMENT_FILE.search(piece):
+            continue
+        plain.append(piece)
+    scans = _COMMENT_SCANS.search(comment)
+    times = _COMMENT_RT.search(comment)
+    added = _COMMENT_ADDED.search(comment)
+    return Provenance(
+        file=file,
+        sample=plain[0] if plain else "",
+        channel=plain[1] if len(plain) > 1 else "",
+        scans=int(scans.group(1).replace(",", "")) if scans else 0,
+        rt_range=((float(times.group(1)), float(times.group(2)))
+                  if times else None),
+        added=added.group(1) if added else "",
+    )
+
+
+def provenance_keys(path: str | os.PathLike) -> set:
+    """
+    The provenance key of every record a library file already holds.
+
+    Read from the file rather than from anything in memory: a library of
+    one's own is appended to over months and from more than one window, and
+    what is on disk is what is already there.
+    """
+    try:
+        entries = load_library(path).entries
+    except OSError:
+        return set()
+    keys = set()
+    for entry in entries:
+        provenance = provenance_of(entry)
+        if provenance.keyed:
+            keys.add(provenance.key)
+    return keys
+
+
+def own_peaks(mz, intensity) -> list:
+    """
+    The peaks of an averaged spectrum a record of one's own is made of.
+
+    `processing.pick_peaks` at this library's own floor and ceiling, with
+    the centroid taken across each maximum: exactly what the Infusions tab
+    already picked for scoring, so a record written from a row and the same
+    record rewritten from the file come back with the same numbers.
+    """
+    from .processing import pick_peaks
+
+    return pick_peaks(np.asarray(mz, dtype=float),
+                      np.abs(np.asarray(intensity, dtype=float)),
+                      max_peaks=OWN_MAX_PEAKS, min_relative=OWN_MIN_RELATIVE,
+                      min_distance=OWN_MIN_DISTANCE, centroid=True)
+
+
+def identity_of(report) -> tuple[str, str]:
+    """
+    The formula and the adduct an infusion report already worked out.
+
+    Read off the report rather than worked out a second time: the report
+    identifies the adduct against the channel's written precursor and puts
+    back the labels the compound's name declares, and a record carrying a
+    second opinion about either would disagree with the table it was made
+    from. Everything is read defensively, and a report that says nothing
+    gives two empty strings — a record without a formula, rather than a
+    guess at one.
+    """
+    adduct = str(getattr(report, "adduct", "") or "").strip()
+    explanation = getattr(report, "explanation", None)
+    record = getattr(explanation, "record", None)
+    formula = str(getattr(record, "formula", "") or "").strip()
+    found = _IDENTITY.search(str(getattr(report, "basis", "") or ""))
+    if found:
+        # the basis carries the formula as it was explained — with the
+        # labels the component table has no column for
+        formula = found.group(1).strip() or formula
+        adduct = adduct or found.group(2).strip()
+    return formula, adduct
+
+
+@dataclass(frozen=True)
+class Skipped:
+    """One infusion no record was made of, and why."""
+
+    label: str
+    reason: str
+
+    def __str__(self) -> str:
+        return f"{self.label} ({self.reason})"
+
+
+@dataclass
+class OwnRecords:
+    """The records a batch of infusions offers, and what it does not."""
+
+    entries: list = field(default_factory=list)
+    skipped: list = field(default_factory=list)
+
+    def __len__(self) -> int:
+        return len(self.entries)
+
+    def line(self, written: int | None = None) -> str:
+        """
+        What was written and what was not, in one line, with the reasons.
+
+        The reasons are the point: a row that produced no record is a row
+        somebody has to decide about, and a count on its own hides which.
+        """
+        written = len(self.entries) if written is None else int(written)
+        said = f"{written} record(s) written"
+        if self.skipped:
+            said += (f", {len(self.skipped)} skipped: "
+                     + "; ".join(str(s) for s in self.skipped))
+        return said + "."
+
+
+def records_from_summary(rows, existing=(), added: str = "",
+                         identify=None, acquired=None) -> OwnRecords:
+    """
+    One record per measured infusion, for a whole batch written in one go.
+
+    `rows` is an `infusion_report.InfusionSummary` or its rows. Each carries
+    the averaged, centroided peaks the tab already picked, so nothing is
+    read from a file here and nothing is centroided twice: the record is
+    made of the numbers the table was made of.
+
+    What goes into a record, and where it comes from:
+
+    * the name is the compound the row proposes — a row that could not
+      propose one is skipped and says so, since a record nobody can find
+      again is not a record;
+    * the adduct and the formula are what the report identified
+      (`identity_of`), or whatever `identify(row)` returns where the caller
+      knows better — the panel asks the method's component table as well;
+    * `PrecursorMZ` is what that formula and that adduct weigh, so the
+      record's two accounts of its own precursor agree; where there is no
+      formula the measured precursor stands, and the method's written one
+      only where neither does;
+    * the collision energy and the activation come from the channel;
+    * `Acquired` is the day the instrument measured on, from `acquired` — a
+      mapping from file name to acquisition time, since a report holds the
+      file name and only the session holds the sample;
+    * the comment is the provenance, in the shape `provenance_of` reads.
+
+    A row whose acquisition and channel are already in `existing` — the keys
+    `provenance_keys` gives for the file being appended to — is skipped
+    rather than written twice; so is a second row of the same key inside one
+    batch. Nothing is written to disk here: the records come back and the
+    caller writes them, which is what lets this be exercised without a
+    library and without a dialog.
+    """
+    import datetime as _dt
+
+    rows = list(getattr(rows, "rows", rows) or [])
+    added = added or _dt.date.today().isoformat()
+    seen = set(existing or ())
+    times = dict(acquired or {})
+    made = OwnRecords()
+    for row in rows:
+        report = getattr(row, "report", row)
+        compound = str(getattr(row, "compound", "")
+                       or getattr(report, "compound", "") or "").strip()
+        file = str(getattr(report, "file", "") or "")
+        label = str(getattr(report, "sample", "") or file
+                    or compound or "an infusion")
+        if not compound:
+            made.skipped.append(Skipped(
+                label, "no compound could be proposed from its name"))
+            continue
+        peaks = list(getattr(row, "peaks", ()) or [])
+        if not peaks:
+            made.skipped.append(Skipped(
+                label, f"no peak at or above {OWN_MIN_RELATIVE:.0%} of the "
+                       f"base peak to write"))
+            continue
+        channel = _short_channel(report)
+        provenance = Provenance(
+            file=os.path.basename(file),
+            sample=str(getattr(report, "sample", "") or ""),
+            channel=channel, scans=int(getattr(report, "scans", 0) or 0),
+            rt_range=getattr(report, "rt_range", None))
+        if provenance.keyed and provenance.key in seen:
+            made.skipped.append(Skipped(
+                label, f"already in the file from {provenance.file}"))
+            continue
+        formula, adduct = (identify(row) if identify is not None
+                           else identity_of(report))
+        try:
+            entry = entry_from_spectrum(
+                compound,
+                [p[0] for p in peaks], [p[1] for p in peaks],
+                precursor=_own_precursor(report, row, formula, adduct),
+                precursor_type=adduct, formula=formula,
+                collision_energy=getattr(report, "collision_energy", None),
+                comment=provenance_comment(
+                    file=provenance.file, sample=provenance.sample,
+                    channel=channel, scans=provenance.scans,
+                    rt_range=provenance.rt_range, added=added),
+                acquired=str(times.get(provenance.file, "")
+                             or getattr(report, "acquired", "") or ""))
+        except ValueError as exc:
+            made.skipped.append(Skipped(label, str(exc)))
+            continue
+        _set_activation(entry, _activation_in(
+            getattr(report, "channel", ""), getattr(report, "channel_name", ""),
+            getattr(report, "sample", ""), compound))
+        made.entries.append(entry)
+        if provenance.keyed:
+            seen.add(provenance.key)
+    return made
+
+
+def _short_channel(report) -> str:
+    """
+    The channel a record's comment names: the experiment and its precursor.
+
+    `wiff.ChannelInfo.short_label`'s words — the whole label carries the mass
+    range and the collision energy, which describe the method rather than
+    name the channel, and a comment holding them cannot be compared with one
+    written from the Explorer, which holds the short form.
+    """
+    name = str(getattr(report, "channel_name", "") or "").strip()
+    precursor = getattr(report, "written_precursor", None)
+    if name and precursor:
+        return f"{name} {float(precursor):.2f}"
+    return name or str(getattr(report, "channel", "") or "").strip()
+
+
+def _own_precursor(report, row, formula: str, adduct: str) -> float | None:
+    """
+    What a record of one's own writes as its `PrecursorMZ`.
+
+    The mass the identified formula and adduct actually have, where both are
+    known: a record whose written precursor and whose formula disagree is one
+    `precursor_disagrees` flags in every later search, and a method types its
+    precursor to two decimals. Failing that the measurement, and failing that
+    what the method wrote — the order of how much each number knows.
+    """
+    exact = (chemistry.mass_from_formula(formula, adduct)
+             if formula and adduct else None)
+    if exact is not None:
+        return round(float(exact), EXACT_DECIMALS)
+    found = getattr(row, "found", None)
+    if found:
+        return float(found[0])
+    written = getattr(report, "written_precursor", None)
+    return None if written is None else float(written)
+
+
+def _activation_in(*texts) -> str:
+    """How the compound was fragmented, where one of these names it."""
+    from .standard_history import activation_in
+
+    return activation_in(*texts)
+
+
+def _set_activation(entry: LibraryEntry, activation: str) -> None:
+    """
+    Write the activation into a record, before the comment.
+
+    A field of its own rather than left to the comment: `standard_history`
+    charts CID and EAD of the same compound as different series, and it
+    should not have to find that out from a file name.
+    """
+    if not activation or field_value(entry, {"activation"}):
+        return
+    fields = dict(entry.fields)
+    comment = fields.pop("Comment", None)
+    fields["Activation"] = activation
+    if comment is not None:
+        fields["Comment"] = comment
+    entry.fields = fields
+
+
+# --------------------------------------------------------------------------- #
+# rewriting a library of one's own from the acquisitions it names
+# --------------------------------------------------------------------------- #
+@dataclass
+class Rewrite:
+    """What rewriting a library of one's own from its files came to."""
+
+    path: str = ""
+    #: the copy of the file as it was, or "" when nothing was rewritten
+    backup: str = ""
+    #: the records read again from their acquisition, by name
+    rewritten: list = field(default_factory=list)
+    #: the records left exactly as they were, with why
+    kept: list = field(default_factory=list)
+    #: how many were rewritten onto a corrected mass axis
+    recalibrated: int = 0
+    seconds: float = 0.0
+
+    def summary(self) -> str:
+        said = [f"{len(self.rewritten)} record(s) rewritten"]
+        if self.recalibrated:
+            said.append(f"{self.recalibrated} on a corrected mass axis")
+        if self.kept:
+            said.append(f"{len(self.kept)} kept as they were: "
+                        + "; ".join(f"{name} ({reason})"
+                                    for name, reason in self.kept))
+        if self.backup:
+            said.append(f"the file as it was is {os.path.basename(self.backup)}")
+        return "; ".join(said) + "."
+
+
+#: what a rewritten record writes for itself, so the old record's own copy of
+#: it is not carried over beside it. Matched the way `field_value` matches.
+_REWRITTEN_FIELDS = frozenset(
+    {"comment", "activation", "collisionenergy", "ce"}
+    | set(_ACQUIRED_KEYS) | set(_BASE_INTENSITY_KEYS))
+
+
+def rewrite_records(path: str | os.PathLike, folders=(), reader=None,
+                    corrections=None) -> Rewrite:
+    """
+    Every record whose acquisition is still on disk, read again and written
+    over with what this version of the writer knows.
+
+    A library of one's own is written a record at a time over months, and a
+    record written in March carries what March's writer wrote: no `Acquired`,
+    no `Base_peak_intensity`, no formula, a precursor typed by hand. The
+    files are usually still there, so the record does not have to stay that
+    way. Each is looked up by the acquisition its comment names, averaged
+    over the same scans, centroided with the same floor and ceiling, and
+    written back in place.
+
+    `folders` are the directories to look a file name up in — a comment names
+    a file, never a path — with the library's own folder beside them.
+    `reader` opens one (`raw.open_raw` by default, so a test can hand over a
+    reader of its own). `corrections` maps a file name to the mass correction
+    in force for it, which is how a recalibrated batch's records come out on
+    the corrected axis; the comment then says so, because a mass axis that
+    has been moved and does not admit it is worse than one that is wrong.
+
+    A record whose file is gone is **kept exactly as it is** and listed with
+    the reason: the measurement it holds is the last copy of that spectrum,
+    and losing it to a tidy-up would be the one unrecoverable outcome here.
+    The file as it was is copied to `<name>.msp.bak` before anything is
+    written over it.
+    """
+    import shutil
+    import time
+
+    started = time.perf_counter()
+    path = str(path)
+    result = Rewrite(path=path)
+    try:
+        entries = list(load_library(path).entries)
+    except OSError as exc:
+        result.kept.append((os.path.basename(path), str(exc)))
+        return result
+    if reader is None:
+        from .raw import open_raw
+
+        reader = open_raw
+    corrections = {str(k).lower(): v
+                   for k, v in dict(corrections or {}).items()}
+    places = [os.path.dirname(os.path.abspath(path))]
+    places += [str(f) for f in folders if f]
+    opened: dict = {}
+    out: list[LibraryEntry] = []
+    try:
+        for entry in entries:
+            provenance = provenance_of(entry)
+            if not provenance.keyed:
+                out.append(entry)
+                result.kept.append((entry.name,
+                                    "its comment names no acquisition"))
+                continue
+            found = _locate(provenance.file, places)
+            if not found:
+                out.append(entry)
+                result.kept.append((entry.name,
+                                    f"{provenance.file} is not on disk"))
+                continue
+            try:
+                handle = opened.get(found)
+                if handle is None:
+                    handle = opened[found] = reader(found)
+                fresh, corrected = _reread(
+                    entry, provenance, handle,
+                    corrections.get(provenance.file.lower()))
+            except Exception as exc:              # any reader, any reason
+                out.append(entry)
+                result.kept.append((entry.name, f"{provenance.file}: {exc}"))
+                continue
+            out.append(fresh)
+            result.rewritten.append(fresh.name)
+            result.recalibrated += 1 if corrected else 0
+    finally:
+        for handle in opened.values():
+            try:
+                handle.close()
+            except Exception:
+                pass
+    if result.rewritten:
+        result.backup = path + ".bak"
+        shutil.copy2(path, result.backup)
+        write_msp(out, path)
+    result.seconds = time.perf_counter() - started
+    return result
+
+
+def _locate(name: str, folders) -> str:
+    """The first of those folders holding a file of that name, or ""."""
+    for folder in dict.fromkeys(folders):
+        candidate = os.path.join(str(folder), name)
+        if os.path.exists(candidate):
+            return candidate
+    return ""
+
+
+def _reread(entry: LibraryEntry, provenance: Provenance, handle,
+            correction=None) -> tuple[LibraryEntry, bool]:
+    """One record made again from the file its comment names."""
+    sample = _sample_named(handle, provenance.sample)
+    channel = _channel_named(sample, provenance.channel)
+    if channel is None:
+        raise LookupError(f"{provenance.channel or 'the channel'} is not in it")
+    window = _window(channel, provenance.rt_range)
+    mz, intensity = channel.spectrum_rt_range(*window)
+    mz = np.asarray(mz, dtype=float)
+    note = ""
+    if correction is not None and mz.size:
+        moved = float(np.median(np.asarray(correction.ppm_at(mz), dtype=float)))
+        mz = np.asarray(correction.apply(mz), dtype=float)
+        note = f"recalibrated {moved:+.1f} ppm"
+    peaks = own_peaks(mz, intensity)
+    if not peaks:
+        raise ValueError("nothing above the floor in it now")
+    info = getattr(channel, "info", None)
+    first, last = channel.scans_in_range(*window)
+    fresh = entry_from_spectrum(
+        entry.name, [p[0] for p in peaks], [p[1] for p in peaks],
+        # the record's two accounts of its own precursor, made to agree:
+        # where the formula and the adduct give a mass, that is the mass
+        precursor=(round(entry.exact_precursor, EXACT_DECIMALS)
+                   if entry.exact_precursor is not None else entry.precursor),
+        precursor_type=entry.precursor_type, formula=entry.formula,
+        collision_energy=(getattr(info, "collision_energy", None)
+                          if info is not None else None),
+        comment=provenance_comment(
+            file=provenance.file, sample=provenance.sample,
+            channel=(_flat_channel(info) or provenance.channel),
+            scans=int(last - first + 1), rt_range=window,
+            added=provenance.added, note=note),
+        acquired=(str(getattr(sample, "acquisition_time", "") or "")
+                  or acquired_of(entry)))
+    if not fresh.fields.get("Collision_energy"):
+        energy = field_value(entry, {"collisionenergy", "ce"})
+        if energy:
+            fresh.fields["Collision_energy"] = energy
+    _set_activation(fresh, _activation_in(entry.name, provenance.sample,
+                                          provenance.channel))
+    # whatever else the old record carried and this writer does not write —
+    # somebody's instrument, a note of their own — stays with it
+    for key, value in entry.fields.items():
+        flat = str(key).strip().lower().replace("_", "").replace(" ", "")
+        if flat not in _REWRITTEN_FIELDS and key not in fresh.fields:
+            fresh.fields[key] = value
+    return fresh, bool(note)
+
+
+def _flat_channel(info) -> str:
+    return str(getattr(info, "short_label", "") or "") if info is not None else ""
+
+
+def _sample_named(handle, name: str):
+    """
+    The sample of that name inside the file, or the first one.
+
+    An infusion is one sample in one file, and the name a record carries is
+    the one the samples table shortened for the screen — so a name that does
+    not match is an ordinary outcome and the first sample is the answer,
+    rather than a failure to rewrite.
+    """
+    names = [str(n) for n in (getattr(handle, "sample_names", None) or [])]
+    want = _flat_label(name)
+    for index, written in enumerate(names):
+        if want and _flat_label(written) == want:
+            return handle.sample(index)
+    return handle.sample(0)
+
+
+def _channel_named(sample, name: str):
+    """
+    The channel whose label the comment names, or None.
+
+    Matched against both the short label and the whole one, and by prefix
+    either way round: a comment written by an older version carries whichever
+    of the two that version put in it, and the two agree on everything up to
+    the mass range.
+    """
+    channels = list(getattr(sample, "channels", None) or [])
+    if not channels:
+        return None
+    want = _flat_label(name)
+    if not want:
+        return channels[0] if len(channels) == 1 else None
+    for channel in channels:
+        info = getattr(channel, "info", None)
+        for label in (getattr(info, "short_label", ""),
+                      getattr(info, "label", "")):
+            flat = _flat_label(label)
+            if flat and (flat == want or flat.startswith(want)
+                         or want.startswith(flat)):
+                return channel
+    return None
+
+
+def _window(channel, wanted) -> tuple[float, float]:
+    """
+    The time range to average again, snapped to the scans that are there.
+
+    A comment writes its times to four decimals, and a bound rounded a
+    ten-thousandth of a minute past the first scan drops that scan from the
+    average — one scan out of a few hundred, silently, in a record that
+    claims to be the same measurement. Taking the nearest scan time to each
+    bound gives back exactly the range that was written.
+    """
+    times = np.asarray(getattr(channel, "rt", ()), dtype=float)
+    if times.size == 0:
+        raise ValueError("its channel has no scans")
+    if wanted is None:
+        return float(times[0]), float(times[-1])
+    low = float(times[int(np.argmin(np.abs(times - float(wanted[0]))))])
+    high = float(times[int(np.argmin(np.abs(times - float(wanted[1]))))])
+    return min(low, high), max(low, high)

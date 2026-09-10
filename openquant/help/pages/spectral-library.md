@@ -211,6 +211,118 @@ search computes the ion's real mass from them, measures Δ ppm against it,
 and refuses the record to a scan of the other polarity. A record of your
 own is the one library record you can be sure carries them.
 
+### A whole folder in one go
+
+A folder of infusions is nine spectra, and adding them one at a time from
+the Explorer means nine dialogs. The **Infusions** tab has already averaged,
+centroided and identified every one of them, so **Add all to library** on
+that tab ([[infusion-report]]) writes one record per row into the same MSP —
+the file chosen once, appended to, asked for the first time if it is not set
+yet.
+
+Each record takes its name from the compound the row proposes, its adduct
+and formula from what the row identified, its collision energy and
+activation from the channel, its `Acquired` from the file, and its peaks
+from the very numbers the table was measured on. Nothing is read again and
+nothing is centroided twice.
+
+Two rows produce no record, and both say so on the line under the table
+rather than being counted silently:
+
+- **a row whose compound could not be proposed.** The compound is the part
+  of the file name before the first separator, and a record nobody can find
+  by name again is not a record.
+- **a row already in the file.** The key is the **provenance in a record's
+  comment: the acquisition file and the channel inside it**. Not the
+  compound and not the name — the same vial infused twice is two
+  measurements and belongs in the file twice, while the same channel of the
+  same file written twice is one measurement written down twice, which turns
+  a history into a chart of nothing. So pressing the button again after
+  adding two more files adds those two files and nothing else.
+
+The line reads *7 record(s) written, 2 skipped: …* with each skipped row
+named and the reason beside it.
+
+### Rewriting from the files
+
+A library of your own is written a record at a time over months, and a
+record written in March carries what March's version wrote: no `Acquired`,
+no `Base_peak_intensity`, no formula, a precursor typed to two decimals.
+The acquisitions are usually still on disk, so the record does not have to
+stay that way. **Rewrite from files…**, beside **History…**, reads every
+record whose comment names a file it can find, averages the same scans of
+the same channel again, centroids it with the same floor and ceiling, and
+writes the record back in place with everything this version writes —
+including a `PrecursorMZ` that agrees with the record's own formula rather
+than with whatever was typed.
+
+Where files are looked for: the folders the open acquisitions were opened
+from, the last folder anything was read from, and the library's own folder.
+A comment names a file and never a path, because a path stops being true the
+moment the acquisition is copied anywhere.
+
+**A record whose file is gone is kept exactly as it is**, listed by name
+with the reason, and so is one whose comment names no acquisition at all —
+somebody else's records in the same file, for instance. The spectrum in such
+a record is the last copy of that measurement, and losing it to a tidy-up is
+the one thing here that cannot be undone.
+
+**The library as it was is copied to `<name>.msp.bak` first**, before
+anything is written over, and the summary line says so. Nothing is written
+at all when there was nothing to rewrite.
+
+Where [[mass-recalibration]] is switched on and the acquisition is one of the
+open ones, the record is rewritten on the **corrected** mass axis and its
+comment then says `recalibrated −5.2 ppm`: a mass axis that has been moved
+and does not admit it is worse than one that is wrong.
+
+### Measured on a folder of nine infusions
+
+The nine ZenoTOF bile-acid infusions — three compounds, positive mode, one
+product-ion channel each — measured in the Infusions tab and then written in
+one press:
+
+| | |
+|---|---|
+| rows measured | 9, in 35 s |
+| **Add all to library** | **9 records written, none skipped, in 0.01 s** |
+| pressed again | 0 written, 9 skipped, each *already in the file from …* |
+| the file | 19 KB, 9 records |
+| **Rewrite from files…** | **9 of 9 rewritten in 39 s** |
+| peaks after the rewrite | **identical, every value of every record** |
+| other fields after the rewrite | unchanged, 9 of 9 |
+
+Add all costs nothing because the table had already done the work; the
+rewrite costs 39 seconds because it averages nine whole runs again, which is
+the same 35 seconds the measurement took in the first place. The peaks being
+identical is the point of the comparison: the record is written from the
+peaks the tab picked, and the rewrite picks them the same way from the same
+scans, so a difference would mean one of the two was not reading what it
+claimed to.
+
+With the three compounds in the component table, seven of the nine records
+carry a formula and an adduct — `C24H36D4O5` as `[M+NH4]+` for cholic
+acid-d4, the four labels put back from the name — and their `PrecursorMZ` is
+written as **430.34651**, what that ion weighs, rather than as the `430.35`
+the method typed. None of the nine disagrees with itself.
+
+The other two are the pair named `CA-d4_…TESTEARTIGO`, whose channel
+isolates **839.56** and not 430.35 (see [[infusion-report]]). No adduct of
+the formula reaches that mass, so those two records are written with **no
+formula and no adduct at all** — only the measurement, the precursor the
+instrument was given and the provenance saying which file and channel it
+came from. That is the intended outcome: the file name says cholic acid-d4
+and the acquisition says otherwise, and a record that carried the formula
+anyway would put the compound's name on a spectrum of a different ion. Their
+base peak is 109 counts, which the record's `Base_peak_intensity` says out
+loud.
+
+Then one acquisition was put out of reach — the same folder with that one
+`.wiff` left out — and the library rewritten again: **8 rewritten, 1 kept**,
+listed as *CA-d4 (CA-d4_TOFMSMS_EAD_12CE_44DP_13KE_TESTEARTIGO.wiff is not
+on disk)*, and that record came back with its peaks and every one of its
+fields identical to what they were.
+
 ### Measured on three infused standards
 
 The acquisitions this was written for: cholic acid-d4, deoxycholic acid-d4
@@ -369,3 +481,10 @@ a library match does not make.
 A library of your own accumulates one record per verification of the same
 standard. **History…**, beside the record count, reads those records back as
 a control chart of the standard over time — see [[standard-history]].
+
+## From a script
+
+`api.Library.open(msp)`, `.search(spectrum)` and `.add(spectrum, name)` do
+all of this without the window, taking the precursor and the polarity off
+the spectrum and centroiding it before a record is written — see
+[[python-api]].

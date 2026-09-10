@@ -46,8 +46,14 @@ trace, and a panel this small is easy to lose one's place in.
 Drag across a peak with **Manual** on, or with Shift held. The range is
 integrated as marked — a straight baseline between the two ends, the area
 above it, no peak finding — and the row is marked manual with `✎`. A
-manual row survives reprocessing: adjusting a parameter or adopting another
-algorithm leaves it as the operator set it. Right-click the panel and
+manual row survives reprocessing while the settings it was drawn under
+stand: adding an injection, changing another component, or reprocessing the
+batch leaves it exactly as the operator set it. What does replace it is a
+change to **its own** component's extraction or integration settings — a
+different mass window, a different smoothing, another algorithm — because a
+boundary drawn on one trace is not a decision about a different trace. It is
+integrated again automatically, the status line and the [[audit-trail]] say
+how many rows that was, and the drag can simply be repeated. Right-click the panel and
 choose **Back to automatic integration** to let the detector have it again. Both
 are written into the [[audit-trail]] with the boundaries and the area before
 and after, so a peak somebody decided can be told from one the detector

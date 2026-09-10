@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+import numpy as np
 from PyQt6 import QtCore, QtWidgets
 
 from .. import lipidmaps
@@ -21,6 +22,10 @@ ROLE_EXPLANATION = QtCore.Qt.ItemDataRole.UserRole + 4
 
 #: the adduct combo's first entry: work it out from the written precursor
 AUTO_ADDUCT = "from the precursor"
+
+#: the mass search's first entry: every adduct the channel's polarity allows,
+#: each candidate saying which one found it
+EVERY_ADDUCT = "every adduct"
 
 
 class LipidPanel(QtWidgets.QWidget):
@@ -51,6 +56,19 @@ class LipidPanel(QtWidgets.QWidget):
         #: it off the written precursor, and a report that printed the box
         #: instead would name an ion nothing was scored against
         self.explanation_adduct = ""
+        #: the survey scan of the same acquisition over the same range, as
+        #: `(mz, intensity)`, or None where the sample has no full-scan
+        #: channel. What turns the adduct from arithmetic on a typed number
+        #: into a measurement — see `chemistry.adduct_evidence`.
+        self._survey = None
+        #: `chemistry.AdductEvidence` per candidate from the last automatic
+        #: adduct, for a report to print
+        self.adduct_evidence: list = []
+        #: what was done to the mass axis of the peaks on screen, in the
+        #: Explorer's words, or empty for the instrument's own numbers. Part
+        #: of the basis, since a 5 ppm tolerance against an axis moved by
+        #: five is not the same test as one against the axis as measured.
+        self._recalibration = ""
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
@@ -69,8 +87,16 @@ class LipidPanel(QtWidgets.QWidget):
         form.addRow("Measured m/z:", self.mz_edit)
 
         self.adduct_combo = QtWidgets.QComboBox()
+        self.adduct_combo.addItem(EVERY_ADDUCT)
         self.adduct_combo.addItems([a.name for a in ADDUCTS])
-        self.adduct_combo.setCurrentText("[M-H]-")
+        self.adduct_combo.setCurrentText(EVERY_ADDUCT)
+        self.adduct_combo.setToolTip(
+            "Which ion the measured mass is — which is the question, so the "
+            "box starts on “every adduct”: the search is then run at each of "
+            "them the channel's polarity allows and every row says which "
+            "found it and what that adduct does when the ion breaks up. A "
+            "triacylglycerol is not a lipid at all as [M+H]+, and a search "
+            "fixed to one adduct can only come back empty")
         form.addRow("Adduct:", self.adduct_combo)
 
         tolerance = QtWidgets.QHBoxLayout()
@@ -217,8 +243,16 @@ class LipidPanel(QtWidgets.QWidget):
         self.explain_precursor.setPlaceholderText("703.5749")
         explain_form.addRow("Precursor:", self.explain_precursor)
         self.explain_adduct = QtWidgets.QComboBox()
-        self.explain_adduct.addItems([a.name for a in ADDUCTS])
-        self.explain_adduct.setCurrentText("[M+H]+")
+        self.explain_adduct.addItem(AUTO_ADDUCT)
+        self.explain_adduct.addItems([a.name for a in ADDUCTS if a.name != NEUTRAL])
+        self.explain_adduct.setCurrentText(AUTO_ADDUCT)
+        self.explain_adduct.setToolTip(
+            "How the precursor was ionised. Left on automatic every adduct "
+            "the channel's polarity allows is searched, and each candidate "
+            "says which one found it and how far the written precursor sits "
+            "from it — a triacylglycerol acquired at 876.80 is the ammonium "
+            "adduct, and asking the database for [M+H]+ there answers nothing "
+            "at all")
         explain_form.addRow("Adduct:", self.explain_adduct)
         explain_layout.addLayout(explain_form)
 
@@ -311,15 +345,24 @@ class LipidPanel(QtWidgets.QWidget):
         self._label_inputs = None
         self._inference = None
         self._polarity = ""
+        #: the precursor the ranked database candidates were found at, or
+        #: None when the table is holding a structure of one's own — which
+        #: writes its own basis line and must not have it written over
+        self._record_context = None
+        self._spectrum = None
+        #: the last `purity.Purity`, for a report or a library record to read
+        self.purity = None
 
         self.explain_tree = QtWidgets.QTreeWidget()
         self.explain_tree.setHeaderLabels(["Candidate", "Explains", "Peaks",
-                                           "Formula"])
+                                           "Formula", "Adduct", "ppm"])
         self.explain_tree.setColumnWidth(0, 190)
         self.explain_tree.setAlternatingRowColors(True)
         self.explain_tree.setToolTip(
             "Select a candidate to mark the peaks it accounts for on the "
-            "spectrum")
+            "spectrum. Adduct is the ion the precursor was taken to be — the "
+            "row says what that adduct does when it breaks up, and ppm is how "
+            "far the written precursor sits from that candidate through it")
         explain_layout.addWidget(self.explain_tree, 2)
 
         self.match_tree = QtWidgets.QTreeWidget()
@@ -362,6 +405,20 @@ class LipidPanel(QtWidgets.QWidget):
         self.labels_box.setVisible(False)
         explain_layout.addWidget(self.labels_box)
 
+        self.purity_text = QtWidgets.QLabel("")
+        self.purity_text.setWordWrap(True)
+        self.purity_text.setTextInteractionFlags(
+            QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.purity_text.setToolTip(
+            "The isotopic purity of the labelled standard, solved from the "
+            "envelope at the identified ion — the number on the certificate "
+            "that nobody measures. It needs the natural-abundance satellites "
+            "of the fully-labelled ion to be in the spectrum, so a "
+            "product-ion scan whose precursor the quadrupole isolated cannot "
+            "be asked and says so")
+        self.purity_text.setVisible(False)
+        explain_layout.addWidget(self.purity_text)
+
         self.explain_note = QtWidgets.QLabel(
             "A share is evidence, not proof. Isomers fragment alike, and a long "
             "enough list of possible masses covers a spectrum by accident — so "
@@ -373,12 +430,15 @@ class LipidPanel(QtWidgets.QWidget):
 
         self.tree = QtWidgets.QTreeWidget()
         self.tree.setHeaderLabels(["Species / structure", "Formula", "mDa",
-                                   "ppm", "n"])
+                                   "ppm", "n", "Adduct"])
         self.tree.setColumnWidth(0, 210)
         self.tree.setColumnWidth(1, 120)
         self.tree.setAlternatingRowColors(True)
         self.tree.setToolTip(
-            "Double-click a structure to name the component after it")
+            "Double-click a structure to name the component after it. Adduct "
+            "is the ion this species would have to be to weigh what was "
+            "measured; hover it for what that adduct does when the ion breaks "
+            "up, which is what decides the masses a product spectrum can hold")
         mass_layout.addWidget(self.tree, 1)
 
         self.status = QtWidgets.QLabel("")
@@ -469,37 +529,64 @@ class LipidPanel(QtWidgets.QWidget):
             self._report("Type a measured m/z first.")
             return
 
-        matches = database.search_mz(mz, self.adduct_combo.currentText(),
-                                     self.tol_spin.value(),
-                                     self.unit_combo.currentText())
+        chosen = self.adduct_combo.currentText()
+        matches = []
+        for name in self._search_adducts(chosen):
+            matches.extend(database.search_mz(mz, name, self.tol_spin.value(),
+                                              self.unit_combo.currentText()))
         groups = lipidmaps.group_by_species(matches)
+        groups.sort(key=lambda g: (abs(g.error_mda), -len(g.records)))
         self._fill(groups)
         unit = self.unit_combo.currentText()
         if groups:
+            forms = list(dict.fromkeys(g.adduct for g in groups if g.adduct))
+            over = (f" as {', '.join(forms)}" if len(forms) > 1 else "")
             self._report(f"{len(groups)} species, {len(matches)} structure(s) "
-                         f"within ±{self.tol_spin.value():g} {unit}. "
-                         "A mass cannot separate isomers — confirm before using.")
+                         f"within ±{self.tol_spin.value():g} {unit}{over}. "
+                         "A mass cannot separate isomers — confirm before "
+                         "using; a product spectrum ranks them, in Explain.")
         else:
             self._report(
                 f"Nothing within ±{self.tol_spin.value():g} {unit}. The curated "
                 "database has no structure at that mass; a theoretical species "
                 "may still exist in LIPID MAPS' computed set.")
 
+    def _search_adducts(self, chosen: str) -> list[str]:
+        """
+        The adducts a mass search is run at.
+
+        One when the analyst named it. Otherwise every adduct the channel's
+        polarity allows, because which ion a measured mass is *is* the
+        question — a triacylglycerol searched as [M+H]+ answers nothing, and
+        nothing is not the same as "no such lipid".
+        """
+        from ..chemistry import adducts_of_polarity
+
+        if chosen != EVERY_ADDUCT:
+            return [chosen]
+        return [a.name for a in adducts_of_polarity(self._polarity or None)]
+
     def _fill(self, groups) -> None:
+        from ..chemistry import adduct_from_name, behaviour_text
+
         self.tree.clear()
         for group in groups:
             parent = QtWidgets.QTreeWidgetItem(self.tree, [
                 group.species, group.formula, f"{group.error_mda:+.2f}",
                 f"{group.error_ppm:+.1f}", str(len(group.records)),
+                group.adduct,
             ])
             font = parent.font(0)
             font.setBold(True)
             parent.setFont(0, font)
             parent.setToolTip(0, group.main_class)
+            form = adduct_from_name(group.adduct)
+            if form is not None:
+                parent.setToolTip(5, behaviour_text(form))
             for record in group.records:
                 child = QtWidgets.QTreeWidgetItem(
                     parent, [record.name or record.systematic_name,
-                             record.lm_id, "", "", ""])
+                             record.lm_id, "", "", "", ""])
                 child.setToolTip(1, record.lm_id)
                 child.setData(0, ROLE_RECORD, record.lm_id)
                 child.setToolTip(0, record.systematic_name or record.name)
@@ -717,7 +804,8 @@ class LipidPanel(QtWidgets.QWidget):
 
     # -- explaining a measured spectrum --------------------------------------- #
     def set_spectrum(self, mz, intensity, precursor: float | None = None,
-                     polarity: str = "") -> None:
+                     polarity: str = "", survey=None,
+                     recalibration: str = "") -> None:
         """
         Hand the panel the spectrum on screen, ready to be explained.
 
@@ -727,15 +815,69 @@ class LipidPanel(QtWidgets.QWidget):
         which then decides how tight an adduct has to fit. The polarity is
         a fact about the acquisition, not a choice, and is what stops a
         negative adduct being offered for a positive channel.
+
+        `survey` is the same acquisition's full-scan channel averaged over
+        the same range, as `(mz, intensity)`, or None where the method has no
+        survey. With it the adduct stops being a deduction from the written
+        precursor and becomes a measurement: the exact mass of the ion and
+        its isotope pattern, both of which the product-ion scan cannot show,
+        since Q1 threw away everything but the one mass.
+        `recalibration` is what was done to the mass axis of these peaks, in
+        the caller's own words, or empty for the instrument's own numbers.
         """
         self._peaks = significant_peaks(mz, intensity)
+        # the profile arrays as well as the peaks above 1%: an isotopic
+        # envelope's rungs are tenths of a per cent of the base peak and
+        # `significant_peaks` has already thrown every one of them away
+        self._spectrum = (np.asarray(mz, dtype=float),
+                          np.asarray(intensity, dtype=float))
         self._polarity = str(polarity or "")
+        self._survey = survey
+        self.adduct_evidence = []
+        self._recalibration = str(recalibration or "")
+        # a purity belongs to the spectrum it was solved from: leaving the
+        # last one standing would write another sample's material into this
+        # one's library record
+        self.purity = None
+        self.purity_text.setVisible(False)
+        self.purity_text.setText("")
         if precursor:
             self.explain_precursor.setText(f"{precursor:g}")
         self.modes.setCurrentIndex(3)
         self.explain_header.setText(
             f"{len(self._peaks)} peak(s) above 1% of the base peak are on "
             "screen. Give the precursor and score the candidates against them.")
+
+    @property
+    def adduct_provenance(self) -> str:
+        """
+        Where the adduct came from, in one clause, for a record's comment.
+
+        A record of one's own states an adduct, and a reader a year later
+        cannot tell whether it was measured or assumed. This is the
+        difference, written into the comment: the survey confirmed it, the
+        survey did not, or the acquisition had no survey and the adduct is
+        the written precursor read as one. Empty before a spectrum has been
+        handed over, since then nothing has been claimed at all.
+        """
+        if getattr(self, "_peaks", None) is None:
+            return ""
+        # present at the right mass is not the same as confirmed: an ion
+        # whose satellites are not its own is something else on the mass
+        best = next((e for e in self.adduct_evidence
+                     if e.present and (e.pattern is None or e.agrees)), None)
+        if best is not None:
+            if self.explanation_adduct in ("", best.name):
+                return (f"adduct {best.name} confirmed by the survey "
+                        f"({best.confirmation})")
+            return (f"adduct {self.explanation_adduct} chosen, though the "
+                    f"survey supports {best.name}")
+        if self.adduct_evidence:
+            return "adduct not confirmed by the survey"
+        if self._survey is None:
+            return ("no survey scan: the adduct is read from the written "
+                    "precursor alone")
+        return ""
 
     def explain_spectrum(self) -> None:
         database = lipidmaps.database()
@@ -754,19 +896,22 @@ class LipidPanel(QtWidgets.QWidget):
             self._report("Type the precursor m/z of this spectrum.")
             return
 
-        adduct = self.explain_adduct.currentText()
-        charge = 1 if "+" in adduct else -1
+        chosen = self.explain_adduct.currentText()
+        auto = chosen == AUTO_ADDUCT
         # the quadrupole passed a window, not a mass, and the method's own
         # figure is rounded besides — 538.6 for a ceramide whose precursor is
         # 538.52. Anything the isolation let through is a candidate.
-        ranked = rank_candidates(database, precursor, peaks, adduct=adduct,
+        ranked = rank_candidates(database, precursor, peaks,
+                                 adduct=None if auto else chosen,
                                  tolerance=PRECURSOR_MATCH_DA, unit="Da",
-                                 charge=charge)
-        self.explanation_basis = (
-            f"the curated structure, one bond cut and up to two neutral "
-            f"losses, as {adduct}")
-        self.explanation_adduct = adduct
-        self._show_ranked(ranked, precursor, adduct)
+                                 polarity=self._polarity or None)
+        # the basis follows the selection, because on this path each candidate
+        # may have been found at a different adduct and a report that printed
+        # the box would name an ion nothing was scored against
+        self._record_context = precursor
+        self.explanation_basis = ""
+        self.explanation_adduct = ""
+        self._show_ranked(ranked, precursor, EVERY_ADDUCT if auto else chosen)
 
     def _load_own_structure(self) -> None:
         from ..explain import read_molfile
@@ -865,10 +1010,17 @@ class LipidPanel(QtWidgets.QWidget):
             # the analyst already chose for this spectrum, so it stands in —
             # said out loud, since it was not derived from anything
             fallback = self.explain_adduct.currentText()
+            if fallback == AUTO_ADDUCT:
+                return None, ("no precursor is written and the Adduct box "
+                              "above is on automatic, so there is nothing to "
+                              "read the adduct off — type the precursor, or "
+                              "choose an adduct")
             return adduct_from_name(fallback), (
                 f"no precursor is written, so {fallback} was taken from the "
                 f"Adduct box above")
-        choice = identify_adduct(labelled, precursor, self._polarity or None)
+        choice = identify_adduct(labelled, precursor, self._polarity or None,
+                                 survey=self._survey)
+        self.adduct_evidence = list(choice.evidence)
         return choice.adduct, choice.reason
 
     def explain_own(self) -> None:
@@ -911,10 +1063,12 @@ class LipidPanel(QtWidgets.QWidget):
                 return
             basis = (f"the precursor {formula} as {adduct.name} and its neutral "
                      f"losses — a formula has no bonds to cut")
-        self.explanation_basis = f"{basis}; {reason}"
+        self._record_context = None
+        self.explanation_basis = self._with_axis(f"{basis}; {reason}")
         self.explanation_adduct = adduct.name
         self._show_ranked([explanation], None, adduct.name)
         self._place_labels(explanation, peaks, deuterium)
+        self._show_purity(molecule, formula, adduct, deuterium)
         labelled = f", {deuterium} unplaced label(s)" if deuterium else ""
         lead = f"{note}. " if note else ""
         self._report(f"{lead}{explanation.name}: {explanation.share * 100:.1f}% of "
@@ -922,6 +1076,61 @@ class LipidPanel(QtWidgets.QWidget):
                      f"{explanation.matched} of {explanation.predicted} "
                      f"predicted ion(s) matched, "
                      f"{len(explanation.unexplained(peaks))} peak(s) not.")
+
+    def _with_axis(self, basis: str) -> str:
+        """
+        The basis line with what was done to the mass axis on the end.
+
+        Only where something was done. The sentence carries the raw and the
+        corrected error of the rung the offset mostly rests on, because
+        either alone is misleading: the corrected figure is a residual the
+        fit was made to produce, and the raw one does not say the axis
+        moved.
+        """
+        return (f"{basis} \u00b7 {self._recalibration}"
+                if self._recalibration else basis)
+
+    def _show_purity(self, molecule, formula: str, adduct,
+                     deuterium: int) -> None:
+        """
+        The isotopic purity line, under the label inference, when there are
+        labels and an ion to read them at.
+
+        Off the profile spectrum rather than off `self._peaks`: the rungs of
+        an isotopic envelope are tenths of a per cent of the base peak and
+        the peak list starts at one per cent. Where the envelope cannot be
+        solved the reason goes in the same place — a line that appears only
+        on success is a line nobody can tell from a feature that did not run.
+        """
+        from ..explain import placed_labels
+        from ..purity import purity_from_spectrum
+
+        self.purity = None
+        spectrum = getattr(self, "_spectrum", None)
+        labels = deuterium or (len(placed_labels(molecule))
+                               if molecule is not None else 0)
+        if spectrum is None or labels <= 0 or adduct is None:
+            self.purity_text.setVisible(False)
+            self.purity_text.setText("")
+            return
+        # a drawing that places its labels has them in its own formula
+        # already, so `deuterium` is the count to fold in and nothing else
+        source = (molecule.formula if molecule is not None and not deuterium
+                  else formula)
+        attempt = purity_from_spectrum(spectrum[0], spectrum[1], source,
+                                       adduct, deuterium)
+        result = attempt.best
+        if result is None:
+            self.purity_text.setVisible(False)
+            self.purity_text.setText("")
+            return
+        self.purity = result
+        self.purity_text.setText(result.line())
+        self.purity_text.setProperty("role",
+                                     "hint" if result.usable else "warning")
+        self.purity_text.style().unpolish(self.purity_text)
+        self.purity_text.style().polish(self.purity_text)
+        self.purity_text.setVisible(True)
 
     def _explain_nothing(self, reason: str) -> None:
         """
@@ -933,10 +1142,13 @@ class LipidPanel(QtWidgets.QWidget):
         table of confident wrong routes is harder to disbelieve than an
         empty one.
         """
+        self._record_context = None
         self.explain_tree.clear()
         self.match_tree.clear()
         self.sigMatches.emit([])
         self.labels_box.setVisible(False)
+        self.purity_text.setVisible(False)
+        self.purity = None
         self.explanation_basis = ""
         self.explanation_adduct = ""
         self._report(f"Nothing explained: {reason}.")
@@ -993,11 +1205,20 @@ class LipidPanel(QtWidgets.QWidget):
                 f"{explanation.share * 100:.1f}%",
                 str(explanation.matched),
                 explanation.record.formula,
+                explanation.adduct,
+                "" if explanation.precursor_ppm is None
+                else f"{explanation.precursor_ppm:+.1f}",
             ])
             row.setData(0, ROLE_EXPLANATION, explanation)
+            # what the adduct does when the ion breaks up decides which masses
+            # the spectrum can hold, so it belongs on the row rather than in
+            # the reader's memory
+            row.setToolTip(4, explanation.behaviour)
             row.setTextAlignment(1, QtCore.Qt.AlignmentFlag.AlignRight
                                  | QtCore.Qt.AlignmentFlag.AlignVCenter)
             row.setTextAlignment(2, QtCore.Qt.AlignmentFlag.AlignRight
+                                 | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            row.setTextAlignment(5, QtCore.Qt.AlignmentFlag.AlignRight
                                  | QtCore.Qt.AlignmentFlag.AlignVCenter)
         if ranked:
             self.explain_tree.setCurrentItem(self.explain_tree.topLevelItem(0))
@@ -1007,18 +1228,45 @@ class LipidPanel(QtWidgets.QWidget):
             close = [e for e in ranked[1:] if top.share - e.share < 0.05]
             tie = (f" {len(close)} other(s) explain it about as well."
                    if close else "")
+            forms = list(dict.fromkeys(e.adduct for e in ranked if e.adduct))
+            over = (f" Found as {', '.join(forms)}." if len(forms) > 1
+                    else f" Found as {forms[0]}." if forms else "")
             self._report(f"{len(ranked)} candidate(s) at that precursor."
-                         + tie)
+                         + over + tie)
         else:
             self.sigMatches.emit([])
+            where = ("as any adduct of this channel's polarity"
+                     if adduct == EVERY_ADDUCT else f"as {adduct}")
             self._report(
                 f"No structure in the curated database sits within "
-                f"±{PRECURSOR_MATCH_DA:g} Da of {precursor:.4f} as {adduct}. "
+                f"±{PRECURSOR_MATCH_DA:g} Da of {precursor:.4f} {where}. "
                 "A theoretical species may still exist in the computed set.")
+
+    def _record_basis(self, explanation) -> None:
+        """
+        What the selected database candidate was predicted from, in words.
+
+        The same sentence the own-structure path prints, from the same code in
+        `chemistry`: the row was found at one adduct and the reader needs to
+        see how far the written precursor sits from *that* one, with the form
+        its fragments carry beside it.
+        """
+        from ..chemistry import adduct_reason
+
+        precursor = getattr(self, "_record_context", None)
+        if precursor is None or explanation is None:
+            return
+        reason = adduct_reason(explanation.record.formula, precursor,
+                               explanation.adduct, self._polarity or None)
+        basis = (f"the curated structure, one bond cut and up to two neutral "
+                 f"losses, as {explanation.adduct}")
+        self.explanation_basis = f"{basis}; {reason}" if reason else basis
+        self.explanation_adduct = explanation.adduct
 
     def _show_explanation(self, item, _previous=None) -> None:
         explanation = item.data(0, ROLE_EXPLANATION) if item is not None else None
         self.match_tree.clear()
+        self._record_basis(explanation)
         if explanation is None:
             self.sigMatches.emit([])
             return

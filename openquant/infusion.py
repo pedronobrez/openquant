@@ -422,6 +422,304 @@ def run_range(channel) -> tuple[float, float] | None:
     return float(times[0]), float(times[-1])
 
 
+# --------------------------------------------------------------------------- #
+# Scans a spray lost
+# --------------------------------------------------------------------------- #
+#: how many scans the robust baseline is taken over. A running median survives
+#: a disturbance up to half its width, and the longest one measured is eight
+#: scans — `DCA-d4_TOFMSMS_Mix1` at 1.07 – 1.10 min — so the window has to be
+#: at least seventeen or the burst decides its own baseline. Measured, the
+#: excluded count on that file is 6 at eleven scans, 8 at fifteen and 9 from
+#: twenty-one upwards, where it stops moving; a spray drifts over minutes and
+#: twenty-one scans is 5.3 s at the quarter-second cycle these were acquired
+#: at, so the window still follows the drift (the kept scans' median departure
+#: is 0.014 – 0.065 either way).
+STABILITY_WINDOW = 21
+
+#: how far a scan's total ion current may depart from that baseline before the
+#: spray is called unstable, as a fraction. **Measured on the nine bile-acid
+#: infusions**: the widest departure of an undisturbed spray is 0.316
+#: (`TDCA-d4_TOFMSMS_Mix1`, whose spray wanders), and the smallest departure
+#: inside a real burst is 0.870 — a gap of 2.75×, and the count of excluded
+#: scans is identical anywhere from 0.35 to 0.85. This is the middle of it.
+SPRAY_JUMP = 0.5
+
+#: how close to the baseline the current has to come back before the spray
+#: counts as recovered. A burst is not one scan: `DCA-d4_TOFMSMS_Mix1` goes
+#: 0.01, 0.03, 0.64, 2.57, 0.63, 0.13, 0.74, 4.68 of its baseline over eight
+#: scans, and the three scans at 0.64, 0.63 and 0.74 are past this and under
+#: `SPRAY_JUMP` — half-recovered, and not what the compound looks like.
+#: Measured, the count is the same at 0.15, 0.20 and 0.25 and starts losing
+#: those scans at 0.30. What it does *not* buy is a tail: on both real bursts
+#: and all three transients the scan after the last excluded one is already
+#: within 0.13 of the baseline, so a spray here recovers inside one scan.
+SPRAY_RECOVERED = SPRAY_JUMP / 2
+
+
+@dataclass(frozen=True, eq=False)
+class ScanMask:
+    """
+    Which scans of an infusion are the spray behaving, and which are not.
+
+    `keep` is one boolean per scan of the channel; everything else on this is
+    that array said in words. `ranges` is what a header line and a library
+    record's comment carry — "0.008 min; 1.069–1.099 min, 8 scans" — a single
+    scan named by its time and a stretch by its ends.
+    """
+
+    #: one entry per scan: True where the scan goes into the average
+    keep: np.ndarray
+    #: the channel's own time axis, so the ranges can be read back
+    rt: np.ndarray
+    #: the excluded scans' times, as text; empty when nothing was excluded
+    ranges: str = ""
+    #: why nothing was judged, when nothing was — a run too short to have a
+    #: baseline, or a channel that could not be read. Empty when it was.
+    note: str = ""
+    #: the kept scans' median |total / baseline − 1|: the ordinary scatter of
+    #: this spray, which is what `SPRAY_JUMP` had to be set clear of
+    scatter: float = 0.0
+
+    @property
+    def n_scans(self) -> int:
+        return int(self.keep.size)
+
+    @property
+    def kept(self) -> int:
+        return int(np.count_nonzero(self.keep))
+
+    @property
+    def excluded(self) -> int:
+        return int(self.keep.size - np.count_nonzero(self.keep))
+
+    def __bool__(self) -> bool:
+        """True when the mask leaves anything out."""
+        return self.excluded > 0
+
+    def segments(self) -> list[tuple[int, int]]:
+        """The kept scans as runs of consecutive indices, first and last."""
+        return _runs(np.flatnonzero(self.keep))
+
+    def summary(self) -> str:
+        """
+        One line: how many scans there were, how many were averaged, and
+        where the rest went.
+        """
+        if self.note:
+            return f"{self.n_scans:,} scans, all averaged ({self.note})"
+        if not self.excluded:
+            return f"{self.n_scans:,} scans, all averaged"
+        return (f"{self.n_scans:,} scans, {self.kept:,} averaged; "
+                f"{self.excluded:,} left out: {self.ranges}")
+
+
+def _runs(indices: np.ndarray) -> list[tuple[int, int]]:
+    """Consecutive indices grouped into (first, last) pairs."""
+    out: list[tuple[int, int]] = []
+    for i in (int(v) for v in indices):
+        if out and i == out[-1][1] + 1:
+            out[-1] = (out[-1][0], i)
+        else:
+            out.append((i, i))
+    return out
+
+
+def running_median(y, window: int = STABILITY_WINDOW) -> np.ndarray:
+    """
+    A median through the trace, `window` scans wide, clamped at the ends.
+
+    The baseline a scan is judged against has to be local: a spray falls by a
+    third over a run and the run's own median would call the whole second half
+    unstable. It also has to be robust, because the thing being looked for is
+    in the window while the window is being measured.
+    """
+    y = np.asarray(y, dtype=float)
+    window = max(3, int(window) | 1)          # odd, so there is a centre
+    if y.size == 0:
+        return y
+    half = window // 2
+    padded = np.pad(y, half, mode="edge")
+    return np.array([np.median(padded[i:i + window]) for i in range(y.size)])
+
+
+def stable_scans(channel, jump: float = SPRAY_JUMP,
+                 window: int = STABILITY_WINDOW,
+                 recovered: float = SPRAY_RECOVERED) -> ScanMask:
+    """
+    Which scans of an infusion the spray was steady for.
+
+    An electrospray is not steady for the whole of a run. It arcs, a droplet
+    reaches the cone, the needle wets: the total ion current leaves the level
+    it was holding for a few scans and comes back. Averaged in with everything
+    else, those scans are a few tenths of a per cent of a two-minute run and
+    move nothing — but they are not what the compound looks like, and one of
+    them is a fifth of the whole run's ion current.
+
+    A scan is unstable when its total departs from the running median of
+    `window` scans by more than `jump`; the scans after it stay unstable until
+    the total is back inside `recovered`. Both figures were measured on nine
+    real infusions and both sit in a plateau — see the constants.
+
+    **Why the total and not the base peak.** The reader offers `bpc()` for the
+    same price as `tic()` and it was measured beside it. It is four to eight
+    times the noisier: on the six infusions with no burst at all the base peak
+    departs from its own running median by up to 0.585 where the total never
+    passes 0.164, so any threshold that catches a burst on the base peak also
+    catches ordinary scans on a spray that never faltered. And it finds
+    nothing new — every scan it flags on the two files that do burst, the
+    total flags too. So the mask reads the total, and says so here rather than
+    reading both and hoping.
+
+    **The first second.** `SETTLING_SECONDS` is not applied. It exists because
+    a *percentile* sets aside a share of the scans and on a short run that
+    share is one scan; this measures each scan against its neighbours instead,
+    and the transient at scan 1 comes out at 4.5, 5.1 and 5.0 times its
+    baseline on the three files that carry one — thirteen times the widest
+    ordinary departure measured. Dropping four scans of every run to catch
+    what is already caught would be throwing away data no measurement objects
+    to, which on the shortest infusion to hand is 2.7% of it.
+
+    A run with no baseline to speak of — fewer than `MIN_SCANS` — keeps every
+    scan and says why in `note`. So does a channel that cannot be read.
+    """
+    try:
+        x, y = channel.tic()
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
+    except Exception as exc:
+        first = str(exc).strip().splitlines()
+        return ScanMask(np.zeros(0, dtype=bool), np.zeros(0),
+                        note=f"the run could not be read: "
+                             f"{first[0] if first else type(exc).__name__}")
+    if y.size < MIN_SCANS:
+        return ScanMask(np.ones(y.size, dtype=bool), x,
+                        note=f"{y.size} scan(s): too short to measure a "
+                             f"baseline against")
+
+    baseline = running_median(y, window)
+    measurable = baseline > 0
+    departure = np.zeros(y.size, dtype=float)
+    departure[measurable] = np.abs(y[measurable] / baseline[measurable] - 1.0)
+    if not measurable.any():
+        return ScanMask(np.ones(y.size, dtype=bool), x, note="the run is empty")
+
+    unstable = measurable & (departure > jump)
+    for start in np.flatnonzero(unstable).tolist():
+        after = start + 1
+        while after < y.size and measurable[after] \
+                and departure[after] > recovered:
+            unstable[after] = True
+            after += 1
+    keep = ~unstable
+    if int(np.count_nonzero(keep)) < MIN_SCANS:
+        # a run that is mostly burst is not a spray that settled, and an
+        # average of the handful left is a worse answer than the whole of it
+        return ScanMask(
+            np.ones(y.size, dtype=bool), x,
+            note=f"{int(unstable.sum())} of {y.size} scans are unstable — "
+                 f"too much of the run to leave out")
+    return ScanMask(keep, x, ranges=_range_text(x, unstable),
+                    scatter=float(np.median(departure[keep])))
+
+
+def mask_for(sample, channel) -> ScanMask:
+    """
+    `stable_scans`, but only where the sample reads as a direct infusion.
+
+    A chromatographic run answers the same question with the same arithmetic
+    and the answer is nonsense: a peak departs from its neighbours by far more
+    than `SPRAY_JUMP` — that is what a peak *is* — so on a twenty-minute
+    gradient with three peaks in it the rule leaves out twenty-nine scans and
+    they are the only twenty-nine worth keeping. *Average whole run* is
+    offered on any channel, so the gate is here, where the sample is known,
+    and it is the same verdict the tree and the pane already show.
+    """
+    try:
+        infusion = bool(verdict_for(sample))
+    except Exception:
+        infusion = False
+    if infusion:
+        return stable_scans(channel)
+    try:
+        times = np.asarray(channel.rt, dtype=float)
+    except Exception:
+        times = np.zeros(0)
+    return ScanMask(np.ones(times.size, dtype=bool), times,
+                    note="not read as a direct infusion: every scan averaged")
+
+
+def _range_text(x: np.ndarray, unstable: np.ndarray) -> str:
+    """The excluded scans as times: one is named, a stretch is bounded."""
+    parts = []
+    for first, last in _runs(np.flatnonzero(unstable)):
+        if first == last:
+            parts.append(f"{x[first]:.3f} min")
+        else:
+            parts.append(f"{x[first]:.3f}–{x[last]:.3f} min, "
+                         f"{last - first + 1} scans")
+    return "; ".join(parts)
+
+
+def average_stable(channel, mask: ScanMask | None = None,
+                   add_zeros: bool = True) -> tuple[np.ndarray, np.ndarray]:
+    """
+    The kept scans of an infusion, averaged into one spectrum.
+
+    On the same scale as `channel.spectrum_rt_range`, which is the **mean** of
+    the scans in its range and not their sum — measured on a real `.wiff`, a
+    two-scan range comes back as the average of the two scans' totals to the
+    unit.
+
+    The kept scans are consecutive apart from the few that were left out, so
+    this asks the reader for the average of each surviving stretch and
+    combines those, weighted by how many scans each holds. That keeps the
+    vendor's own arithmetic wherever it can reach — a mask that excludes
+    nothing is one stretch and therefore one call, byte for byte the reader's
+    own answer — and leaves ours doing nothing but the weighted mean of two or
+    three arrays.
+
+    Zeros are restored the way the reader restores them for a range: once, on
+    the average, not scan by scan. SCIEX's `AddZeros` is applied to the
+    averaged `MassSpectrum` that `GetMassSpectrum(lo, hi)` returns, so each
+    stretch comes back already carrying its zeros and the combined axis is the
+    union of stretches that each already have them — which is also what keeps
+    the interpolation honest, since a profile with its zeros in has no gap for
+    a straight line to be drawn across.
+    """
+    if mask is None:
+        mask = stable_scans(channel)
+    window = run_range(channel)
+    if window is None:
+        return np.zeros(0), np.zeros(0)
+    segments = mask.segments() if mask.keep.size else []
+    if not segments:
+        return channel.spectrum_rt_range(*window, add_zeros=add_zeros)
+    times = np.asarray(mask.rt, dtype=float)
+    if len(segments) == 1 and segments[0] == (0, times.size - 1):
+        # nothing was left out: the reader's own average of the whole run,
+        # untouched, which is what it was before any of this existed
+        return channel.spectrum_rt_range(*window, add_zeros=add_zeros)
+
+    parts, weights = [], []
+    for first, last in segments:
+        mz, intensity = channel.spectrum_rt_range(
+            float(times[first]), float(times[last]), add_zeros=add_zeros)
+        mz = np.asarray(mz, dtype=float)
+        if mz.size == 0:
+            continue
+        parts.append((mz, np.asarray(intensity, dtype=float)))
+        weights.append(float(last - first + 1))
+    if not parts:
+        return np.zeros(0), np.zeros(0)
+    if len(parts) == 1:
+        return parts[0]
+    axis = np.unique(np.concatenate([mz for mz, _ in parts]))
+    total = np.zeros(axis.size, dtype=float)
+    for (mz, intensity), weight in zip(parts, weights):
+        total += weight * np.interp(axis, mz, intensity, left=0.0, right=0.0)
+    return axis, total / float(sum(weights))
+
+
 def is_infusion(sample) -> InfusionVerdict:
     """
     Whether this sample is a direct infusion, with the figures behind it.
@@ -639,7 +937,8 @@ class NoiseFloor:
 def noise_floor(channel, rt0: float | None = None, rt1: float | None = None,
                 min_relative: float = NOISE_PEAK_RELATIVE,
                 width: float = QUIET_WINDOW_DA,
-                spectrum: tuple | None = None) -> NoiseFloor:
+                spectrum: tuple | None = None,
+                scans: int | None = None) -> NoiseFloor:
     """
     The noise floor of an infusion's averaged spectrum, measured two ways.
 
@@ -758,6 +1057,16 @@ def noise_floor(channel, rt0: float | None = None, rt1: float | None = None,
     a million profile points again costs seconds. The chromatogram of the
     quiet window is still read from the channel: it is the run scan by scan,
     which no averaged spectrum carries.
+
+    `scans` is how many scans that handed-in average was taken over, where
+    it is not simply every scan of the range. The report averages the stable
+    stretch of the spray and leaves the rest out, so counting the range would
+    divide (b) by the root of a number of scans the spectrum does not
+    contain. It changes only what (b) says and what `describe` prints, since
+    (a) has been the larger on every acquisition measured — but a sentence
+    reading "473 scans averaged" under a spectrum averaged from 400 of them
+    would be false, and the estimate would be optimistic by the ratio of the
+    roots.
     """
     fixed = _fixed_floor()
     window = None
@@ -781,7 +1090,8 @@ def noise_floor(channel, rt0: float | None = None, rt1: float | None = None,
     mz = np.asarray(mz, dtype=float)
     intensity = np.asarray(intensity, dtype=float)
     base = float(intensity.max()) if intensity.size else 0.0
-    scans = _scans_between(channel, float(rt0), float(rt1))
+    scans = (int(scans) if scans is not None
+             else _scans_between(channel, float(rt0), float(rt1)))
 
     empty = spectrum_noise(mz, intensity, min_relative=min_relative)
     quiet = quiet_window(mz, intensity, width, min_relative=min_relative)
@@ -852,7 +1162,8 @@ _FLOORS: "weakref.WeakKeyDictionary[object, NoiseFloor]" = (
     weakref.WeakKeyDictionary())
 
 
-def noise_floor_for(channel, spectrum: tuple | None = None) -> NoiseFloor:
+def noise_floor_for(channel, spectrum: tuple | None = None,
+                    scans: int | None = None) -> NoiseFloor:
     """
     `noise_floor` over the whole run, measured once per channel.
 
@@ -864,7 +1175,7 @@ def noise_floor_for(channel, spectrum: tuple | None = None) -> NoiseFloor:
         return NoiseFloor(value=_fixed_floor(), fixed=_fixed_floor(),
                           note="no channel")
     if spectrum is not None:
-        return noise_floor(channel, spectrum=spectrum)
+        return noise_floor(channel, spectrum=spectrum, scans=scans)
     try:
         floor = _FLOORS.get(channel)
     except TypeError:

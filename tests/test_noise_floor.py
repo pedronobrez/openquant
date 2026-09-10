@@ -457,3 +457,24 @@ def test_a_peak_that_clears_the_floor_but_misses_the_mass_is_not_confirmed(qapp)
     assert f"past the {ir.CONFIRMED_PPM:g} ppm" in said
     # and the row the summary line counts is unchanged by the wording
     assert not ir.InfusionRow(report).confirmed
+
+
+def test_the_average_says_how_many_scans_it_holds(qapp):
+    """
+    The report averages the stable stretch of the spray and prints that
+    spectrum, so the floor measured under it has to divide by the root of the
+    scans it actually holds. Counting the range instead would make (b)
+    optimistic by the ratio of the roots and print a scan count the spectrum
+    does not have.
+    """
+    channel = NoisyChannel(n=100)
+    mz, intensity = channel.spectrum_rt_range(0.0, 2.0)
+    whole = infusion.noise_floor(channel, spectrum=(mz, intensity))
+    part = infusion.noise_floor(channel, spectrum=(mz, intensity), scans=25)
+
+    assert whole.scans == 100 and part.scans == 25
+    assert part.per_scan == pytest.approx(whole.per_scan, rel=1e-9)
+    assert part.scatter == pytest.approx(whole.scatter * 2.0, rel=1e-9)
+    assert "divides by 5.0" in part.describe()
+    # (a) reads the spectrum and knows nothing about the count, so it stands
+    assert part.from_empty == pytest.approx(whole.from_empty, rel=1e-9)

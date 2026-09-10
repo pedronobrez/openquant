@@ -154,6 +154,8 @@ _ALIASES = {
     "lm_id": {"lm_id", "lipidmaps", "lipidmaps_id", "lmid"},
     "min_response": {"min_response", "response_floor", "min_area", "floor",
                      "piso_resposta", "resposta_minima", "area_minima"},
+    "provenance": {"provenance", "source", "origin", "procedencia",
+                   "proveniencia", "origem"},
 }
 
 _TRUE = {"1", "true", "yes", "y", "sim", "is", "istd", "x"}
@@ -190,6 +192,14 @@ class Component:
     weighting: str = "1"
     #: LIPID MAPS identifier, when the component has been annotated
     lm_id: str = ""
+    #: where this row came from, in words, when it was not typed by hand:
+    #: `standards.component_from_infusion` writes the infusion it was read
+    #: off — the file, the sample, the channel, the energy, the day, and the
+    #: record of one's own that the spectrum matched. Free text and nothing
+    #: else: it is read by a person in a tooltip and in the audit trail, and
+    #: nothing in the program branches on it. A row somebody typed carries
+    #: none, which is the truthful answer for it.
+    provenance: str = ""
     #: for an internal standard: the smallest area it has to give in an
     #: injection before a ratio to it means anything. Declared by whoever
     #: knows the method, because a batch cannot derive it — measured, its
@@ -806,6 +816,7 @@ def load_components(path: str | os.PathLike) -> list[Component]:
                 weighting=str(row.get("weighting") or "1").strip() or "1",
                 lm_id=str(row.get("lm_id") or "").strip(),
                 min_response=_to_float(row.get("min_response")),
+                provenance=str(row.get("provenance") or "").strip(),
             )
         except ValueError as exc:
             raise ValueError(f"CSV line {number}: {exc}") from exc
@@ -827,7 +838,8 @@ CSV_HEADER = ["name", "group", "precursor", "fragment", "rt", "window",
               "tolerance", "unit", "formula", "adduct", "is",
               "internal_standard", "response", "concentration_unit",
               "qualifier_of", "ion_ratio", "ion_ratio_tolerance",
-              "regression", "weighting", "lm_id", "min_response"]
+              "regression", "weighting", "lm_id", "min_response",
+              "provenance"]
 
 
 def save_components(path: str | os.PathLike, components: list[Component]) -> None:
@@ -843,6 +855,7 @@ def save_components(path: str | os.PathLike, components: list[Component]) -> Non
                 c.internal_standard, c.response, c.concentration_unit,
                 c.qualifier_of, _fmt(c.ion_ratio), _fmt(c.ion_ratio_tolerance),
                 c.regression, c.weighting, c.lm_id, _fmt(c.min_response),
+                c.provenance,
             ])
 
 

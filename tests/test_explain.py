@@ -776,3 +776,288 @@ def test_the_panel_never_offers_a_negative_adduct_to_a_positive_channel():
     assert signs == {"+"}
     panel.deleteLater()
     app.processEvents()
+
+
+def test_the_explorer_hands_the_lipid_panel_its_own_survey_scan():
+    """
+    A product-ion scan cannot say which adduct its precursor is: Q1 passed
+    one mass and the satellites never reached the detector. The survey of
+    the same acquisition, over the same scans, can — so the Explorer looks
+    for one and hands it over, and where the method has none it hands over
+    nothing rather than something else's spectrum.
+    """
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import numpy as np
+    from PyQt6 import QtWidgets
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    from openquant.samples import SampleEntry
+    from openquant.session import Session
+    from openquant.ui.explorer import ChannelRef, ExplorerWorkspace
+    from openquant.wiff import ChannelInfo
+
+    mz = np.arange(400.0, 440.0, 0.01)
+
+    class _Channel:
+        def __init__(self, index, ms1, tag):
+            self.index = index
+            self.tag = tag
+            self.info = ChannelInfo(
+                index=index, name="TOF MS" if ms1 else "TOF PI",
+                experiment_type="TOF MS" if ms1 else "Product",
+                polarity="Positive", precursor=None if ms1 else 430.35,
+                start_mass=400.0, end_mass=440.0, n_scans=60,
+                collision_energy=None if ms1 else 45.0)
+            self.asked = []
+
+        @property
+        def rt(self):
+            return np.linspace(0.0, 15.0, 60)
+
+        def rt_at_scan(self, scan):
+            return float(self.rt[int(scan)])
+
+        def spectrum_rt_range(self, rt0, rt1, add_zeros=True):
+            self.asked.append((rt0, rt1))
+            return mz, np.full(mz.size, float(self.tag))
+
+        def scans_in_range(self, rt0, rt1):
+            return 20, 24
+
+        def tic(self):
+            return self.rt, np.full(60, 1000.0)
+
+    class _Sample:
+        instrument = "ZenoTOF"
+        problem = None
+
+        def __init__(self, channels):
+            self.channels = channels
+
+    survey, product = _Channel(0, True, 7.0), _Channel(1, False, 3.0)
+    explorer = ExplorerWorkspace(Session())
+    entry = SampleEntry("/d/CA-d4.wiff", 0, "CA-d4")
+    entry.sample = _Sample([survey, product])
+    explorer.active_ref = ChannelRef(entry, product)
+    explorer._show_average(5.0, 6.0)
+
+    found = explorer._survey_spectrum(430.35)
+    assert found is not None
+    assert float(found[1][0]) == 7.0                  # the survey, not the pane
+    assert survey.asked[-1] == (5.0, 6.0)             # the same scans
+
+    # a sample whose only channel is the product-ion one has nothing to give
+    entry.sample = _Sample([product])
+    assert explorer._survey_spectrum(430.35) is None
+    # and the survey is never handed back for itself
+    explorer.active_ref = ChannelRef(entry, survey)
+    assert explorer._survey_spectrum(430.35) is None
+    explorer.deleteLater()
+    app.processEvents()
+
+# --------------------------------------------------------------------------- #
+# a LIPID MAPS record through the same adduct model
+# --------------------------------------------------------------------------- #
+#: triacetin, TG 2:0/2:0/2:0 — a real triacylglycerol small enough to draw by
+#: hand, and the smallest thing that can be asked what a TG asks: three ester
+#: bonds, no free hydroxyl, and it is seen as [M+NH4]+
+TRIACETIN = """triacetin
+  test
+
+ 15 14  0  0  0  0  0  0  0  0999 V2000
+    0.0000    0.0000    0.0000 C   0  0  0  0  0  0
+    1.5000    0.0000    0.0000 C   0  0  0  0  0  0
+    3.0000    0.0000    0.0000 C   0  0  0  0  0  0
+   -0.7500    1.2990    0.0000 O   0  0  0  0  0  0
+   -2.2500    1.2990    0.0000 C   0  0  0  0  0  0
+   -3.0000    0.0000    0.0000 O   0  0  0  0  0  0
+   -3.0000    2.5980    0.0000 C   0  0  0  0  0  0
+    2.2500   -1.2990    0.0000 O   0  0  0  0  0  0
+    3.7500   -1.2990    0.0000 C   0  0  0  0  0  0
+    4.5000   -0.0000    0.0000 O   0  0  0  0  0  0
+    4.5000   -2.5980    0.0000 C   0  0  0  0  0  0
+    3.7500    1.2990    0.0000 O   0  0  0  0  0  0
+    5.2500    1.2990    0.0000 C   0  0  0  0  0  0
+    6.0000    0.0000    0.0000 O   0  0  0  0  0  0
+    6.0000    2.5980    0.0000 C   0  0  0  0  0  0
+  1  2  1  0
+  2  3  1  0
+  1  4  1  0
+  4  5  1  0
+  5  6  2  0
+  5  7  1  0
+  2  8  1  0
+  8  9  1  0
+  9 10  2  0
+  9 11  1  0
+  3 12  1  0
+ 12 13  1  0
+ 13 14  2  0
+ 13 15  1  0
+M  END
+"""
+
+#: what the drawing weighs, and where each adduct of it is seen
+TRIACETIN_MASS = 218.079038
+TG_AMMONIUM = 236.112864          # [M+NH4]+
+TG_PROTON = 219.086315            # [M+H]+, the core the ammonium hands over
+#: the diacylglycerol-analogue ion: [M+H - acetic acid]+, reached by a cut
+TG_DIACYL = 159.065185
+#: what a metal adduct adds over the proton it replaces
+NA_MINUS_H = 21.981948
+
+
+def triacetin_record():
+    molecule = parse_molblock(TRIACETIN, "C9H14O6")
+    return LipidRecord(lm_id="LMGL03010000", name="TG 2:0/2:0/2:0", abbrev="",
+                       formula="C9H14O6", exact_mass=TRIACETIN_MASS,
+                       structure=molecule.to_compact())
+
+
+def test_a_record_at_an_ammonium_precursor_gets_its_core_and_its_ladder():
+    """
+    The record path is the own-structure path with the drawing taken out of
+    the database, so a triacylglycerol annotated [M+NH4]+ is scored with the
+    intact ammonium, the [M+H]+ it hands over, and the ladder off *that*.
+    """
+    from openquant.explain import structure_ions
+
+    molecule = triacetin_record().molecule()
+    ions = structure_ions(molecule, adduct="[M+NH4]+", max_cuts=1, max_losses=2)
+    forms = {ion.form for ion in ions if ion.form}
+    assert "[M+NH4]+" in forms                      # the intact adduct
+    assert "[M+H]+ (-NH3)" in forms                 # the core it hands over
+    assert {"[M+H-CO]+", "[M+H-CO2]+", "[M+H-2CO2]+"} <= forms   # the ladder
+    # nothing hangs off the ammonium: it is gone before anything breaks
+    assert not any(form.startswith("[M+NH4-") for form in forms)
+    # and every piece carries a proton rather than the adduct
+    assert {ion.carrier for ion in ions} == {""}
+    assert any(abs(ion.mz - TG_DIACYL) < 1e-3 for ion in ions)
+    plain = structure_ions(molecule, adduct="[M+H]+", max_cuts=1, max_losses=2)
+    # exactly one ion more than the protonated molecule gives: the ammonium
+    assert len(ions) == len(plain) + 1
+
+
+def test_a_record_at_a_sodium_precursor_offers_both_carriers():
+    from openquant.explain import structure_ions
+
+    molecule = triacetin_record().molecule()
+    ions = structure_ions(molecule, adduct="[M+Na]+", max_cuts=1, max_losses=2)
+    assert {ion.carrier for ion in ions} == {"", "Na"}
+    forms = {ion.form for ion in ions if ion.form}
+    assert {"[M+Na]+", "[M+H]+", "[M+Na-CO]+", "[M+H-CO]+"} <= forms
+    # the same piece, once with the metal and once with a proton
+    sodiated = [i for i in ions if abs(i.mz - TG_DIACYL - NA_MINUS_H) < 1e-3]
+    protonated = [i for i in ions if abs(i.mz - TG_DIACYL) < 1e-3]
+    assert sodiated and protonated
+    assert sodiated[0].carrier == "Na" and protonated[0].carrier == ""
+
+
+def test_a_record_says_which_adduct_it_was_scored_as():
+    peaks = [(TG_AMMONIUM, 1000.0), (TG_DIACYL, 400.0)]
+    result = explain(triacetin_record(), peaks, adduct="[M+NH4]+")
+    assert result.adduct == "[M+NH4]+"
+    assert "labile" in result.behaviour and "NH3" in result.behaviour
+    assert result.matched == 2 and result.share == 1.0
+
+
+def test_the_record_search_finds_what_the_proton_adduct_cannot():
+    """
+    A triacylglycerol is not a lipid at all as [M+H]+: asked for the proton
+    adduct of an ammonium precursor the database answers nothing, which is
+    not the same as there being nothing there.
+    """
+    database = LipidDatabase([triacetin_record()])
+    peaks = [(TG_AMMONIUM, 1000.0), (TG_DIACYL, 400.0)]
+    assert rank_candidates(database, TG_AMMONIUM, peaks, adduct="[M+H]+",
+                           tolerance=0.5, unit="Da") == []
+    ranked = rank_candidates(database, TG_AMMONIUM, peaks, adduct=None,
+                             tolerance=0.5, unit="Da", polarity="Positive")
+    assert [e.adduct for e in ranked] == ["[M+NH4]+"]
+    assert ranked[0].matched == 2
+    assert abs(ranked[0].precursor_ppm) < 0.1
+
+
+def test_a_non_proton_adduct_has_to_name_the_precursor():
+    """
+    The gate. The isolation window is half a dalton because a method writes
+    its precursor rounded; letting every adduct through it multiplies the
+    candidates that explain a spectrum by accident, so an adduct that is not
+    the written reading has to fit the mass — see `explain.adduct_gate`.
+    """
+    from openquant.explain import adduct_gate
+
+    database = LipidDatabase([triacetin_record()])
+    peaks = [(TG_DIACYL, 1000.0)]
+    assert adduct_gate(TG_AMMONIUM) == 0.05
+    # 0.3 Da out: inside the isolation window, outside the gate
+    assert rank_candidates(database, TG_AMMONIUM + 0.3, peaks, adduct=None,
+                           tolerance=0.5, unit="Da", polarity="Positive") == []
+    # the proton adduct is not gated: it is the reading the method wrote down
+    ranked = rank_candidates(database, TG_PROTON + 0.3, peaks, adduct=None,
+                             tolerance=0.5, unit="Da", polarity="Positive")
+    assert [e.adduct for e in ranked] == ["[M+H]+"]
+
+
+def test_the_panel_reads_a_records_adduct_off_the_written_precursor(monkeypatch):
+    """
+    The record path's basis line is the own path's, written by the same code
+    in `chemistry`: which adduct found this candidate, and how far the
+    written precursor sits from it.
+    """
+    from PyQt6 import QtWidgets
+
+    from openquant import lipidmaps
+    from openquant.ui.lipid_panel import AUTO_ADDUCT, LipidPanel
+
+    database = LipidDatabase([triacetin_record()])
+    monkeypatch.setattr(lipidmaps, "database", lambda *a, **k: database)
+    monkeypatch.setattr(lipidmaps, "is_installed", lambda *a, **k: True)
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LipidPanel()
+    panel.refresh_availability()
+    panel.set_spectrum(np.array([TG_AMMONIUM, TG_DIACYL]),
+                       np.array([1000.0, 400.0]), 236.11, "Positive")
+    assert panel.explain_adduct.currentText() == AUTO_ADDUCT
+    panel.explain_spectrum()
+
+    assert panel.explain_tree.topLevelItemCount() == 1
+    row = panel.explain_tree.topLevelItem(0)
+    assert row.text(4) == "[M+NH4]+"
+    assert "labile" in row.toolTip(4)
+    assert "236.11 is [M+NH4]+ of C9H14O6 (236.1129, -12.1 ppm)" in panel.explanation_basis
+    assert panel.explanation_adduct == "[M+NH4]+"
+    # and the combo overrides it: asked for the proton adduct there is nothing
+    panel.explain_adduct.setCurrentText("[M+H]+")
+    panel.explain_spectrum()
+    assert panel.explain_tree.topLevelItemCount() == 0
+    assert "as [M+H]+" in panel.status.text()
+    panel.deleteLater()
+    app.processEvents()
+
+
+def test_the_mass_search_lists_the_adduct_and_what_it_does(monkeypatch):
+    from PyQt6 import QtWidgets
+
+    from openquant import lipidmaps
+    from openquant.ui.lipid_panel import EVERY_ADDUCT, LipidPanel
+
+    database = LipidDatabase([triacetin_record()])
+    monkeypatch.setattr(lipidmaps, "database", lambda *a, **k: database)
+    monkeypatch.setattr(lipidmaps, "is_installed", lambda *a, **k: True)
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LipidPanel()
+    panel.refresh_availability()
+    panel._polarity = "Positive"
+    panel.mz_edit.setText(f"{TG_AMMONIUM:.4f}")
+    panel.adduct_combo.setCurrentText(EVERY_ADDUCT)
+    panel.search()
+
+    assert panel.tree.topLevelItemCount() == 1
+    row = panel.tree.topLevelItem(0)
+    assert row.text(5) == "[M+NH4]+"
+    assert "leaves as NH3" in row.toolTip(5)
+    panel.deleteLater()
+    app.processEvents()

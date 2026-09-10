@@ -158,6 +158,19 @@ gets a measurement.
 - the label floor of an infusion pane, which starts at the higher of the
   drawing's 2% and the noise floor, with the status line saying which it was.
 
+The floor is measured on **the same average the caller is looking at**, which
+is why two of them can differ on one file. The Explorer pane averages the
+whole run; the [[infusion-report]] averages the stable stretch of the spray
+(*Scans a spray lost* in [[direct-infusion]]), so the scans an unstable spray
+contributed are out of its average and out of its floor as well. On the nine
+infusions the whole-run floors are 0.068 to 3.53 counts and the report's are
+0.068 to 4.27
+— the same on the six runs the mask left alone, and higher on the three it
+trimmed, because throwing scans away is throwing away some of the averaging.
+That is the answer being right rather than the numbers disagreeing: a floor
+that described a different spectrum from the one printed would be the wrong
+floor.
+
 ### What it does not say
 
 The floor is one number for a whole spectrum, and a background is not the same

@@ -90,3 +90,14 @@ integration returns the same peak twice under two names. **Check method**
 reports the pair, and [[suggest-from-data]] refuses to pre-tick a retention
 time for either; the only thing that separates them is a retention time
 that is different, and different on purpose.
+
+## A standard in the same spray
+
+Without a column the pairing is the same and the arithmetic is not: the
+analyte and its standard are two heights in one averaged spectrum rather than
+two integrated peaks, and a deuterated standard sits close enough to its
+analyte for one to reach the other's ions. Which direction that goes, how
+large it is, and when it cannot happen at all are measured in
+[[infusion-quantitation]]. The response floor above matters more there, not
+less — ion suppression is shared by the pair, so the ratio survives it and
+only the absolute responses show it.

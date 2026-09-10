@@ -40,6 +40,9 @@ CALIBRATION_OUTLIERS = "Calibration outliers"
 COMPONENT_ADDED = "Component added"
 COMPONENT_EDITED = "Component edited"
 COMPONENT_REMOVED = "Component removed"
+#: a component written from an infused standard, with the infusion it came
+#: from in the note — see standards.py
+COMPONENT_FROM_INFUSION = "Component from infusion"
 PRECURSOR_REPAIRED = "Precursor repaired"
 #: the other half of a precursor that disagrees with its name: where the
 #: mass is what the instrument acquired, the name is the thing corrected
@@ -50,15 +53,28 @@ PROCESSED = "Batch processed"
 REPROCESSED = "Batch reprocessed"
 RECALIBRATION = "Mass recalibration"
 INFUSION_REPORT = "Infusion report"
+#: the method read every way it can be read before it is run, written out
+METHOD_REPORT = "Method report"
+#: the ratio of an analyte to its internal standard in a spray, written into
+#: the Results table. A separate event from `PROCESSED` because it is a
+#: separate kind of number: a height in one averaged spectrum, not an
+#: integrated peak, and the trail has to say which the rows are.
+INFUSION_QUANTITATION = "Infusion quantitation"
+#: records written into the analyst's own spectral library. The library is a
+#: file of its own and not part of the project, so the trail is the only
+#: place the project says a batch of its spectra was written into one
+OWN_LIBRARY = "Own library"
 PROJECT_SAVED = "Project saved"
 
 EVENTS: tuple[str, ...] = (
     MANUAL_INTEGRATION, AUTOMATIC_INTEGRATION, ROW_USED, CALIBRATION_POINT,
     CALIBRATION_OUTLIERS, COMPONENT_ADDED, COMPONENT_EDITED,
-    COMPONENT_REMOVED, PRECURSOR_REPAIRED, NAME_RENAMED, METHOD_DEFAULT,
+    COMPONENT_REMOVED, COMPONENT_FROM_INFUSION, PRECURSOR_REPAIRED,
+    NAME_RENAMED, METHOD_DEFAULT,
     SAMPLE_EDITED,
     PROCESSED, REPROCESSED,
-    RECALIBRATION, INFUSION_REPORT, PROJECT_SAVED,
+    RECALIBRATION, INFUSION_REPORT, METHOD_REPORT, INFUSION_QUANTITATION,
+    OWN_LIBRARY, PROJECT_SAVED,
 )
 
 #: the columns of the trail, in the order the panel, the report and the CSV
@@ -93,6 +109,7 @@ COMPONENT_FIELDS: dict[str, str] = {
     "weighting": "weighting",
     "min_response": "min. response",
     "lm_id": "LIPID MAPS id",
+    "provenance": "provenance",
 }
 
 

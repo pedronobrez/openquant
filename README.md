@@ -131,6 +131,8 @@ injection comes back as `kUnknown`.
 | Back to automatic | right-click a hand-integrated panel |
 | **Suggest from data** | retention times from agreement between the open injections, and window widths from their sampling. The estimator is checked first against the components that already declare a time, and the confidence on every row is the accuracy it actually achieved at that peak height on this batch — so a proposal is ticked by somebody who can see what it rests on, and nothing is applied unticked |
 | **Export schedule** | the scheduled acquisition the method implies — every component with a retention time over its window — with how many transitions are acquired at once at the busiest moment and the dwell a target cycle leaves each, or the shortest cycle the dwell floor allows. The target starts from what the batch measured, labelled a bound when its peaks were narrower than a cycle. A plain CSV whose columns map onto the vendor's table |
+| **Method report…** | everything the application can say about a method before it is run, as one PDF or HTML: the component table with every flagged row marked, **Check method**'s findings by severity, the formulas carried and derivable with every refusal's two masses, the standards that could be lock masses — and, with a file open, which channel serves each component, what the survey covers, and the schedule the method implies. It grades nothing and changes nothing |
+| **Incremental reprocessing** | every row records what produced it, so a reprocess keeps what has not changed: adding an injection to 26 takes 0.06 s instead of 2.4 s, identical field for field to a full run; `Reprocess all…` reads everything again |
 | **Check method** | reads the method against itself and against the open files, before a batch is processed: components sharing a transition with nothing to separate them, internal standards with no retention time and how many components they carry, windows the sampling cannot resolve. Everything it reports would otherwise be learned from the results, which is later and harder |
 | Integration parameters | per component, with **Update method for component** / **for group**, **Back to method defaults**, and copy/paste between components |
 | Contour | **View ▸ Contour** draws the active channel as a surface — time across, m/z up, intensity as colour — so an interference beside a target or a ridge down the whole run is visible rather than inferred. Square root by default, because a linear ramp over four decades shows the base peak and nothing else. Click a spot for the spectrum under it; **Extract this view** takes the chromatogram and spectrum of the rectangle on screen, both from the reader rather than from the grid |
@@ -210,9 +212,20 @@ green light — except for a row that failed to integrate, which always fails.
 | **Pin spectrum** | keep the spectrum on screen and draw the next one over it — another sample, scan or channel — each pinned one in its own colour and named in the legend; **Normalise** puts them on their own base peaks and **Mirror** draws every other one downwards, head to tail |
 | **Label floor** | the triangle beside the spectrum's Y axis, or **Label floor (%)** in the View toolbar: how tall a peak must be against the tallest one in view before its m/z is written. Drag it down for the small peaks a 2% default hides — measured, the precursor of a deuterated bile-acid standard, at 1.49% of the base peak, is unnamed at 2% and named at 0.5%. A fraction of the view, not an intensity, so it survives a zoom and the next spectrum; double-click to reset; the printed comparison uses the same floor |
 | **Export comparison** | the pinned spectra and the live one as one picture — PNG at twice the size for print, SVG to resize — drawn again for paper rather than grabbed off the screen; the same picture goes into the report under *Compared spectra*, with the traces and the masses they share within 10 ppm |
+| **Print themes** | Paper, Black and white (line style where colour cannot be spent; measured distinguishable in greyscale at half size) and Dark for figures and the HTML report; a dark PDF is refused |
 | **Direct infusion** | a sample with no chromatography is recognised when it is opened — both the sample's total ion chromatogram and its strongest product-ion channel flat, measured against 39 chromatographic runs — marked in the tree, its strongest product-ion channel made active, and the average of every scan shown at once, which is what Explain, the library search and a pin then read. **Average whole run** does the same on any channel |
 | **Per-compound infusion report** | one infused standard on two to four pages — averaged spectrum, peaks, accurate precursor, structural explanation, library match and other infusions of the same compound head to tail — as PDF or HTML, with a verdict that sums what was checked and never passes or fails it. `Process ▸ Report this infusion…`, or every open infusion in one document |
 | **Infusions tab** | every open infusion on one row — compound, mode and energy, scans, base peak, the written precursor measured back with its error and height, the ions found of those predicted, the best record of your own library with both scores and its collision energy against this run's, and each infusion scored against the others of the same compound. Measured on request; a cell that could not be filled says why. **Report…** writes the per-compound document for the rows chosen, **Export CSV…** the whole table, and the batch report prints it as its *Infusions* section |
+| **Name against method** | an `Isolated` column and a warning at open when the file name's compound is not what the method isolates — found two acquisitions named CA-d4 whose method targets 839.56 |
+| **Compare infusions…** | today's infusions against a reference project's saved summary, matched by compound and by conditions, marked on the standard-history rules; the reference is read from its project without a raw file |
+| **Use in method…** | an infusion row written into the component table with its formula, the exact mass of the identified adduct beside the written one, a chosen fragment and its provenance |
+| **Quantify…** | an analyte against its deuterated standard in the same spray — precursor, fragment or the water-loss ladder — with the isotope cross-talk computed and, where Q1 removed the satellites, reported as zero with its reason |
+| **Add all to library / Rewrite from files…** | one record per infusion, never twice for the same file and channel; old records re-read from their files and rewritten with the fields newer versions write, the old file kept as `.bak` |
+| **Isotopic purity** | the d0…dn envelope of a labelled standard solved as a non-negative least squares, with the pair a certificate quotes — and a refusal, with the rungs printed, where a product-ion scan has no satellites to solve from |
+| **Recalibration of an infusion** | the mass axis of a spray corrected from its own precursor and water-loss ladder, behind the same switch as the batch's; CA-d4 at 5 ppm goes from 5 to 8 of 56 ions explained |
+| **Scans a spray lost** | unstable scans (a burst past 50% of the running median, and the recovery after it) left out of the average and named on the title, the report and the record; `Process ▸ Include unstable scans` puts them back |
+| **The film** | on an infusion the contour view gains the TIC strip, the excluded scans, Play at 1×/5×/20× stepping the scan box, and `Δ from average` drawing scan minus average over the average mirrored |
+| **A folder of infusions at once** | point at the folder and get the per-compound document with nothing opened in the Explorer — `File ▸ Report infusions in a folder…` or `--infusion-report PATH… --out FILE [--library] [--components] [--html] [--per-compound] [--csv]`. The folder is checked first, a `.wiff` without its `.wiff.scan` is skipped rather than opened, a run that is not an infusion is left out with the figures that say why. One file read at a time. Nine ZenoTOF infusions: 48 pages in 32 s, the same table as the Infusions tab |
 | Live preview | the spectrum follows the highlight while you drag or resize it |
 | Integration of the selection | area, height, apex and S/N in the status bar |
 | **Stack** | one pane per trace with the time axes locked together |
@@ -259,6 +272,7 @@ green light — except for a row that failed to integrate, which always fails.
 | **Your own library** | the spectrum on screen written into an MSP of your own — name, precursor, adduct, formula, collision energy, and a comment naming the file, sample and scans it was averaged over — appended to a file chosen once, and searchable the moment it is written. Centroids only, peaks under 1% of the base peak dropped, at most 200 kept. Measured: records written from one injection put themselves first for 14 of 14 compounds when a different injection was searched against them, at reverse scores of 45–96, with every other compound's record at most 42 |
 | **Where the labels are** | a deuterated standard's fragments say how many labels each piece kept; the placements consistent with all of them are enumerated, tied and reported, with the positions nothing separates named as such — measured on cholic acid-d4, the spectrum bounds the labels rather than placing them, and says so |
 | **The adduct the precursor actually is** | a channel written `430.35` is `[M+NH4]+`, not `[M+H]+`: the adduct is read off the written precursor and the formula, the reason printed with its ppm and the alternative, and a precursor no adduct reaches is not explained at all rather than explained as the wrong ion. An ammonium or formate adduct leaves as a neutral, so the fragments are `[M+H]+`/`[M-H]-` and the loss ladder hangs off those; a sodium stays coordinated, so both carriers are offered. A **name** — `cholic acid-d4`, `TDCA-d4` — resolves through a table of bile-acid standards, then LIPID MAPS, then the lipid shorthand, with the label count read off the suffix |
+| **Adducts on database records too** | a LIPID MAPS candidate is scored through the same adduct model as a drawing of your own, every adduct of the polarity searched with a gate that makes a non-proton adduct name the precursor; a triacylglycerol at `[M+NH4]+` is found where the `[M+H]+` search listed nothing |
 | **Standard history** | every own-library record of one compound as a control chart over the days it was verified — the cosine against the first record, the base peak's ppm from it, and its absolute height, grouped by collision energy and activation, on the Batch QC rules. Library tab ▸ *History…*, with CSV |
 | Candidates for a mass | **LIPID MAPS** tab, or right-click a spectrum peak → *Find formula for this peak* |
 | Species, then structures | results group by species, with the isomers that share it underneath — a mass cannot separate them |
@@ -362,6 +376,35 @@ or open files directly:
 ```bash
 python3 run.py demo_QC01.wiff demo_STD_L1.wiff
 ```
+
+## From Python
+
+`openquant.api` is a documented, stable surface over the same code the
+window runs — open a file, quantify a batch, explain a spectrum, search a
+library, write a report, with no Qt in any signature and no window
+anywhere:
+
+```python
+from openquant import api
+
+batch = api.Batch.from_project("Sphingolipids.oqproj")
+rows = batch.process()
+print(f"{len(batch.samples)} injections, {len(batch.components)} components, "
+      f"{len(rows)} rows, {len(rows.found)} with a peak, "
+      f"{len(batch.calibrate())} curves fitted")
+rows.table().to_csv("sphingolipids.csv")
+batch.export_xlsx("sphingolipids.xlsx")
+batch.report("sphingolipids.pdf")
+batch.close()
+```
+
+`api.VERSION` versions the promise: the names in `api.__all__`, their
+methods and their keyword names keep meaning what they mean, and the
+dataclasses returned gain fields rather than losing them. Everything
+underneath is an internal and may move. The manual's **Python API** page
+has the other two ten-line scripts — a folder of infusions explained and
+filed into a library of your own, and a spectrum searched against one —
+each with what it printed and how long it took.
 
 ## Compound list
 

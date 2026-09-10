@@ -62,6 +62,7 @@ SECTIONS = {
     "sampling": "Sampling",
     "mass": "Mass drift",
     "infusions": "Infusions",
+    "infusion-comparison": "Infusion comparison",
     "spectra": "Compared spectra",
     "algorithms": "Integration algorithms",
     "batches": "Batch comparison",
@@ -741,7 +742,10 @@ def _corrections(corrections: dict | None, applied: bool) -> str:
              f"errors, sign flipped; a linear term is fitted only where "
              f"{MIN_SLOPE_LOCK_MASSES} or more of them span "
              f"{MIN_MASS_SPAN:,.0f} Da and leave-one-out prediction of a "
-             f"held-out lock mass says it helps. The correction moves the extraction "
+             f"held-out lock mass says it helps. A direct infusion has no "
+             f"second injection to be read against and is fitted instead "
+             f"from its own precursor ladder, which the Source column names. "
+             f"The correction moves the extraction "
              f"window, never the reader\u2019s arithmetic. "
              f"{_escape(describe(corrections))}. "
              + ("The results in this report were produced with it applied."
@@ -752,7 +756,8 @@ def _corrections(corrections: dict | None, applied: bool) -> str:
     rows = []
     for correction in corrections.values():
         rows.append([
-            _escape(correction.sample_name), f"{len(correction.lock_masses)}",
+            _escape(correction.sample_name), _escape(correction.source),
+            f"{len(correction.lock_masses)}",
             _number(correction.offset_ppm if correction.usable else None, 1),
             _number(correction.slope_ppm_per_da * 1000
                     if correction.linear else None, 2),
@@ -761,10 +766,10 @@ def _corrections(corrections: dict | None, applied: bool) -> str:
             _number(correction.worst_after, 1),
             _escape(correction.verdict)])
     parts.append(_table(
-        ["Injection", "Lock masses", "Offset ppm", "Slope ppm/kDa",
+        ["Injection", "Source", "Lock masses", "Offset ppm", "Slope ppm/kDa",
          "Median before", "Median after", "Worst after", "Verdict"],
-        rows, right={1, 2, 3, 4, 5, 6}, empty="Nothing fitted.",
-        widths=["18%", "8%", "9%", "10%", "11%", "10%", "10%", "24%"]))
+        rows, right={2, 3, 4, 5, 6, 7}, empty="Nothing fitted.",
+        widths=["15%", "13%", "7%", "8%", "9%", "10%", "9%", "9%", "20%"]))
     return "".join(parts)
 
 
@@ -775,9 +780,9 @@ def _infusions(title: str, summary, breaks: set[str] | None = None) -> str:
     The summary that comes before the per-compound pages: what was measured
     of each vial and, in the cells that could not be filled, what was not
     there to measure. Printed narrower than the tab shows it, because
-    A4 does not hold nineteen columns and a table squeezed into it is a table
+    A4 does not hold twenty columns and a table squeezed into it is a table
     nobody reads; `infusion_report.REPORT_COLUMNS` is the same row with the
-    precursor and the record written as one cell each.
+    precursor, the adduct and the record written as one cell each.
     """
     from .infusion_report import (CONFIRMED_PPM, COUNTED_SCORE,
                                   REPORT_COLUMNS, SCORE_SHARE)
@@ -787,7 +792,10 @@ def _infusions(title: str, summary, breaks: set[str] | None = None) -> str:
         f'<p class="meta">One row per infused sample, each averaged over its '
         f'whole run. The precursor is the method\u2019s own written value '
         f'measured back off the acquisition, counted as confirmed in the line '
-        f'below at {CONFIRMED_PPM:g} ppm; the ions found are of those a '
+        f'below at {CONFIRMED_PPM:g} ppm; the adduct is the ion that '
+        f'written precursor is, with whether the survey scan of the same '
+        f'acquisition confirmed it by exact mass and isotope pattern; the '
+        f'ions found are of those a '
         f'formula or a structure predicted; the record is the best in the '
         f'library of your own, scored by the same cosine a library search '
         f'takes and counted below at {COUNTED_SCORE * 100:.0f}. The last '
@@ -800,11 +808,98 @@ def _infusions(title: str, summary, breaks: set[str] | None = None) -> str:
         list(REPORT_COLUMNS),
         [[_escape(cell) for cell in row.report_cells()]
          for row in summary.rows],
-        right={3, 4, 8}, empty="No infusion is open.",
-        widths=["9%", "15%", "9%", "4%", "8%", "14%", "6%", "14%", "4%",
-                "17%"]))
+        right={3, 4, 9}, empty="No infusion is open.",
+        widths=["8%", "12%", "8%", "4%", "7%", "12%", "9%", "5%", "12%",
+                "4%", "11%", "8%"]))
     parts.append(f'<p class="foot">{_escape(summary.summary())}. '
                  f'Measured {summary.taken.strftime("%Y-%m-%d %H:%M")}.</p>')
+    return "".join(parts)
+
+
+def _infusion_comparison(title: str, comparison,
+                         breaks: set[str] | None = None,
+                         most: int = 60) -> str:
+    """
+    Today's infusions against a reference day's, while the comparison stands.
+
+    The same shape as the batch comparison below it, on the other kind of
+    batch: the totals, then every compound at every set of conditions, with
+    the rows that moved first — since what a reader wants pointed at is the
+    standard that no longer looks like itself.
+    """
+    from .infusion_compare import MOVED_PERCENT, SAME_PEAK_PPM, _ions_cell
+
+    parts = [_heading(title, breaks)]
+    parts.append(
+        f'<p class="meta">{_escape(comparison.reference)} is the reference, '
+        f"read from its project: the figures and the averaged, centroided "
+        f"peak list its Infusions tab measured, with no raw file opened. "
+        f"{_escape(comparison.current)} is what is open now. Rows are matched "
+        f"by compound <em>and</em> by conditions — a spray at one "
+        f"collision energy and activation is only ever compared with the "
+        f"reference's at the same ones. The score is the cosine of this "
+        f"day's peaks against the reference's, the same one a library search "
+        f"takes; the reverse asks only whether the reference's peaks are "
+        f"still there. A row is marked where the base peak is more than "
+        f"{SAME_PEAK_PPM:g} ppm from the reference's — which is a "
+        f"different ion and not a mass error — or where its height is "
+        f"more than {MOVED_PERCENT:g}% from it.</p>")
+    parts.append(f"<p>{_escape(comparison.summary())}</p>")
+    ref, cur = comparison.totals()
+
+    def figure(value, decimals=0):
+        return _number(value, decimals) if value is not None else "—"
+
+    parts.append(_table(
+        ["", _escape(comparison.reference), _escape(comparison.current)],
+        [["Infusions", f"{ref['infusions']}", f"{cur['infusions']}"],
+         ["Compounds", f"{ref['compounds']}", f"{cur['compounds']}"],
+         ["Precursors measured", f"{ref['measured']}", f"{cur['measured']}"],
+         ["Median base-peak height", figure(ref["median_height"]),
+          figure(cur["median_height"])],
+         ["Median peaks stored", figure(ref["median_peaks"]),
+          figure(cur["median_peaks"])],
+         ["Median own-record score", figure(ref["median_record"]),
+          figure(cur["median_record"])]],
+        right={1, 2}, widths=["40%", "30%", "30%"]))
+    if comparison.only_reference or comparison.only_current:
+        parts.append(
+            f"<p>{len(comparison.only_reference)} infusion(s) only in the "
+            f"reference: "
+            f"{_escape(', '.join(s.label for s in comparison.only_reference)) or '—'}. "
+            f"{len(comparison.only_current)} only in this day: "
+            f"{_escape(', '.join(s.label for s in comparison.only_current)) or '—'}.</p>")
+
+    rows = sorted(comparison.rows, key=lambda r: (not r.moved, r.score))
+    table = []
+    for row in rows[:most]:
+        name = _escape(row.compound)
+        if row.moved:
+            name = f'<span class="bad">{name}</span>'
+        r, c = row.reference, row.current
+        table.append([name, _escape(row.conditions),
+                      f"{row.score * 100:.0f}", f"{row.reverse * 100:.0f}",
+                      f"{row.matched}/{row.of_reference}",
+                      figure(row.base_gap_ppm, 1),
+                      figure(r.base_height), figure(c.base_height),
+                      figure(row.intensity_change, 1),
+                      f"{_ions_cell(r) or '—'} → "
+                      f"{_ions_cell(c) or '—'}",
+                      figure(row.precursor_ppm_change, 1)])
+    if len(rows) > most:
+        parts.append(f"<p>{most} rows of {len(rows)}: the marked ones first, "
+                     f"then the lowest scores.</p>")
+    parts.append(_table(
+        ["Compound", "Conditions", "Score", "Rev.", "Matched",
+         "Base Δ ppm", "Height (ref.)", "Height (now)", "Δ height %",
+         "Ions found", "Δ precursor ppm"],
+        table, right={2, 3, 4, 5, 6, 7, 8, 10},
+        empty="No infusion is in both days at the same conditions.",
+        widths=["13%", "12%", "6%", "6%", "8%", "9%", "10%", "10%", "9%",
+                "9%", "8%"]))
+    for row in comparison.moved:
+        parts.append(f'<p class="foot">{_escape(row.label)}: '
+                     f'{_escape(row.why)}.</p>')
     return "".join(parts)
 
 
@@ -817,7 +912,7 @@ IMAGE_WIDTH = 660
 
 
 def _spectra(title: str, comparison, breaks: set[str] | None = None,
-             most: int = 20) -> str:
+             most: int = 20, theme: str = "paper") -> str:
     """
     The spectra the Explorer was comparing, as a picture and as two tables.
 
@@ -849,8 +944,9 @@ def _spectra(title: str, comparison, breaks: set[str] | None = None,
         f"to be printed clear of the traces is left out rather than drawn "
         f"over them.</p>")
     parts.append(
-        f'<p><img src="{spectra_compare.data_uri(comparison)}" '
-        f'width="{IMAGE_WIDTH}" height="{height}" /></p>')
+        f'<p><img src="'
+        f'{spectra_compare.data_uri(comparison, palette=picture_palette(theme))}'
+        f'" width="{IMAGE_WIDTH}" height="{height}" /></p>')
     # the picture carries its own title and legend, so there is no caption
     # under it: the same words twice, four lines apart, read as a mistake
     rows = []
@@ -1195,13 +1291,148 @@ table.ident td { border-bottom: 1px solid #dfe3e9; }
 table.contents td { border-bottom: 1px solid #eef1f5; }
 """
 
+#: black and white, for a journal that prints in no other colour. Two things
+#: change and they are the two things a greyscale press flattens: nothing is
+#: tinted — the striped rows and the shaded heading cells become rules, since
+#: a 4% tint reproduces as either nothing or a smudge — and every colour that
+#: carried meaning becomes weight or a rule instead. A failure is bold, not
+#: red; a heading is black over a black rule. Rendered and looked at, the
+#: same as every rule in `_STYLE`: `background` appears nowhere below, and a
+#: page of it rendered out of the PDF came back with **zero** pixels whose
+#: red, green and blue differ at all — see
+#: `tests/test_export_themes.py`, which measures exactly that, and note that
+#: the running furniture had to be themed separately to get there.
+_STYLE_MONO = """
+@page { size: A4 portrait; margin: 15mm 15mm 15mm 18mm; }
+body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+       font-size: 9pt; color: #000000; }
+p.eyebrow { color: #000000; font-size: 7.5pt; font-weight: 600;
+            letter-spacing: 1px; margin: 0 0 2pt 0; }
+h1 { font-size: 19pt; font-weight: 600; color: #000000; margin: 0 0 7pt 0; }
+h2 { font-size: 11.5pt; font-weight: 600; color: #000000;
+     margin: 18pt 0 5pt 0; border-bottom: 2px solid #000000;
+     padding-bottom: 2pt; }
+h2.plain { border-bottom: 1px solid #767676; }
+h3 { font-size: 9.5pt; font-weight: 600; margin: 12pt 0 3pt 0; color: #000000; }
+h2.break, h3.break { page-break-before: always; }
+p { margin: 0 0 4pt 0; }
+p.meta { color: #3c3c3c; font-size: 8pt; margin: 0 0 6pt 0; }
+p.empty { color: #3c3c3c; font-style: italic; margin: 2pt 0 6pt 0; }
+p.foot { color: #3c3c3c; font-size: 7.5pt; margin: 2pt 0 0 0; }
+ul.findings { margin: 6pt 0 0 0; }
+li { margin: 0 0 2pt 0; }
+span.aside { color: #3c3c3c; font-style: italic; }
+span.mark { color: #3c3c3c; }
+span.bad { color: #000000; font-weight: 700; }
+table { border-collapse: collapse; }
+th { font-size: 8pt; text-align: left; color: #000000;
+     border-top: 1px solid #000000; border-bottom: 1.5px solid #000000;
+     font-weight: 600; }
+th.num { text-align: right; }
+td { font-size: 8pt; border-bottom: 1px solid #b8b8b8; vertical-align: top; }
+td.num { text-align: right; }
+td.label { color: #3c3c3c; }
+table.ident td { border-bottom: 1px solid #b8b8b8; }
+table.contents td { border-bottom: 1px solid #d7d7d7; }
+"""
+
+#: for a screen: the application's own dark ground, and every colour on it
+#: lightened to the cast the dark interface already uses. **For the HTML
+#: export only.** A PDF is a thing somebody prints, and a dark page prints
+#: as a sheet of toner with white letters knocked out of it, so
+#: `print_document` refuses this theme rather than write one — see the
+#: message it raises.
+#:
+#: Measured on #1e2124, since a dark page is where type goes thin and grey:
+#: the body 13.2:1, the muted asides 6.4:1, the headings' accent 5.7:1, a
+#: failure 5.2:1, a heading cell's ink on its own ground 7.4:1, and the
+#: muted asides on the striped rows 6.0:1 — every one of them past the
+#: 4.5:1 WCAG asks of text, with the failure red the closest to it.
+_STYLE_DARK = """
+@page { size: A4 portrait; margin: 15mm 15mm 15mm 18mm; }
+body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+       font-size: 9pt; color: #e6e8eb; background: #1e2124; }
+p.eyebrow { color: #6f9be0; font-size: 7.5pt; font-weight: 600;
+            letter-spacing: 1px; margin: 0 0 2pt 0; }
+h1 { font-size: 19pt; font-weight: 600; color: #e6e8eb; margin: 0 0 7pt 0; }
+h2 { font-size: 11.5pt; font-weight: 600; color: #6f9be0;
+     margin: 18pt 0 5pt 0; border-bottom: 2px solid #6f9be0;
+     padding-bottom: 2pt; }
+h2.plain { border-bottom: 1px solid #3c4148; }
+h3 { font-size: 9.5pt; font-weight: 600; margin: 12pt 0 3pt 0; color: #e6e8eb; }
+h2.break, h3.break { page-break-before: always; }
+p { margin: 0 0 4pt 0; }
+p.meta { color: #9ba3ae; font-size: 8pt; margin: 0 0 6pt 0; }
+p.empty { color: #9ba3ae; font-style: italic; margin: 2pt 0 6pt 0; }
+p.foot { color: #9ba3ae; font-size: 7.5pt; margin: 2pt 0 0 0; }
+ul.findings { margin: 6pt 0 0 0; }
+li { margin: 0 0 2pt 0; }
+span.aside { color: #9ba3ae; font-style: italic; }
+span.mark { color: #9ba3ae; }
+span.bad { color: #e07070; font-weight: 600; }
+table { border-collapse: collapse; }
+th { font-size: 8pt; text-align: left; background: #22304a; color: #a8c4ee;
+     border-bottom: 1.5px solid #6f9be0; font-weight: 600; }
+th.num { text-align: right; }
+td { font-size: 8pt; border-bottom: 1px solid #2c3035; vertical-align: top; }
+td.num { text-align: right; }
+td.label { color: #9ba3ae; background: #232629; }
+tr.alt td { background: #232629; }
+table.ident td { border-bottom: 1px solid #2c3035; }
+table.contents td { border-bottom: 1px solid #2c3035; }
+"""
+
+#: the themes by the name a setting or a dialog holds, and what each is
+#: called where a person reads it. `paper` is the default everywhere: no
+#: saved project, no existing caller and no test moves because this exists.
+THEMES = {"paper": _STYLE, "mono": _STYLE_MONO, "dark": _STYLE_DARK}
+THEME_NAMES = {"paper": "Paper", "mono": "Black and white", "dark": "Dark"}
+#: the themes a printed document may be written in. A dark PDF is not what a
+#: printer wants and the export does not offer one.
+PRINTABLE_THEMES = ("paper", "mono")
+
+#: the running header and footer's two colours per theme — the hairline and
+#: the type. The furniture is painted rather than laid out, so it is the one
+#: part of the document the style sheet cannot reach; a black and white page
+#: whose footer rule is still the blue-grey #c3c9d3 is not black and white,
+#: which is what the printed-page test found by reading its pixels.
+FURNITURE = {
+    "paper": ("#c3c9d3", "#5b6472"),
+    "mono": ("#767676", "#3c3c3c"),
+    "dark": ("#3c4148", "#9ba3ae"),
+}
+
+
+def theme_named(theme) -> str:
+    """The name of a theme, `paper` for anything this does not have."""
+    name = str(theme or "").strip().lower()
+    return name if name in THEMES else "paper"
+
+
+def style_for(theme="paper") -> str:
+    """The style sheet of one theme."""
+    return THEMES[theme_named(theme)]
+
+
+def picture_palette(theme):
+    """The palette the pictures of a report in this theme are drawn in.
+
+    The report and the figures inside it are one document: a black and
+    white report holding a four-colour spectrum is not a black and white
+    report.
+    """
+    from . import spectra_compare
+
+    return spectra_compare.palette_named(theme_named(theme))
+
 
 # --------------------------------------------------------------------------- #
 def build_html(session, title: str = "Batch report",
                grouping: str = GROUP_BY_SAMPLE_TYPE,
                sections: tuple[str, ...] = ALL_SECTIONS,
                contents: dict[str, int] | None = None,
-               breaks: set[str] | None = None) -> str:
+               breaks: set[str] | None = None,
+               theme: str = "paper") -> str:
     """
     The whole report as one HTML document.
 
@@ -1209,6 +1440,11 @@ def build_html(session, title: str = "Batch report",
     hundred-component method makes a results section nobody prints — and are
     numbered here rather than in the section functions, so that leaving one
     out closes the gap instead of leaving one.
+
+    `theme` names the style sheet and, with it, the palette every picture in
+    the document is drawn in — `paper`, `mono` for a journal that prints in
+    black and white, `dark` for reading on a screen. It changes how the
+    document looks and never what it says.
 
     `contents` is how the printed version puts page numbers in its table of
     contents: `None` for no page column at all, an empty mapping to reserve
@@ -1229,6 +1465,12 @@ def build_html(session, title: str = "Batch report",
     infusions = getattr(session, "infusion_summary", None)
     if infusions is not None and not len(infusions.rows):
         infusions = None
+    # and the comparison of those infusions against a reference day's,
+    # which stands only while somebody has run one
+    against = getattr(session, "infusion_comparison", None)
+    if against is not None and not (against.rows or against.only_reference
+                                    or against.only_current):
+        against = None
     # printed while there is a history to print: a section saying nothing was
     # changed by hand would be on every report of a batch nobody touched
     trail = getattr(session, "audit", None)
@@ -1241,6 +1483,7 @@ def build_html(session, title: str = "Batch report",
              and (key != "algorithms" or comparison is not None)
              and (key != "mass" or drift is not None)
              and (key != "infusions" or infusions is not None)
+             and (key != "infusion-comparison" or against is not None)
              and (key != "spectra" or spectra is not None)
              and (key != "batches" or batches is not None)
              and (key != "audit" or (trail is not None and len(trail)))]
@@ -1250,7 +1493,7 @@ def build_html(session, title: str = "Batch report",
     parts = ["<!DOCTYPE html>",
              "<html><head><meta charset='utf-8'>",
              f"<title>{_escape(title)}</title>",
-             f"<style>{_STYLE}</style></head><body>",
+             f"<style>{style_for(theme)}</style></head><body>",
              _title_block(title, session.project_path, entries, method),
              _contents(list(titles.values()), contents)]
     for key in order:
@@ -1281,8 +1524,10 @@ def build_html(session, title: str = "Batch report",
                                 bool(getattr(session, "recalibrate", False))))
         elif key == "infusions":
             parts.append(_infusions(name, infusions, breaks))
+        elif key == "infusion-comparison":
+            parts.append(_infusion_comparison(name, against, breaks))
         elif key == "spectra":
-            parts.append(_spectra(name, spectra, breaks))
+            parts.append(_spectra(name, spectra, breaks, theme=theme))
         elif key == "algorithms":
             parts.append(_algorithms(name, comparison, method, breaks))
         elif key == "batches":
@@ -1653,7 +1898,8 @@ def _orphan_headings(document, page_height: float) -> set[str]:
 
 def _furniture(painter, writer, page: int, total: int, title: str,
                header: float, footer: float, body,
-               strings: dict[str, str] | None = None) -> None:
+               strings: dict[str, str] | None = None,
+               theme: str = "paper") -> None:
     """
     The running header and footer: what this is, and where the reader is in it.
 
@@ -1667,8 +1913,9 @@ def _furniture(painter, writer, page: int, total: int, title: str,
     """
     from PyQt6 import QtCore, QtGui
 
-    rule = QtGui.QColor("#c3c9d3")
-    muted = QtGui.QColor("#5b6472")
+    hairline, ink = FURNITURE[theme_named(theme)]
+    rule = QtGui.QColor(hairline)
+    muted = QtGui.QColor(ink)
     font = QtGui.QFont()
     font.setFamilies(["Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"])
     font.setPointSizeF(7.0)
@@ -1707,7 +1954,8 @@ def _furniture(painter, writer, page: int, total: int, title: str,
 
 def print_document(build, path: str | os.PathLike, title: str,
                    reflows: int = MAX_REFLOWS,
-                   strings: dict[str, str] | None = None) -> str:
+                   strings: dict[str, str] | None = None,
+                   theme: str = "paper") -> str:
     """
     Lay an HTML document out on A4 portrait pages and write it as a PDF.
 
@@ -1728,9 +1976,24 @@ def print_document(build, path: str | os.PathLike, title: str,
     of page one. And it is laid out more than once, because a heading
     stranded at the foot of a page has to be pushed over, and the table of
     contents cannot know a page number until the pages exist.
+
+    `theme` reaches two things. The document's own style is already in the
+    HTML the caller's `build` returns; the running header and footer are
+    painted here, outside it, so they are given the theme's own two colours
+    — a black and white page whose footer rule is still a blue-grey
+    hairline is not black and white, which the printed-page test found by
+    reading its pixels. And a dark document is refused before it is
+    written: a PDF is a thing somebody prints, and a printer handed a dark
+    page lays down a whole sheet of toner with the letters knocked out of
+    it. The HTML export is where a dark report belongs.
     """
     from PyQt6 import QtCore, QtGui
 
+    if theme_named(theme) not in PRINTABLE_THEMES:
+        raise ValueError(
+            "a dark theme is for reading on a screen, not for printing: "
+            "export the report as a web page for that, or print it in "
+            + " or ".join(THEME_NAMES[name] for name in PRINTABLE_THEMES))
     path = str(path)
     writer = QtGui.QPdfWriter(path)
     writer.setPageSize(QtGui.QPageSize(QtGui.QPageSize.PageSizeId.A4))
@@ -1776,7 +2039,7 @@ def print_document(build, path: str | os.PathLike, title: str,
                 0.0, index * body.height(), body.width(), body.height()))
             painter.restore()
             _furniture(painter, writer, index + 1, total, title, header, footer,
-                       body, strings)
+                       body, strings, theme)
     finally:
         painter.end()
     return path
@@ -1791,7 +2054,8 @@ def write_pdf(session, path: str | os.PathLike, **kwargs) -> str:
     is what most of the tests exercise — needs no GUI toolkit at all.
     """
     title = kwargs.get("title", "Batch report")
+    theme = kwargs.get("theme", "paper")
     return print_document(
         lambda contents, breaks: build_html(session, contents=contents,
                                             breaks=breaks, **kwargs),
-        path, title)
+        path, title, theme=theme)

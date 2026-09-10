@@ -92,3 +92,14 @@ integração retorna o mesmo pico duas vezes sob dois nomes. **Check method**
 reporta o par, e [[suggest-from-data]] se recusa a pré-marcar um tempo de
 retenção para qualquer um dos dois; a única coisa que os separa é um tempo
 de retenção que seja diferente, e diferente de propósito.
+
+## Um padrão no mesmo spray
+
+Sem coluna o pareamento é o mesmo e a aritmética não é: o analito e o seu
+padrão são duas alturas num único espectro médio em vez de dois picos
+integrados, e um padrão deuterado fica perto o bastante do seu analito para
+um alcançar os íons do outro. Para que lado isso vai, qual é o tamanho e
+quando não pode acontecer de jeito nenhum estão medidos na
+[[infusion-quantitation]]. O piso de resposta acima importa mais ali, não
+menos — a supressão iônica é compartilhada pelo par, então a razão sobrevive
+a ela e só as respostas absolutas a mostram.

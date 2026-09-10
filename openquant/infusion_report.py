@@ -69,16 +69,18 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from . import infusion as _infusion
 from . import precursor as _precursor
+from . import purity as _purity
 from . import spectra_compare
 from .components import Component
 from .explain import Explanation
-from .infusion import (InfusionVerdict, NoiseFloor, format_counts,
-                       noise_floor_for, run_range, strongest_channel,
-                       verdict_for)
+from .infusion import (InfusionVerdict, NoiseFloor, ScanMask, average_stable,
+                       format_counts, mask_for, noise_floor_for, run_range,
+                       stable_scans, strongest_channel, verdict_for)
 from .library import PEAK_TOLERANCE_PPM, LibraryHit, match
-from .report import (IMAGE_WIDTH, _escape, _heading, _number, _STYLE, _table,
-                     print_document)
+from .report import (IMAGE_WIDTH, _escape, _heading, _number, _table,
+                     picture_palette, print_document, style_for)
 from .samples import SampleEntry
 from .spectra_compare import LABEL_MIN_RELATIVE, SpectrumComparison
 
@@ -110,6 +112,13 @@ UNEXPLAINED_LISTED = 10
 
 #: at most this many matched fragments are tabulated, strongest first.
 FRAGMENTS_LISTED = 40
+
+#: the tolerance the mass-axis paragraph counts its before and after at. Not
+#: the 20 ppm the ladder is *matched* in — that window is wide enough to
+#: absorb the error being measured, so counting in it would show nothing —
+#: but the 5 ppm the LIPID MAPS tab's own-structure box defaults to, which is
+#: the tolerance somebody would actually judge an identification at.
+LADDER_CHECK_PPM = 5.0
 
 #: how wide the head-to-tail pictures are drawn, in the pixels of the ninety-
 #: six dots to the inch that Qt's `width` attribute means — the same measure
@@ -148,6 +157,454 @@ def compound_of(name: str) -> str:
     stem = os.path.splitext(str(name or "").strip())[0]
     first = _NAME_SPLIT.split(stem, 1)[0]
     return first or stem
+
+
+# --------------------------------------------------------------------------- #
+# what the method isolates, against what the name says it should
+# --------------------------------------------------------------------------- #
+#: at most this many other compounds are named as fitting one isolated
+#: precursor, the rest counted rather than listed. Measured on the real
+#: 141-component method with its formulas filled in, asked about each of its
+#: own written precursors: 97 of 141 have nought or one fit, 30 have two,
+#: nine have three, one has four and two have five — so four lists every fit
+#: for 139 of the 141 and elides one for the other two. Isobars are ordinary
+#: in lipidomics and a cell that names nine of them has stopped being an
+#: answer.
+MOST_FITS = 4
+
+
+def labelled_formula(formula: str, *names: str) -> tuple[str, int, str]:
+    """
+    A formula with the labels its name declares but its formula does not.
+
+    A d4 standard is bought, named and filed as `CA-d4`, and the formula
+    beside it is usually the unlabelled one: nothing in a component table
+    has a column for four deuteriums. The name has them, and
+    `chemistry.split_labels` reads a trailing `-d4`. Without this the
+    arithmetic is out by 4.025 Da and no adduct fits the written precursor
+    at all — which is a true statement about the formula as typed and a
+    useless one about the compound.
+
+    A formula that already spells its labels out is left alone: it has said
+    what it is. Returns the formula, how many labels were added, and the
+    clause that says so.
+    """
+    from .chemistry import (FormulaError, format_formula, parse_formula,
+                            split_labels)
+
+    try:
+        counts = dict(parse_formula(formula))
+    except (FormulaError, ValueError):
+        return formula, 0, ""
+    if counts.get("D"):
+        return formula, 0, ""
+    for written in names:
+        _stem, labels = split_labels(written or "")
+        if labels and counts.get("H", 0) >= labels:
+            counts["D"] = labels
+            counts["H"] -= labels
+            return (format_formula(counts), labels,
+                    f", with the {labels} label(s) {written} is named for")
+    return formula, 0, ""
+
+
+@dataclass(frozen=True)
+class Fit:
+    """One compound and adduct whose mass is the precursor a method isolates."""
+
+    name: str
+    formula: str
+    adduct: str
+    mz: float
+    error_ppm: float
+    #: where the candidate came from, in words: the component table, your
+    #: library, or the name on the file. A fit is worth exactly as much as
+    #: the list it was found in, so the list travels with it
+    source: str = ""
+
+    def __str__(self) -> str:
+        adduct = f" {self.adduct}" if self.adduct else ""
+        return f"{self.name}{adduct} ({self.mz:.4f}, {self.error_ppm:+.1f} ppm)"
+
+
+@dataclass(frozen=True)
+class Isolation:
+    """One product-ion channel: the precursor it isolates, and what fits it."""
+
+    channel: int = 0
+    channel_name: str = ""
+    precursor: float = 0.0
+    start_mass: float = 0.0
+    end_mass: float = 0.0
+    polarity: str = ""
+    collision_energy: float | None = None
+    #: how far a candidate could sit and still be counted, in daltons
+    tolerance: float = 0.0
+    #: adducts of the compound the file name proposes that fit this precursor
+    named: tuple[Fit, ...] = ()
+    #: everything else that fits, the component table before the library
+    others: tuple[Fit, ...] = ()
+    #: how many fits there were beyond the ones listed
+    more: int = 0
+
+    @property
+    def agrees(self) -> bool:
+        """Does the name's own compound have an adduct at this precursor?"""
+        return bool(self.named)
+
+    @property
+    def fit(self) -> Fit | None:
+        """The best of the other compounds that fit, or None."""
+        return self.others[0] if self.others else None
+
+    @property
+    def window(self) -> str:
+        return f"{self.start_mass:g}–{self.end_mass:g}"
+
+    def __str__(self) -> str:
+        return f"{self.precursor:g} over {self.window}"
+
+
+@dataclass(frozen=True)
+class IsolationVerdict:
+    """
+    Whether the compound a file is named after is the one its method isolates.
+
+    The name is a proposal and the method is a measurement, and this is the
+    arithmetic between them: the compound the name resolves to, its formula,
+    and every adduct of that formula against the precursor each product-ion
+    channel actually isolates. Where the name does not fit, the same
+    precursor is offered to the component table and to the library of one's
+    own, so the answer is not only *not this* but, where anything knows,
+    *this instead*.
+
+    Nothing here reads a spectrum. It compares two numbers that were both
+    written down before the vial was sprayed, which is why it can be shown
+    beside a file the moment it is opened.
+    """
+
+    #: the compound `compound_of` proposed from the file name
+    proposed: str = ""
+    #: what that name resolved to, labels included
+    formula: str = ""
+    #: in words: the standards table, LIPID MAPS, the lipid shorthand
+    resolved_from: str = ""
+    labels: int = 0
+    isolations: tuple[Isolation, ...] = ()
+    #: why nothing could be judged, when nothing could
+    note: str = ""
+    #: the same in a few words, for the cell the sentence will not fit in.
+    #: Written where the note is written rather than cut out of it: a reason
+    #: truncated at whatever punctuation happens to come first is a reason
+    #: that changes meaning when somebody rewords the sentence
+    brief: str = ""
+
+    def __bool__(self) -> bool:
+        return self.judged
+
+    @property
+    def judged(self) -> bool:
+        return bool(self.formula and self.isolations)
+
+    @property
+    def agrees(self) -> bool:
+        """Every product-ion channel isolates an adduct of the named compound."""
+        return self.judged and all(i.agrees for i in self.isolations)
+
+    @property
+    def disagrees(self) -> bool:
+        """No product-ion channel does. A method with several channels where
+        only some fit is neither: it says so per channel instead."""
+        return self.judged and not any(i.agrees for i in self.isolations)
+
+    @property
+    def fit(self) -> Fit | None:
+        """The compound the method fits instead, where anything fits."""
+        for isolation in self.isolations:
+            if isolation.fit is not None:
+                return isolation.fit
+        return None
+
+    # -- in words ------------------------------------------------------------- #
+    def sentence(self) -> str:
+        """
+        What the name and the method say about each other, in one sentence.
+
+        The sentence that goes on the report, into the tooltip and into the
+        warning the shell puts up when a file is opened. It never says a file
+        is wrong: it says what the name proposed, what the method isolates,
+        and whether the two are the same arithmetic.
+        """
+        if not self.judged:
+            return self.note
+        joined = "; ".join(self._clause(i) for i in self.isolations)
+        conjunction = "and" if self.agrees else "but"
+        return (f"The file is named {self.proposed} {conjunction} the method "
+                f"isolates {joined}.")
+
+    def _clause(self, isolation: Isolation) -> str:
+        """One channel's half of the sentence."""
+        if isolation.agrees:
+            fit = isolation.named[0]
+            return (f"{isolation.precursor:g}, which is {fit.adduct} of "
+                    f"{self.formula} ({fit.mz:.4f}, {fit.error_ppm:+.1f} ppm)")
+        return (f"{isolation}, which is no adduct of {self.formula} within "
+                f"±{isolation.tolerance:g} Da; it fits "
+                f"{self._fits_text(isolation)}")
+
+    @staticmethod
+    def _fits_text(isolation: Isolation) -> str:
+        if not isolation.others:
+            return "nothing in the component table or the library"
+        listed = ", ".join(f"{fit} from {fit.source}"
+                           for fit in isolation.others)
+        if isolation.more:
+            listed += f", and {isolation.more} other(s)"
+        return listed
+
+    def column(self) -> str:
+        """
+        The same answer short enough for a cell, with the reason in the
+        tooltip. A table column is a few characters wide and the sentence is
+        a sentence; what has to survive the width is the precursor and
+        whether it is the compound on the label.
+        """
+        if not self.judged:
+            return self.brief or "not checked"
+        parts = []
+        for isolation in self.isolations:
+            if isolation.agrees:
+                fit = isolation.named[0]
+                parts.append(f"{isolation.precursor:g} = {fit.adduct} of "
+                             f"{self.proposed}")
+            elif isolation.fit is not None:
+                fit = isolation.fit
+                parts.append(f"{isolation.precursor:g} = {fit.adduct} of "
+                             f"{fit.name}, not {self.proposed}")
+            else:
+                parts.append(f"{isolation.precursor:g} — no adduct of "
+                             f"{self.formula}, nothing fits")
+        return "; ".join(parts)
+
+
+def _library_fits(library, precursor: float, tolerance: float,
+                  sign: int | None) -> list[Fit]:
+    """
+    Records of the analyst's own library whose precursor is this one.
+
+    The record's **formula and adduct** where it carries them and the typed
+    `PrecursorMZ` otherwise, which is `LibraryEntry.exact_precursor`'s whole
+    reason for existing. The typed value is the coarse filter — the two agree
+    to under a part per million in 96.8% of a real library — so a record far
+    away is skipped before its formula is ever parsed, which is what keeps
+    this cheap enough to run on every channel of every file.
+    """
+    from .chemistry import mass_error_ppm
+
+    out: list[Fit] = []
+    for entry in getattr(library, "entries", ()) or ():
+        written = entry.precursor
+        if written is not None and abs(float(written) - precursor) > tolerance + 0.5:
+            continue
+        mz = entry.exact_precursor
+        if mz is None:
+            mz = written
+        if mz is None or abs(float(mz) - precursor) > tolerance:
+            continue
+        polarity = entry.polarity
+        if sign is not None and polarity is not None and polarity != sign:
+            continue
+        out.append(Fit(name=entry.name, formula=entry.formula,
+                       adduct=entry.precursor_type, mz=float(mz),
+                       error_ppm=mass_error_ppm(precursor, float(mz)),
+                       source="your library"))
+    return out
+
+
+def _component_fits(components, precursor: float, polarity) -> list[Fit]:
+    """Components of the method whose formula has an adduct at this precursor."""
+    from .chemistry import adducts_matching
+
+    out: list[Fit] = []
+    for component in components or ():
+        written = str(getattr(component, "formula", "") or "")
+        if not written:
+            continue
+        name = str(getattr(component, "name", "") or "")
+        formula, _labels, _note = labelled_formula(written, name)
+        for match_ in adducts_matching(formula, precursor, polarity or None):
+            if match_.within:
+                out.append(Fit(name=name or formula, formula=formula,
+                               adduct=match_.name, mz=match_.mz,
+                               error_ppm=match_.error_ppm,
+                               source="the component table"))
+    return out
+
+
+def resolution_is_exact(resolved) -> bool:
+    """
+    Did the name resolve to *that* compound, or merely to one containing it?
+
+    `lipidmaps.find_by_name` is a substring search, which is the right
+    behaviour for somebody typing into a box and the wrong one for a check
+    that fires by itself on every file opened. Measured against the installed
+    LMSD: `PC` answers *PCTR3*, `CE` answers *cedrol*, `Cer` answers
+    *Cerasin* and `TESTOL` answers *testolactone* — four sample names of the
+    most ordinary kind, each resolved to a compound nobody was infusing, and
+    each of them would then have contradicted whatever the method isolated.
+
+    So a LIPID MAPS resolution counts only when the record's own name,
+    abbreviation or LM_ID **is** the name, punctuation and case aside. The
+    standards table is an exact key lookup and the lipid shorthand is parsed
+    rather than searched, so both are exact by construction — and they are
+    re-derived here rather than read off `NamedCompound.source`, whose
+    wording is prose.
+    """
+    from .chemistry import formula_from_name, standard_named
+
+    if resolved is None:
+        return False
+    compound = resolved.compound
+    if standard_named(compound) is not None or formula_from_name(compound):
+        return True
+    record = resolved.record
+    if record is None:
+        return False
+    want = _flat(compound)
+    return any(_flat(getattr(record, field, "")) == want
+               for field in ("name", "abbrev", "lm_id"))
+
+
+def _isolation_for(channel, proposed: str, formula: str, components,
+                   library) -> Isolation:
+    """One product-ion channel measured against a formula and two lists."""
+    from .chemistry import (ADDUCT_MATCH_DA, adducts_matching, polarity_sign)
+    from .lipidmaps import mass_precision
+
+    info = channel.info
+    precursor = float(info.precursor)
+    polarity = str(getattr(info, "polarity", "") or "")
+    # `chemistry.adducts_matching`'s own tolerance, made explicit here so the
+    # library half of the answer is asked the same question as the formula
+    # half: `ADDUCT_MATCH_DA`, widened where the precursor was typed to fewer
+    # places than that — `647.5` is known to ±0.05 and nothing closer can be
+    # asked of it, while `430.35`'s own ±0.005 is finer and 0.05 stands
+    tolerance = max(ADDUCT_MATCH_DA, mass_precision(precursor))
+    named = tuple(
+        Fit(name=proposed, formula=formula, adduct=m.name, mz=m.mz,
+            error_ppm=m.error_ppm, source="the name on the file")
+        for m in adducts_matching(formula, precursor, polarity or None)
+        if m.within)
+    others = (_component_fits(components, precursor, polarity)
+              + _library_fits(library, precursor, tolerance,
+                              polarity_sign(polarity) if polarity else None))
+    others.sort(key=lambda fit: abs(fit.error_ppm))
+    return Isolation(
+        channel=int(info.index), channel_name=str(info.name or ""),
+        precursor=precursor, start_mass=float(info.start_mass),
+        end_mass=float(info.end_mass), polarity=polarity,
+        collision_energy=info.collision_energy, tolerance=tolerance,
+        named=named, others=tuple(others[:MOST_FITS]),
+        more=max(len(others) - MOST_FITS, 0))
+
+
+def what_the_method_isolates(sample, components=(), library=None,
+                             name: str = "") -> IsolationVerdict:
+    """
+    Whether the compound in a file's name is the one its method isolates.
+
+    `sample` is any reader's sample; `name` is the file's name, since a
+    `.wiff` written by a manual acquisition calls its own sample `sample` and
+    the compound is only ever in the file name. `components` is the method's
+    table and `library` the analyst's own `SpectralLibrary`, both optional
+    and both only ever consulted about a precursor the name does not fit —
+    an answer of *not this, and nothing here knows what* is still an answer,
+    and a much better one than silence.
+
+    Every reason for not judging is returned rather than raised: a name
+    nothing recognises, an acquisition with no product-ion channel, a
+    formula that will not parse. The verdict then carries `note` and
+    `judged` is False, because "the name could not be checked" and "the name
+    is wrong" are different findings and a program that confuses them is
+    worse than one that says neither.
+    """
+    from .chemistry import FormulaError, parse_formula
+    from .explain import resolve_name
+
+    written = str(name or getattr(sample, "name", "") or "")
+    proposed = compound_of(written)
+    if not proposed:
+        return IsolationVerdict(note="the file has no name to propose a "
+                                     "compound from",
+                                brief="no name")
+    channels = [c for c in getattr(sample, "channels", [])
+                if getattr(c.info, "precursor", None) is not None]
+    resolved = resolve_name(proposed)
+    if resolved is None or not resolution_is_exact(resolved):
+        near = ("" if resolved is None else
+                f" — the nearest is {resolved.formula}, which is a compound "
+                f"whose name merely contains it and not the compound itself")
+        return IsolationVerdict(
+            proposed=proposed,
+            note=f"nothing knows the name {proposed} exactly: not the "
+                 f"standards table, not LIPID MAPS and not the lipid "
+                 f"shorthand, so there is no formula to check the method "
+                 f"against{near}",
+            brief=f"{proposed} is not a compound this knows")
+    # the labels the name declares and the formula does not: `resolve_name`
+    # answers `CA-d4` with cholic acid's own C24H40O5 and a count of four,
+    # and four deuteriums are 4.025 Da — the difference between an adduct
+    # that fits the written precursor and one that misses every one of them
+    formula, labels, _note = labelled_formula(resolved.formula, proposed)
+    try:
+        parse_formula(formula)
+    except (FormulaError, ValueError):
+        return IsolationVerdict(
+            proposed=proposed,
+            note=f"{proposed} resolves to {formula!r}, which is not a "
+                 f"formula this can read",
+            brief=f"{formula} is not a readable formula")
+    if not channels:
+        return IsolationVerdict(
+            proposed=proposed, formula=formula,
+            resolved_from=resolved.source, labels=labels,
+            note="this acquisition has no product-ion channel, so there is "
+                 "no isolated precursor to check the name against",
+            brief="nothing is isolated")
+    return IsolationVerdict(
+        proposed=proposed, formula=formula, resolved_from=resolved.source,
+        labels=labels,
+        isolations=tuple(
+            _isolation_for(c, proposed, formula, components, library)
+            for c in channels))
+
+
+def name_disagreements(entries, components=(), library=None) -> list[str]:
+    """
+    One sentence per open infusion whose name and method disagree.
+
+    What the shell puts up when a file is opened, and nothing else: an
+    acquisition that is not an infusion is not asked (a chromatographic run
+    is named after a sample, not a compound), a name nothing recognises is
+    not a disagreement, and a method that isolates an adduct of the named
+    compound says nothing at all.
+    """
+    said: list[str] = []
+    for entry in entries or ():
+        sample = getattr(entry, "sample", None)
+        if sample is None:
+            continue
+        try:
+            if not verdict_for(sample):
+                continue
+            verdict = what_the_method_isolates(
+                sample, components, library,
+                name=str(getattr(entry, "name", "") or ""))
+        except Exception:               # a reader that cannot say
+            continue
+        if verdict.disagrees:
+            said.append(f"{entry.name}: {verdict.sentence()}")
+    return said
 
 
 def energy_of(hit_or_entry) -> float | None:
@@ -213,9 +670,19 @@ class InfusionReport:
     written_precursor: float | None = None
     collision_energy: float | None = None
     scans: int = 0
+    #: which scans went into the average and which the spray lost. None where
+    #: nothing measured it — an older project, or a channel that would not
+    #: read — and the report then says the scan count and nothing about it.
+    mask: ScanMask | None = None
+    #: the average was taken over every scan, unstable ones included, because
+    #: the reader asked for it
+    unstable_included: bool = False
     rt_range: tuple[float, float] | None = None
     adduct: str = ""
     verdict: InfusionVerdict | None = None
+    #: whether the compound the file is named after is the one the method
+    #: isolates — `what_the_method_isolates`, or None where nobody asked
+    isolation: IsolationVerdict | None = None
     # -- the accurate precursor ---------------------------------------------- #
     #: `precursor.measure`, which reads the survey scan
     measurement: _precursor.PrecursorMeasurement | None = None
@@ -230,16 +697,50 @@ class InfusionReport:
     #: `infusion.noise_floor`. None where it could not be measured at all,
     #: and `floor` then falls back to the fixed `precursor.MIN_INTENSITY`.
     noise_floor: NoiseFloor | None = None
+    # -- what the survey says about the adduct -------------------------------- #
+    #: the formula the adduct was weighed against, labels included
+    formula: str = ""
+    #: `chemistry.adduct_evidence` for every candidate adduct, best supported
+    #: first. Empty where there was no survey to read, which is not the same
+    #: as a survey that showed nothing.
+    evidence: list = field(default_factory=list)
+    #: the sentence the header cell abbreviates: why the adduct is or is not
+    #: confirmed
+    adduct_note: str = ""
+    adduct_confirmed: bool = False
+    #: the survey channel it was read from, as the file labels it
+    survey_channel: str = ""
     # -- the spectrum -------------------------------------------------------- #
     #: the averaged spectrum, drawn for paper; one trace
     spectrum: SpectrumComparison | None = None
     label_floor: float = LABEL_MIN_RELATIVE
+    # -- the mass axis ------------------------------------------------------- #
+    #: the correction fitted from this infusion's own precursor ladder, or
+    #: the refusal that says why there is none. Held whether or not it was
+    #: applied: a vial that was looked at and left alone is a finding.
+    correction: object | None = None
+    #: whether the spectrum above is on the corrected axis. False with a
+    #: correction present means the switch was off — the fit stands and the
+    #: masses printed are the instrument's own.
+    recalibrated: bool = False
+    #: the same explanation run on the axis as measured, for the before and
+    #: after. Only where a correction was applied; None otherwise.
+    raw_explanation: Explanation | None = None
+    #: the formula and adduct the ladder was predicted from, and where they
+    #: came from. Kept so the paragraph can count the ladder's own ions
+    #: before and after without asking the session a second time.
+    axis_subject: "AxisSubject | None" = None
     # -- what was run -------------------------------------------------------- #
     explanation: Explanation | None = None
     #: what the prediction was made from, in words — the sentence that says
     #: what the denominator of "n of m" counts
     basis: str = ""
     deuterium: int = 0
+    #: the isotopic purity of a labelled standard, where the compound carries
+    #: labels and an ion could be identified to read the envelope at. Always
+    #: present when it was attempted, `usable` or not: a refusal is the
+    #: measurement's own finding and belongs on the page beside the rest
+    purity: "_purity.Purity | None" = None
     hit: LibraryHit | None = None
     library: str = ""
     compared: list[Compared] = field(default_factory=list)
@@ -249,6 +750,26 @@ class InfusionReport:
     @property
     def title(self) -> str:
         return self.compound or self.sample or "Infusion"
+
+    @property
+    def named_compound(self) -> str:
+        """
+        The compound this is, once the method has had its say.
+
+        `compound_of` reads a file name, which is a proposal: somebody typed
+        it, and on a manual acquisition it is the only place a compound is
+        written at all. The method's isolated precursor is a measurement of
+        the same question, so where the two disagree this reads the compound
+        the method fits and flags the name — and where nothing fits, it says
+        the name is not confirmed rather than repeating it as though it were.
+        """
+        verdict = self.isolation
+        if verdict is None or not verdict.disagrees:
+            return self.compound
+        fit = verdict.fit
+        if fit is not None:
+            return f"{fit.name}, not {self.compound}"
+        return f"not {self.compound}"
 
     @property
     def trace(self) -> spectra_compare.SpectrumTrace | None:
@@ -317,6 +838,57 @@ class InfusionReport:
                     / self.written_precursor * 1e6)
         return None
 
+    # -- the scans ----------------------------------------------------------- #
+    def scans_line(self) -> str:
+        """
+        How many scans there were and how many were averaged, in one line.
+
+        "473 scans, 464 averaged; 9 left out: 0.008 min; 1.069–1.099 min,
+        8 scans" — the header's cell and the library record's comment read
+        this, so a record and the paper beside it say the same thing.
+        """
+        mask = self.mask
+        if mask is None or mask.n_scans == 0:
+            return f"{self.scans:,}" if self.scans else "—"
+        if self.unstable_included and mask.excluded:
+            return (f"{mask.n_scans:,} scans, all averaged; "
+                    f"{mask.excluded:,} unstable scan(s) kept on request: "
+                    f"{mask.ranges}")
+        return mask.summary()
+
+    def scans_cell(self) -> str:
+        """The scans column of a table of many: "464 of 473", or "473"."""
+        mask = self.mask
+        if mask is not None and mask.excluded and not self.unstable_included:
+            return f"{mask.kept:,} of {mask.n_scans:,}"
+        return f"{self.scans:,}" if self.scans else "—"
+
+    def scans_averaged(self) -> int:
+        """The scans the average was actually taken over."""
+        mask = self.mask
+        if mask is None or mask.n_scans == 0:
+            return int(self.scans)
+        return mask.n_scans if self.unstable_included else mask.kept
+
+    def _scan_sentences(self) -> list[str]:
+        mask = self.mask
+        if mask is None or mask.n_scans == 0 or not mask.excluded:
+            return []
+        if self.unstable_included:
+            return [f"{mask.excluded} scan(s) of {mask.n_scans} depart from "
+                    f"the run's own level by more than "
+                    f"{_infusion.SPRAY_JUMP:.0%} — {mask.ranges} — and were "
+                    f"averaged in anyway, because *Include unstable scans* "
+                    f"is on. The spectrum above is the whole run."]
+        return [f"{mask.excluded} scan(s) of {mask.n_scans} were left out of "
+                f"the average: {mask.ranges}. Each departs from the running "
+                f"median of {_infusion.STABILITY_WINDOW} scans by more than "
+                f"{_infusion.SPRAY_JUMP:.0%}, or follows one that does and "
+                f"had not come back within {_infusion.SPRAY_RECOVERED:.0%} — "
+                f"a spray that faltered, not a compound that changed. The "
+                f"rest of the run repeats itself to "
+                f"{mask.scatter:.1%} of its own level."]
+
     def energy_gap(self) -> tuple[float, float] | None:
         """This acquisition's energy and the record's, when they differ."""
         if self.hit is None or self.collision_energy is None:
@@ -340,8 +912,15 @@ class InfusionReport:
         file.
         """
         said: list[str] = []
+        # first, because it is the one check that can invalidate the others:
+        # a precursor confirmed to a part per million and a library record at
+        # 96 are both about whatever the method isolated, and if that is not
+        # the compound on the label then neither sentence is about this vial
+        said += self._isolation_sentences()
         said += self._precursor_sentences()
+        said += self._adduct_sentences()
         said += self._fragment_sentences()
+        said += self._purity_sentences()
         said += self._library_sentences()
         if not said:
             said.append(
@@ -349,7 +928,25 @@ class InfusionReport:
                 "or formula was scored against this spectrum and no library "
                 "was searched. What follows is the averaged spectrum and its "
                 "peaks, which is all this report claims to be.")
+        # last, because it is about the spectrum every other sentence was
+        # measured on rather than about the compound — and it is not a check,
+        # so it does not stop the sentence above from being written
+        said += self._scan_sentences()
         return said
+
+    def _isolation_sentences(self) -> list[str]:
+        """
+        What the name and the method say about each other, where it was asked.
+
+        Silent when the verdict agrees and the name was resolved from a table
+        rather than measured: a report that opens by saying the file is named
+        what it is named has spent its first sentence on nothing. It speaks
+        when the two disagree, which is the case worth a page.
+        """
+        verdict = self.isolation
+        if verdict is None or not verdict.judged or verdict.agrees:
+            return []
+        return [verdict.sentence()]
 
     def _precursor_sentences(self) -> list[str]:
         written = (f"the written {self.written_precursor:.4f}"
@@ -388,6 +985,32 @@ class InfusionReport:
             return [f"Precursor not confirmed: {measurement.note or 'not found'}."]
         return []
 
+    def _adduct_sentences(self) -> list[str]:
+        """
+        What the survey scan says the written precursor is, if anything.
+
+        An adduct is otherwise arithmetic on a number somebody typed: the
+        method says 647.5, the molecule weighs 646.50, and the only ion that
+        joins them is the protonated one — which is a deduction, not a
+        measurement, and it is wrong the moment the formula is. A survey scan
+        turns it into a measurement, by the exact mass and by the isotope
+        pattern, and where the acquisition has no survey this says so instead
+        of letting the deduction pass for one.
+        """
+        if not self.adduct_note:
+            return []
+        said = [self.adduct_note if self.adduct_note.endswith(".")
+                else self.adduct_note + "."]
+        others = [e for e in self.evidence
+                  if e.present and e.name != self.adduct]
+        if self.adduct_confirmed and others:
+            from .chemistry import adduct_map
+
+            said[-1] += (f" The survey shows this compound as "
+                         f"{adduct_map(self.evidence)}, so the channel that "
+                         f"was acquired is not the only one it would give.")
+        return said
+
     def _fragment_sentences(self) -> list[str]:
         explanation = self.explanation
         if explanation is None:
@@ -409,6 +1032,9 @@ class InfusionReport:
                          f"above the label floor are not accounted for, the "
                          f"strongest at {left[0][0]:.4f}.")
         return said
+
+    def _purity_sentences(self) -> list[str]:
+        return [] if self.purity is None else self.purity.sentences()
 
     def _library_sentences(self) -> list[str]:
         hit = self.hit
@@ -433,18 +1059,37 @@ class InfusionReport:
 # --------------------------------------------------------------------------- #
 # building one
 # --------------------------------------------------------------------------- #
-def average_spectrum(channel):
+def average_spectrum(channel, include_unstable: bool = False, sample=None):
     """
-    Every scan of a channel averaged into one spectrum, with the range.
+    Every steady scan of a channel averaged into one spectrum, with the range
+    and the mask that says which scans those were.
 
     An infusion has no chromatography to select over, so this is the whole of
-    it — the same view `Explorer.average_whole_run` lands on.
+    it — the same view `Explorer.average_whole_run` lands on, and the same
+    arithmetic, so the pane and the paper cannot disagree.
+
+    `include_unstable` averages the run as it comes, which is what this did
+    before `infusion.stable_scans` existed and what *Include unstable scans*
+    in the Explorer's Process menu asks for. The mask is measured and returned
+    either way, so a report of the raw average can still say what it kept.
+
+    `sample` is the channel's own sample where the caller has it, and it gates
+    the mask on the infusion verdict (`infusion.mask_for`) — the peaks of a
+    chromatographic run depart from their neighbours further than any spray
+    ever does. Without one this trusts the caller that the channel is an
+    infusion's, which every caller inside this module is.
     """
     window = run_range(channel)
     if window is None:
         return None
-    mz, intensity = channel.spectrum_rt_range(*window)
-    return np.asarray(mz, dtype=float), np.asarray(intensity, dtype=float), window
+    mask = (mask_for(sample, channel) if sample is not None
+            else stable_scans(channel))
+    if include_unstable:
+        mz, intensity = channel.spectrum_rt_range(*window)
+    else:
+        mz, intensity = average_stable(channel, mask)
+    return (np.asarray(mz, dtype=float), np.asarray(intensity, dtype=float),
+            window, mask)
 
 
 class _Trace:
@@ -514,12 +1159,15 @@ def score_against(peaks, other_peaks,
     return match(mz, intensity, other_mz, other_intensity, tolerance_ppm)
 
 
-def _channel_note(channel) -> str:
+def _channel_note(channel, mask: ScanMask | None = None) -> str:
     info = getattr(channel, "info", None)
     if info is None:
         return ""
     energy = getattr(info, "collision_energy", None)
-    bits = [f"{info.n_scans:,} scans"]
+    if mask is not None and mask.excluded:
+        bits = [f"{mask.kept:,} of {mask.n_scans:,} scans"]
+    else:
+        bits = [f"{info.n_scans:,} scans"]
     if energy:
         bits.append(f"CE {energy:g} eV")
     return ", ".join(bits)
@@ -533,7 +1181,10 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
                label_floor: float = LABEL_MIN_RELATIVE,
                centroid: bool = False,
                spectrum: tuple | None = None,
-               measure_precursor: bool = True) -> InfusionReport:
+               measure_precursor: bool = True,
+               formula: str = "", components=(), own_library=None,
+               session=None, recalibrated: bool = False,
+               include_unstable: bool = False) -> InfusionReport:
     """
     A report for one open infusion, reading the file for what it needs.
 
@@ -541,6 +1192,18 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
     spectrum on screen — the Explorer does, conditioned the way the pane
     conditions it — and None to read and average it here. `others` are the
     infusions to compare against, each an `(entry, channel)` pair.
+
+    `components` and `own_library` are what the isolation verdict is offered
+    when the compound the file is named after does not fit the precursor the
+    method isolates. Both are optional and neither is read for anything else:
+    without them the verdict can still say *not this*, and with them it can
+    sometimes say what instead.
+
+    `session`, where it is given, is what the mass correction lives on: the
+    axis is fitted from this infusion's own precursor ladder (`fit_axis`) and
+    applied when the session's switch is on. `recalibrated` says the caller
+    has already applied it to the `spectrum` handed in — the Explorer draws
+    the corrected axis, so its report would otherwise correct it twice.
     """
     sample = getattr(entry, "sample", None)
     channel = channel if channel is not None else (
@@ -552,7 +1215,7 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
         file=getattr(entry, "filename", ""),
         sample=getattr(entry, "name", ""),
         instrument=str(getattr(sample, "instrument", "") or ""),
-        adduct=adduct,
+        adduct=adduct, formula=formula,
         explanation=explanation, basis=basis, deuterium=int(deuterium),
         hit=hit, library=library, label_floor=float(label_floor),
     )
@@ -561,6 +1224,12 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
             report.verdict = verdict_for(sample)
         except Exception:                       # a reader that cannot say
             report.verdict = None
+        try:
+            report.isolation = what_the_method_isolates(
+                sample, components, own_library,
+                name=str(getattr(entry, "name", "") or ""))
+        except Exception:                       # a reader that cannot say
+            report.isolation = None
     if info is not None:
         report.polarity = str(getattr(info, "polarity", "") or "")
         report.channel = info.label
@@ -575,11 +1244,39 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
         mz, intensity = (np.asarray(spectrum[0], dtype=float),
                          np.asarray(spectrum[1], dtype=float))
         report.rt_range = run_range(channel)
+        # the pane already averaged; the mask is measured again here so the
+        # header can say what the pane's title says. It costs one chromatogram
+        report.mask = mask_for(sample, channel)
+        report.unstable_included = bool(include_unstable)
     else:
-        averaged = average_spectrum(channel)
+        averaged = average_spectrum(channel, include_unstable=include_unstable,
+                                    sample=sample)
         if averaged is None:
             return report
-        mz, intensity, report.rt_range = averaged
+        mz, intensity, report.rt_range, report.mask = averaged
+        report.unstable_included = bool(include_unstable)
+    # the mass axis, before anything reads a mass off it. Fitted from the
+    # uncorrected average, which is why this comes before the correction is
+    # applied and why a caller that has already applied one says so.
+    if session is not None:
+        report.axis_subject = axis_subject(
+            session, report.compound, report.written_precursor,
+            report.polarity)
+        if recalibrated:
+            report.correction = getattr(session, "mass_corrections", {}).get(
+                getattr(entry, "key", ""))
+        else:
+            report.correction = fit_axis(session, entry, channel,
+                                         spectrum=(mz, intensity))
+        applied = None
+        try:
+            applied = session.correction_for(getattr(entry, "key", ""))
+        except Exception:
+            applied = None
+        if applied is not None:
+            report.recalibrated = True
+            if not recalibrated:
+                mz = np.asarray(applied.apply(mz), dtype=float)
     report.spectrum = one_spectrum(
         f"{report.sample} · {report.channel}", mz, intensity,
         title=f"{report.title} — averaged over the whole run",
@@ -587,9 +1284,14 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
 
     # what the acquisition says is noise, measured off it rather than fixed:
     # the average of hundreds of scans has neither the units nor the noise of
-    # the single survey scan `precursor.MIN_INTENSITY` was written for
+    # the single survey scan `precursor.MIN_INTENSITY` was written for. The
+    # spectrum printed here is the one measured, spray mask included, and the
+    # scan count goes with it: what averaging bought is the root of the scans
+    # actually in the average, not of the scans in the range.
     try:
-        report.noise_floor = noise_floor_for(channel, spectrum=(mz, intensity))
+        report.noise_floor = noise_floor_for(
+            channel, spectrum=(mz, intensity),
+            scans=report.scans_averaged() or None)
     except Exception:                       # a reader that cannot say
         report.noise_floor = None
 
@@ -606,6 +1308,13 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
         if report.measurement is None or not report.measurement.found:
             _survivor(report, mz, intensity)
 
+    # which adduct that written precursor is, asked of the survey scan
+    # rather than deduced from the number. Only where a formula is known:
+    # without one there is nothing for an adduct to be an adduct of.
+    if formula:
+        confirm_adduct(entry, report, formula, deuterium)
+    _measure_purity(report, mz, intensity)
+
     mine = (report.spectrum.peaks(report.trace, most=SCORE_PEAKS,
                                   min_relative=SCORE_SHARE)
             if report.trace is not None else [])
@@ -615,6 +1324,151 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
         if other is not None:
             report.compared.append(other)
     return report
+
+
+def survey_spectrum(entry, report: InfusionReport):
+    """
+    The survey scan of this acquisition over the same range as the spectrum.
+
+    The same range on purpose: the product-ion average on the page and the
+    survey it is checked against have to be the same moment of the same run,
+    or the adduct is confirmed from somebody else eluting. For an infusion
+    that range is the whole run, which is the whole of the measurement.
+
+    Returns `(channel, mz, intensity)`, or None when the sample has no
+    full-scan channel covering the precursor — the ordinary case on the nine
+    bile-acid infusions, which were acquired as product-ion scans alone.
+    """
+    from .precursor import survey_channel
+
+    sample = getattr(entry, "sample", None)
+    precursor = float(report.written_precursor or 0.0)
+    if sample is None or not precursor:
+        return None
+    window = report.rt_range
+    middle = None if window is None else (window[0] + window[1]) / 2.0
+    try:
+        channel = survey_channel(sample, precursor, middle)
+    except Exception:                       # a reader that cannot say
+        return None
+    if channel is None:
+        return None
+    span = window or run_range(channel)
+    if span is None:
+        return None
+    try:
+        mz, intensity = channel.spectrum_rt_range(float(span[0]), float(span[1]))
+    except Exception:                       # a .wiff with no .wiff.scan
+        return None
+    return channel, mz, intensity
+
+
+def confirm_adduct(entry, report: InfusionReport, formula: str,
+                   deuterium: int = 0):
+    """
+    Ask the survey which adduct the written precursor is, and record it.
+
+    The written precursor still says which adducts are candidates — the
+    quadrupole isolated that mass — and the survey says which of them the
+    instrument saw, by the exact mass and by the isotope pattern. What comes
+    back goes on the report whichever way it falls: an adduct nobody could
+    check is a different claim from one measured, and the report is a list of
+    claims with their evidence.
+
+    Returns the `chemistry.AdductChoice`, or None where there was no formula
+    or no precursor to ask about.
+    """
+    from .chemistry import (FormulaError, format_formula, identify_adduct,
+                            parse_formula)
+
+    report.evidence = []
+    report.adduct_confirmed = False
+    report.survey_channel = ""
+    precursor = float(report.written_precursor or 0.0)
+    if not formula or not precursor:
+        report.adduct_note = ""
+        return None
+    try:
+        counts = dict(parse_formula(formula))
+    except (FormulaError, ValueError):
+        report.adduct_note = f"“{formula}” is not a formula this can read"
+        return None
+    if deuterium and counts.get("H", 0) >= deuterium and not counts.get("D"):
+        counts["D"] = counts.get("D", 0) + deuterium
+        counts["H"] -= deuterium
+    labelled = format_formula(counts)
+    report.formula = labelled
+
+    found = survey_spectrum(entry, report)
+    polarity = report.polarity or None
+    if found is None:
+        choice = identify_adduct(labelled, precursor, polarity)
+        report.adduct_note = (
+            f"Adduct read from the written precursor alone: this acquisition "
+            f"has no survey scan covering {precursor:g}, so nothing "
+            f"independent says which ion it is — {choice.reason}")
+        if choice.adduct is not None and not report.adduct:
+            report.adduct = choice.adduct.name
+        return choice
+    channel, mz, intensity = found
+    report.survey_channel = str(getattr(channel.info, "label", "") or "")
+    choice = identify_adduct(labelled, precursor, polarity,
+                             survey=(mz, intensity))
+    report.evidence = list(choice.evidence)
+    report.adduct_confirmed = bool(choice.confirmed)
+    if choice.adduct is not None and (not report.adduct
+                                      or choice.confirmed):
+        report.adduct = choice.adduct.name
+    lead = ("Adduct confirmed by the survey" if choice.confirmed
+            else "Adduct not confirmed by the survey")
+    report.adduct_note = f"{lead}: {choice.reason}"
+    return choice
+
+
+def _measure_purity(report: InfusionReport, mz=None, intensity=None,
+                    formula: str = "", adduct: str = "",
+                    deuterium: int | None = None) -> None:
+    """
+    The isotopic purity of a labelled standard, from the averaged spectrum.
+
+    Only where three things are known: what the compound is made of, how it
+    was ionised, and how many labels it carries. Two of those come from
+    whatever was scored against the spectrum, so an infusion nobody explained
+    is not asked — there is no formula to build the envelope from, and
+    guessing one would be inventing the answer's own model. The arguments
+    exist because the headless path knows all three a moment before the
+    report does.
+
+    It reads the **profile** spectrum, not the report's peak list: an isotope
+    envelope's rungs are tenths of a per cent of the base peak and every peak
+    list in this module starts at one per cent.
+
+    A refusal is kept rather than dropped. On the nine bile-acid infusions
+    this was written against it is the *only* outcome, because every one is a
+    product-ion scan whose precursor the quadrupole isolated, and a page that
+    silently omits the block cannot be told from a build that never had it.
+    """
+    explanation = report.explanation
+    formula = formula or (explanation.record.formula
+                          if explanation is not None else "")
+    adduct = adduct or report.adduct
+    if deuterium is None:
+        deuterium = int(report.deuterium)
+    if not formula or not adduct:
+        return
+    if mz is None or intensity is None:
+        trace = report.trace
+        if trace is None:
+            return
+        mz, intensity = trace.mz, trace.intensity
+    try:
+        attempt = _purity.purity_from_spectrum(mz, intensity, formula,
+                                               adduct, int(deuterium))
+    except Exception:                          # a formula the reader refuses
+        return
+    result = attempt.best
+    if result is not None and result.labels > 0:
+        report.purity = result
 
 
 def _survivor(report: InfusionReport, mz, intensity) -> None:
@@ -672,10 +1526,12 @@ def _compared(report: InfusionReport, mine, other_entry,
         strongest_channel(sample) if sample is not None else None)
     if channel is None:
         return None
-    averaged = average_spectrum(channel)
+    averaged = average_spectrum(channel,
+                                include_unstable=report.unstable_included,
+                                sample=sample)
     if averaged is None:
         return None
-    other_mz, other_intensity, _window = averaged
+    other_mz, other_intensity, _window, other_mask = averaged
     trace = report.trace
     if trace is None:
         return None
@@ -689,7 +1545,7 @@ def _compared(report: InfusionReport, mine, other_entry,
     score, reverse, pairs = score_against(mine, theirs)
     return Compared(label=label, comparison=comparison, score=float(score),
                     reverse=float(reverse), matched=len(pairs),
-                    of_other=len(theirs), note=_channel_note(channel))
+                    of_other=len(theirs), note=_channel_note(channel, other_mask))
 
 
 def from_explorer(explorer, compound: str = "", others=(),
@@ -726,33 +1582,66 @@ def from_explorer(explorer, compound: str = "", others=(),
     if lipids is not None:
         try:
             deuterium = int(lipids.own_deuterium.value())
-            # what it was actually scored as, which the own-structure path
-            # reads off the written precursor rather than off the box
-            adduct = str(getattr(lipids, "explanation_adduct", "")
-                         or lipids.explain_adduct.currentText())
+            # what it was actually scored as. The explanation itself carries
+            # it, which is the only source that cannot disagree with the
+            # scoring: both paths read the adduct off the written precursor
+            # rather than off the box, and the box may say "from the
+            # precursor" — the name of a rule, not of an ion
+            from .chemistry import adduct_from_name
+
+            chosen = lipids.explain_adduct.currentText()
+            adduct = str(getattr(explanation, "adduct", "")
+                         or getattr(lipids, "explanation_adduct", "")
+                         or (chosen if adduct_from_name(chosen) else ""))
         except Exception:
             deuterium, adduct = 0, adduct
 
     panel = getattr(explorer, "library_panel", None)
     hit = None
     library = ""
+    own = None
     if panel is not None:
         try:
             hit = panel._current_hit()
-            library = os.path.basename(getattr(panel.library, "path", "") or "")
+            own = panel.library
+            library = os.path.basename(getattr(own, "path", "") or "")
         except Exception:
-            hit, library = None, ""
+            hit, library, own = None, "", None
+
+    session = getattr(explorer, "session", None)
+    components = getattr(getattr(session, "method", None), "components", ())
 
     floor = getattr(getattr(explorer, "spectrum", None), "label_floor",
                     LABEL_MIN_RELATIVE)
     centroid = bool(getattr(getattr(explorer, "spectrum", None), "centroided",
                             False))
+    # the formula whatever was explained was explained from: without one
+    # there is nothing for an adduct to be an adduct of, and the survey is
+    # not asked
+    formula = str(getattr(getattr(explanation, "record", None), "formula", "")
+                  or "")
+    # the pane's axis is already corrected exactly when a correction is in
+    # force for this sample, so that — and not the switch alone — is what
+    # says whether the report would be correcting it a second time. Only
+    # where the pane actually handed a spectrum over: with none, the report
+    # reads its own average and has to correct that itself.
+    session = getattr(explorer, "session", None)
+    corrected = False
+    if session is not None and spectrum is not None:
+        try:
+            corrected = session.correction_for(ref.entry.key) is not None
+        except Exception:
+            corrected = False
     return report_for(
         ref.entry, ref.channel, compound=compound, explanation=explanation,
         basis=basis, deuterium=deuterium, hit=hit, library=library,
         adduct=adduct, others=others, label_floor=float(floor),
         centroid=centroid, spectrum=spectrum,
-        measure_precursor=measure_precursor)
+        measure_precursor=measure_precursor, formula=formula,
+        components=components, own_library=own,
+        session=session, recalibrated=corrected,
+        include_unstable=bool(getattr(explorer, "include_unstable_scans",
+                                      lambda: False)()))
 
 
 def infusions_open(source) -> "list[tuple[SampleEntry, object]]":
@@ -826,18 +1715,26 @@ COUNTED_SCORE = 0.60
 #: the columns of the summary, in the order they are shown and exported.
 #: One definition for the table, the CSV and the row's own sort keys.
 SUMMARY_COLUMNS = (
-    "Compound", "Sample", "Mode", "CE (eV)", "Scans", "Base peak m/z",
-    "Precursor written", "Found m/z", "Δ ppm", "Height", "Ions found",
-    "Library record", "Score", "Reverse", "Matched", "Record Δ ppm",
-    "Record CE", "Other infusions", "File")
+    "Compound", "Sample", "Isolated", "Mode", "CE (eV)", "Scans",
+    "Base peak m/z", "Precursor written", "Found m/z", "Δ ppm", "Height",
+    "Adduct", "Ions found", "Library record", "Score", "Reverse", "Matched",
+    "Record Δ ppm", "Record CE", "Other infusions", "Mass axis", "File")
+
+#: the columns of `SUMMARY_COLUMNS` that hold a number, and what to sort each
+#: on. Keyed by the column's **name**: `keys()` used to hold the positions,
+#: and inserting a column in the middle then moved every sort key one cell to
+#: the right without anything failing.
+_SORT_KEYS = ("CE (eV)", "Scans", "Base peak m/z", "Precursor written",
+              "Found m/z", "Δ ppm", "Height", "Ions found", "Score",
+              "Reverse", "Matched", "Record Δ ppm", "Mass axis")
 
 #: what goes in the report's table. A4 does not hold nineteen columns and a
 #: table squeezed into it is a table nobody reads, so the precursor and the
 #: record are each written as one cell there — the panel and the CSV carry
 #: the parts.
 REPORT_COLUMNS = ("Compound", "Sample", "Mode", "Scans", "Base peak m/z",
-                  "Precursor", "Ions found", "Library record", "Score",
-                  "Other infusions")
+                  "Precursor", "Adduct", "Ions found", "Library record",
+                  "Score", "Other infusions", "Mass axis")
 
 _NOT_ALPHANUMERIC = re.compile(r"[^a-z0-9]+")
 
@@ -876,10 +1773,30 @@ def _sticks(report: InfusionReport):
     return centroid_spectrum(trace.mz, trace.intensity)
 
 
+def raw_sticks(report: InfusionReport):
+    """
+    The report's centroids put back on the axis the instrument read.
+
+    `MassCorrection.undo` rather than a second copy of the spectrum: an
+    offset inverts exactly, so this is the measured masses to the last
+    digit and costs one multiplication per peak instead of holding a
+    quarter of a million points twice. None when there is nothing to undo.
+    """
+    sticks = _sticks(report)
+    if sticks is None or not report.recalibrated or report.correction is None:
+        return None
+    return (np.asarray(report.correction.undo(sticks[0]), dtype=float),
+            sticks[1])
+
+
 def _report_note(report: InfusionReport) -> str:
     """How an infusion was acquired, in one cell — `_channel_note`'s words
     from the report rather than from a channel, since a report holds both."""
-    bits = [f"{report.scans:,} scans"] if report.scans else []
+    mask = report.mask
+    if mask is not None and mask.excluded and not report.unstable_included:
+        bits = [f"{mask.kept:,} of {mask.n_scans:,} scans"]
+    else:
+        bits = [f"{report.scans:,} scans"] if report.scans else []
     if report.collision_energy:
         bits.append(f"CE {report.collision_energy:g} eV")
     return ", ".join(bits)
@@ -907,7 +1824,23 @@ class InfusionRow:
     # -- what it is ---------------------------------------------------------- #
     @property
     def compound(self) -> str:
+        """
+        What the row is grouped and compared under: the file name's proposal.
+
+        Deliberately the proposal and not `report.named_compound`. Grouping
+        is what decides which infusions are scored against each other, and
+        two files named after the same compound are worth comparing whatever
+        their methods isolate — the pair that turned out not to be CA-d4 is
+        only visible as a pair *because* they were still scored against the
+        real ones. The cell says which is which; the grouping does not.
+        """
         return self.report.compound
+
+    @property
+    def isolated(self) -> str:
+        """What the method isolates, short enough for a cell."""
+        verdict = self.report.isolation
+        return "not checked" if verdict is None else verdict.column()
 
     @property
     def sample(self) -> str:
@@ -939,8 +1872,50 @@ class InfusionRow:
         return self.report.survivor
 
     @property
+    def adduct(self) -> str:
+        """
+        The adduct and whether the survey confirmed it, in one cell.
+
+        Three states and not two: confirmed, read off the written precursor
+        with a survey that did not show it, and read off the written
+        precursor because there was no survey to ask. The third is the
+        ordinary case on a product-ion-only acquisition and it is not a
+        failure — but it is not a confirmation either, and a cell that said
+        only `[M+NH4]+` would let it pass for one.
+        """
+        report = self.report
+        if not report.adduct and not report.adduct_note:
+            return "—"                       # nothing was asked, so nothing said
+        name = report.adduct or "—"
+        if report.adduct_confirmed:
+            return f"{name} confirmed"
+        if report.evidence:
+            return f"{name} not confirmed"
+        if report.survey_channel:
+            return f"{name}, survey unreadable"
+        return f"{name}, no survey"
+
+    @property
     def score(self) -> float | None:
         return None if self.report.hit is None else self.report.hit.score
+
+    @property
+    def mass_axis(self) -> str:
+        """
+        What the recalibration did to this vial, in one cell.
+
+        Says whether it was *applied* as well as what it was: a fit that
+        stands with the switch off is a measurement of the axis and not a
+        change to the numbers beside it, and a cell that read
+        "−5.2 ppm, 4 rungs" either way would make the two look the same.
+        """
+        correction = self.report.correction
+        if correction is None:
+            return "not fitted"
+        if not correction.usable:
+            return correction.note.split(" \u00b7 ")[0] or "no lock mass"
+        return correction.short + ("" if self.report.recalibrated
+                                   else ", not applied")
 
     # -- the row ------------------------------------------------------------- #
     def cells(self) -> list[str]:
@@ -952,12 +1927,13 @@ class InfusionRow:
         base = report.base_peak()
         gap = report.energy_gap()
         return [
-            report.compound,
+            report.named_compound,
             report.sample,
+            self.isolated,
             self.mode,
             "—" if report.collision_energy is None
             else f"{report.collision_energy:g}",
-            f"{report.scans:,}" if report.scans else "—",
+            report.scans_cell(),
             f"{base[0]:,.4f}" if base else "no spectrum",
             f"{report.written_precursor:g}" if report.written_precursor
             else "none written",
@@ -965,6 +1941,7 @@ class InfusionRow:
                                               or "not measurable"),
             f"{error:+.1f}" if error is not None else "—",
             f"{found[1]:,.0f}" if found else "—",
+            self.adduct,
             (f"{explanation.matched} of {explanation.predicted}"
              if explanation is not None and explanation.predicted
              else f"{explanation.matched}" if explanation is not None
@@ -982,6 +1959,7 @@ class InfusionRow:
             (", ".join(f"{label} {score * 100:.0f}/{reverse * 100:.0f}"
                        for label, score, reverse, _m, _o in self.others)
              if self.others else self.others_note or "—"),
+            self.mass_axis,
             report.file,
         ]
 
@@ -992,6 +1970,10 @@ class InfusionRow:
         A table sorted on its text puts 9 after 100 and "not measurable"
         wherever the alphabet says, which on a column of measurements is
         worse than not sorting at all.
+
+        Keyed by column name through `_SORT_KEYS`: the positions were written
+        out here once, and a column inserted in the middle then moved every
+        one of them onto the cell next door with nothing failing.
         """
         report = self.report
         found = self.found
@@ -1001,24 +1983,30 @@ class InfusionRow:
         base = report.base_peak()
         cells = self.cells()
         numbers = {
-            3: report.collision_energy,
-            4: float(report.scans) if report.scans else None,
-            5: base[0] if base else None,
-            6: report.written_precursor,
-            7: found[0] if found else None,
-            8: error,
-            9: found[1] if found else None,
-            10: float(explanation.matched) if explanation is not None else None,
-            12: hit.score if hit is not None else None,
-            13: hit.reverse if hit is not None else None,
-            14: float(hit.matched) if hit is not None else None,
-            15: hit.delta_ppm if hit is not None else None,
+            "CE (eV)": report.collision_energy,
+            "Scans": float(report.scans_averaged()) or None,
+            "Base peak m/z": base[0] if base else None,
+            "Precursor written": report.written_precursor,
+            "Found m/z": found[0] if found else None,
+            "Δ ppm": error,
+            "Height": found[1] if found else None,
+            "Ions found": (float(explanation.matched)
+                           if explanation is not None else None),
+            "Score": hit.score if hit is not None else None,
+            "Reverse": hit.reverse if hit is not None else None,
+            "Matched": float(hit.matched) if hit is not None else None,
+            "Record Δ ppm": hit.delta_ppm if hit is not None else None,
+            "Mass axis": (self.report.correction.offset_ppm
+                          if self.report.correction is not None
+                          and self.report.correction.usable else None),
         }
         keys: list = list(cells)
-        for column, value in numbers.items():
+        for name in _SORT_KEYS:
+            value = numbers[name]
             # a cell with no number sorts to the end either way round, which
             # is where a reason belongs in a column of measurements
-            keys[column] = float("inf") if value is None else float(value)
+            keys[SUMMARY_COLUMNS.index(name)] = (
+                float("inf") if value is None else float(value))
         return keys
 
     def report_cells(self) -> list[str]:
@@ -1039,12 +2027,17 @@ class InfusionRow:
         if gap is not None:
             record += f" — {gap[1]:g} eV against this run’s {gap[0]:g}"
         return [
-            report.compound, report.sample,
+            # the flagged name here too: the printed table is narrower than
+            # the tab and carries no Isolated column, so this is the only
+            # place on the page before the compound's own section where a
+            # name the method contradicts can say so
+            report.named_compound, report.sample,
             self.mode + (f", {report.collision_energy:g} eV"
                          if report.collision_energy is not None else ""),
-            f"{report.scans:,}" if report.scans else "—",
+            report.scans_cell(),
             f"{base[0]:,.4f}" if base else "no spectrum",
             precursor,
+            self.adduct,
             (f"{explanation.matched} of {explanation.predicted}"
              if explanation is not None and explanation.predicted
              else self.explanation_note or "nothing run"),
@@ -1053,6 +2046,7 @@ class InfusionRow:
             (", ".join(f"{label} {score * 100:.0f}"
                        for label, score, _r, _m, _o in self.others)
              if self.others else self.others_note or "—"),
+            self.mass_axis,
         ]
 
 
@@ -1157,7 +2151,8 @@ def cross_compare(reports, peaks=None, centroid: bool = False) -> None:
                 note=_report_note(other)))
 
 
-def _headless_explanation(session, report: InfusionReport):
+def _headless_explanation(session, report: InfusionReport, entry=None,
+                          sticks=None):
     """
     What the component table alone can say about this spectrum.
 
@@ -1166,6 +2161,10 @@ def _headless_explanation(session, report: InfusionReport):
     makes for a formula of one's own. It is offered only where the compound
     is a component of the method **by name**: guessing a formula for a file
     name would be inventing the denominator of "n of m".
+
+    `sticks` overrides the spectrum this reads, so the same explanation can
+    be run twice — once on the corrected axis and once on the axis as
+    measured — which is the before and after the mass-axis paragraph prints.
     """
     from .explain import explain_formula, formula_ions, significant_peaks
 
@@ -1177,12 +2176,12 @@ def _headless_explanation(session, report: InfusionReport):
     if not component.formula:
         return None, "", f"{component.name} carries no formula"
     formula, deuterium, labelled = _headless_labels(component, report)
-    adduct, why = _headless_adduct(component, report, formula)
+    adduct, why = _headless_adduct(component, report, formula, entry)
     if not adduct:
         return None, "", why
     if not formula_ions(component.formula, adduct):
         return None, "", f"{adduct} is not an adduct this program knows"
-    sticks = _sticks(report)
+    sticks = _sticks(report) if sticks is None else sticks
     if sticks is None:
         return None, "", "no spectrum to explain"
     peaks = significant_peaks(*sticks)
@@ -1191,6 +2190,14 @@ def _headless_explanation(session, report: InfusionReport):
     explanation = explain_formula(component.formula, adduct, peaks,
                                   name=component.name, deuterium=deuterium)
     basis = f"the formula {formula} as {adduct}, {why}{labelled}"
+    # the isotopic purity is asked here rather than by the caller, because
+    # this is the one place holding the composition, the adduct and the label
+    # count at once — on this path the report carries none of the three. The
+    # component's *own* formula goes over with the labels declared beside it,
+    # the same pair `explain_formula` was given: `formula` above already has
+    # them folded in, and handing over both would count every label twice
+    _measure_purity(report, formula=component.formula, adduct=adduct,
+                    deuterium=deuterium)
     return explanation, basis, ""
 
 
@@ -1208,28 +2215,18 @@ def _headless_labels(component, report: InfusionReport):
 
     A formula that already spells its labels out is left alone: it has said
     what it is.
-    """
-    from .chemistry import (FormulaError, format_formula, parse_formula,
-                            split_labels)
 
-    try:
-        counts = dict(parse_formula(component.formula))
-    except (FormulaError, ValueError):
-        return component.formula, 0, ""
-    if counts.get("D"):
-        return component.formula, 0, ""
-    for written in (component.name, report.compound):
-        _stem, labels = split_labels(written or "")
-        if labels and counts.get("H", 0) >= labels:
-            counts["D"] = labels
-            counts["H"] -= labels
-            return (format_formula(counts), labels,
-                    f", with the {labels} label(s) {written} is named for")
-    return component.formula, 0, ""
+    The arithmetic is `labelled_formula`'s, which the isolation verdict uses
+    on the same component table: a formula labelled one way here and another
+    way there would have the report and the verdict disagreeing about the
+    same compound.
+    """
+    return labelled_formula(component.formula, component.name,
+                            report.compound)
 
 
 def _headless_adduct(component, report: InfusionReport,
-                     formula: str = "") -> tuple[str, str]:
+                     formula: str = "", entry=None) -> tuple[str, str]:
     """
     The adduct to explain this infusion's formula with, and where it came from.
 
@@ -1240,6 +2237,12 @@ def _headless_adduct(component, report: InfusionReport,
     and an ammoniated channel explained as [M+H]+ predicts every fragment
     17 Da away from anything in the spectrum. The reason travels with the
     answer, into the basis line under the table.
+
+    Whatever comes out is written back onto the report, so the summary's
+    Adduct cell names the ion the fragments were actually predicted from.
+    A declared adduct that the survey contradicts still wins here — it is
+    what the analyst said the channel was — but the evidence beside it says
+    the survey disagreed, which is the whole point of measuring.
     """
     from .chemistry import adducts_matching, identify_adduct
 
@@ -1247,27 +2250,192 @@ def _headless_adduct(component, report: InfusionReport,
     declared = component.adduct or ""
     formula = formula or component.formula
     if precursor:
-        choice = identify_adduct(formula, float(precursor),
-                                 report.polarity or None)
+        # the survey where the acquisition has one: an adduct measured beats
+        # an adduct deduced, and where there is no survey this is the same
+        # call it always was, with the report saying so
+        choice = (confirm_adduct(entry, report, formula) if entry is not None
+                  else None)
+        if choice is None:
+            choice = identify_adduct(formula, float(precursor),
+                                     report.polarity or None)
         if declared:
             fits = [m for m in adducts_matching(formula,
                                                 float(precursor),
                                                 report.polarity or None)
                     if m.within and m.name == declared]
             if fits:
+                report.adduct = declared
                 return declared, "from the component table"
             if choice.adduct is not None:
+                report.adduct = choice.adduct.name
                 return choice.adduct.name, (
                     f"read off the written precursor — {choice.reason}, "
                     f"not the {declared} the component table carries")
             return "", (f"{component.name} is written {declared}, and "
                         f"{choice.reason}")
         if choice.adduct is not None:
+            report.adduct = choice.adduct.name
             return choice.adduct.name, f"read off the written precursor — {choice.reason}"
         return "", (f"{component.name} carries no adduct and {choice.reason}")
     if declared:
+        report.adduct = declared
         return declared, "from the component table"
     return "", f"{component.name} carries no adduct"
+
+
+# --------------------------------------------------------------------------- #
+# the mass axis, from this infusion's own precursor
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class AxisSubject:
+    """What an infusion's ladder is predicted from, and where it came from."""
+
+    formula: str = ""
+    deuterium: int = 0
+    adduct: str = ""
+    #: the sentence that says which of the two below answered, and how
+    why: str = ""
+
+    def __bool__(self) -> bool:
+        return bool(self.formula and self.adduct)
+
+
+def axis_subject(session, compound: str, written_precursor: float | None,
+                 polarity: str = "") -> AxisSubject:
+    """
+    The formula and adduct to build one infusion's lock-mass ladder from.
+
+    The method's component table first, exactly as the explanation reads it,
+    because a component the analyst filled in is a declaration. Where the
+    method does not hold the compound the **name** is asked —
+    `explain.resolve_name`, the standards table then LIPID MAPS then the
+    lipid shorthand — which `_headless_explanation` deliberately refuses to
+    do, and the difference is worth stating. A guessed formula is a bad
+    denominator for "n of m found": it changes the number of ions offered
+    and nothing in the answer says the guess was wrong. It is a safe source
+    of a *lock mass*, because a lock mass has to be **found**: a wrong
+    formula predicts masses that are not in the spectrum, no rung matches,
+    and the fit refuses rather than correcting onto a compound that is not
+    in the vial. The two questions have different failure modes and get
+    different rules.
+
+    The adduct comes from the written precursor either way, since that is
+    the one number the instrument was actually given. The nine real
+    infusions are named after the bottle — `CA-d4`, `DCA-d4`, `TDCA-d4` —
+    and the standards table answers all three; the two isolating 839.56 get
+    no adduct at all, which is the correct answer for a channel that is not
+    the compound its file is named after.
+    """
+    from .chemistry import (FormulaError, format_formula, identify_adduct,
+                            parse_formula)
+    from .explain import resolve_name
+
+    component = component_for(getattr(session, "method", None), compound)
+    formula, deuterium, where = "", 0, ""
+    if component is not None and component.formula:
+        shim = InfusionReport(compound=compound,
+                              written_precursor=written_precursor,
+                              polarity=polarity)
+        formula, deuterium, _labels = _headless_labels(component, shim)
+        where = f"the method's formula for {component.name}"
+    if not formula:
+        resolved = resolve_name(compound)
+        if resolved is None:
+            return AxisSubject(why=f"“{compound or 'this file'}” is not in the "
+                                   f"method, in the standards table, in LIPID "
+                                   f"MAPS or in the lipid shorthand, so "
+                                   f"nothing says what mass to look for")
+        formula, deuterium = resolved.formula, resolved.labels
+        where = f"{compound} read from {resolved.source}"
+    try:
+        counts = dict(parse_formula(formula))
+    except (FormulaError, ValueError):
+        return AxisSubject(why=f"“{formula}” is not a formula this can read")
+    if deuterium:
+        if counts.get("H", 0) < deuterium:
+            return AxisSubject(why=f"{formula} has fewer than the {deuterium} "
+                                   f"hydrogen(s) its name replaces")
+        counts["D"] = counts.get("D", 0) + deuterium
+        counts["H"] -= deuterium
+    labelled = format_formula(counts)
+    if not written_precursor:
+        return AxisSubject(formula=labelled, why=(
+            f"{where}, but the channel writes no precursor, so nothing says "
+            f"which adduct it was ionised as"))
+    choice = identify_adduct(labelled, float(written_precursor),
+                             polarity or None)
+    if choice.adduct is None:
+        return AxisSubject(formula=labelled,
+                           why=f"{where}; {choice.reason}")
+    return AxisSubject(formula=labelled, deuterium=0,
+                       adduct=choice.adduct.name,
+                       why=f"{where}; {choice.reason}")
+
+
+def fit_axis(session, entry, channel, spectrum=None, refit: bool = False):
+    """
+    One infusion's mass correction, fitted once and kept on the session.
+
+    `session.mass_corrections[entry.key]` is where every correction in this
+    program lives, so the extraction, the report and the mass-drift panel's
+    table need nothing new to see this one. The fit is cached there — the
+    refusals too, since a vial that was looked at and left alone is a row
+    with a reason on it and not a missing row.
+
+    `spectrum` is the **uncorrected** profile average when the caller has it
+    already; the correction cannot be fitted from a corrected axis, which is
+    why the Explorer passes what it read before applying anything.
+
+    Returns the correction, or None where this is not an infusion or there is
+    no session to keep it on.
+    """
+    from .processing import centroid_spectrum
+    from .recalibrate import fit_infusion
+
+    corrections = getattr(session, "mass_corrections", None)
+    if corrections is None or entry is None or channel is None:
+        return None
+    key = getattr(entry, "key", "")
+    if not refit and key in corrections:
+        return corrections[key]
+    sample = getattr(entry, "sample", None)
+    try:
+        if sample is None or not verdict_for(sample):
+            return None
+    except Exception:
+        return None
+
+    info = getattr(channel, "info", None)
+    compound = compound_of(getattr(entry, "name", ""))
+    subject = axis_subject(session, compound,
+                           getattr(info, "precursor", None),
+                           str(getattr(info, "polarity", "") or ""))
+    name = str(getattr(entry, "name", "") or "")
+    if not subject:
+        from .recalibrate import LADDER_SOURCE, MassCorrection
+
+        correction = MassCorrection(
+            sample_key=key, sample_name=name, source=LADDER_SOURCE,
+            unit="rung",
+            note=f"no lock mass: {subject.why}; the axis stands as measured")
+        corrections[key] = correction
+        return correction
+
+    if spectrum is None:
+        averaged = average_spectrum(channel)
+        if averaged is None:
+            return None
+        spectrum = (averaged[0], averaged[1])
+    mz, intensity = centroid_spectrum(np.asarray(spectrum[0], dtype=float),
+                                      np.asarray(spectrum[1], dtype=float))
+    correction = fit_infusion(mz, intensity, subject.formula, subject.adduct,
+                              deuterium=subject.deuterium,
+                              sample_key=key, sample_name=name)
+    if correction is None:
+        return None
+    correction.note = " · ".join(p for p in (subject.why, correction.note) if p)
+    corrections[key] = correction
+    return correction
 
 
 def _best_record(library, report: InfusionReport):
@@ -1317,7 +2485,8 @@ def _precursor_reason(report: InfusionReport) -> str:
 
 
 def summarise(session, library=None, explanations=None,
-              progress=None) -> InfusionSummary | None:
+              progress=None,
+              include_unstable: bool = False) -> InfusionSummary | None:
     """
     Every open infusion as one row: the summary that comes before the pages.
 
@@ -1335,6 +2504,8 @@ def summarise(session, library=None, explanations=None,
 
     `progress(done, total)` is called as each infusion is read and stops the
     measurement by returning False, in which case this returns None.
+    `include_unstable` averages every scan rather than only the steady ones —
+    the Explorer's *Include unstable scans* — and every row then says so.
     """
     import time
 
@@ -1352,13 +2523,17 @@ def summarise(session, library=None, explanations=None,
     given = {str(k): v for k, v in (explanations or {}).items()}
     name = os.path.basename(getattr(library, "path", "") or "") if library \
         else ""
+    method = getattr(session, "method", None)
     rows: list[InfusionRow] = []
     done, total = 0, len(infusions)
     for compound, members in groups.items():
         made: list[InfusionRow] = []
         for entry, channel in members:
             report = report_for(entry, channel, compound=compound,
-                                library=name)
+                                library=name,
+                                components=getattr(method, "components", ()),
+                                own_library=library, session=session,
+                                include_unstable=include_unstable)
             explanation = given.get(compound)
             note = ""
             if explanation is not None:
@@ -1366,7 +2541,14 @@ def summarise(session, library=None, explanations=None,
                 report.basis = "what was run in the LIPID MAPS tab"
             else:
                 report.explanation, report.basis, note = \
-                    _headless_explanation(session, report)
+                    _headless_explanation(session, report, entry)
+                # the same explanation on the axis as the instrument read it,
+                # so the mass-axis paragraph can say what the correction
+                # bought rather than only what it was
+                raw = raw_sticks(report)
+                if report.explanation is not None and raw is not None:
+                    report.raw_explanation = _headless_explanation(
+                        session, report, entry, sticks=raw)[0]
             hit, library_note = _best_record(library, report)
             report.hit = hit
             row = InfusionRow(
@@ -1463,9 +2645,12 @@ def _identity(report: InfusionReport) -> str:
          value(report.polarity)],
         ["Channel", value(report.channel), "Collision energy", energy],
         ["Precursor, written", written, "Precursor, measured", accurate],
-        ["Scans averaged", f"{report.scans:,}" if report.scans else "—",
-         "Over", span],
+        ["Scans averaged", value(report.scans_line()), "Over", span],
         ["Adduct", value(report.adduct), "Read as", _read_as(report)],
+        ["Named", value(report.compound), "Isolated", _isolated(report)],
+        ["Adduct evidence", _adduct_cell(report), "Survey",
+         value(report.survey_channel) if report.survey_channel
+         else "none in this acquisition"],
     ]
     cells = []
     for number, row in enumerate(rows):
@@ -1494,6 +2679,36 @@ def _sub(title: str, breaks: set[str] | None = None) -> str:
     return f"<h3{css}>{_escape(title)}</h3>"
 
 
+def _adduct_cell(report: InfusionReport) -> str:
+    """Whether the survey confirmed the adduct, short enough for a cell."""
+    if report.adduct_confirmed:
+        best = next((e for e in report.evidence if e.name == report.adduct),
+                    None)
+        return ("confirmed by the survey"
+                if best is None else
+                _escape(f"confirmed by the survey: {best.confirmation}"))
+    if report.evidence:
+        return "not confirmed — see below"
+    if report.adduct_note:
+        return "no survey — see below"
+    return "—"
+
+
+def _isolated(report: InfusionReport) -> str:
+    """
+    What the method isolates, in the header cell beside the name it was
+    filed under.
+
+    The header is the block that says what this is *from the file rather
+    than from the file name*, and the name is on it. Which of the two the
+    reader should believe is exactly this cell's job.
+    """
+    verdict = report.isolation
+    if verdict is None:
+        return "not checked"
+    return _escape(verdict.column())
+
+
 def _read_as(report: InfusionReport) -> str:
     """The infusion verdict's own figures, in one cell."""
     verdict = report.verdict
@@ -1506,7 +2721,7 @@ def _read_as(report: InfusionReport) -> str:
 
 
 def _picture(comparison: SpectrumComparison,
-             width: int = PICTURE_WIDTH) -> str:
+             width: int = PICTURE_WIDTH, theme: str = "paper") -> str:
     """
     One drawing, and nothing else in the block.
 
@@ -1519,7 +2734,9 @@ def _picture(comparison: SpectrumComparison,
     """
     height = int(round(width * spectra_compare.DEFAULT_HEIGHT
                        / spectra_compare.DEFAULT_WIDTH))
-    return (f'<p><img src="{spectra_compare.data_uri(comparison)}" '
+    palette = picture_palette(theme)
+    return (f'<p><img src="'
+            f'{spectra_compare.data_uri(comparison, palette=palette)}" '
             f'width="{width}" height="{height}" /></p>')
 
 
@@ -1545,8 +2762,130 @@ def _floor_sentence(report: InfusionReport) -> str:
         return ""
 
 
+def _mass_axis_block(report: InfusionReport,
+                     breaks: set[str] | None = None) -> str:
+    """
+    What the mass axis was doing, and what was done about it.
+
+    Printed above the spectrum because it governs every mass printed below
+    it, and printed even where nothing was corrected: "no lock mass" is a
+    statement about this vial, and a page that simply omitted the paragraph
+    would leave a reader unable to tell a corrected axis from an
+    uncorrected one.
+    """
+    from .recalibrate import CONSENSUS_SPREAD_PPM, MIN_LADDER_RUNGS
+
+    correction = report.correction
+    if correction is None:
+        return ""
+    parts = [_sub("Mass axis", breaks),
+             f'<p class="meta">A direct infusion has no second injection to '
+             f'be read against, so it is recalibrated against itself: the '
+             f'precursor and every rung of its own ladder — the core ion a '
+             f'labile adduct leaves behind, the cumulative waters, and the '
+             f'−1D rungs a labelled standard sheds — each of which is a mass '
+             f'the formula already knows, measured here. The correction is '
+             f'the intensity-weighted median of their errors, sign flipped, '
+             f'and an offset only: the rungs of one precursor span the '
+             f'waters it can lose, which is far short of the range they '
+             f'would be used over. A rung disagreeing with the rest by more '
+             f'than {CONSENSUS_SPREAD_PPM:g} ppm is a different ion in the '
+             f'window and is dropped; under {MIN_LADDER_RUNGS} rungs, '
+             f'nothing is corrected.</p>']
+    # the note only where it is not the verdict already: a refusal's verdict
+    # *is* its note, and printing it twice reads as two findings
+    aside = ("" if correction.note == correction.verdict
+             else f' <span class="meta">{_escape(correction.note)}</span>')
+    parts.append(f'<p>{_escape(correction.verdict)}'
+                 + (" It <b>is</b> applied to every mass on these pages."
+                    if report.recalibrated else
+                    " It is <b>not</b> applied: the masses on these pages "
+                    "are the ones the instrument read.")
+                 + aside + "</p>")
+    before, after = correction.before_ppm, correction.after_ppm
+    order = sorted(range(len(correction.lock_masses)),
+                   key=lambda i: -correction.lock_masses[i].intensity)
+    rows = []
+    for index in order:
+        rung = correction.lock_masses[index]
+        rows.append([_escape(rung.component), _number(rung.theoretical, 4),
+                     _number(rung.measured, 4), f"{before[index]:+.1f}",
+                     f"{after[index]:+.1f}", _number(rung.intensity, 0)])
+    parts.append(_table(
+        ["Rung", "Theoretical m/z", "Measured m/z", "Δ ppm before",
+         "Δ ppm after", "Intensity"], rows, right={1, 2, 3, 4, 5},
+        empty="No rung of the ladder was found in this spectrum.",
+        widths=["26%", "16%", "16%", "14%", "14%", "14%"]))
+    parts.append(_ladder_before_after(report))
+    parts.append(_ions_before_after(report))
+    return "".join(parts)
+
+
+def _ladder_before_after(report: InfusionReport) -> str:
+    """
+    How many of the ladder's own ions land on a peak, before and after.
+
+    Counted at `LADDER_CHECK_PPM` and not at the window the rungs were
+    *matched* in: that window has to be wide enough to hold the error being
+    measured, so counting inside it would show nothing moving. This is the
+    one before-and-after that can always be printed — its denominator is the
+    precursor's own formula, which is what the paragraph is about — where
+    the explanation's, below, needs an explanation to have been run.
+    """
+    from .explain import match_peaks, precursor_ions, significant_peaks
+
+    subject, correction = report.axis_subject, report.correction
+    if not subject or correction is None or not correction.usable:
+        return ""
+    now = _sticks(report)
+    before = raw_sticks(report)
+    if now is None or before is None:
+        return ""
+    ions = precursor_ions(subject.formula, subject.adduct, subject.deuterium)
+    if not ions:
+        return ""
+
+    def found(sticks) -> int:
+        # `significant_peaks` and not every stick in the window: a product
+        # scan averaged over a whole run has thousands of baseline centroids
+        # and a 5 ppm window somewhere in the middle of one will always hold
+        # something. This is the same floor the explanation is scored on, so
+        # the two sentences count the same peaks.
+        return len(match_peaks(significant_peaks(*sticks), ions,
+                               LADDER_CHECK_PPM))
+
+    return (f'<p class="foot">Of the {len(ions):,} ion(s) '
+            f'{_escape(subject.formula)} as {_escape(subject.adduct)} can '
+            f'give without cutting a bond, {found(before)} landed on a peak '
+            f'within {LADDER_CHECK_PPM:g} ppm on the axis as measured and '
+            f'{found(now)} once corrected — counted over the peaks above '
+            f'the noise share, which is the floor an explanation is scored '
+            f'on.</p>')
+
+
+def _ions_before_after(report: InfusionReport) -> str:
+    """
+    What the correction bought the explanation, in one sentence.
+
+    The figure that matters is not the residual — the correction was fitted
+    to make that small — but how many of the *other* predicted ions land on
+    a peak once the axis has moved, at the tolerance the explanation was
+    run at. Absent where the same explanation was not run both ways.
+    """
+    now, before = report.explanation, report.raw_explanation
+    if now is None or before is None:
+        return ""
+    return (f'<p class="foot">At the tolerance this explanation was run at, '
+            f'the axis as measured accounted for {before.matched} of '
+            f'{before.predicted} predicted ion(s) and '
+            f'{before.share * 100:.1f}% of the intensity; corrected, '
+            f'{now.matched} of {now.predicted} and '
+            f'{now.share * 100:.1f}%.</p>')
+
+
 def _spectrum_block(report: InfusionReport,
-                    breaks: set[str] | None = None) -> str:
+                    breaks: set[str] | None = None,
+                    theme: str = "paper") -> str:
     if report.spectrum is None or report.trace is None:
         return (_sub("Averaged spectrum", breaks)
                 + '<p class="empty">No spectrum could be read from this '
@@ -1554,7 +2893,7 @@ def _spectrum_block(report: InfusionReport,
     base = report.base_peak()
     peaks = report.peaks()
     parts = [_sub("Averaged spectrum", breaks),
-             _picture(report.spectrum),
+             _picture(report.spectrum, theme=theme),
              f'<p class="foot">Every scan of the channel averaged into one '
              f'spectrum — an infusion has no chromatography to select over, '
              f'so this is the whole of the run. Peaks are labelled at '
@@ -1640,8 +2979,72 @@ def _explanation_block(report: InfusionReport,
     return "".join(parts)
 
 
+def _purity_block(report: InfusionReport,
+                  breaks: set[str] | None = None) -> str:
+    """
+    The isotopic purity, its envelope, and — where there is none — why not.
+
+    The envelope table goes on the page whether or not a fraction came out of
+    it, because the refusal is a statement about those numbers and a reader
+    who cannot see them cannot check it.
+    """
+    result = report.purity
+    if result is None:
+        return ""
+    n = result.labels
+    parts = [_sub("Isotopic purity", breaks),
+             f'<p class="meta">The species distribution of the labelled '
+             f'standard — how much of it is d{n}, how much d{n - 1} and so on '
+             f'— solved from the envelope at {_escape(result.ion)}, '
+             f'{result.at:.4f}. It is a deconvolution and not a set of '
+             f'ratios: each species’ carbon-13 satellite lands 2.9 mDa from '
+             f'the next species’ own peak, which no ordinary instrument '
+             f'separates. The atom % D underneath is the quantity a '
+             f'certificate states and is a different number.</p>']
+    names = [f"d{i}" for i in range(n + 1)] + ["M+1", "M+2"]
+    top = result.measured[n] if len(result.measured) > n else 0.0
+    rows = []
+    for index, name in enumerate(names[:len(result.measured)]):
+        share = (f"{result.measured[index] / top * 100:,.3f}"
+                 if top else "—")
+        fraction = ("—" if index >= len(result.fractions)
+                    else f"{result.fractions[index] * 100:,.2f}")
+        rows.append([name, _number(result.positions[index], 4),
+                     _number(result.measured[index], 0), share, fraction])
+    parts.append(_table(
+        ["Rung", "m/z", "Intensity", f"% of d{n}", "Fraction %"], rows,
+        right={1, 2, 3, 4},
+        empty="No rung of the envelope could be read.",
+        widths=["12%", "22%", "22%", "22%", "22%"]))
+    if result.usable:
+        atom = result.atom_percent
+        parts.append(
+            f'<p class="foot">d{n} {result.purity * 100:.1f}%'
+            + (f', ≥d{n - 1} {result.at_least * 100:.1f}%' if n >= 1 else "")
+            + (f', ±{result.uncertainty * 100:.1f}% on a floor of '
+               f'{result.floor:,.0f} counts' if result.uncertainty is not None
+               else "")
+            + (f'; {atom:.2f} atom % D over the {n} labelled positions.'
+               if atom is not None else ".")
+            + (' Read from a fragment, so this is a lower bound: a '
+               'dehydration can leave with a label.' if result.lower_bound
+               else "")
+            + '</p>')
+    else:
+        satellite = result.satellite_ratio
+        measured = ("" if satellite is None else
+                    f' The d{n} ion shows {satellite * 100:.2f}% of the '
+                    f'carbon-13 satellite its own formula demands.')
+        parts.append(
+            f'<p class="foot">No purity was read from this envelope: '
+            f'{_escape(result.reason)}.{measured} The rungs above are what '
+            f'that judgement was made on.</p>')
+    return "".join(parts)
+
+
 def _library_block(report: InfusionReport,
-                   breaks: set[str] | None = None) -> str:
+                   breaks: set[str] | None = None,
+                   theme: str = "paper") -> str:
     hit = report.hit
     if hit is None:
         return ""
@@ -1650,7 +3053,7 @@ def _library_block(report: InfusionReport,
     parts = [_sub(f"Library — {entry.name}", breaks)]
     comparison = _hit_picture(report)
     if comparison is not None:
-        parts.append(_picture(comparison))
+        parts.append(_picture(comparison, theme=theme))
         parts.append('<p class="foot">The measured spectrum above, the record '
                      'below, both drawn as centroids on their own base peak. '
                      'A record is already sticks, so nothing here is '
@@ -1720,7 +3123,8 @@ def _hit_picture(report: InfusionReport) -> SpectrumComparison | None:
 
 
 def _compared_block(report: InfusionReport,
-                    breaks: set[str] | None = None) -> str:
+                    breaks: set[str] | None = None,
+                    theme: str = "paper") -> str:
     if not report.compared:
         return ""
     parts = [_sub("Other infusions of the same compound", breaks),
@@ -1742,12 +3146,13 @@ def _compared_block(report: InfusionReport,
         widths=["38%", "11%", "11%", "16%", "24%"]))
     for other in report.compared:
         parts.append(_sub(f"Against {other.label}", breaks))
-        parts.append(_picture(other.comparison))
+        parts.append(_picture(other.comparison, theme=theme))
     return "".join(parts)
 
 
 def build_section(report: InfusionReport, heading: str = "",
-                  breaks: set[str] | None = None) -> str:
+                  breaks: set[str] | None = None,
+                  theme: str = "paper") -> str:
     """
     One compound: the heading, the header, the verdict and the blocks.
 
@@ -1760,10 +3165,12 @@ def build_section(report: InfusionReport, heading: str = "",
         _heading(heading, breaks) if heading else "",
         _identity(report),
         _verdict(report, breaks),
-        _spectrum_block(report, breaks),
+        _mass_axis_block(report, breaks),
+        _spectrum_block(report, breaks, theme),
         _explanation_block(report, breaks),
-        _library_block(report, breaks),
-        _compared_block(report, breaks),
+        _purity_block(report, breaks),
+        _library_block(report, breaks, theme),
+        _compared_block(report, breaks, theme),
     ])
 
 
@@ -1823,14 +3230,16 @@ def default_title(reports: list[InfusionReport]) -> str:
 
 
 def build_html(reports, title: str = "", contents: dict[str, int] | None = None,
-               breaks: set[str] | None = None) -> str:
+               breaks: set[str] | None = None, theme: str = "paper") -> str:
     """
     One compound, or every one of them, as one HTML document.
 
     `contents` and `breaks` are what `report.print_document` works out for
     itself — None for no page column, `{}` to reserve one, the mapping on the
     final pass — so the two documents are printed through the same code and
-    the heading that ends a page is chased in one place.
+    the heading that ends a page is chased in one place. `theme` is the
+    batch report's: the same three style sheets and the same palette for
+    every picture, since these pages are mostly pictures.
     """
     reports = _as_list(reports)
     title = title or default_title(reports)
@@ -1844,11 +3253,11 @@ def build_html(reports, title: str = "", contents: dict[str, int] | None = None,
         breaks |= set(headings[1:])
     parts = ["<!DOCTYPE html>", "<html><head><meta charset='utf-8'>",
              f"<title>{_escape(title)}</title>",
-             f"<style>{_STYLE}</style></head><body>",
+             f"<style>{style_for(theme)}</style></head><body>",
              _title_block(title, reports),
              _contents(headings, contents)]
     for heading, report in zip(headings, reports, strict=True):
-        parts.append(build_section(report, heading, breaks))
+        parts.append(build_section(report, heading, breaks, theme))
     parts.append("</body></html>")
     return "".join(parts)
 
@@ -1869,7 +3278,9 @@ def write_pdf(reports, path: str | os.PathLike, **kwargs) -> str:
     """
     reports = _as_list(reports)
     title = kwargs.pop("title", "") or default_title(reports)
+    theme = kwargs.pop("theme", "paper")
     return print_document(
         lambda contents, breaks: build_html(reports, title=title,
-                                            contents=contents, breaks=breaks),
-        path, title, reflows=REFLOWS)
+                                            contents=contents, breaks=breaks,
+                                            theme=theme),
+        path, title, reflows=REFLOWS, theme=theme)

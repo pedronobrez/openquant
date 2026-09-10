@@ -24,15 +24,17 @@ está faltando quanto na mesma aquisição convertida para mzML:
   carrega mais sinal, ou o survey se o método não tiver varredura de íons
   produto.
 
-Esse máximo é o **scan do percentil 99, não o maior deles**. O maior é um
+Esse máximo é o **scan do percentil 99, não o maior deles**, tomado sobre os
+scans que sobram depois do **primeiro segundo de aquisição**. O maior é um
 único scan, e um transiente de pulverização também é: três das nove infusões
 reais medidas carregam um logo no início da aquisição, de duas a quatro vezes
 a mediana da corrida, e metade desse pico fica acima de todos os outros scans
 de uma corrida perfeitamente plana. Pôr de lado o um por cento mais alto dos
 scans não custa nada numa corrida que tenha um pico de verdade — um pico são
 muitos scans — e é a diferença entre ler essas três infusões em 0.002 e
-lê-las em 1.00. As medidas mostradas ao pairar sobre a amostra dizem qual
-referência foi usada.
+lê-las em 1.00. O primeiro segundo sai porque um por cento de uma corrida
+*curta* volta a ser um único scan; veja adiante. As medidas mostradas ao
+pairar sobre a amostra dizem qual referência foi usada.
 
 Ambas têm de ser de pelo menos **75%**. Um pico é, por definição, estreito
 contra a corrida em que está, de modo que uma corrida com qualquer pico
@@ -43,27 +45,33 @@ adquire cada transição sobre a sua própria janela, e a soma de muitos picos
 em tempos diferentes é mais plana que qualquer um deles, ao passo que uma
 transição única de um branco é plana por estar vazia.
 
+E uma corrida plana com menos de **120 scans** não é chamada de infusão de
+jeito nenhum. Ela é relatada como **too short to tell** (curta demais para
+dizer), com as duas medidas, e tratada como não sendo infusão. Por quê, e por
+que 120, está na última seção desta página.
+
 ## Os números por trás dos limiares
 
 Medido em todas as aquisições disponíveis — quarenta e oito delas, as duas
-populações, **nenhuma das quarenta e oito classificada errado**:
+populações, corridas inteiras, **nenhuma das quarenta e oito classificada
+errado**:
 
 | conjunto de aquisições | n | TIC da amostra | canal mais forte |
 |---|---|---|---|
-| ZenoTOF 7600, 0.6 – 2.0 min, infusões de íons produto de padrões de ácidos biliares | 9 | 0.9937 – 1.0000 | 0.9937 – 1.0000 |
-| TripleTOF 5600, 21.4 min, 81 canais, MRM-HR | 5 | 0.019 – 0.057 | 0.029 – 0.097 |
-| TripleTOF 5600, 14.6 min, 144 canais | 26 | 0.033 – 0.426 | 0.016 – 0.377 |
-| ZenoTOF 7600, 24.0 min, 25 canais, DIA | 8 | 0.031 – 0.361 | 0.014 – 0.059 |
+| ZenoTOF 7600, 0.6 – 2.0 min, 146 – 473 scans, infusões de íons produto de padrões de ácidos biliares | 9 | 0.9936 – 1.0000 | 0.9936 – 1.0000 |
+| TripleTOF 5600, 21.4 min, 577 scans, 81 canais, MRM-HR | 5 | 0.019 – 0.057 | 0.030 – 0.097 |
+| TripleTOF 5600, 14.6 min, 61 scans, 144 canais | 26 | 0.033 – 0.433 | 0.017 – 0.383 |
+| ZenoTOF 7600, 24.0 min, 482 – 490 scans, 25 canais, DIA | 8 | 0.031 – 0.364 | 0.015 – 0.060 |
 
 Os casos cromatográficos mais difíceis são ambos apanhados pela segunda
 medida. Uma equilibração de coluna sem injeção nenhuma — solvente
 pulverizando por 24 minutos, o mais próximo de uma infusão em todo o conjunto
-— mede 0.361 no total da amostra contra 0.059 no seu canal mais forte. Um
-branco que mede 0.377 no seu canal mais forte mede 0.049 no total da amostra.
+— mede 0.364 no total da amostra contra 0.060 no seu canal mais forte. Um
+branco que mede 0.383 no seu canal mais forte mede 0.050 no total da amostra.
 Nas trinta e nove corridas cromatográficas, a menor das duas medidas nunca
-passa de **0.1148**, e nas nove infusões nunca cai abaixo de **0.9937**. O
-limiar de 0.75 fica, portanto, 0.635 acima da pior corrida cromatográfica e
-0.244 abaixo da pior infusão, dentro de uma folga de 0.879.
+passa de **0.1167**, e nas nove infusões nunca cai abaixo de **0.9936**. O
+limiar de 0.75 fica, portanto, 0.633 acima da pior corrida cromatográfica e
+0.244 abaixo da pior infusão, dentro de uma folga de 0.877.
 
 Essa folga não existia antes de a referência mudar. Lidas contra o maior
 scan, três das nove infusões mediram 0.0021, 0.0039 e 0.0063 — **abaixo de
@@ -80,11 +88,59 @@ sobrevivem a ele, que lê 0.639 — enquanto o 95 e o 90 levantam as medidas
 cromatográficas para 0.262 e 0.410 ao pôr de lado ápices de picos reais. A
 maior margem medida é 0.895 no percentil 99.2 e 0.879 no 99.
 
-Abaixo de uns cem scans o percentil 99 volta a ser o maior scan, de modo que
-um pico isolado ainda poderia chamar de cromatográfica uma infusão muito
-curta. Isso é uma lacuna declarada e não uma lacuna corrigida; a infusão mais
-curta medida tem 146 scans, e errar o veredito é barato de propósito — ele só
-decide o que é mostrado primeiro.
+## Corridas curtas, e a resposta "too short to tell"
+
+Um percentil põe de lado uma *fração* dos scans, e um por cento de uma
+corrida curta é um scan. Cada uma das quarenta e oito aquisições foi truncada
+aos seus primeiros 20, 30, 50, 75 e 100 scans e lida de novo. Só com o
+percentil, a pior das nove infusões lê:
+
+| primeiros N scans | pior infusão | pior corrida cromatográfica |
+|---|---|---|
+| 20 | **0.0500** | 0.9500 |
+| 30 | **0.0333** | 0.9667 |
+| 50 | **0.0200** | 0.6735 |
+| 75 | **0.3333** | 0.8919 |
+| 100 | 0.9900 | 0.9394 |
+| a corrida inteira | 0.9937 | 0.1148 |
+
+As três infusões com transiente ficam invertidas outra vez, até oitenta scans
+e não até os cem que se supunha. Deixar o **primeiro segundo de aquisição**
+fora tanto da referência quanto da contagem resolve isso por completo, porque
+é ali que está o transiente — scan 1, meio segundo depois do início — e
+depois disso o lado das infusões deixa de se mexer com o comprimento:
+**1.0000 em cada uma dessas truncagens**, e 0.9936 na corrida inteira. Outras
+duas regras foram medidas e são piores. Deixar o primeiro segundo fora e
+voltar ao maior scan como referência falha na corrida inteira, onde um
+arquivo tem mais duas rajadas um minuto adentro e lê 0.0043. Fazer a
+referência ser a mediana dos poucos scans mais altos, com esse "poucos"
+amarrado ao comprimento da corrida, sobrevive a um pico mas não a três, e lê
+0.0100 nesse mesmo arquivo.
+
+A coluna da direita da tabela acima é a parte que nenhuma referência conserta,
+e é por isso que corridas curtas e planas são recusadas. Um gradiente cortado
+antes de qualquer coisa eluir é plano, e "plano" é tudo o que essas duas
+medidas medem. Uma corrida real do conjunto não carrega nada até 8.9 minutos:
+**os seus primeiros cem scans leem 1.0000 no total da amostra e 0.9388 no seu
+canal mais forte**, que é exatamente a assinatura de uma infusão. Nada num
+cromatograma distingue as duas, porque não há nada ali para distinguir — as
+duas são uma linha plana.
+
+Assim, o limiar de 0.75 não separa as duas populações em comprimento nenhum
+abaixo de 240 scans, que é mais do que tem a infusão real mais curta. O piso
+vai para onde o resto da medição o sustenta: fora esse único arquivo, nenhuma
+das trinta e nove corridas cromatográficas lê como plana depois de **35**
+scans, e a infusão mais curta medida tem **146** — de modo que o piso é
+**120**, entre os dois. Abaixo dele uma corrida plana é relatada como *too
+short to tell* e tratada como não sendo infusão.
+
+O piso vale só para a resposta "plana". Uma corrida que mostra estrutura é
+cromatográfica em qualquer comprimento, e é por isso que as vinte e seis
+corridas de 61 scans continuam lendo "chromatographic" com as suas medidas em
+vez de "too short to tell". E a perda é real e está declarada: uma infusão
+genuína com menos de 120 scans seria recusada, assim como aquele gradiente no
+trecho entre 154 e 234 scans em que ele ainda é plano. Errar o veredito é
+barato de propósito — ele só decide o que é mostrado primeiro.
 
 Três outras regras foram tentadas e rejeitadas, com números, em
 `openquant/infusion.py`: a correlação espectral de scan a scan (0.85 – 0.99

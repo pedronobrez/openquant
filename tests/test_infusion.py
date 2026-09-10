@@ -19,10 +19,12 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from openquant.infusion import (FLAT_FRACTION, REFERENCE_PERCENTILE,  # noqa: E402
-                                InfusionVerdict, above_half_fraction,
-                                is_infusion, run_range, strongest_channel,
-                                verdict_for)
+from openquant.infusion import (FLAT_FRACTION, MIN_JUDGED_SCANS,  # noqa: E402
+                                MIN_SCANS, REFERENCE_PERCENTILE,
+                                SETTLING_SECONDS, InfusionVerdict,
+                                above_half_fraction, after_settling,
+                                flat_fraction, is_infusion, run_range,
+                                strongest_channel, verdict_for)
 from openquant.samples import SampleEntry  # noqa: E402
 from openquant.wiff import ChannelInfo  # noqa: E402
 
@@ -119,8 +121,14 @@ class FakeSample:
         return {"Sample": self.name}
 
 
-def infusion_sample(n: int = 120, drift: float = 0.7) -> FakeSample:
-    """A minute and a half of spraying: the same spectrum, a falling signal."""
+def infusion_sample(n: int = 160, drift: float = 0.7) -> FakeSample:
+    """
+    A minute and a half of spraying: the same spectrum, a falling signal.
+
+    A hundred and sixty scans rather than a round hundred and twenty so the
+    suite is not balanced on `MIN_JUDGED_SCANS` itself; the floor is tested
+    on its own, either side, further down.
+    """
     rt = np.linspace(0.0, 1.5, n)
     fall = np.linspace(1.0, drift, n)
     rng = np.random.default_rng(3)
@@ -132,6 +140,37 @@ def infusion_sample(n: int = 120, drift: float = 0.7) -> FakeSample:
     weak = FakeChannel(2, rt, 900 * fall * rng.normal(1.0, 0.05, n),
                        lambda i: _peak(500.0), precursor=515.3)
     return FakeSample([survey, product, weak])
+
+
+def short_infusion_sample(n: int = 150, spikes=(1, 2)) -> FakeSample:
+    """
+    A spray of `n` quarter-second scans that misbehaves as it starts.
+
+    The real infusions cycle every 0.25 s, so a run of 150 scans lasts
+    thirty-eight seconds — long enough to clear `MIN_JUDGED_SCANS` and short
+    enough that one per cent of its scans is one of them. Two spikes rather
+    than one because that is what it takes to reach the 99th percentile of a
+    run this long: 0.99 x 149 lands between the second and third largest
+    scans.
+    """
+    rt = np.linspace(0.0, n * 0.25 / 60.0, n)
+    rng = np.random.default_rng(11)
+    y = 50_000 * rng.normal(1.0, 0.02, n)
+    for scan in spikes:
+        y[scan] = y[scan] * 4
+    product = FakeChannel(0, rt, y, lambda i: _peak(343.0), precursor=430.34)
+    return FakeSample([product])
+
+
+def short_gradient_sample(n: int = 40) -> FakeSample:
+    """A fast gradient: one peak, forty scans, well under the floor."""
+    rt = np.linspace(0.0, 2.0, n)
+    shape = 40_000 * np.exp(-0.5 * ((rt - 1.2) / 0.08) ** 2) + 60.0
+    survey = FakeChannel(0, rt, shape + 200.0,
+                         lambda i: _peak(300.0), name="TOF MS")
+    product = FakeChannel(1, rt, shape, lambda i: _peak(343.0),
+                          precursor=430.34)
+    return FakeSample([survey, product])
 
 
 def gradient_sample(n: int = 200) -> FakeSample:
@@ -208,13 +247,47 @@ def test_an_infusion_with_a_spray_transient_is_still_an_infusion():
     assert "99th-percentile scan" in verdict.reason
 
 
+def test_the_settling_window_leaves_a_fixed_piece_of_the_front():
+    """
+    A share of the scans is not a fixed number of them on a short run.
+
+    `after_settling` cuts by time, so the same first second goes whatever the
+    cycle is — four scans at a quarter of a second, none worth cutting at
+    14.6 s — and it refuses to cut at all when fewer than `MIN_SCANS` would
+    be left, which is the only case where the window could be most of the run.
+    """
+    assert SETTLING_SECONDS == 1.0
+    fast = np.linspace(0.0, 0.25 * 100 / 60.0, 100)     # 0.25 s scans
+    assert after_settling(fast, np.ones(100))[1].size == 96
+    slow = np.linspace(0.0, 14.61 * 60 / 60.0, 61)      # 14.6 s scans
+    assert after_settling(slow, np.ones(61))[1].size == 60
+    # a run so short that the window would eat it is left alone
+    tiny = np.linspace(0.0, 0.25 * 10 / 60.0, 10)
+    assert after_settling(tiny, np.ones(10))[1].size == 10
+
+
+def test_the_settling_window_is_what_saves_a_short_infusion():
+    """
+    Measured on the nine real infusions truncated to their first 50 scans:
+    the 99th percentile alone puts the worst at 0.0200, and the same
+    percentile taken after the first second puts it at 1.0000. The reason is
+    arithmetic — `np.percentile` interpolates, so on a short run the 99th is
+    most of the way to the largest scan, and a spray transient is the largest
+    scan.
+    """
+    sample = short_infusion_sample()
+    x, y = sample.tic()
+    assert above_half_fraction(y) < 0.05, "the percentile alone is thrown"
+    assert flat_fraction(x, y) == pytest.approx(1.0)
+
+
 # -- the verdict ------------------------------------------------------------ #
 def test_a_flat_run_of_one_spectrum_is_an_infusion():
     verdict = is_infusion(infusion_sample())
     assert verdict.infusion and verdict and "infusion" in verdict.reason
     assert verdict.above_half >= FLAT_FRACTION
     assert verdict.channel_above_half >= FLAT_FRACTION
-    assert verdict.n_scans == 120
+    assert verdict.n_scans == 160
     assert verdict.length_min == pytest.approx(1.5)
     # the strongest product-ion channel, not the survey it sits next to
     assert verdict.channel_index == 1
@@ -238,13 +311,71 @@ def test_a_scheduled_run_whose_total_is_flat_is_refused_on_its_channel():
     assert "peaks at different times" in verdict.reason
 
 
-def test_a_run_too_short_to_judge_is_not_one():
+def test_a_run_with_no_shape_at_all_is_not_one():
     rt = np.linspace(0.0, 0.1, 4)
     sample = FakeSample([FakeChannel(0, rt, np.full(4, 100.0),
                                      lambda i: _peak(343.0), precursor=430.3)])
     verdict = is_infusion(sample)
     assert not verdict.infusion and "too short" in verdict.reason
-    assert verdict.n_scans == 4
+    assert verdict.n_scans == 4 and verdict.too_short
+    assert MIN_SCANS == 8
+
+
+def test_a_short_infusion_with_a_transient_is_still_an_infusion():
+    """
+    The point of the settling window, end to end.
+
+    A hundred and fifty quarter-second scans of a spray that spat twice on
+    the way in. Without the window the 99th percentile is dragged up by the
+    spikes and the run reads under 5%; with it the run reads 100% and clears
+    the floor at 120 scans.
+    """
+    verdict = is_infusion(short_infusion_sample())
+    assert verdict.infusion, verdict.reason
+    assert verdict.n_scans == 150 and not verdict.too_short
+    assert verdict.above_half == pytest.approx(1.0)
+    assert verdict.channel_above_half == pytest.approx(1.0)
+
+
+def test_a_short_gradient_is_chromatographic_and_not_merely_short():
+    """
+    The floor gates the flat answer, never the other one.
+
+    Forty scans is well under `MIN_JUDGED_SCANS`, but a run that shows a
+    peak has said something positive about itself and is called on it —
+    which is what keeps a real 61-scan run reading "chromatographic" with
+    its figures rather than "too short to tell".
+    """
+    verdict = is_infusion(short_gradient_sample())
+    assert not verdict.infusion and not verdict.too_short
+    assert "chromatographic" in verdict.reason
+    assert verdict.n_scans == 40 and verdict.above_half < FLAT_FRACTION
+
+
+def test_a_flat_run_too_short_to_judge_says_so_and_is_not_an_infusion():
+    """
+    Measured on a real gradient, which is why this refusal exists.
+
+    `260904_EICs_Isabela_S001` carries nothing until 8.9 minutes in, so its
+    first hundred scans read 1.0000 on the sample total and 0.9388 on its
+    strongest channel — an infusion's signature, on a gradient. Nothing on a
+    chromatogram separates the two, so under `MIN_JUDGED_SCANS` a flat run
+    is refused rather than guessed at, with both figures on the verdict.
+    """
+    sample = short_infusion_sample(n=MIN_JUDGED_SCANS - 1, spikes=())
+    verdict = is_infusion(sample)
+    assert not verdict.infusion and not bool(verdict)
+    assert verdict.too_short
+    assert "too short to tell" in verdict.reason
+    assert "not an infusion" in verdict.reason
+    # the figures are still there, and they are the flat ones
+    assert verdict.above_half == pytest.approx(1.0)
+    assert verdict.channel_above_half == pytest.approx(1.0)
+    assert verdict.n_scans == MIN_JUDGED_SCANS - 1
+    assert str(MIN_JUDGED_SCANS) in verdict.reason
+    # one scan more and the same run is judged
+    assert is_infusion(short_infusion_sample(n=MIN_JUDGED_SCANS,
+                                             spikes=())).infusion
 
 
 def test_a_sample_that_cannot_be_read_is_not_an_infusion():
@@ -358,7 +489,7 @@ def test_an_infusion_opens_on_the_average_of_the_whole_run():
     assert checked == [1]
 
     # and the spectrum is the average of every scan, said so in the title
-    assert ("mix1 · TOF PI 430.34 · average of 120 scans (infusion) · "
+    assert ("mix1 · TOF PI 430.34 · average of 160 scans (infusion) · "
             "RT 0.000–1.500 min") == explorer.spectrum.title
     assert explorer.infusion_label.text() == "infusion"
     assert explorer.active_ref.channel.reads[-1] == (0.0, pytest.approx(1.5))

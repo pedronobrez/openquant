@@ -65,7 +65,9 @@ and subtracts its average spectrum from every spectrum shown; *Explain
 spectrum* scores LIPID MAPS candidates against the spectrum (see
 [[lipid-maps]]); *Detect peaks* integrates every trace on the chromatogram
 and fills the Results tab; *Average whole run* averages every scan of the
-active channel into one spectrum (see [[direct-infusion]]).
+active channel into one spectrum, and *Δ from average* — on an infusion only
+— draws the scan on screen minus that average, with the average mirrored
+below it (both see [[direct-infusion]]).
 
 ## The scan controls
 

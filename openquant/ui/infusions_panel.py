@@ -11,9 +11,13 @@ Nothing is measured until asked. Averaging a whole run, centroiding a quarter
 of a million points, searching a library and scoring every infusion of a
 compound against the others is a few seconds per compound, so *Measure* waits
 to be pressed and the table stays as it was until it is pressed again. The
-summary is held on the session and not saved with the project: it is derived
-from the files, and a table stored without the spectra behind it could not be
-checked against them.
+summary is held on the session and is never *re-measured* from a project: it
+is derived from the files.
+
+What the project does save, once a summary stands, is the figures of the
+table and the averaged, centroided peak list behind every row — see
+`infusion_compare`, which is what *Compare infusions…* reads back to put a
+reference day beside this one without opening a raw file.
 """
 
 from __future__ import annotations
@@ -24,18 +28,24 @@ from PyQt6 import QtCore, QtWidgets
 
 from .. import audit
 from ..infusion_report import (SUMMARY_COLUMNS, InfusionRow, InfusionSummary,
-                               prepare_documents, summarise, write_pdf,
-                               write_summary_csv)
+                               component_for, prepare_documents, summarise,
+                               write_pdf, write_summary_csv)
+from ..library import (identity_of, provenance_keys, records_from_summary,
+                       write_msp)
 from ..session import Session
 from .settings import settings
 
 HELP_PAGE = "infusion-report"
 
-#: the two columns whose cell is an abbreviation of a sentence, by name
-#: rather than by position: a column added in the middle would otherwise
-#: move the tooltip onto the wrong cell without anything failing
+#: the columns whose cell is an abbreviation of a sentence, by name rather
+#: than by position: a column added in the middle would otherwise move the
+#: tooltip onto the wrong cell without anything failing
 FOUND_COLUMN = SUMMARY_COLUMNS.index("Found m/z")
+SCANS_COLUMN = SUMMARY_COLUMNS.index("Scans")
 OTHERS_COLUMN = SUMMARY_COLUMNS.index("Other infusions")
+ADDUCT_COLUMN = SUMMARY_COLUMNS.index("Adduct")
+ISOLATED_COLUMN = SUMMARY_COLUMNS.index("Isolated")
+COMPOUND_COLUMN = SUMMARY_COLUMNS.index("Compound")
 
 #: the setting the analyst's own library is remembered under, written by the
 #: Explorer's library panel. Read rather than owned: there is one library of
@@ -91,10 +101,46 @@ class InfusionsPanel(QtWidgets.QWidget):
             "row when none is selected — one section per compound")
         self.btn_report.setEnabled(False)
         bar.addWidget(self.btn_report)
+        self.btn_method = QtWidgets.QPushButton("Use in method…")
+        self.btn_method.setToolTip(
+            "Write the selected infusions into the component table — every "
+            "row when none is selected. One component each: the formula, the "
+            "adduct read off the channel, the exact mass of that adduct as "
+            "the precursor and a peak of the averaged spectrum as the "
+            "fragment, with where it all came from. Nothing typed is "
+            "overwritten and nothing is written until it is ticked")
+        self.btn_method.setEnabled(False)
+        bar.addWidget(self.btn_method)
         self.btn_csv = QtWidgets.QPushButton("Export CSV…")
         self.btn_csv.setToolTip("The table as it stands, every column")
         self.btn_csv.setEnabled(False)
         bar.addWidget(self.btn_csv)
+        self.btn_compare = QtWidgets.QPushButton("Compare infusions…")
+        self.btn_compare.setToolTip(
+            "These infusions against a reference project's — compound by "
+            "compound and at the same collision energy and activation. The "
+            "reference is read from its project file, which has to have "
+            "been saved with a measured summary in it; no raw file is opened")
+        self.btn_compare.setEnabled(False)
+        bar.addWidget(self.btn_compare)
+        self.btn_quantify = QtWidgets.QPushButton("Quantify…")
+        self.btn_quantify.setToolTip(
+            "Measure each analyte against the internal standard the method "
+            "gives it, in the averaged spectrum of every open infusion: the "
+            "two responses, the isotope cross-talk between them and the "
+            "ratio. Independent of the table above — it needs a component "
+            "table with an internal standard set, not a Measure")
+        bar.addWidget(self.btn_quantify)
+        self.btn_library = QtWidgets.QPushButton("Add all to library")
+        self.btn_library.setToolTip(
+            "Write one record per row into your own library — the averaged "
+            "spectrum the table was measured from, named for the compound, "
+            "with the file and channel it came from in its comment. A row "
+            "whose compound could not be proposed is skipped and named, and "
+            "a row already in the file from the same file and channel is not "
+            "written twice")
+        self.btn_library.setEnabled(False)
+        bar.addWidget(self.btn_library)
         bar.addStretch(1)
         layout.addLayout(bar)
 
@@ -121,6 +167,10 @@ class InfusionsPanel(QtWidgets.QWidget):
         self.btn_measure.clicked.connect(self.measure)
         self.btn_report.clicked.connect(self.write_report)
         self.btn_csv.clicked.connect(self.export_csv)
+        self.btn_compare.clicked.connect(self.compare_infusions)
+        self.btn_method.clicked.connect(self.use_in_method)
+        self.btn_quantify.clicked.connect(self.quantify)
+        self.btn_library.clicked.connect(self.add_all_to_library)
         session.sigSamplesChanged.connect(self._invalidate)
 
         from .help_window import describe
@@ -177,8 +227,14 @@ class InfusionsPanel(QtWidgets.QWidget):
         QtWidgets.QApplication.setOverrideCursor(
             QtCore.Qt.CursorShape.WaitCursor)
         try:
-            summary = summarise(self.session, library=library,
-                                explanations=self.explanations())
+            summary = summarise(
+                self.session, library=library,
+                explanations=self.explanations(),
+                # the same rule the Explorer's pane is drawing under, so the
+                # table and the spectrum on screen are of the same scans
+                include_unstable=bool(getattr(
+                    self.explorer, "include_unstable_scans",
+                    lambda: False)()))
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
         self.session.infusion_summary = summary
@@ -188,6 +244,7 @@ class InfusionsPanel(QtWidgets.QWidget):
         """A file opened or closed makes the table a description of a batch
         that is no longer the open one."""
         self.session.infusion_summary = None
+        self.session.infusion_comparison = None
         self.reload()
 
     # -- content -------------------------------------------------------------- #
@@ -211,6 +268,9 @@ class InfusionsPanel(QtWidgets.QWidget):
         self.table.resizeColumnsToContents()
         self.btn_report.setEnabled(bool(rows))
         self.btn_csv.setEnabled(bool(rows))
+        self.btn_compare.setEnabled(bool(rows))
+        self.btn_method.setEnabled(bool(rows))
+        self.btn_library.setEnabled(bool(rows))
         self._describe()
         self.sigRowsChanged.emit(len(rows))
 
@@ -227,6 +287,21 @@ class InfusionsPanel(QtWidgets.QWidget):
             return (row.report.survivor_note
                     or getattr(row.report.measurement, "note", "")
                     or text)
+        if column == ADDUCT_COLUMN:
+            # the cell is `[M+NH4]+ confirmed`; the tooltip is what the
+            # survey actually measured, candidate by candidate
+            lines = [row.report.adduct_note] if row.report.adduct_note else []
+            lines += [e.sentence for e in row.report.evidence]
+            return "\n".join(lines) or text
+        if column in (ISOLATED_COLUMN, COMPOUND_COLUMN):
+            # the whole sentence, on both cells the verdict writes: a reader
+            # who notices the flagged name should not have to guess which
+            # other column explains it
+            verdict = row.report.isolation
+            return verdict.sentence() if verdict is not None else text
+        if column == SCANS_COLUMN:
+            # the cell is "464 of 473"; where the rest went is a sentence
+            return row.report.scans_line()
         if column == OTHERS_COLUMN and row.others:
             return "\n".join(
                 f"{label}: score {score * 100:.0f}, reverse "
@@ -359,6 +434,81 @@ class InfusionsPanel(QtWidgets.QWidget):
                      f"{os.path.basename(path)}.")
         return path
 
+    def compare_infusions(self, path: str = ""):
+        """
+        These infusions against a reference project's saved summary.
+
+        The reference is read from the project file alone — the figures and
+        the peak lists its Infusions tab measured — so a reference whose
+        acquisitions have moved to another disk is still a reference. A
+        project that never measured one holds nothing to compare against,
+        which is said in those words rather than shown as an empty table.
+        """
+        from ..infusion_compare import compare_infusions, read_summary
+        from .infusion_compare_dialog import InfusionCompareDialog
+
+        summary = self.summary
+        if summary is None or not summary.rows:
+            self.status.setText("Measure first; there is nothing to compare.")
+            return None
+        if not path:
+            start = self.settings.value("io/last_dir", "", type=str)
+            path, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self, "Reference project", start,
+                "OpenQuant project (*.oqproj *.opvproj)")
+            if not path:
+                return None
+            self.settings.setValue("io/last_dir", os.path.dirname(path))
+        try:
+            reference = read_summary(path)
+        except (OSError, ValueError) as exc:
+            self._report(f"Could not read {os.path.basename(path)}: {exc}")
+            return None
+        if reference is None:
+            self._report(f"{os.path.basename(path)} holds no infusion "
+                         f"summary: open it, press Measure on the Infusions "
+                         f"tab and save it again.")
+            return None
+        comparison = compare_infusions(
+            summary, reference,
+            current_name=(os.path.splitext(os.path.basename(
+                self.session.project_path))[0]
+                if self.session.project_path else "the open infusions"))
+        self.session.infusion_comparison = comparison
+        self._dialog = InfusionCompareDialog(comparison, self)
+        self._dialog.show()
+        self._report(comparison.summary())
+        return comparison
+
+    def use_in_method(self) -> int:
+        """
+        Offer the chosen infusions to the component table.
+
+        The dialog does the writing and the recording; this only says which
+        rows, and reports what came of it. Returns how many components were
+        written, so a test does not have to look at the label.
+        """
+        from .standards_dialog import StandardsDialog
+
+        rows = self.chosen()
+        if not rows:
+            self.status.setText("Measure first; there is nothing to offer the "
+                                "method.")
+            return 0
+        dialog = StandardsDialog(self.session, rows, self)
+        dialog.exec()
+        if dialog.applied or dialog.skipped:
+            said = (f"{dialog.applied} component(s) written into the method "
+                    f"from {len(rows)} infusion(s).")
+            if dialog.skipped:
+                said += (f" {len(dialog.skipped)} left nothing to write — the "
+                         f"method already carries "
+                         f"{', '.join(dict.fromkeys(dialog.skipped))}, and a "
+                         f"second infusion of a compound can only fill what "
+                         f"the first left empty.")
+            self._report(said)
+        return dialog.applied
+
     def export_csv(self, path: str = "") -> str:
         """The whole table, not the selection: a summary with rows left out
         is not the thing it claims to be."""
@@ -383,6 +533,132 @@ class InfusionsPanel(QtWidgets.QWidget):
         self._report(f"{len(summary.rows)} row(s) written to "
                      f"{os.path.basename(written)}.")
         return written
+
+    # -- quantitation ---------------------------------------------------------- #
+    def quantify(self):
+        """
+        Open the ratio dialog: analyte over internal standard, in the spray.
+
+        Not gated on the summary above having been measured. The two answer
+        different questions — that one asks whether a vial is what its label
+        says, this one asks how much of one compound there is against
+        another — and they read the files independently.
+        """
+        from .infusion_quant_dialog import InfusionQuantDialog
+
+        dialog = InfusionQuantDialog(self.session, self)
+        dialog.measure()
+        dialog.exec()
+        return dialog
+
+    # -- a record of every row ------------------------------------------------ #
+    def _own_path(self) -> str:
+        """
+        The MSP the analyst's own records go into, asked for once.
+
+        The same setting the Explorer's library panel writes: there is one
+        library of one's own and both places mean the same file. A save
+        dialog, since it usually does not exist yet, with the overwrite
+        warning off — picking the library that is already there is the
+        ordinary case and the records are appended, not written over.
+        """
+        path = self.settings.value(SETTING_OWN_PATH, "", type=str)
+        if path:
+            return path
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Your own spectral library",
+            os.path.expanduser("~/my-library.msp"),
+            "MSP (*.msp);;All files (*)",
+            options=QtWidgets.QFileDialog.Option.DontConfirmOverwrite)
+        if not path:
+            return ""
+        if not os.path.splitext(path)[1]:
+            path += ".msp"
+        self.settings.setValue(SETTING_OWN_PATH, path)
+        return path
+
+    def _acquired_times(self) -> dict:
+        """
+        When each open acquisition was measured, by file name.
+
+        The report holds the file it came from and the session holds the
+        sample, and only the sample knows the day the instrument measured
+        on — which is the day a record's history is ordered by, and is not
+        the day the record is being written.
+        """
+        found = {}
+        for entry in getattr(self.session, "entries", []) or []:
+            when = str(getattr(getattr(entry, "sample", None),
+                               "acquisition_time", "") or "")
+            name = os.path.basename(str(getattr(entry, "path", "") or ""))
+            if when and name:
+                found[name] = when
+        return found
+
+    def _identify(self, row):
+        """
+        The formula and the adduct to write into one row's record.
+
+        What the report already worked out first — it identified the adduct
+        against the channel's written precursor and put the compound's
+        labels back into the formula — and the method's component table for
+        whatever that leaves empty, which is the case where an infusion was
+        measured without anything being explained.
+
+        The component table's two are taken **together or not at all**. A
+        formula on its own gives the record no mass to check itself against,
+        and where the report identified no adduct the reason is usually that
+        no adduct of that formula reaches the precursor the channel
+        isolated — so writing the formula anyway would put the compound the
+        file is named after on a record of a different ion.
+        """
+        formula, adduct = identity_of(row.report)
+        if formula and adduct:
+            return formula, adduct
+        component = component_for(getattr(self.session, "method", None),
+                                  getattr(row, "compound", ""))
+        declared = (str(getattr(component, "formula", "") or ""),
+                    str(getattr(component, "adduct", "") or ""))
+        return declared if all(declared) else (formula, adduct)
+
+    def add_all_to_library(self, path: str = ""):
+        """
+        One record per measured row, appended to the library of one's own.
+
+        A folder of infusions is written in one go rather than a spectrum at
+        a time from the Explorer: the table has already averaged, centroided
+        and identified every one of them, and a record is those numbers with
+        a name and a provenance on them.
+
+        A row that proposed no compound is skipped and named, and so is one
+        whose acquisition and channel are already in the file — the
+        provenance in a record's comment is the key, so pressing this twice
+        adds nothing the second time.
+        """
+        summary = self.summary
+        if summary is None or not summary.rows:
+            self.status.setText("Measure first; there is nothing to write.")
+            return None
+        path = path or self._own_path()
+        if not path:
+            return None
+        made = records_from_summary(
+            summary.rows, existing=provenance_keys(path),
+            identify=self._identify, acquired=self._acquired_times())
+        written = 0
+        if made.entries:
+            try:
+                written = write_msp(made.entries, path, append=True)
+            except OSError as exc:
+                self.status.setText(f"Could not write {path}: {exc}")
+                return None
+            names = ", ".join(dict.fromkeys(e.name for e in made.entries))
+            self.session.record(
+                audit.OWN_LIBRARY, target=names,
+                after=os.path.basename(path),
+                note=f"{written} record(s) from the Infusions tab")
+        self._report(f"{made.line(written)} → {os.path.basename(path)}")
+        return made
 
     def _report(self, text: str) -> None:
         self.status.setText(text)

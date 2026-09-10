@@ -121,7 +121,7 @@ INDEX: tuple[tuple[str, tuple[str, ...]], ...] = (
     )),
     ("Explorer", (
         "explorer", "chromatograms-and-spectra", "direct-infusion",
-        "infusion-report",
+        "infusion-report", "infusion-quantitation",
         "contour-view", "manual-xic",
         "explorer-components-and-results", "sample-information",
     )),
@@ -134,11 +134,13 @@ INDEX: tuple[tuple[str, tuple[str, ...]], ...] = (
     )),
     ("Method", (
         "method-workspace", "internal-standards-and-qualifiers", "check-method",
+        "method-report",
         "suggest-from-data", "annotate-from-lipid-maps", "acquisition-schedule",
     )),
     ("Analytics", (
         "analytics-workspace", "peak-review", "integration-parameters",
         "integration-algorithms", "compare-algorithms", "compare-batches",
+        "compare-infusions",
         "signal-to-noise",
         "results-table", "calibration", "acceptance-criteria", "statistics",
         "metric-plot", "batch-qc", "mass-drift", "mass-recalibration",
@@ -146,7 +148,8 @@ INDEX: tuple[tuple[str, tuple[str, ...]], ...] = (
         "audit-trail", "report",
     )),
     ("Reference", (
-        "projects-and-files", "export", "command-line", "keyboard-shortcuts",
+        "projects-and-files", "export", "command-line", "python-api",
+        "keyboard-shortcuts",
         "how-wiff-is-read", "measured-facts", "design-principles",
         "troubleshooting", "glossary", "version-history",
     )),

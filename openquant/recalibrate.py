@@ -108,6 +108,90 @@ range is what a linear term needs, and no such batch was available to
 measure — this one has one such standard whether ten of them carry a formula
 or none do. Until one is, `MIN_SLOPE_LOCK_MASSES`, `MIN_MASS_SPAN` and the
 leave-one-out test are written and tested but have never fired on real data.
+
+## A direct infusion has no batch, and does not need one
+
+`fit_batch` needs injections: a compound of known composition measured over
+and over, so that one injection's error can be told from another's. A direct
+infusion is one acquisition of one vial and there is no second injection
+anywhere. What it has instead is a **ladder** — the precursor in the same
+spectrum as its own fragments, and `explain.precursor_ions` saying where each
+of them belongs. `fit_infusion` reads it: every rung found is an independent
+measurement of a mass the formula already knows, in the same acquisition, at
+a different mass. See that function for the rules and `MIN_LADDER_RUNGS`,
+`LADDER_TOLERANCE_PPM` for the two constants they turn on.
+
+Measured on the nine ZenoTOF 7600 bile-acid infusions (positive, one
+product-ion channel each and **no survey scan at all**), whole run averaged
+and centroided, the formula and adduct from the file name through
+`explain.resolve_name` and `chemistry.identify_adduct`. The last four columns
+are `explain.explain_formula` run at **5 ppm** — the LIPID MAPS tab's own
+default — on the axis as measured and on the corrected one:
+
+| infusion | rungs | offset | spread | span | ions before | after | intensity before | after |
+|---|---|---|---|---|---|---|---|---|
+| `CA-d4 …EAD_12CE…mix1` | 3 | −5.3 ppm | 7.5 ppm | 54 Da | 2 of 56 | 2 of 56 | 2.8% | **83.7%** |
+| `CA-d4 …EAD_22CE…mix1` | 8 | −5.6 | 6.3 | 72 | 5 of 56 | **8 of 56** | 14.0% | **63.6%** |
+| `CA-d4_TOFMSMS_Mix1` (CID 45) | 3 | +3.6 | 1.3 | 19 | 2 of 56 | 2 of 56 | 24.2% | 24.2% |
+| `DCA-d4 …EAD_22CE…mix1` | 8 | −8.6 | 19.9 | 72 | 2 of 41 | **5 of 41** | 16.2% | **53.0%** |
+| `DCA-d4_TOFMSMS_Mix1` (CID 40) | 3 | +6.2 | 2.5 | 18 | 1 of 41 | **3 of 41** | 1.6% | **17.1%** |
+| `TDCA-d4 …EAD_22CE…mix1` | 5 | −7.5 | 3.3 | 37 | 0 of 104 | **5 of 104** | 0.0% | **78.4%** |
+| `TDCA-d4_TOFMSMS_Mix1` (CID 30) | 4 | +1.8 | 4.1 | 37 | 4 of 104 | 4 of 104 | 72.1% | 72.1% |
+| `CA-d4 …EAD_12CE…TESTEARTIGO` | — | — | — | — | — | — | — | — |
+| `CA-d4 …EAD_22CE…TESTEARTIGO` | — | — | — | — | — | — | — | — |
+
+Seven of nine are corrected, from 3 to 8 rungs each, by −8.6 to +6.2 ppm. Two
+are not, and it is the right refusal: the `_TESTEARTIGO` pair is named for
+cholic acid-d4 and isolates **839.56**, which is none of that formula's
+adducts, so `axis_subject` never reaches a ladder and the row reads *no lock
+mass* with the reason. That the sign is not the same for all nine is worth
+noting — the EAD acquisitions read high and the CID ones low — which is why
+this is fitted per acquisition and not once for the instrument.
+
+The figure that says it was worth doing is the last pair of columns.
+`CA-d4 …EAD_22CE` reaching **8 of 56 ions and 63.6%** at 5 ppm is exactly
+what the same file gave at *10 ppm* on the uncorrected axis: the correction
+buys back the tolerance that had been widened to absorb it, and a tolerance
+absorbing an axis error is a tolerance not testing anything. Nothing
+*worsened*: the two files that do not move (both already inside 5 ppm at
+their strongest rungs) come back identical to the tenth of a per cent.
+
+Nothing is dropped by the spread rule on these nine — the widest
+disagreement between rungs of one ladder is `DCA-d4 …EAD_22CE`'s 19.9 ppm,
+inside `CONSENSUS_SPREAD_PPM` — so `_agreeing_rungs` is a guard here rather
+than a finding, and only the synthetic tests have fired it.
+
+## And it makes a record of one's own travel
+
+A record written from one infusion and searched with another of the same
+compound, both averages centroided, the record carrying its formula and
+adduct — the whole own-library round trip, before and after:
+
+| record / query | peak tol. | axis | score | reverse | matched | median &#124;Δ ppm&#124; |
+|---|---|---|---|---|---|---|
+| CA-d4 EAD 22 / EAD 12 | 20 ppm | as measured | 67.4 | 67.4 | 12 of 42 | 0.6 |
+| | | recalibrated | 67.4 | 67.4 | 12 of 42 | 0.6 |
+| DCA-d4 EAD 22 / CID 40 | 20 ppm | as measured | 33.4 | 70.0 | 21 of 39 | 12.3 |
+| | | recalibrated | **34.5** | **71.3** | **23 of 39** | **2.6** |
+| TDCA-d4 EAD 22 / CID 30 | 20 ppm | as measured | 61.5 | 69.4 | 8 of 32 | 8.6 |
+| | | recalibrated | 61.5 | 69.4 | 8 of 32 | **2.1** |
+| CA-d4 EAD 22 / EAD 12 | 5 ppm | as measured | 65.9 | 66.3 | 11 of 42 | 0.4 |
+| | | recalibrated | 65.9 | 66.3 | 11 of 42 | 0.5 |
+| DCA-d4 EAD 22 / CID 40 | 5 ppm | as measured | **no hit** | | | |
+| | | recalibrated | **31.8** | **69.6** | **19 of 39** | 2.5 |
+| TDCA-d4 EAD 22 / CID 30 | 5 ppm | as measured | **no hit** | | | |
+| | | recalibrated | **61.0** | **69.1** | **7 of 32** | 1.9 |
+
+At the library's default 20 ppm the scores barely move — a pairing that was
+already succeeding goes on succeeding — but the masses agree far better: the
+median gap between a paired library peak and the measured one it landed on
+falls from 12.3 to 2.6 ppm and from 8.6 to 2.1. At **5 ppm** that difference
+is the whole result. Two of the three pairs **do not match at all** on the
+instrument's own axes, because the two acquisitions were 14.8 and 9.3 ppm
+apart from each other, and both match once each is corrected against its own
+precursor. CA-d4's pair was 0.3 ppm apart to begin with and is unmoved, which
+is the control: the correction does not manufacture agreement where there was
+already agreement.
 """
 
 from __future__ import annotations
@@ -117,6 +201,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .mass_drift import MassDrift, MassTrend, mass_drift
+from .precursor import CONSENSUS_SPREAD_PPM, MIN_INTENSITY
 
 #: how far a lock mass may sit from its own formula before it is not the ion
 #: the formula names. `same_ion` asks the injections whether they agree with
@@ -175,6 +260,33 @@ SLOPE_MARGIN_PPM = 0.5
 #: three is belt and braces for a steep linear term.
 UNDO_ITERATIONS = 3
 
+#: where a correction came from, in the words the table and the report print.
+#: One string per source rather than a flag, because the two are fitted from
+#: different evidence and a reader who cannot tell them apart cannot judge
+#: either: a batch's correction stands on other compounds' standards, an
+#: infusion's on the one compound in the vial.
+BATCH_SOURCE = "from the internal standards"
+LADDER_SOURCE = "from the precursor ladder"
+
+#: how far either side of a predicted rung to look for it, in ppm. Twenty is
+#: the window the identification itself uses — the precursor is confirmed at
+#: this tolerance before anything is corrected — and a rung matched in a
+#: window wider than the error being measured is a rung matched to whatever
+#: was nearest. Note that this bounds every offset the fit can see, so
+#: `MAX_LOCK_ERROR_PPM` cannot fire at the default: the ceiling is there for
+#: a caller who widens the window, and it is the only thing that then stops
+#: the ladder being fitted onto a neighbouring ion series.
+LADDER_TOLERANCE_PPM = 20.0
+
+#: fewest rungs before an infusion's axis is corrected at all. Two, not one:
+#: a single rung is the precursor measured against its own formula and
+#: nothing checks it, and unlike a batch — where one lock mass in twenty-six
+#: injections is still one number the other injections can be read against —
+#: an infusion is one acquisition and has no second opinion anywhere. Two
+#: rungs of the same ladder at the same offset is the smallest evidence that
+#: the axis moved rather than that one peak was misassigned.
+MIN_LADDER_RUNGS = 2
+
 
 @dataclass(frozen=True)
 class LockMass:
@@ -207,6 +319,15 @@ class MassCorrection:
     lock_masses: list[LockMass] = field(default_factory=list)
     #: why there is no correction, or what the slope decision was
     note: str = ""
+    #: what the correction stands on, in words — `BATCH_SOURCE` or
+    #: `LADDER_SOURCE`. Printed in the panel and the report, because an
+    #: offset fitted from other compounds' internal standards and one fitted
+    #: from this vial's own fragment ladder are not the same claim.
+    source: str = BATCH_SOURCE
+    #: what one of `lock_masses` is called in a sentence. A batch's are lock
+    #: masses; an infusion's are rungs of one ladder, and calling those
+    #: "lock masses" would suggest independent compounds.
+    unit: str = "lock mass"
 
     # -- the correction itself ------------------------------------------------ #
     @property
@@ -288,6 +409,35 @@ class MassCorrection:
         return max(values, key=abs) if values else None
 
     @property
+    def spread_ppm(self) -> float | None:
+        """
+        How far apart the lock masses' own errors sat, before correcting.
+
+        None for a single one, and that is the point: an offset from one
+        measurement has no spread, so there is no figure to print and
+        printing 0.0 would read as perfect agreement rather than as no
+        agreement having been tested.
+        """
+        values = self.before_ppm
+        if len(values) < 2:
+            return None
+        return float(max(values) - min(values))
+
+    @property
+    def span_da(self) -> float:
+        """Daltons between the lowest and highest lock mass."""
+        masses = [lock.theoretical for lock in self.lock_masses]
+        return float(max(masses) - min(masses)) if len(masses) > 1 else 0.0
+
+    @property
+    def plural(self) -> str:
+        """`unit`, agreeing with how many there are."""
+        count = len(self.lock_masses)
+        if count == 1:
+            return self.unit
+        return f"{self.unit}es" if self.unit.endswith("s") else f"{self.unit}s"
+
+    @property
     def verdict(self) -> str:
         """
         One line saying what happened to this injection.
@@ -295,27 +445,64 @@ class MassCorrection:
         The count of lock masses is part of the sentence, because a
         correction from one of them is an offset with nothing left over to
         check it against, and reading "corrected by +2.2 ppm" without that
-        would suggest a measurement it is not.
+        would suggest a measurement it is not. Where there is more than one
+        the spread between them goes in for the same reason: it is the only
+        figure on the line that says how much the correction can be trusted.
         """
         if not self.usable:
-            return self.note or "no usable lock mass — left as measured"
+            return self.note or f"no usable {self.unit} — left as measured"
         count = len(self.lock_masses)
         if count == 1:
-            shape = "offset only, from one lock mass — nothing checks it"
+            shape = f"offset only, from one {self.unit} — nothing checks it"
         elif self.linear:
             shape = (f"a slope of {self.slope_ppm_per_da * 1000:+.2f} ppm "
                      f"per 1,000 Da")
         else:
             shape = "offset only"
-        plural = "es" if count != 1 else ""
-        return (f"corrected by {self.offset_ppm:+.1f} ppm from "
-                f"{count} lock mass{plural} ({shape})")
+        spread = self.spread_ppm
+        said = (f"corrected by {self.offset_ppm:+.1f} ppm from "
+                f"{count} {self.plural} ({shape})")
+        if spread is not None:
+            said += f", their own errors {spread:.1f} ppm apart"
+        return said
+
+    @property
+    def short(self) -> str:
+        """
+        The correction in as few words as a title or a table cell holds.
+
+        Says the count as well as the offset: a mass axis that has been moved
+        and does not say what moved it is the one thing worse than a mass
+        axis that is wrong.
+        """
+        if not self.usable:
+            return f"no {self.unit}"
+        return (f"recalibrated {self.offset_ppm:+.1f} ppm from "
+                f"{len(self.lock_masses)} {self.plural}")
+
+    def basis_sentence(self) -> str:
+        """
+        The correction and what it did to its own first rung, for a basis line.
+
+        Both numbers, because only the pair says anything: "+0.4 ppm
+        corrected" alone is a residual the correction was fitted to produce,
+        and "+5.6 ppm raw" alone does not say the axis was moved. The rung
+        quoted is the strongest — the one the offset mostly rests on.
+        """
+        if not self.usable:
+            return self.note or f"no {self.unit} — the axis stands as measured"
+        strongest = max(range(len(self.lock_masses)),
+                        key=lambda i: self.lock_masses[i].intensity)
+        lock = self.lock_masses[strongest]
+        return (f"on an axis {self.short}; {lock.component} measured "
+                f"{self.before_ppm[strongest]:+.1f} ppm raw, "
+                f"{self.after_ppm[strongest]:+.1f} ppm corrected")
 
     def to_dict(self) -> dict:
         return {"sample_key": self.sample_key, "sample_name": self.sample_name,
                 "offset_ppm": self.offset_ppm,
                 "slope_ppm_per_da": self.slope_ppm_per_da,
-                "pivot": self.pivot, "note": self.note,
+                "pivot": self.pivot, "note": self.note, "source": self.source,
                 "lock_masses": [lock.component for lock in self.lock_masses]}
 
 
@@ -398,6 +585,204 @@ def fit_correction(sample_key: str, sample_name: str,
     correction.note = (f"a slope helped: leave-one-out {line:.2f} ppm against "
                        f"{plain:.2f} ppm for the offset alone")
     return correction
+
+
+# --------------------------------------------------------------------------- #
+# an infusion, fitted from its own precursor
+# --------------------------------------------------------------------------- #
+def _weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
+    """
+    The median of `values` with each counted `weights` times.
+
+    A median rather than a weighted mean for the reason the batch fit gives:
+    one rung caught on a neighbour should not drag the axis a share of the
+    way towards it. Weighted rather than plain because the rungs of one
+    ladder are not equally well measured — a peak of twelve thousand counts
+    locates its centroid better than one of a hundred and twenty — and on
+    the real infusions the strong end of the ladder is where the precursor
+    and the first dehydrations sit.
+    """
+    order = np.argsort(values)
+    values, weights = values[order], weights[order]
+    total = float(weights.sum())
+    if total <= 0:
+        return float(np.median(values))
+    running = np.cumsum(weights)
+    return float(values[int(np.searchsorted(running, total / 2.0))])
+
+
+def ladder_rungs(peaks_mz, peaks_intensity, formula: str, adduct,
+                 deuterium: int = 0,
+                 tolerance_ppm: float = LADDER_TOLERANCE_PPM,
+                 min_intensity: float = MIN_INTENSITY) -> list[LockMass]:
+    """
+    Every ion of `explain.precursor_ions` this spectrum actually holds.
+
+    The peaks must already be **centroids**. `precursor.in_spectrum` is the
+    profile-data rule and refines across the points either side of the apex;
+    run on sticks it averages a peak with its neighbours, which on the real
+    infusions reported the cholic acid-d4 precursor at 429.7675 for a peak at
+    430.3489 — a thousand ppm out, from a window that held the right ion.
+    Here the match is the strongest stick inside the window and nothing else.
+
+    A rung is kept only above `min_intensity`, the floor `precursor.measure`
+    holds a survey scan to: a window is a stretch of axis like any other and
+    its tallest point is noise until something is there.
+    """
+    from .explain import precursor_ions
+
+    mz = np.asarray(peaks_mz, dtype=float)
+    intensity = np.asarray(peaks_intensity, dtype=float)
+    if mz.size == 0 or mz.size != intensity.size:
+        return []
+    out: list[LockMass] = []
+    for ion in precursor_ions(formula, adduct, deuterium):
+        window = ion.mz * tolerance_ppm * 1e-6
+        inside = np.flatnonzero((mz >= ion.mz - window)
+                                & (mz <= ion.mz + window))
+        if inside.size == 0:
+            continue
+        best = int(inside[int(np.argmax(intensity[inside]))])
+        if float(intensity[best]) < min_intensity:
+            continue
+        out.append(LockMass(component=ion.description, theoretical=float(ion.mz),
+                            measured=float(mz[best]),
+                            intensity=float(intensity[best])))
+    return out
+
+
+def fit_infusion(peaks_mz, peaks_intensity, formula: str, adduct,
+                 deuterium: int = 0,
+                 tolerance_ppm: float = LADDER_TOLERANCE_PPM,
+                 sample_key: str = "", sample_name: str = "",
+                 min_intensity: float = MIN_INTENSITY) -> MassCorrection | None:
+    """
+    A direct infusion's mass axis, corrected against its own precursor.
+
+    `fit_batch` needs a batch: a compound of known composition measured in
+    injection after injection, so that one injection's error can be told from
+    another's. An infusion is one acquisition of one vial, and there is no
+    second injection anywhere. What it has instead is a **ladder**: the
+    precursor is in the spectrum with its own fragments, and
+    `explain.precursor_ions` says exactly where each of them belongs —
+    the intact adduct, the core `[M+H]+` a labile adduct leaves behind, the
+    cumulative waters, and the −1D rungs a labelled standard sheds. Every
+    rung that is found is an independent measurement of a mass the formula
+    already knows, in the same acquisition, at a different mass.
+
+    The correction is an **offset** and only an offset. The rungs of one
+    precursor span the waters it can lose — 72 Da at the widest on the nine
+    real infusions, against the `MIN_MASS_SPAN` of 100 Da a slope needs —
+    and a line fitted over seventy daltons and used over five hundred is
+    extrapolation wearing a fit's clothes. The note says so with the file's
+    own span rather than leaving the reader to wonder.
+
+    `same_ion`'s idea applies rung by rung. A rung whose error disagrees with
+    the rest by more than `CONSENSUS_SPREAD_PPM` is not this axis measured
+    badly, it is a different ion inside the window, and it is dropped and
+    named. Below `MIN_LADDER_RUNGS` afterwards, or an offset past
+    `MAX_LOCK_ERROR_PPM`, and nothing is corrected: the returned correction
+    is not `usable`, `apply` is then the identity, and the reason is on it —
+    a refusal that vanished would leave the panel a row short and the reader
+    no wiser about which vial was left alone. None comes back only when
+    there was nothing to fit *from*: no formula, no adduct this program
+    knows, or no spectrum.
+
+    The peaks must be centroids; see `ladder_rungs`.
+    """
+    if np.asarray(peaks_mz, dtype=float).size == 0:
+        return None
+    rungs = ladder_rungs(peaks_mz, peaks_intensity, formula, adduct,
+                         deuterium=deuterium, tolerance_ppm=tolerance_ppm,
+                         min_intensity=min_intensity)
+    correction = MassCorrection(sample_key=sample_key, sample_name=sample_name,
+                                source=LADDER_SOURCE, unit="rung")
+    if not rungs:
+        if not _ladder_offered(formula, adduct, deuterium):
+            return None
+        correction.note = (
+            f"no rung of {formula} as {adduct} is in this spectrum within "
+            f"±{tolerance_ppm:g} ppm and above {min_intensity:,.0f} counts: "
+            f"no lock mass, and the axis stands as measured")
+        return correction
+
+    kept, dropped = _agreeing_rungs(rungs)
+    said = []
+    if dropped:
+        said.append("dropped, disagreeing with the rest by more than "
+                    f"{CONSENSUS_SPREAD_PPM:g} ppm: "
+                    + "; ".join(f"{name} {error:+.1f} ppm"
+                                for name, error in dropped))
+    if len(kept) < MIN_LADDER_RUNGS:
+        correction.lock_masses = []
+        correction.note = " · ".join([
+            f"{len(kept)} rung(s) of the ladder in this spectrum, fewer than "
+            f"the {MIN_LADDER_RUNGS} an offset needs before anything checks "
+            f"it: no lock mass, and the axis stands as measured", *said])
+        return correction
+
+    masses = np.array([rung.theoretical for rung in kept], dtype=float)
+    errors = np.array([rung.error_ppm for rung in kept], dtype=float)
+    weights = np.array([rung.intensity for rung in kept], dtype=float)
+    offset = -_weighted_median(errors, weights)
+    if abs(offset) > MAX_LOCK_ERROR_PPM:
+        correction.lock_masses = []
+        correction.note = " · ".join([
+            f"the ladder sits {-offset:+,.0f} ppm from where the formula puts "
+            f"it, past the {MAX_LOCK_ERROR_PPM:g} ppm beyond which it is a "
+            f"different ion series rather than a mis-set axis: no lock mass, "
+            f"and the axis stands as measured", *said])
+        return correction
+
+    correction.lock_masses = kept
+    correction.pivot = float(np.median(masses))
+    correction.offset_ppm = float(offset)
+    span = correction.span_da
+    # why there is no slope, with this file's own span in it. A ladder wide
+    # enough for one has never been seen — three waters is 54 Da and the
+    # widest measured is 72 — but saying so from the measurement rather than
+    # from the assumption is what makes the sentence worth printing.
+    said.insert(0, f"offset only: the {len(kept)} rungs span {span:,.0f} Da, "
+                   + (f"under the {MIN_MASS_SPAN:,.0f} Da a slope needs "
+                      f"before it is extrapolation" if span < MIN_MASS_SPAN
+                      else "but a ladder is one precursor's own losses and is "
+                           "fitted as an offset whatever it spans"))
+    correction.note = " · ".join(said)
+    return correction
+
+
+def _ladder_offered(formula: str, adduct, deuterium: int) -> bool:
+    """Whether there was a ladder to look for at all."""
+    from .explain import precursor_ions
+
+    return bool(precursor_ions(formula, adduct, deuterium))
+
+
+def _agreeing_rungs(rungs: list[LockMass]
+                    ) -> tuple[list[LockMass], list[tuple[str, float]]]:
+    """
+    The rungs that agree with each other, and the ones that do not.
+
+    Each is judged against the weighted median of the *others*, so a rung
+    cannot excuse itself by being in the sample it is compared with — the
+    same leave-one-out shape `_offset_loo` uses, and the same limit
+    `mass_drift.same_ion` uses to say two measurements are not of the same
+    ion. Two rungs cannot judge each other: with one left over there is no
+    median to disagree with, so both stand or neither does.
+    """
+    if len(rungs) < 3:
+        return list(rungs), []
+    errors = np.array([rung.error_ppm for rung in rungs], dtype=float)
+    weights = np.array([rung.intensity for rung in rungs], dtype=float)
+    kept, dropped = [], []
+    for index, rung in enumerate(rungs):
+        others = _weighted_median(np.delete(errors, index),
+                                  np.delete(weights, index))
+        if abs(errors[index] - others) > CONSENSUS_SPREAD_PPM:
+            dropped.append((rung.component, float(errors[index])))
+        else:
+            kept.append(rung)
+    return kept, dropped
 
 
 def _error_ppm(measured: float, exact: float) -> float:
@@ -553,8 +938,17 @@ def describe(corrections: dict[str, MassCorrection]) -> str:
     offsets = np.array([c.offset_ppm for c in usable], dtype=float)
     spread = ("{}–{}".format(min(counts), max(counts)) if len(counts) > 1
               else f"{min(counts)}")
+    # what one of them is called: a batch's are lock masses, an infusion's
+    # are rungs of one ladder, and a line saying "8 lock mass(es)" of an
+    # infusion would promise eight compounds where there is one
+    units = {c.unit for c in usable}
+    if len(units) == 1:
+        one = units.pop()
+        unit = f"{one}(es)" if one.endswith("s") else f"{one}(s)"
+    else:
+        unit = "lock mass(es)/rung(s)"
     said = [f"{len(usable)} of {len(corrections)} injection(s) corrected",
-            f"{spread} lock mass(es) each",
+            f"{spread} {unit} each",
             f"median offset {float(np.median(offsets)):+.1f} ppm"]
     if max(counts) == 1:
         said.append("an offset from one lock mass has nothing to check it")

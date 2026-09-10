@@ -26,6 +26,29 @@ nine real infusions this was built against; they carry one product-ion
 channel each and nothing else — the precursor is read from the averaged
 product-ion spectrum itself and the report says so in those words.
 
+**The mass axis**, always — whether it was corrected or not. A direct
+infusion has no second injection to be read against, so it is recalibrated
+against **itself**: the precursor is in the average together with its own
+fragments, and arithmetic already knows where each of those belongs. The
+paragraph names every rung that was found, its theoretical and measured
+mass, its error before and after the correction and its height; the offset
+and how many rungs it stood on; and, where the same explanation was run
+both ways, how many predicted ions landed on a peak on the axis as measured
+and on the corrected one. Where nothing was corrected the paragraph says
+that instead, with the reason — a vial that was looked at and left alone is
+a finding, and a page that omitted the paragraph would leave a reader unable
+to tell a corrected axis from an uncorrected one. The rules and what the
+nine real infusions gave are in
+[[mass-recalibration|An infusion recalibrates on its own precursor]].
+
+*Scans averaged* is the line [[direct-infusion]] describes: how many scans
+the acquisition holds, how many went into the average and where the rest
+went — *473 scans, 464 averaged; 9 left out: 0.008 min; 1.069–1.099 min, 8
+scans*. Those are the scans where the spray faltered, and a report that left
+them out says so on the header and again in one sentence of the verdict. With
+**Process ▸ Include unstable scans** on, the same two places say instead that
+they were kept on request, so a document says which average it is of.
+
 **The averaged spectrum**, drawn for paper at the label floor the pane was
 left at, so the masses printed are the masses that were on screen — see
 [[chromatograms-and-spectra]] for the floor and how labels are placed. Under
@@ -39,6 +62,19 @@ and, for an unplaced label, how many deuterium the fragment kept. Then, in a
 table of its own, **the peaks it does not account for**: the honest half of
 the answer, and where a co-infused impurity or the wrong compound shows
 itself.
+
+**The isotopic purity**, when the compound carries labels and an adduct was
+identified — the number on the certificate that nobody measures. The block is
+the envelope itself: every rung from d0 to dn with its *m/z*, its intensity,
+its share of the fully-labelled ion and its fitted fraction, then the species
+pair (`d4 96.2%, ≥d3 99.1%`) and the atom per cent, which is the quantity the
+certificate states and is a different number. Where the envelope cannot be
+solved the rungs are printed all the same with the reason under them, because
+a refusal is a statement about those numbers and a reader who cannot see them
+cannot check it. That is the outcome on every one of the nine real infusions,
+for a reason [[lipid-maps]] sets out: a product-ion scan's precursor has been
+through the quadrupole, and the carbon-13 satellites the solve needs went with
+it.
 
 **The library result**, when a search was run in the [[spectral-library]]
 tab: the best record, its score and reverse score, how many of its peaks
@@ -70,6 +106,11 @@ gets no sentence:
 - **"Collision energy differs from the record's (22 against 45 eV)"** — a
   spectrum taken at another energy has other fragments, so a low score there
   is the energy and not necessarily the compound.
+- **"9 scan(s) of 473 were left out of the average: …"**, with the times, why
+  each went and how well the rest of the run repeats itself. It is last
+  because it is not a check on the compound: it is a fact about the spectrum
+  the checks above were made on. A run whose spray never faltered gets no
+  sentence.
 
 There is no pass, no fail and no badge. Whether the vial holds what it should
 is a judgement made from evidence by somebody who knows what was weighed into
@@ -95,11 +136,15 @@ and a tab that did that whenever the results changed is a tab nobody keeps
 open. The row count appears in the tab's own name once it has.
 
 Each row carries the compound and the sample, the mode and collision energy,
-how many scans were averaged, the base peak, the precursor as the method wrote
+how many scans were averaged — *464 of 473* where the spray lost some, with
+the whole line on hover — the base peak, the precursor as the method wrote
 it and as it was measured back with its error in ppm and its height, the ions
 found of those predicted, the best record of your own library with both scores
 and the record's collision energy against this acquisition's, and the other
-infusions of the same compound with the cosine each way.
+infusions of the same compound with the cosine each way, and the **Mass
+axis** column — the correction fitted from that vial's own precursor ladder,
+whether it was applied, or the reason there is none. See
+[[mass-recalibration]].
 
 Two of those come from somewhere the report of one vial gets them from a
 person:
@@ -144,6 +189,19 @@ that cover is a count of the whole table; the [[audit-trail]] line says which
 of the two was written. **Export CSV…** writes
 the whole table, every column, selection or no selection: a summary with rows
 left out is not the thing it claims to be.
+
+**Add all to library** writes one record per row into your own library —
+the MSP *Add spectrum to library…* appends to, see [[spectral-library]]. The
+table has already averaged, centroided and identified every row, so a record
+is those very numbers with a name and a provenance on them: the compound the
+row proposes, the adduct and formula it identified, the channel's collision
+energy and activation, the day the file says it was acquired, and a comment
+naming the acquisition, the channel and the scans averaged. A row whose
+compound could not be proposed is skipped and named; so is a row already in
+the file from the same acquisition and channel, which is the key that stops
+the same measurement being written twice — press it again after opening two
+more infusions and only those two are added. The line under the table says
+what was written and what was not: *7 record(s) written, 2 skipped: …*.
 
 The summary line under the table is the one sentence the table adds up to —
 *3 compound(s) in 9 infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm;
@@ -222,7 +280,9 @@ Four things in that table are worth reading rather than skipping:
   **73** against each other and **5 to 10** against the three real CA-d4
   files. The name prefix said one compound and the method said another, and
   the row is where that shows — which is the whole reason the compound is
-  never anything but a proposal.
+  never anything but a proposal. The *Isolated* column now says it before
+  anything is measured, and what the two files actually are is the section
+  *When the name and the method disagree*, below.
 - **the precursor survives the soft activations and not the hard ones.** Every
   EAD run measured its precursor; two of the three CID runs had too little
   left to call a mass. That is an ordinary finding about collision energy, and
@@ -284,11 +344,12 @@ OpenQuant --infusion-report ~/data/bile-acids --out ~/reports/bile.pdf \
 
 The whole folder from the command line, with the three CID runs as the own
 library and the three formulas as a components CSV: **9 files read, nothing
-skipped, one 49-page PDF** — a two-page cover and 47 pages of sections — in
-**27 s** at 883 MB peak memory on an otherwise idle machine;
-`--per-compound` gives four documents, the cover and one per compound, 48
-pages in 26 s. The seconds are the one figure here that is not the
-program's: the same run on a busy machine took 32 s. What is stable is what
+skipped, one 56-page PDF** — two of cover and 54 of sections — in **42 s** at
+1.1 GB peak memory; `--per-compound` gives four documents, the cover and one
+per compound, the same 56 pages. Written without a cover the same nine
+sections come to 54, so the cover costs the two it is. The seconds are the
+one figure here that is not the program's — three runs took 42, 45 and 49 s
+on a machine doing other work as well. What is stable is what
 it did. Every row is the one the Infusions
 tab measured with the nine files open — 2 of 56 ions under CID and 8 of 56
 under EAD for CA-d4, 29 and 6 and 61 against the own records, +14.6 to
@@ -370,9 +431,232 @@ more, which is why the sentence counts them rather than concluding from them.
 And **2 had nothing to predict from** is the denominator kept honest: an
 infusion nothing was predicted for is not counted as one that found nothing.
 
-The cover came to **two pages** of the folder's 49 — the table of nine rows
-fills the first — and took no measurable time of its own: it is written from
-the rows the run has already made, and reads no file.
+The cover came to **two pages** of the folder's 56 — the table of nine rows
+fills the first and a little of the second — and takes **0.2 s** on its own:
+it is written from the rows the run has already made, and reads no file.
+
+## When the name and the method disagree
+
+A `.wiff` written by a manual acquisition names its own sample `sample` and
+its method `Untitled 1.msm`. Read by reflection, its experiment offers a
+polarity, a mass range, a fixed mass, DP, CE, DPS and CES — and a
+`TargetedCompoundInfo` that is empty, which is the field SCIEX OS writes a
+compound into when a method has one. **On the nine real infusions nothing in
+the file says what was sprayed.** The compound is in the file name and
+nowhere else.
+
+So the name is a proposal, and the precursor the method isolates is the one
+measurement of the same question the file actually holds. OpenQuant compares
+them. The compound the name starts with is resolved to a formula — the
+standards table of bile acids and their conjugates, then LIPID MAPS, then
+the lipid shorthand, the same three [[lipid-maps]] uses, with a trailing
+`-d4` read as four labels the formula does not carry — and every adduct of
+that formula is measured against the written precursor, at the precision the
+precursor was typed with. Where the name fits, the **Isolated** column of the
+Infusions tab and the report's header read *430.35 = [M+NH4]+ of CA-d4*.
+Where it does not, the same precursor is offered to the component table and
+to your own library, and the answer is one of two sentences:
+
+> The file is named CA-d4 but the method isolates 839.56 over 100–1000,
+> which is no adduct of C24H36D4O5 within ±0.05 Da; it fits nothing in the
+> component table or the library.
+
+> …it fits DCA-d4 [M+NH4]+ (414.3516, +2.0 ppm) from the component table.
+
+The row's **Compound** cell then stops repeating the name: it reads *not
+CA-d4*, or *DCA-d4, not CA-d4* where something fits, with the whole sentence
+in the tooltip. The grouping does not change — two files named for the same
+compound are worth scoring against each other whatever their methods isolate,
+and the pair below is only visible *as* a pair because they still were.
+
+The same check runs when a file is opened, and warns once per file, beside
+the warning for a `.wiff` with no `.wiff.scan`. **It reads no spectrum**, so
+it arrives before anything has been measured: on the nine real infusions it
+takes **32 ms a file**, nearly all of it looking the name up in LIPID MAPS,
+against the seconds the file itself takes to open. The component table costs
+nothing measurable on top — 125 formulas through every adduct came to the
+same 32 ms.
+
+**A name is only accepted when it is the compound exactly.** LIPID MAPS is
+searched by substring, which is right for somebody typing into a box and
+wrong for a check that fires by itself: against the installed database `PC`
+answers *PCTR3*, `CE` answers *cedrol*, `Cer` answers *Cerasin* and `TESTOL`
+answers *testolactone*. Four sample names of the most ordinary kind, each
+resolved to a compound nobody was infusing, and each would then have
+contradicted whatever its method isolated. So a database name counts only
+when the record's own name, abbreviation or LM_ID *is* the name; the
+standards table is an exact lookup and the shorthand is parsed rather than
+searched. A name nothing recognises is reported as *not checked* — which is
+a different finding from *the name is wrong*, and the two are never
+conflated.
+
+### What the two `TESTEARTIGO` files are
+
+They are the acquisitions this check was written for, and they are not
+cholic acid-d4.
+
+| | the two `_TESTEARTIGO` | `CA-d4_TOFMSMS_EAD_12CE_…_mix1` |
+|---|---|---|
+| isolated precursor | **839.56** | 430.34 |
+| mass range | 100 – 1000 | 50 – 500 |
+| declaration factor | 80 and 44 | 44 |
+| base peak | 839.2316 / 839.2343 | 430.3490 |
+| base peak height | **109 / 234 counts** | **12,271 counts** |
+| centroids in the averaged spectrum | 7,101 / 5,281 | 234 |
+| total ion current of the average | 18,537 / 40,453 | 156,716 |
+
+Thousands of centroids at tens of counts each is what an empty acquisition
+looks like: a spectrum of noise, centroided. The real infusion beside it has
+234 centroids and one of them is fifty times taller than everything in the
+other two files put together.
+
+**Nothing anywhere fits 839.56 and nothing in the file supports what does.**
+Every positive adduct of cholic, deoxycholic and taurodeoxycholic acid,
+their glycine and taurine conjugates, each labelled and unlabelled, as
+monomer and as dimer — seventy-two masses — gives exactly one hit at ±0.05
+Da: **[2M+Na]+ of *unlabelled* cholic acid, 839.5644, −5.2 ppm**. LIPID MAPS
+at ±0.01 Da adds seventeen records over two formulas, `C43H83O13P` as
+`[M+H]+` and `C45H76NO10P` as `[M+NH4]+` — phosphatidylinositols and
+phosphatidylserines, which nobody was infusing. And the file itself refuses
+all of them: within ±0.05 Da of 839.56 the tallest centroid is **9 counts**
+in one file and **17** in the other, 8% and 7% of a base peak that is itself
+109 and 234. The one ion in the isolation window that is really there sits at
+839.23, a third of a dalton — some four hundred parts per million — below
+what the method asked for, so it is a neighbour the ±0.5 Da window caught and
+not the target.
+
+The conclusion the tab draws is the one the arithmetic supports: **the method
+isolated a mass that was typed for something else, and got nothing.** The two
+score 73 against each other — two noise spectra from the same source, taken
+two minutes apart — and 5 to 10 against the three real CA-d4 files. The file
+name is the only thing in either of them that says CA-d4, and it is wrong.
+
+One smaller disagreement of the same kind, visible in the table above: the
+12 eV file is named `…_44DP_…` and its method carries a declaration potential
+of **80**. The name is a note somebody typed, in both cases, and the method
+is what the instrument did.
+
+## From the infusion to the method
+
+A verified vial is worth something only if what was learnt about it reaches
+the method. **Use in method…** on the Infusions tab writes the selected rows
+— every row when none is selected — into the [[method-workspace]]'s
+component table, one component per infusion, and says where each of them
+came from.
+
+What a component gets:
+
+| Field | From |
+|---|---|
+| Name | the compound the file name starts with — the same prefix the table groups on |
+| Formula | whatever the infusion was actually explained with, carrying the deuteriums the name declares: `CA-d4` is `C24H36D4O5`, not `C24H40O5` |
+| Adduct | read off the channel's own written precursor, gated on the polarity — see [[lipid-maps]] on why an adduct is not an offset |
+| Precursor | the **exact** mass of that adduct and of that formula |
+| Fragment | the base peak of the averaged product-ion spectrum, or a peak you pick from the strongest few |
+| IS | ticked, unless you untick it on the row |
+| Group | `standards` |
+| RT | **nothing.** An infusion is not a separation and has no retention time to give |
+| Provenance | the sample, the channel, the collision energy, the file, the acquisition time and the record of your own that the spectrum matched |
+
+The precursor is the one to be careful about. The channel says `430.35` and
+the component gets `430.3465`, and those are two different claims. The
+written value is what the instrument was given: it picked the channel, the
+acquisition is on it, and it is good only to the decimals somebody typed —
+±0.005 here, which is 12 ppm. The exact mass is what the compound weighs as
+that adduct, and it is what a mass window, a lock mass
+([[mass-recalibration]]) and a mass-accuracy check have to be built from.
+Writing the rounded one into the method would put 12 ppm of error into all
+three on purpose. So the exact mass is what is written and **both are shown**
+— in the dialog's Note column, in the tooltip and in the [[audit-trail]] —
+because nothing should silently replace a number you can no longer see.
+
+Nothing typed is overwritten. A compound the method already carries is
+*completed*: only its empty cells are filled, and where a value that is
+already there disagrees with the infusion, the Note says so and the typed
+value stays — `Precursor 430.3500 written, 430.3465 from the infusion —
+kept as written`. Each row ticked is one entry in the [[audit-trail]] under
+*Component from infusion*, with the provenance in the note.
+
+Two things the dialog will refuse or decline to do, both worth knowing:
+
+- **a precursor no adduct fits is not written at all.** The row says why
+  instead: *839.56 is none of the adducts of C24H36D4O5 within ±0.05 Da —
+  closest [M+K]+ at 451.2758*. A component with an invented mass is worse
+  than no component.
+- **a second infusion of the same compound has nothing left to write.** Two
+  collision energies of one vial are one component, and the first of them
+  fills the cells the second would have. The status line says which
+  compounds those were rather than adding a second row under the same name.
+
+### Measured, on the nine bile-acid infusions
+
+The same nine ZenoTOF acquisitions as the rest of this page, with the three
+CID runs written into a library of one's own first, so every row had a
+record to name.
+
+| Compound | Formula | Adduct | Written | Exact | Δ |
+|---|---|---|---|---|---|
+| CA-d4 | C24H36D4O5 | [M+NH4]+ | 430.35 (CID), 430.34 (EAD) | 430.3465 | +8.1, −15.1 ppm |
+| DCA-d4 | C24H36D4O4 | [M+NH4]+ | 414.34 | 414.3516 | −28.0 ppm |
+| TDCA-d4 | C26H41D4NO6S | [M+H]+ | 504.32 | 504.3291 | −18.1 ppm |
+
+Every formula came from the standards table through the name, with the four
+labels the `-d4` declares put in — without them nothing weighs 430 and no
+adduct fits at all. Two of the three adducts are ammonium and the third is
+not, which is exactly the kind of thing that cannot be assumed.
+
+The fragments are the base peaks, and they are not the same peak at every
+energy: CA-d4 gives **359.2870** at CID 45 eV and **377.3015** at EAD 22 eV,
+TDCA-d4 gives **468.3072** at CID 30 eV. At EAD 12 eV CA-d4's tallest peak is
+**430.3488** — the precursor that survived — and the row says so: *the base
+peak is the precursor that survived, not a fragment*. It is a legitimate
+transition and a poor one, and the fragment box is where you pick another.
+
+**Seven of the nine were offered.** The two `_TESTEARTIGO` acquisitions were
+refused, and for the reason this page already gives: they are named CA-d4 and
+target 839.56, which is none of that formula's adducts. Ticking all seven
+wrote **three** components, one per compound, because the second and third
+infusion of each compound had nothing left to fill.
+
+Then *Check method* on those three: **one finding** — `3 of 3 components have
+no retention time`, which is the expected and correct answer for standards
+that have only ever been infused, and the reason to run one of them up the
+column next. The survey check was skipped, since these acquisitions have no
+survey scan at all. Written the other way — all seven infusions as seven
+separate rows, which this refuses to do — `check_method` also called the two
+DCA-d4 rows a shared transition: both are 414.3516 → 361.30 within tolerance,
+one at 22 eV and one at 40, and nothing but a retention time could tell them
+apart.
+
+### Isotopic purity, on the same nine files
+
+Every one of them came back *not measured*, and the block says so with its own
+numbers on the page. The fully-labelled ion's carbon-13 satellite, which the
+formula puts at 26.5 – 30.0% of it, measures 0.006 – 0.206%:
+
+| infusion | d4 rung | M+1 measured | ratio to the formula | read |
+|---|---|---|---|---|
+| CA-d4 EAD 12 eV | 83,712 | 0.006% | 0.0002 | not measured |
+| CA-d4 EAD 22 eV | 66,655 | 0.028% | 0.0010 | not measured |
+| CA-d4 CID 45 eV | 607 | 0.095% | 0.0036 | not measured |
+| DCA-d4 EAD 22 eV | 38,178 | 0.015% | 0.0006 | not measured |
+| DCA-d4 CID 40 eV | 296 | 0.150% | 0.0057 | not measured |
+| TDCA-d4 EAD 22 eV | 36,447 | 0.020% | 0.0007 | not measured |
+| TDCA-d4 CID 30 eV | 2,272 | 0.206% | 0.0069 | not measured |
+
+The two `TESTEARTIGO` rows have no block at all: nothing identified an ion for
+them, for the reason the list above gives, and there is no envelope to print.
+
+The number the envelope *would* have given, if the check were switched off, is
+98.3 – 99.0% d4 on all seven precursors — which would sit comfortably above a
+certificate's `≥98 atom % D` and would mean nothing, because it moves with the
+collision energy: 98.32%, 98.77% and 98.98% for three acquisitions of the one
+bottle of cholic acid-d4 at 12, 22 and 45 eV. The ladder, tried the same way,
+gives 36.7%, 90.1% and 85.0% for those same three. **What the data says is
+that these files cannot answer the question**, and the honest report of a
+d4 standard's purity from this instrument needs one minute of TOF MS beside
+the product-ion channel. [[lipid-maps]] has the arithmetic and the rest of the
+evidence.
 
 ## The same standard, next month
 
@@ -381,3 +665,25 @@ own library, and [[standard-history]] reads the accumulated records of one
 compound back as a control chart: the cosine against the first record, the
 base peak's ppm from it, and the base peak's height, over the days they
 were acquired.
+
+The tray as a whole is the other half of that question, and
+[[compare-infusions]] is where it is asked: this table against the one a
+reference project saved, matched by compound and by conditions. Press
+**Measure** before saving a project and the project keeps these figures and
+every row's averaged peak list, which is what a later day is compared
+against.
+
+## From a verification to a measurement
+
+This report asks whether a vial is what its label says. **Quantify…** on the
+same tab asks a different question — how much of one compound there is
+against another in the same spray — and answers it with the two responses,
+the isotope cross-talk between them and the ratio. See
+[[infusion-quantitation]].
+
+## The whole folder from a script
+
+`api.infusion_report(folder, "infusions.pdf")` writes this document for
+every infusion in a file or a folder without opening the application, and
+returns one row per section so the numbers can be read without opening the
+PDF — see [[python-api]].

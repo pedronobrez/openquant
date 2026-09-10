@@ -173,8 +173,133 @@ Turning this on is a quantitative decision, not a display preference. Fit it,
 read the per-injection table, and switch it on only when the lock masses
 justify it — then process the batch again so the results follow.
 
+## An infusion recalibrates on its own precursor
+
+Everything above needs a **batch**: a compound of known composition measured
+in injection after injection, so that one injection's error can be told from
+another's. A [[direct-infusion|direct infusion]] is one acquisition of one
+vial, and there is no second injection anywhere.
+
+It does not need one. An infusion sprays the compound for a minute or two and
+the average of the whole run holds the precursor **together with its own
+fragments**, and arithmetic already knows where each of those belongs: the
+intact adduct, the `[M+H]+` an ammonium leaves behind when it hands over its
+proton, the ladder of cumulative water losses, and — for a labelled standard
+— the rung beside each of those that shed a deuterium with the water. Those
+are the same ions the [[lipid-maps|LIPID MAPS tab]] predicts for a formula.
+Each one that is actually there is an independent measurement of a mass the
+formula already knows, in the same acquisition, at a different mass.
+
+So an infusion is recalibrated against **itself**. Nothing has to be typed:
+the compound is the part of the file name before the first `_`, its formula
+comes from the standards table, LIPID MAPS or the lipid shorthand, and the
+adduct is read off the precursor the channel was given. The fit happens when
+the Explorer averages the whole run, and the pane's title then reads
+`· recalibrated −5.6 ppm from 8 rungs`.
+
+### The rules
+
+- a rung is matched to the **strongest peak within 20 ppm** of where the
+  formula puts it, and only above 100 counts — the same floor the
+  [[accurate-precursor|accurate precursor]] holds a survey scan to, because
+  below it a window is a stretch of axis whose tallest point is noise;
+- the correction is the **intensity-weighted median** of the rungs' errors,
+  sign flipped. Weighted, because a peak of twelve thousand counts locates
+  its centroid better than one of a hundred; a median, because one rung
+  caught on a neighbour should not drag the axis part of the way towards it;
+- it is an **offset and nothing else**. The rungs of one precursor span the
+  waters it can lose — 72 Da at the widest measured — against the 100 Da a
+  slope needs before it is extrapolation, and the row says so with the
+  file's own span;
+- a rung disagreeing with the others by more than **25 ppm** is a different
+  ion inside the window: it is dropped and named;
+- under **two** rungs, nothing is corrected and the row says why. Two, not
+  one: a single rung is the precursor measured against its own formula with
+  nothing to check it, and an infusion has no other injection to be read
+  against.
+
+### What it applies to
+
+While the switch is on, and behind the same switch as everything above: the
+averaged spectrum in the [[explorer|Explorer]] and its title, the
+[[lipid-maps|explanation]] — whose basis line then prints the strongest
+rung's error raw *and* corrected — the [[spectral-library|record written to
+your own library]], whose comment says the axis was moved and what by, the
+per-compound [[infusion-report|infusion report]]'s *Mass axis* paragraph, the
+*Mass axis* column of the Infusions tab, and a row of its own in the
+per-injection table on the **Mass drift** tab with *from the precursor
+ladder* as its source.
+
+### What the nine real infusions said
+
+Nine ZenoTOF 7600 bile-acid infusions, positive mode, one product-ion channel
+each and **no survey scan at all**. The last four columns are the LIPID MAPS
+explanation run at its own 5 ppm default, on the axis as measured and on the
+corrected one:
+
+| infusion | rungs | offset | spread | span | ions before | after | intensity before | after |
+|---|---|---|---|---|---|---|---|---|
+| CA-d4, EAD 12 eV | 3 | −5.3 ppm | 7.5 ppm | 54 Da | 2 of 56 | 2 of 56 | 2.8% | **83.7%** |
+| CA-d4, EAD 22 eV | 8 | −5.6 | 6.3 | 72 | 5 of 56 | **8 of 56** | 14.0% | **63.6%** |
+| CA-d4, CID 45 eV | 3 | +3.6 | 1.3 | 19 | 2 of 56 | 2 of 56 | 24.2% | 24.2% |
+| DCA-d4, EAD 22 eV | 8 | −8.6 | 19.9 | 72 | 2 of 41 | **5 of 41** | 16.2% | **53.0%** |
+| DCA-d4, CID 40 eV | 3 | +6.2 | 2.5 | 18 | 1 of 41 | **3 of 41** | 1.6% | **17.1%** |
+| TDCA-d4, EAD 22 eV | 5 | −7.5 | 3.3 | 37 | 0 of 104 | **5 of 104** | 0.0% | **78.4%** |
+| TDCA-d4, CID 30 eV | 4 | +1.8 | 4.1 | 37 | 4 of 104 | 4 of 104 | 72.1% | 72.1% |
+| CA-d4, EAD 12 eV, `_TESTEARTIGO` | — | — | — | — | — | — | — | — |
+| CA-d4, EAD 22 eV, `_TESTEARTIGO` | — | — | — | — | — | — | — | — |
+
+Seven of the nine are corrected, from three to eight rungs each, by −8.6 to
++6.2 ppm. The two that are not are the right refusal: the `_TESTEARTIGO` pair
+is named for cholic acid-d4 and isolates **839.56**, which is none of that
+formula's adducts, so there is no ladder to look for and the row reads *no
+lock mass* with that reason. The sign is not the same for all seven — the
+EAD acquisitions read high, the CID ones low — which is why this is fitted
+per acquisition and never once for the instrument.
+
+The figure that says it was worth doing is the last pair of columns. CA-d4 at
+EAD 22 eV reaching **8 of 56 ions and 63.6% of the intensity at 5 ppm** is
+exactly what that file gave at *10 ppm* on the uncorrected axis: the
+correction buys back the tolerance that had been widened to absorb it, and a
+tolerance absorbing an axis error is a tolerance testing nothing. Nothing got
+worse: the two files that do not move were already inside 5 ppm at their
+strongest rungs and come back identical to the tenth of a per cent.
+
+### And a record of your own travels between activations
+
+A record written from one infusion and searched with another of the same
+compound — the [[spectral-library|own-library]] round trip — before and
+after, at the search's default 20 ppm peak tolerance and at 5 ppm:
+
+| record / query | peak tolerance | axis | score | reverse | matched | median &#124;Δ ppm&#124; |
+|---|---|---|---|---|---|---|
+| CA-d4 EAD 22 / EAD 12 | 20 ppm | as measured | 67.4 | 67.4 | 12 of 42 | 0.6 |
+| | | recalibrated | 67.4 | 67.4 | 12 of 42 | 0.6 |
+| DCA-d4 EAD 22 / CID 40 | 20 ppm | as measured | 33.4 | 70.0 | 21 of 39 | 12.3 |
+| | | recalibrated | **34.5** | **71.3** | **23 of 39** | **2.6** |
+| TDCA-d4 EAD 22 / CID 30 | 20 ppm | as measured | 61.5 | 69.4 | 8 of 32 | 8.6 |
+| | | recalibrated | 61.5 | 69.4 | 8 of 32 | **2.1** |
+| CA-d4 EAD 22 / EAD 12 | 5 ppm | as measured | 65.9 | 66.3 | 11 of 42 | 0.4 |
+| | | recalibrated | 65.9 | 66.3 | 11 of 42 | 0.5 |
+| DCA-d4 EAD 22 / CID 40 | 5 ppm | as measured | **no hit** | | | |
+| | | recalibrated | **31.8** | **69.6** | **19 of 39** | 2.5 |
+| TDCA-d4 EAD 22 / CID 30 | 5 ppm | as measured | **no hit** | | | |
+| | | recalibrated | **61.0** | **69.1** | **7 of 32** | 1.9 |
+
+At 20 ppm the scores barely move — a pairing that was already succeeding goes
+on succeeding — but the *masses* agree far better: the median gap between a
+paired record peak and the measured one it landed on falls from 12.3 to
+2.6 ppm and from 8.6 to 2.1. At **5 ppm** that is the whole result. Two of
+the three pairs do not match at all on the instrument's own axes, because the
+two acquisitions sat 14.8 and 9.3 ppm apart from each other; both match once
+each is corrected against its own precursor. CA-d4's pair was 0.3 ppm apart
+to begin with and does not move, which is the control: the correction does
+not manufacture agreement where there already was some.
+
 ## See also
 
+- [[direct-infusion]] — what makes a sample an infusion at all
+- [[infusion-report]] — where the *Mass axis* paragraph is printed
 - [[mass-drift]] — the measurement this is fitted from
 - [[accurate-precursor]] — the survey measurement of one component's mass
 - [[check-method]] — which precursors the survey can see at all

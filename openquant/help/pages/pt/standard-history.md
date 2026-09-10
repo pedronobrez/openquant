@@ -124,3 +124,10 @@ frasco que mudou. Vários padrões caindo juntos em uma verificação é o que
 diz qual dos dois, e esse julgamento é do analista — isto desenha os
 gráficos que o tornam possível. **Export CSV…** escreve todos os registros
 com o que cada gráfico disse acima das linhas.
+
+Ele também precisa de registros, o que significa que alguém tem de os ter
+escrito. As mesmas duas regras — cinquenta ppm para *o mesmo íon*, vinte por
+cento para *a mesma resposta* — são aplicadas a uma bandeja inteira de uma
+vez pelo [[compare-infusions]], que lê um dia de referência do arquivo de
+projeto em vez de uma biblioteca, e não precisa que nada tenha sido
+acrescentado a uma.

@@ -595,3 +595,45 @@ def test_the_precursor_of_an_infusion_is_measured_over_the_whole_run():
     assert result.rt == pytest.approx(0.75, abs=0.02)
     # every scan of the survey went into the measurement, not three of them
     assert sample.channels[0].reads[-1] == (0.0, pytest.approx(1.5))
+
+
+# --------------------------------------------------------------------------- #
+# another vendor's file
+# --------------------------------------------------------------------------- #
+def test_an_mzml_infusion_from_another_vendor_reads_the_same(tmp_path):
+    """
+    The verdict reads chromatograms and never a spectrum, so it says the same
+    thing about another vendor's mzML as about a `.wiff`.
+
+    The file is built by `tests/test_mzml.py`: written with `write_mzml` and
+    then re-written the way ProteoWizard writes a Thermo `.raw` — Thermo ids,
+    seconds instead of minutes, an isolation window, HCD, and nothing saying
+    which experiment a scan came from. Read back, it is one product-ion
+    channel, and both figures land where a spray lands.
+    """
+    from openquant import mzml
+    from tests.test_mzml import (INFUSION_SCANS, _infusion_sample,
+                                 _thermo_shaped)
+
+    ours = tmp_path / "ours.mzML"
+    mzml.write_mzml(_infusion_sample(), ours)
+    path = _thermo_shaped(ours, tmp_path / "thermo.mzML")
+    sample = mzml.MzmlFile(path).sample(0)
+
+    verdict = is_infusion(sample)
+    assert verdict.infusion
+    assert verdict.above_half >= FLAT_FRACTION
+    assert verdict.channel_above_half >= FLAT_FRACTION
+    assert verdict.n_scans == INFUSION_SCANS
+    assert verdict.channel_index == 0
+    assert "an infusion" in verdict.reason
+
+    channel = strongest_channel(sample)
+    assert channel is sample.channels[0]
+    assert not channel.info.is_ms1
+    # the whole run, which is the only range an infusion has
+    start, end = run_range(channel)
+    assert (start, end) == pytest.approx((float(channel.rt[0]),
+                                          float(channel.rt[-1])))
+    # measured once and remembered, whatever the reader
+    assert verdict_for(sample) is verdict_for(sample)

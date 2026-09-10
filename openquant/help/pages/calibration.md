@@ -69,3 +69,12 @@ An internal standard is spiked at the same amount into every standard, so
 its response against concentration is flat and a curve through it means
 nothing. The report labels such a curve as meaningless, and the limits page
 leaves internal standards out.
+
+## A curve from infusions
+
+A curve does not need a chromatogram. A dilution series sprayed rather than
+injected fits here in exactly the same way — the response is a height in an
+averaged spectrum and the ratio to the internal standard is taken in that one
+spectrum, which is what [[infusion-quantitation]] measures. The rows arrive
+with no retention time and an *Algorithm* of `infusion`, and everything on
+this page then applies unchanged.

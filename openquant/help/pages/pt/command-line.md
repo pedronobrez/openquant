@@ -87,14 +87,16 @@ ou não algo a mostrar.
 
 Medido em nove infusões de ácidos biliares em um ZenoTOF, a partir do código
 no macOS, com as três corridas CID como biblioteca própria e as três fórmulas
-como CSV de componentes: **27 s** para a pasta inteira — nove arquivos lidos
-e um PDF de 49 páginas escrito, duas de capa e 47 de seções — com **883 MB**
-de pico de memória residente (duas execuções: 26,9 e 29,4 s, 883 e 888 MB), e
-`--per-compound` quatro documentos de 48 páginas em 26 s, duas delas a capa e
-as outras 46 um documento por composto. Os segundos são o único número
-aqui que não é do programa: a mesma execução sobre os mesmos arquivos, com a
-máquina ocupada com outro trabalho, levou 32, 81 e 255 s. O que é estável é o
-que ela fez — nove arquivos lidos, nenhum excluído, 49 páginas — e o que ela
+como CSV de componentes: **42 s** para a pasta inteira — nove arquivos lidos
+e um PDF de 56 páginas escrito, duas de capa e 54 de seções — com **1,1 GB**
+de pico de memória residente (três execuções: 42,4, 44,6 e 49,4 s, 1,03, 1,15
+e 1,13 GB), e `--per-compound` quatro documentos das mesmas 56 páginas, duas
+delas a capa e as outras 54 um documento por composto. Escritas sem capa, as
+mesmas nove seções dão 54 páginas, de modo que a capa custa exatamente as
+duas que ela é. Os segundos são o único número
+aqui que não é do programa: a mesma execução sobre os mesmos arquivos já
+levou de 27 s numa máquina ociosa a 255 s numa ocupada. O que é estável é o
+que ela fez — nove arquivos lidos, nenhum excluído, 56 páginas — e o que ela
 manteve na memória. Nada foi excluído:
 todos os nove leem como infusões, inclusive as duas aquisições `_TESTEARTIGO`,
 cujas linhas dizem o que há de errado com elas em vez de deixá-las de fora. A
@@ -139,3 +141,8 @@ executa um método sobre um lote e devolve o conjunto de resultados;
 — `openquant.chemistry` — analisa fórmulas, calcula massas e padrões isotópicos
 e busca composições, e não depende nem da interface nem das bibliotecas do
 fornecedor.
+
+Esses são os módulos em si, e eles podem mudar de lugar. Para uma superfície
+que não muda — um lote reprocessado e exportado, um espectro explicado, uma
+biblioteca buscada, um relatório escrito, em dez linhas e com uma promessa
+de estabilidade — use a [[python-api]].

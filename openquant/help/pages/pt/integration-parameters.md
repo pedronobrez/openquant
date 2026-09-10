@@ -27,6 +27,18 @@ mesmo grupo; **Back to method defaults** remove a sobreposição. **Copy** e
 **Paste** levam parâmetros de um componente a outro. Alterar um valor o
 pré-visualiza na grade; só Update o mantém.
 
+Update também reintegra, e apenas o que precisa. Cada parâmetro da tabela
+acima faz parte da *impressão digital* do componente — o resumo que cada
+linha integrada carrega do que a produziu (veja
+[[analytics-workspace|Processando só o que mudou]]) — de modo que aplicar um
+parâmetro a um componente lê as linhas daquele componente em todas as amostras
+e deixa o resto do lote intocado. Um componente com sobreposição própria
+**não** se move quando os padrões do método mudam: o que é registrado na
+impressão digital são os parâmetros em vigor, e uma sobreposição é o que está
+em vigor. Linhas integradas à mão sob os parâmetros antigos são integradas de
+novo junto com as demais, porque uma fronteira desenhada sobre um traço não é
+uma decisão sobre outro; a linha da [[audit-trail]] diz quantas eram.
+
 ## Como um pico é encontrado
 
 O detector trabalha sobre o trecho do XIC que lhe é dado, que é a janela de

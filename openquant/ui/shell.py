@@ -112,19 +112,38 @@ class MainShell(QtWidgets.QMainWindow):
         PDF for handing over, HTML for keeping: the second opens in a browser
         long after this application is gone, which is the point of a report as
         against an export.
+
+        The theme is asked for on the same dialog: paper, or the black and
+        white a journal prints in — which is the document and its pictures
+        both, since a black and white report holding a four-colour spectrum
+        is not a black and white report. There is no dark report to print:
+        `report.print_document` refuses one, and the reason is that a
+        printer handed a dark page lays down a whole sheet of toner.
         """
-        from ..report import write_html, write_pdf
+        from ..report import PRINTABLE_THEMES, write_html, write_pdf
+        from .export_theme import add_theme_box, chosen_theme, remember
+        from .help_window import describe
 
         if not self.session.entries:
             self.statusBar().showMessage("Open a batch before reporting on it.")
             return
         stem = (os.path.splitext(os.path.basename(self.session.project_path))[0]
                 if self.session.project_path else "batch")
-        path, chosen = QtWidgets.QFileDialog.getSaveFileName(
+        dialog = QtWidgets.QFileDialog(
             self, "Export report", os.path.join(self._last_dir(), f"{stem}.pdf"),
             "PDF (*.pdf);;Web page (*.html)")
-        if not path:
+        dialog.setAcceptMode(QtWidgets.QFileDialog.AcceptMode.AcceptSave)
+        theme_box = add_theme_box(dialog, self.settings,
+                                  allowed=PRINTABLE_THEMES)
+        describe(dialog, "report")
+        wanted = dialog.exec() and dialog.selectedFiles()
+        path = dialog.selectedFiles()[0] if wanted else ""
+        chosen = dialog.selectedNameFilter()
+        theme = chosen_theme(theme_box)
+        dialog.deleteLater()
+        if not wanted:
             return
+        remember(theme, self.settings)
         self.settings.setValue("io/last_dir", os.path.dirname(path))
         wants_html = path.lower().endswith(".html") or "html" in chosen.lower()
         if not os.path.splitext(path)[1]:
@@ -139,7 +158,7 @@ class MainShell(QtWidgets.QMainWindow):
         QtWidgets.QApplication.processEvents()
         try:
             writer = write_html if wants_html else write_pdf
-            writer(self.session, path, title=title)
+            writer(self.session, path, title=title, theme=theme)
         except Exception as exc:
             QtWidgets.QMessageBox.warning(self, "Report failed", str(exc))
             return
@@ -464,15 +483,51 @@ class MainShell(QtWidgets.QMainWindow):
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
         if opened is not None:
-            # a .wiff without its .wiff.scan opens and draws its chromatograms;
-            # the first sign that its spectra cannot be read should not be an
-            # empty pane half an hour later
-            problems = dict.fromkeys(
-                e.problem for e in self.session.entries
-                if e.path == opened.path and e.problem)
-            if problems:
-                QtWidgets.QMessageBox.warning(
-                    self, "Spectra cannot be read", "\n\n".join(problems))
+            self.warn_about(opened.path)
+
+    def warn_about(self, path: str) -> None:
+        """
+        What the samples of one just-opened file say about themselves.
+
+        Two warnings, each about something the file volunteers and neither
+        visible from a pane: spectra that cannot be read, and a name whose
+        compound is not the one its method isolates. Both are put up here
+        rather than at the point of use because both are cheap to ask now and
+        expensive to discover later — the second is arithmetic on two numbers
+        the file already holds, and the first is one scan.
+
+        Split out from `load_file` so it can be exercised with no file dialog
+        and no file: it reads the session's entries and nothing else.
+        """
+        for title, said in zip(("Spectra cannot be read",
+                                "The name and the method disagree"),
+                               self.file_warnings(path), strict=True):
+            if said:
+                QtWidgets.QMessageBox.warning(self, title, "\n\n".join(said))
+
+    def file_warnings(self, path: str) -> tuple[list[str], list[str]]:
+        """
+        The two warnings for one file, as text: unreadable spectra, then
+        names their methods contradict.
+
+        Returned rather than shown, so the wording is testable without a
+        modal dialog — which offscreen would block the suite rather than
+        fail it.
+        """
+        from ..infusion_report import name_disagreements
+
+        mine = [e for e in self.session.entries if e.path == path]
+        # a .wiff without its .wiff.scan opens and draws its chromatograms;
+        # the first sign that its spectra cannot be read should not be an
+        # empty pane half an hour later
+        problems = list(dict.fromkeys(e.problem for e in mine if e.problem))
+        # the library of one's own is not consulted here: it lives behind a
+        # setting the Explorer owns and reading it is seconds, which is not
+        # what an open should spend. The Infusions tab asks the same question
+        # with the library in hand
+        disagreements = name_disagreements(
+            mine, getattr(self.session.method, "components", ()))
+        return problems, disagreements
 
     def close_all(self) -> None:
         # close_all drops the batch and the project link, so unsaved work would

@@ -421,3 +421,211 @@ def test_every_standard_in_the_table_weighs_what_the_bottle_says():
         assert name == name.lower()
     for alias, name in ch.STANDARD_ALIASES.items():
         assert name in ch.STANDARDS, alias
+
+
+# --- what the survey says about the adduct --------------------------------- #
+def _survey(peaks, width: float = 0.012, step: float = 0.002,
+            pad: float = 1.5):
+    """A profile spectrum from (m/z, height) sticks."""
+    lo = min(m for m, _h in peaks) - pad
+    hi = max(m for m, _h in peaks) + pad
+    mz = np.arange(lo, hi, step)
+    intensity = np.zeros_like(mz)
+    for centre, height in peaks:
+        intensity += height * np.exp(-0.5 * ((mz - centre) / width) ** 2)
+    return mz, intensity
+
+
+def _ladder(formula: str, adduct: str, height: float, peaks: int = 4):
+    """One ion's isotope ladder as sticks, at the given base height."""
+    return [(mz, height * abundance) for mz, abundance
+            in ch.ion_pattern(formula, ch.ADDUCTS_BY_NAME[adduct],
+                              max_peaks=peaks)]
+
+
+def test_an_ions_pattern_carries_the_adducts_own_atoms():
+    """An adduct is not an offset here either. The ammonium's nitrogen and
+    four hydrogens are in the M+1, and a chloride's M+2 is a third of its M
+    where the molecule alone has none of that."""
+    ammonium = ch.ion_pattern("C24H40O5", ch.ADDUCTS_BY_NAME["[M+NH4]+"])
+    plain = ch.ion_pattern("C24H40O5", ch.ADDUCTS_BY_NAME["[M+H]+"])
+    assert ammonium[0][0] == pytest.approx(426.3214, abs=1e-3)
+    assert ammonium[0][1] == 1.0 and plain[0][1] == 1.0
+    # one nitrogen is 0.37% of an M+1, and four hydrogens another 0.05%
+    assert ammonium[1][1] > plain[1][1]
+    assert ammonium[1][1] - plain[1][1] == pytest.approx(0.0042, abs=0.001)
+
+    chloride = ch.ion_pattern("C24H40O5", ch.ADDUCTS_BY_NAME["[M+Cl]-"])
+    # 37Cl is 32% of 35Cl, and the molecule adds its own 3% on top
+    assert chloride[2][1] == pytest.approx(0.363, abs=0.01)
+    assert ch.ion_composition(ch.parse_formula("C24H40O5"),
+                              ch.ADDUCTS_BY_NAME["[M+Cl]-"])["Cl"] == 1
+    # a deprotonated molecule loses the hydrogen from the composition too
+    assert ch.ion_composition(ch.parse_formula("C24H40O5"),
+                              ch.ADDUCTS_BY_NAME["[M-H]-"])["H"] == 39
+    assert ch.ion_composition({"C": 1}, ch.ADDUCTS_BY_NAME["[M-H]-"]) is None
+
+
+def test_a_doubly_charged_ion_has_its_satellites_half_a_dalton_apart():
+    pattern = ch.ion_pattern("C39H79N2O6P", ch.ADDUCTS_BY_NAME["[M+2H]2+"])
+    assert pattern[1][0] - pattern[0][0] == pytest.approx(
+        ch.NEUTRON_SPACING / 2, abs=1e-4)
+
+
+def test_the_survey_reports_every_candidate_and_maps_the_ones_it_shows():
+    """A survey holding [M+H]+ and [M+Na]+ of the same molecule, which is
+    the ordinary case in positive infusion. Both are reported with their
+    relative heights; the adducts that are not there say what was looked
+    for and that nothing was."""
+    formula = "C24H40O5"
+    mz, intensity = _survey(_ladder(formula, "[M+H]+", 100_000)
+                            + _ladder(formula, "[M+Na]+", 40_000))
+    evidence = ch.adduct_evidence(mz, intensity, formula, polarity="Positive")
+    by_name = {e.name: e for e in evidence}
+
+    assert [e.name for e in evidence][:2] == ["[M+H]+", "[M+Na]+"]
+    assert by_name["[M+H]+"].present and by_name["[M+Na]+"].present
+    assert by_name["[M+H]+"].relative == pytest.approx(1.0, abs=0.01)
+    assert by_name["[M+Na]+"].relative == pytest.approx(0.40, abs=0.01)
+    assert abs(by_name["[M+H]+"].error_ppm) < 1.0
+    assert by_name["[M+H]+"].pattern > 0.95 and by_name["[M+H]+"].agrees
+    assert ch.adduct_map(evidence) == "[M+H]+ 100%, [M+Na]+ 40%"
+
+    absent = by_name["[M+K]+"]
+    assert not absent.present and absent.score == 0.0
+    assert "nothing within" in absent.note
+    assert absent.name in absent.sentence and "not found" not in absent.sentence
+    # a negative adduct is never a candidate for a positive channel
+    assert "[M-H]-" not in by_name
+
+
+def test_only_the_isotope_pattern_separates_two_masses_one_dalton_apart():
+    """A d4 standard and its d3 impurity are 1.0063 Da apart, and the
+    impurity's M+1 lands on the standard's M. Both fit the mass to within
+    a ppm; only the pattern says which of them the peak belongs to."""
+    d4, d3 = "C24H36D4O5", "C24H37D3O5"
+    assert ch.mass_from_formula(d4, "[M+NH4]+") \
+        - ch.mass_from_formula(d3, "[M+NH4]+") == pytest.approx(1.0063, abs=1e-3)
+    mz, intensity = _survey(_ladder(d4, "[M+NH4]+", 100_000)
+                            + _ladder(d3, "[M+NH4]+", 25_000))
+
+    right = ch.adduct_evidence(mz, intensity, d4, candidates=["[M+NH4]+"])[0]
+    wrong = ch.adduct_evidence(mz, intensity, d3, candidates=["[M+NH4]+"])[0]
+
+    # the mass cannot choose: both are on their ion to within a ppm
+    assert abs(right.error_ppm) < 1.0 and abs(wrong.error_ppm) < 1.0
+    # the pattern can: the d3 ion would need an M+1 of 0.27 and has 4.3,
+    # because what sits there is the d4 standard itself
+    assert right.pattern > 0.9 and right.agrees
+    assert wrong.pattern < 0.2 and not wrong.agrees
+    assert wrong.measured[1] > 4.0
+    assert right.score > wrong.score
+    assert "the isotopes disagree" in wrong.sentence
+
+
+def test_a_satellite_sitting_on_a_neighbour_does_not_sink_the_whole_pattern():
+    """Measured on the sphingolipid batch: the C16 ceramide's own [M+H]+
+    has an M+2 four times too big, because the co-eluting dihydroceramide
+    is 17 ppm from it. Summing the satellites' errors calls the compound's
+    own adduct a disagreement; weighting them per satellite does not."""
+    measured = (1.0, 0.333, 0.289)
+    expected = (1.0, 0.380, 0.076)
+    assert ch.pattern_agreement(measured, expected) == pytest.approx(0.77,
+                                                                     abs=0.02)
+    # and it still rejects a pattern that is not one at all
+    assert ch.pattern_agreement((1.0, 1.0, 1.0), expected) < 0.4
+    assert ch.pattern_agreement((1.0,), expected) is None
+
+
+def test_a_survey_confirms_the_adduct_the_written_precursor_names():
+    formula = "C24H36D4O5"
+    survey = _survey(_ladder(formula, "[M+NH4]+", 100_000)
+                     + _ladder(formula, "[M+Na]+", 20_000))
+    choice = ch.identify_adduct(formula, 430.35, "Positive", survey=survey)
+
+    assert choice.adduct is ch.ADDUCTS_BY_NAME["[M+NH4]+"]
+    assert choice.confirmed and choice.read_survey
+    assert "430.35 is [M+NH4]+ of C24H36D4O5" in choice.reason
+    assert "confirmed by the survey: 430.346" in choice.reason
+    assert "isotopes agree" in choice.reason
+    # the other adduct of the same molecule is reported, not hidden
+    assert "the survey also shows [M+Na]+ 20%" in choice.reason
+    assert {e.name for e in choice.evidence if e.present} == {"[M+NH4]+",
+                                                              "[M+Na]+"}
+
+
+def test_without_a_survey_the_basis_line_is_the_one_it_always_was():
+    plain = ch.identify_adduct("C24H36D4O5", 430.35, "Positive")
+    passed_none = ch.identify_adduct("C24H36D4O5", 430.35, "Positive",
+                                     survey=None)
+    assert plain.reason == passed_none.reason
+    assert not plain.confirmed and not plain.read_survey
+    assert plain.evidence == ()
+    assert "survey" not in plain.reason
+
+
+def test_a_survey_that_does_not_show_the_ion_says_so_and_changes_nothing():
+    """The real case: the 647.5 channel's larger peak is a different ion
+    69.9 ppm away, and the sphingomyelin is not in that survey at all."""
+    formula = "C35H71N2O6P"
+    survey = _survey([(647.5575, 44_231.0), (648.5614, 17_584.0)])
+    choice = ch.identify_adduct(formula, 647.5, "Positive", survey=survey)
+    plain = ch.identify_adduct(formula, 647.5, "Positive")
+
+    assert choice.adduct is ch.ADDUCTS_BY_NAME["[M+H]+"]   # unchanged
+    assert not choice.confirmed and choice.read_survey
+    assert choice.reason.startswith(plain.reason)
+    assert "the survey does not show it" in choice.reason
+    assert "chosen from the written mass alone" in choice.reason
+
+
+def test_the_survey_names_an_ion_the_written_precursor_fits_none_of():
+    """`538.6` for a ceramide whose [M+H]+ weighs 538.5194 is 0.08 Da out —
+    eighty times what an adduct is allowed, and still the ion the
+    quadrupole isolated. Without a survey it is refused; with one the
+    instrument has already said what was there."""
+    formula = "C34H67NO3"
+    survey = _survey(_ladder(formula, "[M+H]+", 100_000))
+
+    refused = ch.identify_adduct(formula, 538.6, "Positive")
+    assert refused.adduct is None
+    assert "none of the adducts" in refused.reason
+
+    choice = ch.identify_adduct(formula, 538.6, "Positive", survey=survey)
+    assert choice.adduct is ch.ADDUCTS_BY_NAME["[M+H]+"]
+    assert choice.confirmed
+    assert "none of the adducts" in choice.reason
+    assert "but the survey shows [M+H]+ at 538.519" in choice.reason
+    assert "inside the ±0.7 Da the quadrupole passes" in choice.reason
+
+    # but only inside that window: a survey showing the ion two daltons
+    # away from what was isolated does not answer for it
+    far = ch.identify_adduct(formula, 540.0, "Positive", survey=survey)
+    assert far.adduct is None
+
+
+def test_an_ion_too_weak_to_measure_is_reported_as_such_not_as_absent():
+    formula = "C24H40O5"
+    mz, intensity = _survey(_ladder(formula, "[M+H]+", 40.0))
+    found = ch.adduct_evidence(mz, intensity, formula,
+                               candidates=["[M+H]+"])[0]
+    assert not found.present and found.height == pytest.approx(40.0, abs=1.0)
+    assert "only 40 counts" in found.note
+    # the floor is the caller's to set, and lowering it admits the ion
+    lower = ch.adduct_evidence(mz, intensity, formula, candidates=["[M+H]+"],
+                               min_intensity=10.0)[0]
+    assert lower.present
+
+
+def test_a_product_ion_scan_has_no_satellites_and_is_not_called_a_liar():
+    """Q1 kept the monoisotopic ion and threw its satellites away. Nothing
+    to compare is not a disagreement: the score falls back to the mass."""
+    formula = "C24H40O5"
+    mz, intensity = _survey([(ch.mass_from_formula(formula, "[M+H]+"),
+                              50_000.0)])
+    found = ch.adduct_evidence(mz, intensity, formula,
+                               candidates=["[M+H]+"])[0]
+    assert found.present and found.pattern is None
+    assert found.score > 0.9
+    assert "no isotope satellites" in found.note
+    assert "no isotope satellites to compare" in found.isotope_note

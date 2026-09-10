@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.8.1 released. 1282 tests. Public repository.**
+**Version 0.8.1 released; 0.9.0 in progress on main. 1588 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -88,6 +88,13 @@ openquant/
                   control chart over the days they were acquired
   infusion_batch.py  a folder of infusions reported without the Explorer,
                   one reader at a time (CLI --infusion-report)
+  infusion_compare.py  two days of infusions, matched by compound and
+                  conditions, the reference read from its project
+  infusion_quant.py  an analyte against its standard in one spray
+  standards.py    an infusion row written into the component table
+  purity.py       the d0…dn envelope solved; refuses itself without
+                  satellites
+  api.py          the stable Python surface, imported lazily
   audit.py        the trail of hand edits saved with the project
   labels.py       which peaks get a label: a budget per region of the
                   visible axis, shared by the pane and the print
@@ -100,6 +107,8 @@ openquant/
                   read from its project without opening raw files
   contour.py      the run as a retention time by m/z grid
   health.py       what the method will fail at, before it is run
+  method_report.py  those checks, the formulas, the lock-mass candidates
+                  and the schedule as one document that grades nothing
   suggest.py      retention times and windows the batch can supply
   components.py   the component table; method.py the processing method
   samples.py      SampleEntry, sample types and groups, name shortening
@@ -772,6 +781,215 @@ UV detector, is not implemented there) — untested on real Windows.
   nothing when it cannot open its file, so every document is checked after
   it is written. Timings on this machine vary 3× under a load of twenty
   agents; pages, memory and rows repeat exactly.
+- **A method report is the checks that exist, not a new one, and it refuses
+  to grade.** `method_report.py` runs `check_method`, `fill_formulas`,
+  `precursor_repairs`, `matching` and `build_schedule` over one method and
+  prints the answers through `report.print_document`: the component table
+  with every flagged row marked, the findings by severity, the formulas
+  carried / derivable / refused with both masses, the standards that
+  *could* be lock masses, and, with a sample open, which channel serves
+  what and the schedule the method implies. The closing section is a
+  paragraph of counts whose last sentence says the counts are not a
+  verdict; `fill_formulas` is given `replace()` copies so nothing is
+  written. Measured on the 141-component method against injection 01:
+  0.29 s to read, 15 pages in 5.3 s, 3 serious findings and 4 warnings
+  touching all 141 rows, 125 formulas derivable with 16 refused, no
+  lock-mass candidate, 72 precursors outside the 50–700 survey, 59
+  transitions scheduled / 82 left out / 24 at once at 4.70 min. The cycle
+  it prints is 12.4 s (from `suggested_cycle`, the batch's measured width),
+  not the 3 s of the schedule note; at 3 s the same 24 get 120 ms. Two
+  things a render found: a provenance column carrying the derived formula
+  wrapped to three lines and took the table from six pages to eight; and a
+  closing heading whose paragraph has no *line* that fits ends page 14
+  alone — `_orphan_headings` needs the first line's rule, in the printer.
+- **An adduct deduced from a written precursor is not the same claim as one
+  measured.** A product-ion scan cannot check which ion its precursor is —
+  Q1 passed one mass and threw the isotopes away with it — so
+  `chemistry.adduct_evidence` asks the survey of the same acquisition over
+  the same scans: the nearest centroid within ±0.05 Da held to
+  `CONSENSUS_SPREAD_PPM` and `MIN_INTENSITY`, and the M/M+1/M+2 of the
+  **ion's own composition** (`[M+NH4]+` carries a nitrogen the molecule has
+  not got, `[M+Cl]-` an M+2 of 32%). `identify_adduct(survey=…)` says
+  "confirmed by the survey: 647.5112, −1.6 ppm, isotopes agree" or that it
+  was chosen from the written mass alone. Measured on the sphingolipid
+  survey: the mass alone admits an ion that is not there (the C16
+  ceramide's `[M+NH4]+` sits 21.5 ppm out with 170 counts and satellites
+  of 1.00/1.00, flat noise, ranked last by the pattern); and a satellite is
+  where a lipid keeps its own family (the ceramide's true `[M+H]+` has an
+  M+2 four times too big because the co-eluting dihydroceramide is 17 ppm
+  from it), so `pattern_agreement` weights each satellite separately
+  (0.77 against `match_isotope_pattern`'s 0.43); `PATTERN_AGREES` (0.50)
+  sits in the trough between 0.33 and 0.55. The survey reports every
+  adduct it shows (`[M+H]+` 100%, `[M+Na]+` 13% for both compounds) and may
+  overrule a written precursor that fits nothing, but only inside
+  `PRECURSOR_MATCH_DA`: `538.6` for 538.5194 is `[M+H]+` with a survey and
+  refused without one. The bile-acid infusions have no survey; nothing
+  changes there and the report says so.
+- **A file name is a claim and the method is a measurement, and they can
+  differ.** A manual acquisition names its sample `sample` and its method
+  `Untitled 1.msm`; by reflection `TargetedCompoundInfo` is None and the
+  compound parameters hold only DP/CE/DPS/CES — nothing in the file names a
+  compound, so `compound_of` is a proposal. `infusion_report.
+  what_the_method_isolates` checks it against every adduct of the name's
+  formula, the component table and the own library: an `Isolated` column,
+  a Named/Isolated header pair, a warning once per file after open. Two
+  guards: `lipidmaps.find_by_name` is a substring search (`PC` answers
+  *PCTR3*, `Cer` *Cerasin*), so `resolution_is_exact` requires the record's
+  own name; and grouping stays on the proposal. The two `_TESTEARTIGO`
+  files isolate 839.56: of 72 bile-acid adducts, monomer and dimer, only
+  `[2M+Na]+` of unlabelled cholic acid fits (−5.2 ppm), and the files
+  refuse it — 9 and 17 counts in the window, 7,101 and 5,281 centroids for
+  a TIC of 18,537 and 40,453 against 234 and 156,716 for the real CA-d4.
+  They are empty acquisitions of a mass typed for something else.
+- **A shortened sample name is not an identity.** `samples.shorten_names`
+  strips the prefix every open sample shares, so the same file is
+  `EAD_22CE_mix1` beside two others and `22CE_mix1` beside one, and a
+  comparison of two days matched nothing. `infusion_compare` reads the
+  compound, activation and energy from the file name on disk, matches rows
+  by compound *and* conditions, marks *moved* on `standard_history`'s two
+  rules only (base peak past `SAME_PEAK_PPM`, height past `qc.OUT_PERCENT`)
+  and never on the cosine (two days are two points). The summary and each
+  row's top-200 centroids are saved under `infusions` when they stand:
+  19.4 bytes a peak, 1,965 → 8,645 bytes for three infusions, read in 3 ms.
+- **A database candidate says which adduct found it, and a non-proton
+  adduct has to earn its place.** `explain(record, …)` is
+  `explain_structure` with the molfile taken out of LMSD — one enumeration
+  through `explain.scored`; `rank_candidates(adduct=None)` searches every
+  adduct the polarity allows. The gate is the finding: a product-ion
+  channel is looked up over ±0.5 Da, at 700 Da 700 ppm holding hundreds of
+  species, so five adducts multiply accidental candidates — the four named
+  sphingolipids went from ranks 1, 4, 1, 1 to 1, 5, 5, 3 ungated;
+  `explain.adduct_gate` (a non-proton adduct must name the precursor within
+  the written precision; the proton adduct keeps the window) restores them.
+  What it buys: a DIA window at 876.80 lists TG 52:2 at −1.7 ppm explaining
+  24.0%, where the `[M+H]+` search does not list it at all.
+- **A verified vial is worth nothing until the method carries what it
+  taught.** `standards.component_from_infusion`: the formula it was
+  explained with (labels included — `CA-d4` is C24H36D4O5), the adduct
+  read off the channel, the **exact** mass of that adduct as the precursor
+  with the written value beside it, the base peak (or a chosen peak) as the
+  fragment, no retention time, `Component.provenance` (saved, in the
+  Method table's tooltip, kept in a Qt item role because the table commits
+  whole on every keystroke). *Use in method…* completes an existing
+  component without overwriting; a second infusion of a compound can only
+  fill what the first left empty (seven rows → three components).
+- **An infusion has no batch and does not need one: it recalibrates on its
+  own precursor.** `recalibrate.fit_infusion` matches every ion
+  `explain.precursor_ions` offers to the strongest centroid within
+  `LADDER_TOLERANCE_PPM` (20) above `MIN_INTENSITY`; offset only
+  (widest ladder 72 Da), the intensity-weighted median; `same_ion` rung by
+  rung; under `MIN_LADDER_RUNGS` (2) nothing is corrected. `precursor.
+  in_spectrum` cannot be reused: it refines across neighbours and read
+  430.3489 as 429.7675 on sticks. On the nine bile-acid infusions 7 of 9
+  corrected, 3–8 rungs, −8.6 to +6.2 ppm (EAD high, CID low — per
+  acquisition); at 5 ppm CA-d4 EAD 22 eV goes 5 of 56 and 14.0% → 8 of 56
+  and 63.6%; TDCA-d4 EAD 0 of 104 → 5 and 78.4%. An own record travels:
+  DCA-d4's and TDCA-d4's do not match their own vial's other activation
+  raw at 5 ppm and match at 31.8 and 61.0 corrected.
+- **A figure is drawn for the page it is going on, not for the window.**
+  `spectra_compare.Palette`: `PAPER`, `MONO` (solid black against dashed
+  `#666666`, filled/hollow heads on sticks) and `DARK` (lightened, not
+  darkened — `for_ground` takes the direction from the ground). In
+  greyscale the two MONO traces are a median L of 0 and 102 and the dash
+  survives halving; on `#1e2124` every colour clears 3:1. A head is ink, so
+  labels over headed sticks lift (14 on paper, 28 in MONO). `report._STYLE`
+  has the same three; the running header and footer are painted outside
+  the style sheet (`FURNITURE`), and a dark PDF is refused.
+- **An mzML average adds the scans up; it does not interpolate them.** Two
+  TOF scans do not share a mass axis; `np.interp` onto the union drew a
+  line across every zero-stripped gap: against SCIEX's own average of the
+  same 146 scans, 220,222 of 221,847 masses higher, total 3.31×, 670
+  centroids against 424. Accumulating reproduces the vendor to
+  max |Δ| 0.0. `MzmlSample.tic` grouped channels by scan count (a
+  164-spectrum Thermo infusion came back as 8 points); the period now comes
+  from `acquisition_cycles`. The instrument sits in a
+  `referenceableParamGroup` pwiz only points at; `<activation>` is read and
+  is part of the channel key. Two real Thermo infusions still read
+  chromatographic: a 108-scan Orbitrap spray ramps for ten seconds where
+  `SETTLING_SECONDS` is 1 (0.8812 with ten), and a stepped-precursor
+  DI-MS/MS run is a falling ion current by construction — stated gaps.
+- **A spray is not steady for a whole run, and the average says which
+  scans it lost.** `infusion.stable_scans`: a scan whose TIC departs from
+  the running median of `STABILITY_WINDOW` (21) scans by more than
+  `SPRAY_JUMP` (0.5), and the scans after it until back inside
+  `SPRAY_RECOVERED` (0.25); measured plateau — widest departure of a steady
+  spray 0.316, smallest inside a real burst 0.870, the count identical from
+  0.35 to 0.85 and from 21 scans up (the window must exceed twice the
+  longest burst). The base peak is 4–8× noisier and finds nothing the total
+  misses. `average_stable` averages each surviving stretch through the
+  reader and combines by scan count, so a mask excluding nothing is byte
+  for byte the vendor's average. Three of nine files lose 1, 1 and 9 scans
+  (0.6–2.8% of the ion current, base peak −0.6 to −2.9%); gated on the
+  infusion verdict because on a gradient the same rule leaves out the only
+  29 scans worth keeping.
+- **A spray has no peak, so the response is a height, and a product-ion
+  acquisition has no envelope to leak.** `infusion_quant.responses`
+  measures a compound three ways — precursor, fragment, water-loss ladder
+  summed — each with M, M+1, M+2, and `ratio` divides an analyte by its
+  standard. The precursor is not a basis (0, 7 and 124 counts on the CID
+  files); the ladder holds 3,839–27,754 throughout. A d4 standard sits
+  4.0251 Da above its analyte and the analyte's M+4 sits 4.0134 above, so
+  the cross-talk is the tolerance's business: 0 at 10 ppm, 0.049–0.337%
+  over a unit window, 0.00000% in reverse. And Q1 kept only the
+  monoisotopic precursor — predicted M+1 26–30%, measured 0.0–0.4% — so
+  `ISOTOPES_TRANSMITTED` (10%) reports the correction as zero with its
+  reason. A row is a plain `PeakResult` with `rt=0`, `algorithm="infusion"`;
+  a synthetic five-level series recovers every level (r² = 1.0000000).
+- **A row that says what produced it can be kept without re-reading the
+  file.** `quantify.fingerprint` digests the `Component` fields that reach
+  extraction, the `IntegrationParams` in force and the injection's mass
+  correction; `process_incremental` keeps every row whose fingerprint
+  stands. On the 26-injection batch adding one injection went from 2.4 s to
+  0.06 s, identical to a full run over 3,666 rows × 36 fields; a widened
+  window 0.03 s; a method default keeps nothing and falls back to a full
+  run below `FULL_RUN_BELOW` (0.5). A hand-integrated row is kept while its
+  fingerprint holds and re-integrated when it does not. Measuring it found
+  `link_internal_standards` walking the list once per row (13 M
+  comparisons); `ResultsSet.by_key` indexes it and the derived pass is
+  50 ms over 3,666 rows.
+- **A record of one's own carries its provenance, and that provenance is a
+  key.** `library.provenance_comment`/`provenance_of` write and read the
+  comment in one shape, and the pair (file, channel) says two records are
+  the same measurement. *Add all to library* wrote 9 records in 0.01 s and
+  0 the second time, all nine skipped with the reason; `rewrite_records`
+  re-picks the peaks from the file the comment names — 9 of 9 rewritten
+  with every peak identical — gaining `Acquired`, `Base_peak_intensity` and
+  an exact `PrecursorMZ`; a record whose file is gone is kept, and the file
+  is copied to `.msp.bak` first. Where no adduct was identified no formula
+  is written either.
+- **A d4 standard's isotopic purity is a deconvolution, and a product-ion
+  scan cannot supply one.** `purity.py` solves the d0…dn envelope by
+  non-negative least squares (hand-written, no scipy) because each
+  species' 13C satellite lands 2.9 mDa from the next species' peak; reading
+  rungs as fractions reads the impurity 5–10% high. The measurement vetoes
+  itself (`SATELLITE_SHARE`) when the fully-labelled ion's M+1 is under a
+  quarter of what the formula demands — on all seven real infusions it is
+  0.006–0.206% against 26.5–30.0%: the quadrupole took the satellites. The
+  residue at the d3 rung moves with the collision energy (0.763, 0.328,
+  0.067% at 12, 22, 45 eV), so it is an H• loss 1.5 mDa from d3, not
+  isotopic composition. Purity needs one minute of TOF MS beside the
+  product-ion channel.
+- **An infusion's average is what hides the spray, so the contour becomes a
+  film.** On an infusion `ContourView` adds the channel's TIC as a strip,
+  marks the scans left out, and Play (`PLAY_RATE` 10 scans/s × 1/5/20)
+  steps the scan spin box; `Δ from average` draws scan − run average over
+  the average mirrored. Measured on DCA-d4: 473 rows in 1.4 s, the three
+  transients at 4.38×, 2.40× and 4.36× visible as columns; the Δ at a burst
+  is the whole ladder up together (+118,209 at 361) and at a stable scan
+  −523 at most. Read the Δ by mass, not by point (the grid moves a
+  fraction of a point between scans, so a peak's residual is a dipole). A
+  frame costs 52–89 ms only because the pane is not rescaled while playing.
+- **The API is a promise; the modules are not.** `openquant/api.py` is the
+  only surface with one — `__all__`, methods, keyword names, dataclass
+  fields; `api.VERSION` rises when that breaks. Every import is inside the
+  function that needs it, so importing it starts neither Qt nor a session;
+  `headless()` is the only Qt in a signature. A SCIEX sample is called
+  `sample`, so an injection is named by the file's stem; a spectrum off a
+  reader is a profile, so `Spectrum.centroid()` exists and records,
+  searches and explanations centroid first; `Annotation.formula` is the
+  labelled formula. `tests/test_api.py` extracts the manual's three scripts
+  from `python-api.md` and runs them on synthetic mzML; a path it cannot
+  stand in for fails the test rather than being skipped.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and
@@ -981,7 +1199,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-1282 tests, two skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+1588 tests, two skipped (4 bundle-weight tests need a built bundle). `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `ui/settings.py` is the one place a settings object is made, and
 `tests/conftest.py` sets `OPENQUANT_SETTINGS` before any widget exists so

@@ -27,8 +27,18 @@ Digite um m/z, escolha o aduto, defina uma tolerância em ppm ou Da e
 estrutura**: uma espécie — `PC 34:1`, digamos — com os isômeros que
 compartilham a sua fórmula listados abaixo, porque uma massa não consegue
 separá-los e uma lista que fingisse o contrário estaria afirmando mais do
-que foi medido. Cada linha carrega a fórmula, o erro em mDa e em ppm e o
-LM_ID; a dica de contexto dá o nome sistemático.
+que foi medido. Cada linha carrega a fórmula, o erro em mDa e em ppm, o
+LM_ID e o **aduto** em que foi encontrada; a dica de contexto sobre a espécie
+dá o nome sistemático, e a que fica sobre o aduto diz o que aquele aduto faz
+quando o íon se quebra.
+
+A caixa Adduct começa em **every adduct**, a sua primeira entrada: a massa
+é então buscada em cada aduto que a polaridade do canal permite. É o padrão honesto
+para uma massa medida, porque qual íon o número *é* é justamente a pergunta —
+876,8015 de uma corrida DIA de fígado responde uma espécie, `TG 52:2`,
+C55H102O6, como `[M+NH4]+` a +0,0 ppm e 51 estruturas, e o mesmo número
+buscado como `[M+H]+` não responde nada. Um espectro de produtos então
+ordena o que a massa sozinha não separa: ver *Explain*, abaixo.
 
 Clicar com o botão direito em um pico do espectro e escolher **Find formula
 for this peak** manda a sua massa para cá tanto quanto para o
@@ -87,9 +97,26 @@ vários candidatos costumam explicar os mesmos picos, porque isômeros
 fragmentam de modo parecido, e os não explicados são a parte honesta da
 resposta.
 
-A caixa **Adduct** ao lado do precursor é usada duas vezes: para procurar a
-massa no banco de dados, e para dizer qual é o íon precursor de cada
-candidato e o que os seus fragmentos carregam — ver *Adutos*, abaixo.
+A caixa **Adduct** ao lado do precursor diz qual íon o precursor é, e é usada
+duas vezes: para procurar a massa no banco de dados, e para dizer qual é o
+íon precursor de cada candidato e o que os seus fragmentos carregam.
+
+Deixada em **from the precursor**, como ela começa, o banco de dados é
+buscado em cada aduto que a polaridade do canal permite e cada candidato
+carrega aquele que o encontrou — a coluna **Adduct**, com o comportamento
+daquele aduto na sua dica de contexto, e **ppm**, a que distância o precursor
+escrito fica daquele candidato através daquele aduto. A linha abaixo da
+tabela diz isso em palavras, a mesma frase que o caminho da estrutura
+própria escreve, vinda do mesmo código:
+
+> 703.6 is [M+H]+ of C39H79N2O6P (703.5749, +35.7 ppm); [M+NH4]+ would be
+> 720.6014
+
+Selecionar outro candidato reescreve a linha, porque neste caminho cada
+linha pode ter sido encontrada em um aduto diferente. Escolher um aduto à
+mão busca apenas aquele. Ver *Adutos*, abaixo: não é um detalhe, já que um
+precursor amoniado pontuado como protonado prevê cada fragmento a 17 Da de
+qualquer coisa no espectro.
 
 **Explain spectrum** na barra de ferramentas Processing faz o mesmo a partir
 do cromatograma: toma o espectro do scan atual e o precursor do seu canal.
@@ -335,6 +362,107 @@ positivo nunca recebe a oferta de um aduto negativo. Sem nenhum precursor
 escrito não há de onde lê-lo, e a caixa Adduct no topo da aba — a que a
 busca do banco de dados usa — entra no lugar, dito em voz alta.
 
+### O survey confirma
+
+Tudo acima é aritmética sobre um número que alguém digitou. Onde a aquisição
+tem uma **varredura de survey** — um canal TOF MS de varredura completa
+cobrindo o precursor — o aduto deixa de ser uma dedução e vira uma medida, e
+o painel diz qual das duas você está olhando.
+
+O survey da mesma aquisição, promediado sobre as mesmas varreduras que o
+espectro na tela, é perguntado sobre cada candidato: a massa exata do íon,
+dentro de 25 ppm e acima de 100 contagens, e o padrão isotópico da composição
+do próprio íon — átomos do aduto incluídos, já que `[M+NH4]+` carrega um
+nitrogênio que a molécula não tem. A linha abaixo do botão então diz
+
+> 647.5 is [M+H]+ of C35H71N2O6P (647.5123, −18.9 ppm); [M+NH4]+ would be
+> 664.5388; confirmed by the survey: 647.5112, −1.6 ppm, isotopes agree, and
+> the survey also shows [M+Na]+ 13%, [M+K]+ 0%
+
+ou, quando não confirma,
+
+> …; the survey does not show it (the nearest peak is +69.9 ppm away, past
+> ±25), so it is chosen from the written mass alone
+
+A segunda cláusula é o ponto. Uma varredura de íons produto não pode
+verificar isto de jeito nenhum: o Q1 deixou passar uma massa e jogou fora os
+satélites isotópicos junto com todo o resto, de modo que o espectro na tela
+não tem padrão para ler. As nove infusões de ácidos biliares em mãos foram
+adquiridas só como varreduras de íons produto, e nelas esta frase diz *no
+survey scan covering 430.35, so nothing independent says which ion it is* —
+que é o que o aduto sempre foi ali, agora escrito.
+
+**O mapa vale tanto quanto a resposta.** Um survey costuma mostrar um
+composto como vários íons ao mesmo tempo, e cada um é reportado com sua
+altura como fração do mais forte: no lote de esfingolipídios tanto a
+esfingomielina quanto a ceramida C16 ficam em cerca de `[M+H]+` 100%,
+`[M+Na]+` 13%. Um oitavo do sinal está num canal que ninguém adquiriu, e um
+composto cujo aduto de sódio seja o maior será quantificado mal por quem
+assumir o contrário.
+
+**O padrão decide o que a massa não decide.** Duas coisas podem ficar numa
+mesma massa: um íon, e o M+1 de algo um dalton mais leve. O `[M+NH4]+` da
+ceramida acima está a 21.5 ppm — dentro dos 25 ppm que dizem "o mesmo íon" —
+e tem 170 contagens, acima das 100 que dizem "mensurável"; seu M+1 e seu M+2
+voltam a 1.00 e 1.00 do seu M, que é ruído plano e não um padrão isotópico, e
+ele fica em último. Um padrão d4 e sua impureza d3, a 1.0063 Da um do outro,
+são o mesmo problema ao contrário: os dois estão na massa dentro de 1 ppm, e
+só o padrão — 0.97 contra 0.06 — diz de qual deles o pico é.
+
+Os números, os dois compostos reais e o que o M+2 de um lipídio de fato
+contém estão em [[accurate-precursor]].
+
+### Um registro do banco diz qual aduto o encontrou
+
+O mesmo modelo roda no caminho do banco de dados, de modo que um
+triacilglicerol anotado como `[M+NH4]+` é pontuado com o amônio intacto, o
+`[M+H]+` que ele entrega e a escada pendurada n*esse*, com os seus íons de
+diacilglicerol carregando um próton; um candidato `[M+Na]+` oferece os dois
+carregadores. É o caminho da estrutura própria com o desenho tirado do LMSD
+em vez do disco — uma enumeração, uma pontuação, uma frase.
+
+O que o caminho do registro precisa e o da estrutura própria não é um
+**portão**. Um canal de íons-produto é procurado sobre a janela de
+isolamento, meio dalton, porque um método escreve o seu precursor
+arredondado — 538,6 para uma ceramida cujo precursor é 538,52. A 700 Da meio
+dalton são 700 ppm e cabem centenas de espécies, então rodar cinco adutos
+sobre ela multiplica os candidatos que explicam um espectro ruidoso por
+acaso. Um aduto que não seja o do próton precisa portanto *nomear* o
+precursor — os mesmos ±0,05 Da acima — enquanto o aduto do próton fica com a
+janela inteira, porque é a leitura que o método escreveu e não precisa ser
+identificada.
+
+Medido nos quatro compostos nomeados do lote de esfingolipídios, corrida
+inteira média e centroidada, e na janela DIA do ZenoTOF que contém o
+TG 52:2:
+
+| canal | composto | como [M+H]+ | todo aduto, com portão |
+|---|---|---|---|
+| 703,6 | SM(d18:1/16:0) | posição 1, 31,9%, 6 de 885 | posição 1, 31,9%, 6 de 885 |
+| 538,6 | Cer(d18:1/16:0) | posição 4, 9,5%, 6 de 779 | posição 4, 9,5%, 6 de 779 |
+| 648,8 | Cer(d18:1/24:1) | posição 1, 9,2%, 6 de 1.153 | posição 1, 9,2%, 6 de 1.153 |
+| 731,7 | SM(d18:1/18:0) | posição 1, 19,4%, 4 de 968 | posição 1, 19,4%, 4 de 968 |
+| 876,80 | TG 52:2 | não listado | posição 2, 24,0%, 9 de 1.123 |
+
+Os quatro esfingolipídios não se movem, e é para isso que o portão serve: os
+seus precursores escritos ficam de 36 a 264 ppm dos próprios compostos, de
+modo que nenhuma regra de massa consegue promovê-los — e nenhuma deveria
+rebaixá-los. Sem portão eles foram para as posições 1, 5, 5 e 3, com as
+novas primeiras linhas sendo um glicoesfingolipídio de carga dupla a
+−171 ppm e uma ceramida potassiada a +356 ppm, cada uma oferecendo de duas a
+três vezes mais íons previstos.
+
+O triacilglicerol é a razão do portão existir. Uma janela DIA em 876,80
+buscada como `[M+H]+` não lista o `TG 52:2` de jeito nenhum — ele não é um
+lipídio naquele aduto, e o melhor candidato é uma fosfatidilserina que
+explica 7,7%. Buscada em todos os adutos, ele volta a −1,7 ppm explicando
+24,0% do espectro, com o `[M+NH4]+` intacto em 876,8051 (+4,2 ppm) e os íons
+de diacilglicerol carregando prótons: 577,5219 (+4,9), 603,5363 (+2,6),
+605,5520 (+2,8). Acima dele fica uma ceramida potassiada com 3.291 íons
+previstos explicando 43,2% a +25,0 ppm — a ressalva da lista-longa-por-acaso
+que esta página não para de fazer, e a coluna ppm é o que separa as duas por
+um fator de quinze. Uma busca leva de 0,2 a 0,8 s de qualquer modo.
+
 ### O que fez nas infusões reais
 
 Três padrões de ácidos biliares infundidos em um ZenoTOF 7600 em modo
@@ -444,6 +572,125 @@ posicionadas multiplicam por cinco as massas oferecidas, e uma lista
 suficientemente longa de massas possíveis cobre um espectro por acidente.
 Leia-as ao lado das do desenho com marcações posicionadas, não no lugar
 delas.
+
+## Pureza isotópica
+
+Um frasco de ácido cólico-d4 vem com um certificado dizendo `98 átomo % D`, e
+ninguém nunca mede isso. Quando o composto carrega marcações — declaradas em
+*Deuterium, unplaced*, escritas na fórmula, posicionadas por um desenho, ou
+lidas de um `-d4` no fim de um nome — e um aduto foi identificado, uma linha
+aparece abaixo da inferência de posições:
+
+    Isotopic purity: d4 96.2%, ≥d3 99.1% (from the precursor at 430.35; ±0.8%)
+
+O número importa por uma razão que nada tem a ver com identidade. Um padrão
+interno que é quatro por cento d3 coloca quatro por cento da sua resposta um
+dálton abaixo de onde o método procura, e nenhuma outra verificação de um lote
+enxerga isso.
+
+**É uma deconvolução e não um conjunto de razões.** O íon d4 e o íon d3 estão
+a 1,00628 um do outro, a massa que um deutério acrescenta sobre o hidrogênio
+que substituiu. O **satélite de carbono-13 do íon d3** fica 1,00335 acima dele
+— 2,9 mDa abaixo do íon d4 — e nestas aquisições o pico do precursor tem
+10,2 mDa de largura a meia altura (R = 42.000 em *m/z* 430). Esses dois são um
+pico só, e nenhum instrumento de laboratório comum os separa. Num esqueleto de
+24 carbonos aquele satélite é 27% do que quer que a espécie de baixo tenha, de
+modo que cada degrau da escada vaza para o degrau acima. O envelope é portanto
+resolvido — o padrão natural de cada espécie, vindo da fórmula, ajustado como
+mínimos quadrados não negativos — em vez de lido.
+
+Ler os picos, em vez disso, não erra do jeito que se espera. Medido em
+envelopes sintéticos exatos de um material d4 com 95% de pureza: as alturas
+normalizadas sobre d0 – d4 dão d4 = 94,81% onde ele é 95,00%, porque o
+vazamento para o d4 também infla o denominador e os dois quase se cancelam.
+**O que não se cancela é a impureza**, que é o número pelo qual se compra uma
+pureza: d3 contra d4 lê 4,44% onde é 4,21%, cinco por cento alto, e num
+esfingolipídio d7 com 45 carbonos lê 4,63% contra 4,21%, dez por cento alto.
+
+**Dois números, e não são o mesmo número.** `d4 96,2%` é a fração de moléculas
+que carregam as quatro marcações. `98 átomo % D` é a fração das *posições
+marcadas* que têm um deutério, o que conta as três que uma molécula d3 de fato
+carrega — de modo que um material 96% d4 e 4% d3 é 99,0 átomo % D. A linha dá
+o par de espécies; o bloco do relatório embaixo dá também o átomo por cento,
+porque é isso que o certificado declara.
+
+### Quando ela diz que não pode
+
+A verificação é de graça, porque o padrão natural já está em mãos: **o
+satélite M+1 do próprio íon totalmente marcado tem de estar lá**, mais ou
+menos na fração que a fórmula exige. Quando não está, a linha diz isso em vez
+de dar um número:
+
+    Isotopic purity: not measured — the d4 ion's own M+1 satellite is 0.006%
+    of it where the formula says 26.6% …
+
+Não é um caso raro. É a cara de um **espectro de íons produto**: o quadrupolo
+isolou o precursor antes da cela de colisão, e uma janela estreita o bastante
+para escolher uma espécie da escada de d já jogou fora os satélites de que a
+solução precisa. Medido nas nove infusões de ácidos biliares, todas espectros
+de íons produto sem nenhuma varredura de survey:
+
+| infusão | CE | M+1 medido | a fórmula diz | razão |
+|---|---|---|---|---|
+| CA-d4 EAD | 12 eV | 0,006% | 26,6% | 0,0002 |
+| CA-d4 EAD | 22 eV | 0,028% | 26,6% | 0,0010 |
+| CA-d4 CID | 45 eV | 0,095% | 26,6% | 0,0036 |
+| DCA-d4 EAD | 22 eV | 0,015% | 26,5% | 0,0006 |
+| DCA-d4 CID | 40 eV | 0,150% | 26,5% | 0,0057 |
+| TDCA-d4 EAD | 22 eV | 0,020% | 30,0% | 0,0007 |
+| TDCA-d4 CID | 30 eV | 0,206% | 30,0% | 0,0069 |
+
+Três ordens de grandeza, em todos os arquivos, sob as duas ativações. O mesmo
+limiar pega o outro caso que deveria pegar: um precursor fraco demais para que
+o seu próprio satélite de 27% saia do ruído é um precursor cujo envelope seria
+lido do ruído.
+
+A recusa também é o que os próprios arquivos defendem. Na corrida de ácido
+cólico-d4 a 12 eV, a transmissão um dálton *acima* do precursor é 0,0002 da
+transmissão nele; uma janela de quadrupolo simétrica em torno do seu centro
+passaria o degrau d3 um dálton abaixo mais ou menos na mesma fração, e os
+0,763% de fato medidos ali significariam então uma fração d3 de 3.300%. Ou a
+janela é assimétrica por três ordens de grandeza — caso em que os degraus
+abaixo do d4 estão escalados por uma transmissão que ninguém conhece — ou o
+que está naquela posição não é d3. E a segunda hipótese é o que a energia diz:
+aquele resíduo é 0,763% do precursor a 12 eV, 0,328% a 22 eV e 0,067% a 45 eV,
+de modo que o mesmo frasco teria 98,32%, 98,77% e 98,98% de pureza conforme a
+força com que o íon foi golpeado. Uma composição isotópica não faz isso. O que
+está ali é um canal de fragmentação — um átomo de hidrogênio perdido da
+molécula amoniada, que a EAD produz à vontade, e a 1,5 mDa de onde o d3
+estaria.
+
+**O que isto precisa é de uma varredura MS1 de survey**, ou de uma infusão em
+varredura completa sem isolamento no quadrupolo à frente. Adquira um minuto de
+TOF MS ao lado do canal de íons produto e a mesma linha responde.
+
+### A escada, e por que ela é só um piso
+
+Quando o precursor não sobreviveu à sua energia de colisão, a mesma aritmética
+é oferecida no degrau totalmente marcado mais forte da escada de perdas de
+água — `[M+H-3H2O]+` e o seu degrau −1D — e a linha diz *a lower bound*. Ela
+responde a outra pergunta: uma desidratação pode sair com uma marcação, de
+modo que uma molécula d4 que perdeu um hidrogênio hidroxílico marcado chega à
+posição d3 e é contada como uma impureza que nunca esteve no frasco. Medido
+nos mesmos arquivos com a verificação do satélite desligada, a escada dá
+frações d4 de 36,7%, 90,1% e 85,0% para o ácido cólico-d4 a 12, 22 e 45 eV,
+contra 98,3 – 99,0% dos precursores dessas mesmas aquisições — até um quinto
+das moléculas totalmente marcadas deixa uma marcação para trás com a água.
+Nestes arquivos a escada não consegue nem isso, porque os fragmentos herdam o
+filtro de massa que os fez: o satélite M+1 do próprio degrau da escada é
+0,015 – 0,63% onde a fórmula diz 26 – 30%.
+
+### Para onde vai
+
+A linha fica no painel; o **relatório de infusão** carrega o envelope inteiro
+— cada degrau com a sua *m/z*, a sua intensidade, a sua fração do íon
+totalmente marcado e a fração ajustada — com o átomo por cento embaixo, ou a
+razão de não haver nenhum. Veja [[infusion-report]]. E *Add spectrum to
+library…* escreve isso no registro como `Isotopic_purity`, porque um registro
+guarda os seus picos acima de um por cento do pico base e um envelope
+isotópico vive em décimos de um por cento: nada consegue recuperar a pureza de
+um registro depois, então ela é escrita enquanto ainda é conhecida. Veja
+[[spectral-library]].
 
 ## Contra uma biblioteca
 

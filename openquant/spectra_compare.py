@@ -16,10 +16,24 @@ whatever the window happened to be, and can be made with no window at all.
 
 Four things about the drawing are deliberate:
 
-* **It is always drawn for paper.** White ground, dark axes, whatever the
-  application's theme is. A dark-theme trace colour is lightened for a dark
-  window and would print as a pale line on white, so a colour too light to
-  read on paper is darkened here — see `for_paper`.
+* **It is drawn for the page it is going on, and never for the window.**
+  `PAPER` is the default and is what it has always been: a white ground,
+  dark axes, and the trace's own colour darkened where a dark-theme colour
+  would print as a pale line on white — see `for_ground`. `MONO` is for a
+  journal that prints in black and white: the traces are two neutral tones
+  with a line style each, because a colour a greyscale press is about to
+  flatten is not a distinction. `DARK` is for a screen or a slide, on the
+  application's own dark ground, with every colour lightened until it
+  clears `MIN_CONTRAST` on it.
+
+  A palette decides colours and line styles, and the one thing that can
+  follow from that is ink: `MONO` puts a head on a centroid drawing's tall
+  sticks, and a head is ink a label has to clear like any other. Measured
+  on the two averaged CA-d4 spectra drawn as centroids: the same 32 labels
+  drawn and the same one dropped on paper and in black and white, 14 of
+  them lifted there against 28 here — the same labels, a row further out.
+  A profile drawing is identical in all three, pixel for pixel apart from
+  the colour.
 * **A mirrored trace is labelled with its magnitude.** It is drawn
   downwards because that is how a head-to-tail comparison is read; the
   number beside it is an intensity, not a negative one.
@@ -112,11 +126,13 @@ SHARED_PPM = 10.0
 SHARED_PER_TRACE = 40
 SHARED_MOST = 20
 
-#: the contrast a line has to have against the white page. Three to one is
-#: what WCAG asks of a graphic that carries meaning, and it is a measured
-#: rule rather than an opinion about a colour: the dark theme's accent,
-#: #6f9be0, is 2.8:1 on white and is darkened; the light theme's #234b8c is
-#: 9.4:1 and is left alone.
+#: the contrast a line has to have against the ground it is drawn on,
+#: whichever palette that is. Three to one is what WCAG asks of a graphic
+#: that carries meaning, and it is a measured rule rather than an opinion
+#: about a colour: on white the dark theme's accent, #6f9be0, is 2.8:1 and
+#: is darkened, while the light theme's #234b8c is 8.6:1 and is left alone;
+#: on the dark palette's #1e2124 it is the other way round — #234b8c is
+#: lightened to #336ecd at 3.3:1 and #6f9be0 stands at 5.7:1.
 MIN_CONTRAST = 3.0
 
 #: how far out a label may be lifted from the peak it names, in text
@@ -473,9 +489,53 @@ def luminance(colour: str) -> float:
             + 0.0722 * channel(rgb.blue()))
 
 
+def contrast(colour: str, ground: str = "#ffffff") -> float:
+    """Contrast ratio between two colours, the WCAG one, at least 1."""
+    a, b = luminance(colour), luminance(ground)
+    lo, hi = (a, b) if a < b else (b, a)
+    return (hi + 0.05) / (lo + 0.05)
+
+
 def contrast_on_white(colour: str) -> float:
     """Contrast ratio of a colour against a white page."""
-    return 1.05 / (luminance(colour) + 0.05)
+    return contrast(colour, "#ffffff")
+
+
+def for_ground(colour: str, ground: str = "#ffffff",
+               minimum: float = MIN_CONTRAST):
+    """
+    The same hue, far enough from `ground` to read as a thin line on it.
+
+    Which way to move is decided by the ground and not by the colour: on a
+    light ground everything goes darker and on a dark one everything goes
+    lighter, so two traces never converge on the same mid grey from
+    opposite sides. Value is stepped first; a hue already at full value on
+    a dark ground has its saturation taken out instead, which is the only
+    way left to lighten it. The hue is never touched, so a reader who knows
+    a trace by its colour on screen still knows it on paper.
+    """
+    from PyQt6 import QtGui
+
+    result = QtGui.QColor(colour)
+    if not result.isValid():
+        result = QtGui.QColor("#000000")
+    darken = luminance(ground) > 0.5
+    for _ in range(24):
+        if contrast(result.name(), ground) >= minimum:
+            break
+        h, s, v, a = result.getHsv()
+        stepped = (max(int(v * 0.9), 0) if darken
+                   else min(int(v * 1.12) + 3, 255))
+        if stepped != v:
+            result = QtGui.QColor.fromHsv(h, s, stepped, a)
+            continue
+        if darken:
+            break
+        lower = int(s * 0.85)
+        if lower == s:
+            break
+        result = QtGui.QColor.fromHsv(h, lower, v, a)
+    return result
 
 
 def for_paper(colour: str, minimum: float = MIN_CONTRAST):
@@ -484,23 +544,144 @@ def for_paper(colour: str, minimum: float = MIN_CONTRAST):
 
     The plot colours follow the interface theme, and the dark theme lightens
     them so they carry on a dark window. Printed as they are, the dark
-    theme's accent (#6f9be0) is a 2.8:1 line on a white page. Value is taken
-    down until the contrast clears the minimum; the hue and the saturation
-    are left alone, so a reader who knows a trace by its colour on screen
-    still knows it on paper.
+    theme's accent (#6f9be0) is a 2.8:1 line on a white page.
     """
-    from PyQt6 import QtGui
+    return for_ground(colour, "#ffffff", minimum)
 
-    result = QtGui.QColor(colour)
-    for _ in range(16):
-        if contrast_on_white(result.name()) >= minimum:
-            break
-        h, s, v, a = result.getHsv()
-        stepped = max(int(v * 0.9), 0)
-        if stepped == v:
-            break
-        result = QtGui.QColor.fromHsv(h, s, stepped, a)
-    return result
+
+# --------------------------------------------------------------------------- #
+# the three palettes
+# --------------------------------------------------------------------------- #
+#: the dash patterns a palette may give a trace, in units of the pen's own
+#: width so that they scale with it. Measured on the two averaged CA-d4
+#: spectra rendered at `PRINT_SCALE` and then halved: with a pen of 1.3 the
+#: dashed trace is 5.2 points of ink to 3.4 of gap, which is still two
+#: separated runs of pixels after the halving — see
+#: `tests/test_spectra_compare.py`.
+DASH_PATTERNS = {
+    "solid": (),
+    "dash": (4.0, 2.6),
+    "dot": (1.0, 2.2),
+    "dashdot": (6.0, 2.4, 1.0, 2.4),
+}
+
+#: how far down its own trace a stick has to be before it is not given a
+#: head, and how big the head is in logical points. Every stick with a head
+#: would be a row of blobs on a spectrum of thousands; the tall ones are the
+#: ones a reader matches against the legend.
+HEAD_MIN_RELATIVE = 0.05
+HEAD_RADIUS = 2.2
+
+
+@dataclass(frozen=True)
+class Palette:
+    """
+    The colours and the line styles one drawing is made of.
+
+    A palette is asked for a colour rather than consulted: `colour` takes
+    the colour the trace arrived with — which is the interface's, and so
+    follows the interface's theme — and returns what it is to be drawn in
+    on this palette's ground. `PAPER` keeps the trace's own hue and only
+    darkens it where it would not carry; `MONO` overrides it entirely,
+    because black and white is the point; `DARK` keeps the hue and lightens
+    it against the dark ground.
+
+    `dashes` and `heads` are what a palette with no colour to spend has
+    instead: a line style per trace, and, for a centroid drawing where a
+    dash pattern cannot show on a one-point stick, a filled or a hollow
+    head on the tall sticks. Both cycle, so a fifth trace repeats the
+    first — a drawing of five spectra is past what any legend can carry.
+    A head is the one thing here that adds ink rather than replacing it,
+    and the labels move out of its way; the module note has the figures.
+    """
+
+    name: str
+    background: str
+    ink: str
+    muted: str
+    grid: str
+    leader: str
+    label: str
+    traces: tuple[str, ...] = ()
+    dashes: tuple[str, ...] = ()
+    heads: tuple[str, ...] = ()
+    minimum_contrast: float = MIN_CONTRAST
+
+    def colour(self, index: int, wanted: str = ""):
+        """The colour trace `index` is drawn in, as a QColor."""
+        if self.traces:
+            base = self.traces[index % len(self.traces)]
+        else:
+            base = wanted or self.ink
+        return for_ground(base, self.background, self.minimum_contrast)
+
+    def contrast(self, colour: str) -> float:
+        """Contrast ratio of a colour against this palette's ground."""
+        return contrast(colour, self.background)
+
+    def dash(self, index: int) -> str:
+        return self.dashes[index % len(self.dashes)] if self.dashes else "solid"
+
+    def head(self, index: int) -> str:
+        return self.heads[index % len(self.heads)] if self.heads else ""
+
+    def pen(self, index: int, wanted: str = "", width: float = 1.3):
+        """The pen trace `index` is drawn with: its colour and its dashes."""
+        from PyQt6 import QtCore, QtGui
+
+        pen = QtGui.QPen(self.colour(index, wanted), width)
+        pattern = DASH_PATTERNS.get(self.dash(index), ())
+        if pattern:
+            # flat caps, because a square cap adds half a pen width to each
+            # end of every dash and closes the gaps of the dotted pattern
+            pen.setCapStyle(QtCore.Qt.PenCapStyle.FlatCap)
+            pen.setDashPattern(list(pattern))
+        return pen
+
+
+#: the drawing as it has always been: the trace's own colour, darkened only
+#: where it would not carry on white.
+PAPER = Palette(
+    name="paper", background="#ffffff", ink="#16181c", muted="#5b6472",
+    grid="#e3e7ee", leader="#5b6472", label="#16181c")
+
+#: black and white, for a journal that charges for colour or prints in
+#: none. Two neutral tones and a line style per trace, so the traces are
+#: told apart by the ink itself and not by a colour a greyscale press is
+#: about to flatten. #000000 is 21:1 on white and #666666 is 5.7:1, so both
+#: clear the 3:1 a line carrying meaning is asked for, and they differ from
+#: one another by a factor of seven in luminance.
+MONO = Palette(
+    name="mono", background="#ffffff", ink="#000000", muted="#3c3c3c",
+    grid="#d7d7d7", leader="#3c3c3c", label="#000000",
+    traces=("#000000", "#666666"),
+    dashes=("solid", "dash", "dot", "dashdot"),
+    heads=("filled", "hollow"))
+
+#: for a screen or a slide: the application's own dark ground, with every
+#: trace lightened until it clears 3:1 on it. The figures are in the manual
+#: and are measured by `tests/test_spectra_compare.py` rather than asserted
+#: here.
+DARK = Palette(
+    name="dark", background="#1e2124", ink="#e6e8eb", muted="#9ba3ae",
+    grid="#343a41", leader="#9ba3ae", label="#e6e8eb")
+
+#: every palette by the name a setting or a dialog holds
+PALETTES = {p.name: p for p in (PAPER, MONO, DARK)}
+#: what a palette is called where a person reads it
+PALETTE_NAMES = {"paper": "Paper", "mono": "Black and white", "dark": "Dark"}
+
+
+def palette_named(name) -> Palette:
+    """
+    The palette a stored setting names, `PAPER` for anything unknown.
+
+    A palette is also accepted, so that a caller which already has one can
+    hand it straight on without asking which of the two it is holding.
+    """
+    if isinstance(name, Palette):
+        return name
+    return PALETTES.get(str(name or "").strip().lower(), PAPER)
 
 
 # --------------------------------------------------------------------------- #
@@ -704,24 +885,48 @@ def _ink_boxes(spans, left: float) -> list[tuple[float, float, float, float]]:
 
 
 def paint(comparison: SpectrumComparison, painter, width: float,
-          height: float) -> LabelLayout:
+          height: float, palette: Palette = PAPER) -> LabelLayout:
     """
     Draw the comparison into `painter`, in logical points, and say where the
     labels went.
 
     The caller has already scaled the painter, so nothing here knows about
     the scale: a pen of 1.4 is 1.4 points on paper whatever the image's
-    pixel size is.
+    pixel size is. `palette` decides every colour and every line style;
+    the geometry, which peaks are labelled and the order they claim room
+    in are the palette's business in no way at all, so one measurement of
+    the placement stands for all three. What a palette can move is where a
+    label ends up, and only by adding ink: a head on a centroid stick is
+    ink, and the label above it starts a row further out.
     """
     from PyQt6 import QtCore, QtGui
 
-    ink = QtGui.QColor("#16181c")
-    muted = QtGui.QColor("#5b6472")
-    grid = QtGui.QColor("#e3e7ee")
+    palette = palette_named(palette)
+    ink = QtGui.QColor(palette.ink)
+    muted = QtGui.QColor(palette.muted)
+    grid = QtGui.QColor(palette.grid)
 
     painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
     painter.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing, True)
-    painter.fillRect(QtCore.QRectF(0, 0, width, height), QtGui.QColor("#ffffff"))
+    painter.fillRect(QtCore.QRectF(0, 0, width, height),
+                     QtGui.QColor(palette.background))
+
+    def head(kind: str, x: float, y: float, colour) -> None:
+        """A stick's head: filled, hollow, or nothing at all.
+
+        A dash pattern cannot show on a stick one point wide, so a palette
+        with no colour to spend tells its traces apart at the tops of the
+        sticks instead. A hollow head is filled with the ground rather than
+        left unpainted, so that it reads as a ring over whatever is behind
+        it.
+        """
+        if kind not in ("filled", "hollow"):
+            return
+        painter.setBrush(QtGui.QBrush(
+            colour if kind == "filled" else QtGui.QColor(palette.background)))
+        painter.setPen(QtGui.QPen(colour, 1.0))
+        painter.drawEllipse(QtCore.QPointF(x, y), HEAD_RADIUS, HEAD_RADIUS)
+        painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
 
     def font(size: float, bold: bool = False):
         f = QtGui.QFont()
@@ -731,7 +936,8 @@ def paint(comparison: SpectrumComparison, painter, width: float,
         return f
 
     series = _series(comparison)
-    drawn = [(t, y, s) for t, y, s in series if t.mz.size and y.size]
+    drawn = [(index, t, y, s) for index, (t, y, s) in enumerate(series)
+             if t.mz.size and y.size]
 
     # the labels' own font, measured before the geometry: how tall one label
     # is decides how much room is kept above the tallest trace
@@ -752,12 +958,16 @@ def paint(comparison: SpectrumComparison, painter, width: float,
 
     # -- legend: one row per trace, so a long label is never elided --------- #
     painter.setFont(font(11))
-    for trace, _y, sign in series:
-        colour = for_paper(trace.colour)
-        painter.setPen(QtGui.QPen(colour, 2.4))
+    for index, (trace, _y, sign) in enumerate(series):
+        colour = palette.colour(index, trace.colour)
+        painter.setPen(palette.pen(index, trace.colour, 2.4))
         y = top + LEGEND_ROW / 2
         painter.drawLine(QtCore.QPointF(MARGIN_LEFT, y),
                          QtCore.QPointF(MARGIN_LEFT + 18, y))
+        if comparison.centroid:
+            # the legend says what the drawing says: sticks are told apart
+            # by their heads, so the legend carries the head and not a dash
+            head(palette.head(index), MARGIN_LEFT + 9, y, colour)
         painter.setPen(ink)
         text = trace.label or "spectrum"
         if comparison.mirror and sign < 0:
@@ -780,15 +990,15 @@ def paint(comparison: SpectrumComparison, painter, width: float,
                          "Nothing to compare.")
         return LabelLayout()
 
-    x0 = min(float(t.mz.min()) for t, _y, _s in drawn)
-    x1 = max(float(t.mz.max()) for t, _y, _s in drawn)
+    x0 = min(float(t.mz.min()) for _i, t, _y, _s in drawn)
+    x1 = max(float(t.mz.max()) for _i, t, _y, _s in drawn)
     if x1 <= x0:
         x0, x1 = x0 - 0.5, x1 + 0.5
     pad = (x1 - x0) * 0.02
     x0, x1 = x0 - pad, x1 + pad
 
-    ymax = max(float(y.max()) for _t, y, _s in drawn) or 1.0
-    down = any(s < 0 for _t, _y, s in drawn)
+    ymax = max(float(y.max()) for _i, _t, y, _s in drawn) or 1.0
+    down = any(s < 0 for _i, _t, _y, s in drawn)
     # room for the stack of labels, taken out of the plot rather than out of
     # the data: the traces are drawn shorter and the labels have somewhere
     # to go. Mirrored, both ends need it — a mirrored base peak reaches the
@@ -852,13 +1062,17 @@ def paint(comparison: SpectrumComparison, painter, width: float,
         return int(min(max(x - plot.left(), 0.0), slots - 1))
 
     ink_spans: list[tuple[np.ndarray, np.ndarray]] = []
-    for trace, y, sign in drawn:
-        colour = for_paper(trace.colour)
-        painter.setPen(QtGui.QPen(colour, 1.3))
+    for index, trace, y, sign in drawn:
+        colour = palette.colour(index, trace.colour)
+        painter.setPen(palette.pen(index, trace.colour, 1.3))
         xs = trace.mz
         if comparison.centroid:
             keep = y > 0
             dx, dy = xs[keep], y[keep]
+            # a stick is one point wide: drawn with the pen's dashes it would
+            # be a dotted line, so the sticks are always solid and the head
+            # is what tells one trace from another
+            painter.setPen(QtGui.QPen(colour, 1.3))
             for mz, value in zip(dx.tolist(), dy.tolist()):
                 painter.drawLine(QtCore.QPointF(px(mz), py(0.0)),
                                  QtCore.QPointF(px(mz), py(value * sign)))
@@ -866,9 +1080,18 @@ def paint(comparison: SpectrumComparison, painter, width: float,
             xp = np.array([px(float(mz)) for mz in dx])
             yp = np.array([py(float(v) * sign) for v in dy])
             base = np.full(xp.shape, py(0.0))
-            ink_spans.append(_spans(np.concatenate([xp, xp]),
-                                    np.concatenate([yp, base]),
-                                    slots, plot.left()))
+            kind = palette.head(index)
+            heads = np.zeros(xp.shape, dtype=bool)
+            if kind and dy.size:
+                heads = dy >= (float(dy.max()) or 1.0) * HEAD_MIN_RELATIVE
+                for hx, hy in zip(xp[heads].tolist(), yp[heads].tolist()):
+                    head(kind, hx, hy, colour)
+            # a head is ink too, and it sticks out past the apex: a label
+            # that cleared the stick would otherwise be drawn on the ring
+            crowns = yp[heads] - HEAD_RADIUS * sign
+            ink_spans.append(_spans(
+                np.concatenate([xp, xp, xp[heads]]),
+                np.concatenate([yp, base, crowns]), slots, plot.left()))
         else:
             # columns of the image, not of the logical drawing: at twice the
             # size there are twice as many pixels to fill
@@ -918,7 +1141,7 @@ def paint(comparison: SpectrumComparison, painter, width: float,
             return candidate
         return None
 
-    for trace, y, sign in drawn:
+    for _index, trace, y, sign in drawn:
         top_value = float(y.max()) or 1.0
         for mz, _height in comparison.label_peaks(trace, x0, x1):
             index = int(np.argmin(np.abs(trace.mz - mz)))
@@ -933,7 +1156,7 @@ def paint(comparison: SpectrumComparison, painter, width: float,
                 continue
             placed.append(spot)
 
-    painter.setPen(QtGui.QPen(muted, LEADER_WIDTH))
+    painter.setPen(QtGui.QPen(QtGui.QColor(palette.leader), LEADER_WIDTH))
     for label in placed:                       # leaders first, under the text
         if not label.leader:
             continue
@@ -943,7 +1166,7 @@ def paint(comparison: SpectrumComparison, painter, width: float,
             QtCore.QPointF(label.apex_x,
                            label.apex_y + 1.0 if label.down
                            else label.apex_y - 1.0))
-    painter.setPen(ink)
+    painter.setPen(QtGui.QColor(palette.label))
     for label in placed:
         painter.drawText(
             QtCore.QRectF(label.x, label.y, label.width, label.height),
@@ -953,32 +1176,34 @@ def paint(comparison: SpectrumComparison, painter, width: float,
 
 
 def _draw(comparison: SpectrumComparison, width: int, height: int,
-          scale: float):
+          scale: float, palette: Palette = PAPER):
     """The drawing and its label layout, in one pass."""
     from PyQt6 import QtGui
 
+    palette = palette_named(palette)
     pixels_w = max(int(round(width * scale)), 1)
     pixels_h = max(int(round(height * scale)), 1)
     image = QtGui.QImage(pixels_w, pixels_h, QtGui.QImage.Format.Format_RGB32)
-    image.fill(QtGui.QColor("#ffffff"))
+    image.fill(QtGui.QColor(palette.background))
     painter = QtGui.QPainter(image)
     try:
         painter.scale(scale, scale)
-        layout = paint(comparison, painter, width, height)
+        layout = paint(comparison, painter, width, height, palette)
     finally:
         painter.end()
     return image, layout
 
 
 def render_image(comparison: SpectrumComparison, width: int = DEFAULT_WIDTH,
-                 height: int = DEFAULT_HEIGHT, scale: float = 1.0):
+                 height: int = DEFAULT_HEIGHT, scale: float = 1.0,
+                 palette: Palette = PAPER):
     """The comparison as a QImage of `width * scale` by `height * scale`."""
-    return _draw(comparison, width, height, scale)[0]
+    return _draw(comparison, width, height, scale, palette)[0]
 
 
 def label_layout(comparison: SpectrumComparison, width: int = DEFAULT_WIDTH,
-                 height: int = DEFAULT_HEIGHT,
-                 scale: float = 1.0) -> LabelLayout:
+                 height: int = DEFAULT_HEIGHT, scale: float = 1.0,
+                 palette: Palette = PAPER) -> LabelLayout:
     """
     Where the labels of this comparison went, by drawing it.
 
@@ -987,26 +1212,27 @@ def label_layout(comparison: SpectrumComparison, width: int = DEFAULT_WIDTH,
     rendering rather than by predicting. Logical points, whatever `scale`
     the image was made at.
     """
-    return _draw(comparison, width, height, scale)[1]
+    return _draw(comparison, width, height, scale, palette)[1]
 
 
 def render_png(comparison: SpectrumComparison, path, width: int = DEFAULT_WIDTH,
-               height: int = DEFAULT_HEIGHT, scale: float = PRINT_SCALE) -> str:
+               height: int = DEFAULT_HEIGHT, scale: float = PRINT_SCALE,
+               palette: Palette = PAPER) -> str:
     """Write the comparison as a PNG, by default at twice the logical size."""
     path = str(path)
-    image = render_image(comparison, width, height, scale)
+    image = render_image(comparison, width, height, scale, palette)
     if not image.save(path, "PNG"):
         raise OSError(f"could not write {path}")
     return path
 
 
 def png_bytes(comparison: SpectrumComparison, width: int = DEFAULT_WIDTH,
-              height: int = DEFAULT_HEIGHT,
-              scale: float = PRINT_SCALE) -> bytes:
+              height: int = DEFAULT_HEIGHT, scale: float = PRINT_SCALE,
+              palette: Palette = PAPER) -> bytes:
     """The PNG as bytes, for embedding rather than for a file."""
     from PyQt6 import QtCore
 
-    image = render_image(comparison, width, height, scale)
+    image = render_image(comparison, width, height, scale, palette)
     buffer = QtCore.QBuffer()
     buffer.open(QtCore.QIODevice.OpenModeFlag.WriteOnly)
     image.save(buffer, "PNG")
@@ -1014,7 +1240,8 @@ def png_bytes(comparison: SpectrumComparison, width: int = DEFAULT_WIDTH,
 
 
 def data_uri(comparison: SpectrumComparison, width: int = DEFAULT_WIDTH,
-             height: int = DEFAULT_HEIGHT, scale: float = PRINT_SCALE) -> str:
+             height: int = DEFAULT_HEIGHT, scale: float = PRINT_SCALE,
+             palette: Palette = PAPER) -> str:
     """
     The PNG as a `data:` URI.
 
@@ -1022,12 +1249,14 @@ def data_uri(comparison: SpectrumComparison, width: int = DEFAULT_WIDTH,
     both draw — and a report that carries its picture inside itself is a
     report that survives being mailed as one file.
     """
-    encoded = base64.b64encode(png_bytes(comparison, width, height, scale))
+    encoded = base64.b64encode(
+        png_bytes(comparison, width, height, scale, palette))
     return "data:image/png;base64," + encoded.decode("ascii")
 
 
 def render_svg(comparison: SpectrumComparison, path,
-               width: int = DEFAULT_WIDTH, height: int = DEFAULT_HEIGHT) -> str:
+               width: int = DEFAULT_WIDTH, height: int = DEFAULT_HEIGHT,
+               palette: Palette = PAPER) -> str:
     """
     The same drawing as vectors, for a figure that will be resized.
 
@@ -1047,7 +1276,7 @@ def render_svg(comparison: SpectrumComparison, path,
     painter = QtGui.QPainter()
     painter.begin(generator)
     try:
-        paint(comparison, painter, float(width), float(height))
+        paint(comparison, painter, float(width), float(height), palette)
     finally:
         painter.end()
     return path

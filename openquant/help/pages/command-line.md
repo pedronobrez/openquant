@@ -88,14 +88,16 @@ whether or not anything is shown.
 
 Measured on nine ZenoTOF bile-acid infusions, from source on macOS, with the
 three CID runs as a library of one's own and the three formulas as a
-components CSV: **27 s** for the whole folder — nine files read and one
-49-page PDF written, a two-page cover and 47 of sections — at **883 MB** peak
-resident memory (two runs: 26.9 and 29.4 s, 883 and 888 MB), and
-`--per-compound` four documents of 48 pages in 26 s, the cover two of them
-and one document per compound the other 46. The seconds are the one figure
-here that is not the program's: the same run on the same files, while the
-machine was busy with other work, took 32, 81 and 255 s. What is stable is
-what it did — nine files read, none skipped, 49 pages — and what it held.
+components CSV: **42 s** for the whole folder — nine files read and one
+56-page PDF written, a two-page cover and 54 of sections — at **1.1 GB** peak
+resident memory (three runs: 42.4, 44.6 and 49.4 s, 1.03, 1.15 and 1.13 GB),
+and `--per-compound` four documents of the same 56 pages, the cover two of
+them and one document per compound the other 54. Written without a cover the
+same nine sections come to 54 pages, so the cover costs the two it is. The
+seconds are the one figure here that is not the program's: the same run on
+the same files has taken anything from 27 s on an idle machine to 255 s on a
+busy one. What is stable is
+what it did — nine files read, none skipped, 56 pages — and what it held.
 Nothing was skipped: all nine read as
 infusions, including the two `_TESTEARTIGO` acquisitions, whose rows say what
 is wrong with them rather than leaving them out. The summary line is the
@@ -139,3 +141,8 @@ writes a report from a session; `openquant.compare.compare_algorithms` runs
 the comparison. The chemistry layer — `openquant.chemistry` — parses
 formulas, computes masses and isotope patterns and searches compositions,
 and depends on neither the interface nor the vendor libraries.
+
+Those are the modules themselves, and they are free to move. For a surface
+that will not — a batch reprocessed and exported, a spectrum explained, a
+library searched, a report written, in ten lines and with a stability
+promise attached — use [[python-api]] instead.

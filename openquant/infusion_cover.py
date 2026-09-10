@@ -59,34 +59,42 @@ SAME_PRECURSOR_DA = 0.5
 #: column of the table above, printed twice.
 ERRORS_LISTED = 3
 
-#: the widths the *Infusions* table is printed at. The same columns as the
-#: tab and as the batch report's *Infusions* section — `REPORT_COLUMNS`, one
-#: definition — with *Ions found* twice the section's six per cent, taken a
-#: point at a time off the five columns either side of it. Rendered and
-#: looked at: that column holds either `3 of 56` or the sentence saying why
-#: there is no prediction, and at six per cent the sentence is forty lines of
-#: four characters and the row is eight inches tall. *Base peak m/z* and
-#: *Scans* are a point wider than the section's for the same reason read the
-#: other way: eight per cent broke `839.2316` across two lines, and a
-#: measurement split down the middle is worse than a column of reasons. And
-#: every heading is wide enough for its longest word: `Compound` and `Score`
-#: broke as `Compou/nd` and `Scor/e`, which is `report._table`'s own rule
-#: about a heading that wraps inside a word, measured on this table.
-COLUMN_WIDTHS = ["10%", "12%", "8%", "6%", "9%", "12%", "12%", "12%", "6%",
-                 "13%"]
-#: which of those columns are numbers
-RIGHT_COLUMNS = {3, 4, 8}
+#: the widths the *Infusions* table is printed at. The same twelve columns as
+#: the tab and as the batch report's *Infusions* section — `REPORT_COLUMNS`,
+#: one definition, so a column added there appears here — but not the same
+#: widths: the section's are set for a table read after thirty-nine others,
+#: and this one is the first thing on the document.
+#:
+#: Two rules, both from rendering the nine real infusions and looking at the
+#: page. **No heading wraps inside a word.** At the section's widths
+#: `Compound`, `Scans` and `Score` came out as `Compoun/d`, `Scan/s` and
+#: `Scor/e`, which is `report._table`'s own complaint about a heading; ten,
+#: six and six per cent hold them. **No measurement is split.** *Base peak
+#: m/z* at seven per cent broke `839.2316` across two lines as `839.23` and
+#: `16`, which is worse than any amount of wrapped prose; nine holds it, and
+#: `Base peak m/z` then wraps at its space with the `m/z` intact.
+#:
+#: What pays for those is the four columns that hold a reason rather than a
+#: number — *Sample*, *Ions found*, *Library record*, *Other infusions* —
+#: which wrap either way and are cut at `CELL_CHARACTERS` first.
+COLUMN_WIDTHS = ["10%", "10%", "7%", "6%", "9%", "11%", "8%", "7%", "10%",
+                 "6%", "8%", "8%"]
+#: which of those columns are numbers — `report._infusions`'s own set, since
+#: they are its columns
+RIGHT_COLUMNS = {3, 4, 9}
 
 #: how much of a cell the cover prints before cutting it at a word.
 #: A cell here says why it is empty, and most of those reasons are three
 #: words; a few are a whole sentence, and one of the real folder's is 214
 #: characters — `CA-d4 is written [M+NH4]+, and 839.56 is none of the adducts
-#: of C24H36D4O5 …` — which in a column six per cent of the page wide is
-#: forty lines of two characters and makes the row eight inches tall.
-#: Rendered and looked at, which is the only way this was ever going to be
-#: found. The sentence is not lost: it is written out in full on that
-#: compound's own page, which is what the contents list points at.
-CELL_CHARACTERS = 80
+#: of C24H36D4O5 …` — which in a column seven per cent of the page wide is
+#: thirty lines of six characters and makes the row most of a page. Rendered
+#: and looked at, which is the only way this was ever going to be found: at
+#: eighty characters four rows filled a page of the nine, and at forty-eight
+#: the whole table is a page and a half. The sentence is not lost: it is
+#: written out in full on that compound's own page, which is what the
+#: contents list points at.
+CELL_CHARACTERS = 48
 
 
 # --------------------------------------------------------------------------- #
@@ -446,12 +454,18 @@ def _infusions_block(summary, breaks: set[str] | None = None) -> str:
         f'<p class="meta">One row per infused sample, each averaged over its '
         f'whole run and grouped by compound. The precursor is the method’s '
         f'own written value measured back off the acquisition, counted as '
-        f'confirmed below at {CONFIRMED_PPM:g} ppm; the ions found are of '
+        f'confirmed below at {CONFIRMED_PPM:g} ppm; the adduct is the ion '
+        f'that written precursor is, with whether the survey scan of the same '
+        f'acquisition confirmed it by exact mass and isotope pattern; the '
+        f'ions found are of '
         f'those a formula or a structure predicted; the record is the best in '
         f'the library of your own, counted below at '
-        f'{COUNTED_SCORE * 100:.0f}. The last column scores each infusion '
-        f'against the others of its compound over the peaks above '
-        f'{SCORE_SHARE:.0%} of each base peak. A cell that could not be '
+        f'{COUNTED_SCORE * 100:.0f}. <em>Other infusions</em> scores each '
+        f'infusion against the others of its compound over the peaks above '
+        f'{SCORE_SHARE:.0%} of each base peak, and <em>Mass axis</em> is the '
+        f'offset the acquisition’s own ladder of known masses measured, where '
+        f'there were enough rungs to measure one. '
+        f'A cell that could not be '
         f'filled says why rather than being blank, cut at a word where the '
         f'reason is a sentence — the whole of it is on that compound’s own '
         f'page.</p>')

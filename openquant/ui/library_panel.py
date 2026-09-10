@@ -24,7 +24,7 @@ from PyQt6 import QtCore, QtWidgets
 from ..library import (MIN_MATCHED, OWN_MIN_RELATIVE, PEAK_TOLERANCE_PPM,
                        PRECURSOR_TOLERANCE_DA, LibraryEntry, LibraryHit,
                        SpectralLibrary, count_records, entry_from_spectrum,
-                       load_library, write_msp)
+                       load_library, rewrite_records, write_msp)
 from ..lipidmaps import mass_precision
 from .help_window import describe
 from .library_add_dialog import AddToLibraryDialog, default_adduct
@@ -50,6 +50,10 @@ class LibraryPanel(QtWidgets.QWidget):
         #: spectrum came from, which is what a record of one's own has to say
         self.spectrum_source = None
         self._context: dict = {}
+        #: set by the Explorer, and optional: the open batch, for the folders
+        #: its acquisitions were opened from and the mass corrections in
+        #: force. Duck-typed, so this panel still builds with no session
+        self.session = None
         self.settings = settings()
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -78,6 +82,14 @@ class LibraryPanel(QtWidgets.QWidget):
             "first of them — the standard checked against itself over the "
             "days it was verified")
         own.addWidget(self.btn_history)
+        self.btn_rewrite = QtWidgets.QPushButton("Rewrite from files…")
+        self.btn_rewrite.setToolTip(
+            "Read every record whose acquisition is still on disk again from "
+            "that file and write it back in place, so records made by an "
+            "older version gain the fields this one writes. A record whose "
+            "file is gone is left exactly as it is; the library as it stands "
+            "is copied to <name>.msp.bak first")
+        own.addWidget(self.btn_rewrite)
         self.own_label = QtWidgets.QLabel("")
         self.own_label.setProperty("role", "caption")
         own.addWidget(self.own_label, 1)
@@ -165,6 +177,10 @@ class LibraryPanel(QtWidgets.QWidget):
         self.btn_load.clicked.connect(self._choose_library)
         self.btn_add.clicked.connect(self.add_spectrum)
         self.btn_history.clicked.connect(self.show_history)
+        # not connected directly: `clicked` carries the button's checked
+        # state, which would arrive as `confirm=False` and write over the
+        # library without asking
+        self.btn_rewrite.clicked.connect(lambda: self.rewrite_own_library())
         self.btn_search.clicked.connect(self.search)
         self.hits.currentItemChanged.connect(self._show_pairs)
         self.btn_overlay.clicked.connect(self._overlay)
@@ -361,15 +377,18 @@ class LibraryPanel(QtWidgets.QWidget):
         if not path:
             self.own_label.setText("No library of your own yet.")
             self.btn_history.setEnabled(False)
+            self.btn_rewrite.setEnabled(False)
             return
         name = os.path.basename(path)
         if not os.path.exists(path):
             self.own_label.setText(f"Your library: {name}, not written yet")
             self.btn_history.setEnabled(False)
+            self.btn_rewrite.setEnabled(False)
             return
         records = count_records(path)
         self.own_label.setText(f"Your library: {records:,} record(s) in {name}")
         self.btn_history.setEnabled(records > 0)
+        self.btn_rewrite.setEnabled(records > 0)
 
     def show_history(self):
         """
@@ -389,6 +408,91 @@ class LibraryPanel(QtWidgets.QWidget):
         dialog.exec()
         dialog.deleteLater()
         return dialog
+
+    # -- rewriting it from the acquisitions --------------------------------- #
+    def _acquisition_folders(self) -> list[str]:
+        """
+        Where to look for the files the records name.
+
+        A record's comment carries a file name and never a path, because a
+        path stops being true the moment the acquisition is copied anywhere.
+        So the folders are the ones the open batch was opened from, with the
+        last folder anything was read from after them; the library's own
+        folder is added by `rewrite_records` itself.
+        """
+        folders: list[str] = []
+        for entry in getattr(self.session, "entries", []) or []:
+            folder = os.path.dirname(str(getattr(entry, "path", "") or ""))
+            if folder:
+                folders.append(folder)
+        last = self.settings.value("io/last_dir", "", type=str)
+        if last:
+            folders.append(last)
+        return list(dict.fromkeys(folders))
+
+    def _corrections(self) -> dict:
+        """
+        The mass correction in force for each open acquisition, by file name.
+
+        `Session.correction_for` answers None whenever the switch is off, so
+        a batch that is not being recalibrated hands over nothing and the
+        records come back on the axis the instrument wrote.
+        """
+        session = self.session
+        if session is None or not hasattr(session, "correction_for"):
+            return {}
+        found = {}
+        for entry in getattr(session, "entries", []) or []:
+            try:
+                correction = session.correction_for(entry.key)
+            except Exception:
+                correction = None
+            name = os.path.basename(str(getattr(entry, "path", "") or ""))
+            if correction is not None and name:
+                found[name.lower()] = correction
+        return found
+
+    def rewrite_own_library(self, confirm: bool = True):
+        """
+        Every record of one's own read again from the file it names.
+
+        The button. `confirm` is what the dialog is for and what a test turns
+        off: the question names the file and how many records are in it,
+        because this writes over a file the analyst has been adding to for
+        months — and the answer is that the file as it was is kept beside it.
+        """
+        path = self.own_path
+        if not path or not os.path.exists(path):
+            self.status.setText("Write a record of your own first.")
+            return None
+        name = os.path.basename(path)
+        total = count_records(path)
+        if confirm:
+            answer = QtWidgets.QMessageBox.question(
+                self, "Rewrite from files",
+                f"Read every one of the {total:,} record(s) in {name} again "
+                f"from the acquisition its comment names, and write it back "
+                f"in place?\n\nA record whose file is not on disk is left "
+                f"exactly as it is. {name} as it stands is copied to "
+                f"{name}.bak first.")
+            if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+                return None
+        QtWidgets.QApplication.setOverrideCursor(
+            QtCore.Qt.CursorShape.WaitCursor)
+        try:
+            result = rewrite_records(path, folders=self._acquisition_folders(),
+                                     corrections=self._corrections())
+        except OSError as exc:
+            self.status.setText(f"Could not rewrite {name}: {exc}")
+            return None
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+        if self.library is not None and self.library.path and \
+                os.path.abspath(self.library.path) == os.path.abspath(path):
+            self.load(path)              # what is searched is what is on disk
+        self._refresh_own_label()
+        self.status.setText(result.summary())
+        return result
 
     def _choose_own_path(self) -> str:
         """
@@ -417,10 +521,23 @@ class LibraryPanel(QtWidgets.QWidget):
         to give. The comment is the pane's own title — sample, channel and
         the scans the average was taken over — with the file and the date,
         because a record whose provenance is not written down cannot be
-        checked against the acquisition later.
+        checked against the acquisition later. Where the mass axis was
+        recalibrated the comment says so and says what the correction stood
+        on: the peaks written into the record are not the ones the
+        instrument reported, and a record that did not admit that could not
+        be compared with one written from the raw axis.
         """
         context = self._context
         parts = [str(p) for p in (context.get("title"), context.get("file")) if p]
+        # how the adduct on this record was arrived at. A record states an
+        # adduct and nothing in it says whether that was measured from a
+        # survey scan or deduced from a number somebody typed, which is the
+        # difference between a fact and a reading
+        if context.get("adduct"):
+            parts.append(str(context["adduct"]))
+        axis = str(context.get("recalibration") or "")
+        if axis and axis not in " \u00b7 ".join(parts):
+            parts.append(axis)
         parts.append(f"added {datetime.date.today().isoformat()}")
         return {
             "name": str(context.get("name", "")),
@@ -435,6 +552,10 @@ class LibraryPanel(QtWidgets.QWidget):
             # and "added" says nothing about it. `standard_history` orders
             # by this
             "acquired": str(context.get("acquired", "") or ""),
+            # measured from the profile spectrum by the Explain tab, and not
+            # recoverable from the record afterwards: the envelope it was
+            # read from is under the floor the record's peaks are kept at
+            "isotopic_purity": str(context.get("isotopic_purity", "") or ""),
         }
 
     def add_spectrum(self) -> None:
@@ -462,6 +583,7 @@ class LibraryPanel(QtWidgets.QWidget):
                            precursor_type: str = "", formula: str = "",
                            collision_energy: float | None = None,
                            comment: str = "", acquired: str = "",
+                           isotopic_purity: str = "",
                            path: str = "") -> LibraryEntry | None:
         """
         Append the spectrum on screen to the analyst's own MSP, and say so.
@@ -485,7 +607,7 @@ class LibraryPanel(QtWidgets.QWidget):
                 name, mz, intensity, precursor=precursor,
                 precursor_type=precursor_type, formula=formula,
                 collision_energy=collision_energy, comment=comment,
-                acquired=acquired)
+                acquired=acquired, isotopic_purity=isotopic_purity)
             write_msp([entry], path, append=True)
         except (ValueError, OSError) as exc:
             self.status.setText(f"Could not write the record: {exc}")

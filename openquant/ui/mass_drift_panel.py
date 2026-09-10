@@ -94,10 +94,11 @@ class MassDriftPanel(QtWidgets.QWidget):
         self.table.setToolTip("Click a row to chart that component")
         body.addWidget(self.table)
 
-        self.corrections = QtWidgets.QTableWidget(0, 8)
+        self.corrections = QtWidgets.QTableWidget(0, 9)
         self.corrections.setHorizontalHeaderLabels(
-            ["Injection", "Lock masses", "Offset ppm", "Slope ppm/kDa",
-             "Median before", "Median after", "Worst after", "Verdict"])
+            ["Injection", "Source", "Lock masses", "Offset ppm",
+             "Slope ppm/kDa", "Median before", "Median after", "Worst after",
+             "Verdict"])
         self.corrections.setEditTriggers(
             QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.corrections.verticalHeader().setDefaultSectionSize(20)
@@ -106,7 +107,10 @@ class MassDriftPanel(QtWidgets.QWidget):
             "The correction fitted for each injection, and what the lock "
             "masses' own residuals were before and after it. One lock mass "
             "leaves no residual to show: the offset takes it to zero by "
-            "construction, which is why the verdict names the count.")
+            "construction, which is why the verdict names the count. A "
+            "direct infusion has no second injection to be read against and "
+            "is fitted from its own precursor ladder instead, which is what "
+            "the Source column says.")
         body.addWidget(self.corrections)
         body.setSizes([380, 220])
         layout.addWidget(body, 1)
@@ -195,12 +199,16 @@ class MassDriftPanel(QtWidgets.QWidget):
         self._sync_switch()
         self.correction_status.setText(
             describe_corrections(self.session.mass_corrections))
+        # before the drift check: an infusion's correction is fitted from its
+        # own precursor ladder when the Explorer averages it, with no drift
+        # measurement anywhere, and a row that only appeared after Measure
+        # was pressed would be a correction in force with nothing showing it
+        self._fill_corrections()
         if drift is None:
             self.status.setText("Not measured yet — press Measure.")
             self.component.clear()
             return
         self._fill_table()
-        self._fill_corrections()
         previous = self.component.currentText()
         self.component.blockSignals(True)
         self.component.clear()
@@ -325,7 +333,8 @@ class MassDriftPanel(QtWidgets.QWidget):
             return "—" if value is None else f"{value:,.{decimals}f}"
 
         for row, correction in enumerate(rows):
-            cells = [correction.sample_name, f"{len(correction.lock_masses)}",
+            cells = [correction.sample_name, correction.source,
+                     f"{len(correction.lock_masses)}",
                      number(correction.offset_ppm) if correction.usable else "—",
                      number(correction.slope_ppm_per_da * 1000, 2)
                      if correction.linear else "—",
@@ -335,11 +344,14 @@ class MassDriftPanel(QtWidgets.QWidget):
                      correction.verdict]
             for column, text in enumerate(cells):
                 item = QtWidgets.QTableWidgetItem(text)
-                if column in (1, 2, 3, 4, 5, 6):
+                if column in (2, 3, 4, 5, 6, 7):
                     item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight
                                           | QtCore.Qt.AlignmentFlag.AlignVCenter)
-                if column == 7 and not correction.usable:
-                    item.setForeground(pg.mkColor(theme.axis()))
+                if column == 8:
+                    # the cell elides and the reason is the whole of it
+                    item.setToolTip(correction.note or text)
+                    if not correction.usable:
+                        item.setForeground(pg.mkColor(theme.axis()))
                 self.corrections.setItem(row, column, item)
         self.corrections.setColumnWidth(0, 180)
 

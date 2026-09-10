@@ -430,10 +430,10 @@ def test_the_pdf_is_the_cover_and_then_the_pages(qapp, tmp_path):
                                  str(tmp_path / "cover.pdf"))
 
     assert os.path.exists(with_cover)
-    assert batch._page_count(with_cover) >= batch._page_count(plain) >= 1
-    # page one is the cover and nothing else, and the pages behind it are the
-    # sections — a page count alone cannot say that, since the document this
-    # replaces opened on a title page of its own
+    assert batch._page_count(with_cover) >= 2
+    # what the cover did is read off the pages and not off their number: the
+    # document it replaces opened on a title-and-contents page of its own, so
+    # a covered document is not reliably longer than a plain one
     first = _pdf_text(with_cover, 0)
     for block in ("The infusions", "What they add up to", "What was left out",
                   "The pages that follow"):

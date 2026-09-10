@@ -795,6 +795,29 @@ UV detector, is not implemented there) — untested on real Windows.
   wrapped to three lines and took the table from six pages to eight; and a
   closing heading whose paragraph has no *line* that fits ends page 14
   alone — `_orphan_headings` needs the first line's rule, in the printer.
+- **An adduct deduced from a written precursor is not the same claim as one
+  measured.** A product-ion scan cannot check which ion its precursor is —
+  Q1 passed one mass and threw the isotopes away with it — so
+  `chemistry.adduct_evidence` asks the survey of the same acquisition over
+  the same scans: the nearest centroid within ±0.05 Da held to
+  `CONSENSUS_SPREAD_PPM` and `MIN_INTENSITY`, and the M/M+1/M+2 of the
+  **ion's own composition** (`[M+NH4]+` carries a nitrogen the molecule has
+  not got, `[M+Cl]-` an M+2 of 32%). `identify_adduct(survey=…)` says
+  "confirmed by the survey: 647.5112, −1.6 ppm, isotopes agree" or that it
+  was chosen from the written mass alone. Measured on the sphingolipid
+  survey: the mass alone admits an ion that is not there (the C16
+  ceramide's `[M+NH4]+` sits 21.5 ppm out with 170 counts and satellites
+  of 1.00/1.00, flat noise, ranked last by the pattern); and a satellite is
+  where a lipid keeps its own family (the ceramide's true `[M+H]+` has an
+  M+2 four times too big because the co-eluting dihydroceramide is 17 ppm
+  from it), so `pattern_agreement` weights each satellite separately
+  (0.77 against `match_isotope_pattern`'s 0.43); `PATTERN_AGREES` (0.50)
+  sits in the trough between 0.33 and 0.55. The survey reports every
+  adduct it shows (`[M+H]+` 100%, `[M+Na]+` 13% for both compounds) and may
+  overrule a written precursor that fits nothing, but only inside
+  `PRECURSOR_MATCH_DA`: `538.6` for 538.5194 is `[M+H]+` with a survey and
+  refused without one. The bile-acid infusions have no survey; nothing
+  changes there and the report says so.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

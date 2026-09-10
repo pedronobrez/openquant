@@ -23,6 +23,7 @@ vez de deixar um buraco.
 | Batch quality | os vereditos das cartas de controle, o índice de resposta da injeção, a deriva e a precisão dos QCs — [[batch-qc]] |
 | Mass drift | apenas quando a aba [[mass-drift]] mediu: a massa de cada padrão ao longo da corrida e se o eixo se manteve |
 | Sampling | pontos por pico para cada componente, os tempos de ciclo de que os picos precisariam e quantos picos foram mais estreitos que um ciclo — a aba *Sampling* de [[batch-qc]] |
+| Infusions | apenas enquanto a aba *Infusions* do [[analytics-workspace]] tiver medido: uma linha por amostra infundida — o precursor medido de volta na própria aquisição, os íons encontrados dentre os previstos, o melhor registro da sua própria biblioteca e cada infusão pontuada contra as outras do mesmo composto |
 | Compared spectra | apenas enquanto o Explorer estiver mantendo espectros juntos: a figura cabeça-cauda, uma tabela dos traços e as massas que eles compartilham dentro de 10 ppm — [[chromatograms-and-spectra]] |
 | Integration algorithms | apenas quando [[compare-algorithms]] foi executado: os totais por algoritmo e os componentes que mais se moveram |
 | Batch comparison | apenas quando [[compare-batches]] foi executado: os totais lado a lado e os componentes na ordem do quanto se moveram |

@@ -83,6 +83,69 @@ página. Quando nada foi rodado, o veredito diz exatamente isso, e o documento
 Cada relatório escrito fica registrado no [[audit-trail]]: o que foi
 relatado, em qual arquivo, e quais das três verificações estavam por trás.
 
+## Todas as infusões de uma vez: a aba Infusions
+
+Um relatório de um frasco responde uma pergunta. Uma pasta com nove faz outra
+— quais delas mediram o seu precursor, quais acharam os seus fragmentos, quais
+bateram com o registro feito do mesmo composto no mês passado — e essa é uma
+tabela. A aba **Infusions** do [[analytics-workspace]] é ela: uma linha por
+amostra infundida, agrupadas pelo composto com que o nome do arquivo começa.
+
+Nada é medido antes de **Measure** ser pressionado: promediar uma corrida
+inteira, centroidar um quarto de milhão de pontos, buscar numa biblioteca e
+pontuar cada infusão de um composto contra as outras leva alguns segundos por
+composto, e uma aba que fizesse isso a cada mudança nos resultados seria uma
+aba que ninguém deixa aberta. A contagem de linhas aparece no próprio nome da
+aba depois que ela mede.
+
+Cada linha traz o composto e a amostra, o modo e a energia de colisão, quantos
+scans foram promediados, o pico base, o precursor como o método o escreveu e
+como foi medido de volta com o seu erro em ppm e a sua altura, os íons
+encontrados dentre os previstos, o melhor registro da sua própria biblioteca
+com as duas pontuações e a energia de colisão do registro contra a desta
+aquisição, e as outras infusões do mesmo composto com o cosseno nos dois
+sentidos.
+
+Dois desses vêm de onde o relatório de um frasco os recebe de uma pessoa:
+
+- **a explicação.** Quando a aba [[lipid-maps]] já explicou o espectro na
+  tela, é essa explicação que é usada. Caso contrário o composto é procurado
+  na tabela de componentes pelo nome, e quando o componente carrega uma
+  fórmula e um aduto ele é explicado a partir delas — o caminho da fórmula do
+  [[annotate-from-lipid-maps]], executado sem ninguém na aba. Um composto que
+  o método não tem não é adivinhado: a célula diz isso.
+- **a biblioteca.** A biblioteca própria — o MSP a que *Add spectrum to
+  library…* acrescenta, veja [[spectral-library]] — buscada na precisão do
+  próprio precursor escrito. Um registro feito de uma destas mesmas infusões
+  vai bater consigo mesmo em 100, o que diz que o arquivo foi escrito e lido
+  de volta e mais nada; a linha que vale ler é a do mesmo composto sob outra
+  ativação.
+
+**Uma célula que não pôde ser preenchida diz por quê em vez de ficar em
+branco.** *only 84 counts survive* não é a mesma resposta que *nothing within
+±0.25 Da*, e nenhuma das duas é *CA-d4 is not a component of the method* —
+uma tabela de travessões não distingue as três, e qual delas é decide o que
+fazer em seguida. A frase inteira por trás de uma abreviada está na dica da
+célula.
+
+Os cabeçalhos ordenam pelos números onde os têm, então o precursor mais fraco
+ou a pior pontuação está a um clique.
+
+**Report…** escreve o documento por composto — o mesmo que *Process ▸ Report
+this infusion…* escreve — para as linhas selecionadas, ou para todas quando
+nenhuma está selecionada, uma seção por composto. Linhas do mesmo composto
+escolhidas juntas são desenhadas cabeça-cauda umas contra as outras nele; uma
+linha deixada de fora fica de fora também da comparação. **Export CSV…**
+escreve a tabela inteira, todas as colunas, com ou sem seleção: um resumo com
+linhas faltando não é a coisa que ele diz ser.
+
+A linha de resumo sob a tabela é a única frase que a tabela soma — *3
+compound(s) in 9 infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm; 10
+of 305 predicted ion(s) found across 9; 4 with an own record above 60 in
+own-bileomics.msp* — apenas contagens, cada uma com aquilo contra o que foi
+contada. O relatório do lote imprime a tabela e essa linha como a sua seção
+*Infusions*, enquanto a medida valer: veja [[report]].
+
 ## Medido
 
 Ácido cólico-d4 infundido num ZenoTOF 7600, o mesmo frasco sob duas
@@ -112,3 +175,56 @@ feito, o que prova que o arquivo foi escrito e lido de volta e mais nada; e
 2 de 97 íons é o que uma fórmula com três perdas neutras consegue dizer sobre
 um espectro cujo pico base precisa de quatro. Nenhuma das duas é uma falha do
 composto, e o relatório é construído de modo que a página diga qual é qual.
+
+### A aba, nos mesmos nove arquivos
+
+Os nove abertos de uma vez — três compostos, cinco deles chamados `CA-d4` —
+com as três corridas CID escritas numa biblioteca própria e as três fórmulas
+na tabela de componentes. **Measure** levou **14,1 s**, 1,6 s por infusão; o
+documento das nove deu 61 páginas em 18 s, a maior parte disso as vinte
+figuras cabeça-cauda que cinco infusões de um composto produzem.
+
+| | precursor encontrado | íons dentre os previstos | registro próprio |
+|---|---|---|---|
+| CA-d4 CID 45 eV | 84 contagens — pouco demais | 0 de 31 | 100, o dele mesmo |
+| CA-d4 EAD 22 eV | 430,3489, **+20,7 ppm** | 1 de 31 | **29** a 45 eV |
+| CA-d4 EAD 12 eV | 430,3488, +20,4 ppm | 1 de 31 | **6** a 45 eV |
+| DCA-d4 CID 40 eV | 33 contagens — pouco demais | 0 de 25 | 99, o dele mesmo |
+| DCA-d4 EAD 22 eV | 414,3525, +30,3 ppm | 1 de 25 | **33** a 40 eV |
+| TDCA-d4 CID 30 eV | 504,3273, +14,6 ppm, 124 contagens | 4 de 50 | 100, o dele |
+| TDCA-d4 EAD 22 eV | 504,3325, +24,9 ppm | 3 de 50 | **61** a 30 eV |
+
+*3 compound(s) in 9 infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm;
+10 of 305 predicted ion(s) found across 9; 4 with an own record above 60.*
+
+Quatro coisas nessa tabela merecem ser lidas em vez de puladas:
+
+- **as duas linhas que não estão nela.**
+  `CA-d4_TOFMSMS_EAD_12CE_…_TESTEARTIGO` e a sua gêmea de 22 eV carregam o
+  nome CA-d4 e não são aquisições de CA-d4: o método delas mira **839,56**
+  sobre 100–1000, o pico base é 839,23, nove e dezessete contagens ficam na
+  janela do precursor, nenhum registro da biblioteca chega a ±0,02 Da de
+  839,56, e a fórmula não explica nenhum dos 31. Elas pontuam **73** uma
+  contra a outra e **5 a 10** contra os três arquivos de CA-d4 de verdade. O
+  prefixo do nome dizia um composto e o método dizia outro, e a linha é onde
+  isso aparece — que é toda a razão de o composto nunca ser mais do que uma
+  proposta.
+- **o precursor sobrevive às ativações suaves e não às duras.** Todas as
+  corridas EAD mediram o seu precursor; duas das três CID tinham pouco demais
+  sobrando para chamar de massa. Isso é um achado comum sobre energia de
+  colisão, e a célula diz *only 84 counts survive* em vez de reportar um
+  centroide sobre ruído.
+- **os erros têm todos o mesmo sinal**, de +14,6 a +30,3 ppm. Um deles, o
+  DCA-d4 a +30,3, passa dos 25 ppm que a linha conta e está na página do
+  mesmo jeito: a contagem é uma frase, não um veredito.
+- **uma fórmula acha um íon em trinta e um.** Uma fórmula oferece o precursor
+  e as suas perdas neutras e mais nada; estes espectros são feitos de
+  clivagens de anel. É para isso que serve o denominador. A linha com que
+  comparar é a da aba [[lipid-maps]], onde uma estrutura ofereceu 97 íons e
+  achou 7.
+
+A coluna da biblioteca é a que diz algo que o resto não diz. Um registro feito
+de uma corrida bate com essa corrida em 100, o que prova que o arquivo foi
+escrito e lido de volta; os números que significam alguma coisa são 6, 29, 33
+e 61 — o mesmo composto, o mesmo frasco, sob outra ativação, e um registro não
+viaja entre elas.

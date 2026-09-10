@@ -80,6 +80,67 @@ spectrum and a peak table — which is a fair description of it.
 Every report written is recorded in the [[audit-trail]]: what was reported,
 into which file, and which of the three checks stood behind it.
 
+## Every infusion at once: the Infusions tab
+
+A report of one vial answers one question. A folder of nine asks a different
+one — which of them measured its precursor, which found its fragments, which
+matched the record made of the same compound last month — and that is a
+table. The **Infusions** tab of the [[analytics-workspace]] is it: one row per
+infused sample, grouped by the compound its file name starts with.
+
+Nothing is measured until **Measure** is pressed: averaging a whole run,
+centroiding a quarter of a million points, searching a library and scoring
+every infusion of a compound against the others is a few seconds per compound,
+and a tab that did that whenever the results changed is a tab nobody keeps
+open. The row count appears in the tab's own name once it has.
+
+Each row carries the compound and the sample, the mode and collision energy,
+how many scans were averaged, the base peak, the precursor as the method wrote
+it and as it was measured back with its error in ppm and its height, the ions
+found of those predicted, the best record of your own library with both scores
+and the record's collision energy against this acquisition's, and the other
+infusions of the same compound with the cosine each way.
+
+Two of those come from somewhere the report of one vial gets them from a
+person:
+
+- **the explanation.** Where the [[lipid-maps]] tab has already explained the
+  spectrum on screen, that explanation is used. Otherwise the compound is
+  looked up in the component table by name, and where the component carries a
+  formula and an adduct it is explained from those —
+  [[annotate-from-lipid-maps]]'s formula path, run with nobody at the tab. A
+  compound the method does not hold is not guessed at: the cell says so.
+- **the library.** The library of your own — the MSP that *Add spectrum to
+  library…* appends to, see [[spectral-library]] — searched at the written
+  precursor's own precision. A record made from one of these very infusions
+  will match itself at 100, which says the file was written and read back and
+  nothing else; the row worth reading is the same compound under another
+  activation.
+
+**A cell that could not be filled says why rather than being blank.** *only
+84 counts survive* is not the same answer as *nothing within ±0.25 Da*, and
+neither is the same as *CA-d4 is not a component of the method* — a table of
+dashes cannot tell the three apart, and which one it is decides what to do
+next. The whole sentence behind a shortened one is in the cell's tooltip.
+
+The column headings sort on their numbers where they have them, so the
+weakest precursor or the worst score is one click away.
+
+**Report…** writes the per-compound document — the same one *Process ▸ Report
+this infusion…* writes — for the rows selected, or for every row when none is
+selected, one section per compound. Rows of the same compound chosen together
+are drawn head to tail against each other in it; a row left unselected is left
+out of the comparison as well as out of the document. **Export CSV…** writes
+the whole table, every column, selection or no selection: a summary with rows
+left out is not the thing it claims to be.
+
+The summary line under the table is the one sentence the table adds up to —
+*3 compound(s) in 9 infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm;
+10 of 305 predicted ion(s) found across 9; 4 with an own record above 60 in
+own-bileomics.msp* — counts only, each with what it was counted against. The
+batch report prints the table and that line as its *Infusions* section, while
+the measurement stands: see [[report]].
+
 ## Measured
 
 Cholic acid-d4 infused into a ZenoTOF 7600, the same vial under two
@@ -102,9 +163,62 @@ head-to-tail picture, **three**; with one other infusion compared as well,
 **four**. Each took between 0.3 and 1.0 s to lay out and print. Two compounds
 in one document came to eight pages in two seconds.
 
+
 The two rows worth reading twice are the last two of the CID column. Its
 library score of 100 is a record matched against the spectrum it was made
 from, which proves the file was written and read back and nothing else; and
 2 of 97 ions is what a formula with three neutral losses can say about a
 spectrum whose base peak needs four. Neither is a failure of the compound,
 and the report is built so that the page says which is which.
+
+### The tab, on the same nine files
+
+All nine opened at once — three compounds, five of them called `CA-d4` — with
+the three CID runs written into a library of one's own and the three formulas
+in the component table. **Measure** took **14.1 s**, 1.6 s an infusion; the
+document of all nine came to 61 pages in 18 s, most of it the twenty
+head-to-tail pictures that five infusions of one compound make.
+
+| | precursor found | ions of predicted | own record |
+|---|---|---|---|
+| CA-d4 CID 45 eV | 84 counts — too little | 0 of 31 | 100, its own |
+| CA-d4 EAD 22 eV | 430.3489, **+20.7 ppm** | 1 of 31 | **29** at 45 eV |
+| CA-d4 EAD 12 eV | 430.3488, +20.4 ppm | 1 of 31 | **6** at 45 eV |
+| DCA-d4 CID 40 eV | 33 counts — too little | 0 of 25 | 99, its own |
+| DCA-d4 EAD 22 eV | 414.3525, +30.3 ppm | 1 of 25 | **33** at 40 eV |
+| TDCA-d4 CID 30 eV | 504.3273, +14.6 ppm, 124 counts | 4 of 50 | 100, its own |
+| TDCA-d4 EAD 22 eV | 504.3325, +24.9 ppm | 3 of 50 | **61** at 30 eV |
+
+*3 compound(s) in 9 infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm;
+10 of 305 predicted ion(s) found across 9; 4 with an own record above 60.*
+
+Four things in that table are worth reading rather than skipping:
+
+- **the two rows not in it.** `CA-d4_TOFMSMS_EAD_12CE_…_TESTEARTIGO` and its
+  22 eV twin carry the CA-d4 name and are not CA-d4 acquisitions: their method
+  targets **839.56** over 100–1000, their base peak is 839.23, nine and
+  seventeen counts sit in the precursor window, no record of the library comes
+  within ±0.02 Da of 839.56, and the formula accounts for none of 31. They
+  score **73** against each other and **5 to 10** against the three real
+  CA-d4 files. The name prefix said one compound and the method said another,
+  and the row is where that shows — which is the whole reason the compound is
+  never anything but a proposal.
+- **the precursor survives the soft activations and not the hard ones.** Every
+  EAD run measured its precursor; two of the three CID runs had too little
+  left to call a mass. That is an ordinary finding about collision energy, and
+  the cell says *only 84 counts survive* rather than reporting a centroid over
+  noise.
+- **the errors are all the same sign**, +14.6 to +30.3 ppm. One of them,
+  DCA-d4 at +30.3, is past the 25 ppm the line counts and is on the page all
+  the same: the count is a sentence, not a verdict.
+- **a formula finds one ion in thirty-one.** A formula offers the precursor
+  and its neutral losses and nothing else; these spectra are made of ring
+  cleavages. That is what the denominator is for. The row to compare it
+  against is the [[lipid-maps]] tab's, where a structure offered 97 ions and
+  found 7.
+
+The library column is the one that says something the rest does not. A record
+made from a run matches that run at 100, which proves the file was written and
+read back; the figures that mean anything are 6, 29, 33 and 61 — the same
+compound, the same vial, under another activation, and a record does not
+travel between them.

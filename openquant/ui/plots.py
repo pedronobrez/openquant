@@ -10,6 +10,7 @@ import pyqtgraph as pg
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from . import theme
+from .. import labels as label_rule
 from ..processing import (
     restore_profile_zeros,
     ChromPeak,
@@ -82,6 +83,20 @@ def _label_height(points: int = 8) -> float:
 
 #: clear space kept between two labels before one of them is dropped
 LABEL_GAP = 5.0
+
+#: how many maxima of a trace are kept as candidates for a label. The region
+#: budget will never name more than a couple of dozen of them; the rest are
+#: there so that zooming in has something to offer, and 200 is what a real
+#: survey scan yields above 2% of its base peak in the first place.
+LABEL_POOL = 200
+
+#: how far down the pool reaches, as a fraction of the trace's base peak.
+#: A label still needs `labels.LABEL_MIN_RELATIVE` of the tallest peak *in
+#: view*; this is only the floor on what is worth remembering, so that a
+#: stretch a hundred times below the base peak is not empty when it fills
+#: the window.
+POOL_MIN_RELATIVE = 0.002
+
 
 class _DragViewBox(pg.ViewBox):
     """ViewBox that turns a horizontal drag into a range selection."""
@@ -866,8 +881,15 @@ class SpectrumView(BasePlot):
     def __init__(self, parent=None):
         super().__init__("m/z", "", "Intensity, cps", parent)
         self._labels: list[pg.TextItem] = []
-        self._n_labels = 12
+        #: (m/z, height, drawn downwards) for every peak that could be named
+        self._candidates: list[tuple[float, float, bool]] = []
+        #: the most labels one view may carry. The region budget is what
+        #: usually decides, and it cannot offer more than this many.
+        self._n_labels = label_rule.LABEL_REGIONS * label_rule.LABEL_BUDGET
         self._show_labels = True
+        # re-labelling removes and adds items, and removing one asks the box
+        # to re-check its auto-range, which can come straight back here
+        self._thinning = False
         self._centroid = False
         self._title = ""
         self._overlay: tuple[list[tuple[float, float]], str, str] | None = None
@@ -1018,46 +1040,46 @@ class SpectrumView(BasePlot):
         return float(np.max(y))
 
     def _after_traces_changed(self) -> None:
+        """
+        Find the peaks that could carry a label, once per set of traces.
+
+        The peak finder walks every point — thirty thousand of them on an
+        infusion product-ion scan — so it is not run again on a pan. What it
+        yields is a pool that reaches further down than a label ever will;
+        which of the pool are named is decided at the current view range, on
+        every range change, by `_thin_labels`.
+        """
         self._draw_overlay()
-        for item in self._labels:
-            self.plot.removeItem(item)
-        self._labels.clear()
-        if not self._show_labels or self._n_labels == 0:
-            return
-        for n, trace in enumerate(self.traces):
-            x, y = self._display(trace, n)
-            peaks = pick_peaks(x, np.abs(y), max_peaks=self._n_labels,
-                               min_relative=0.02, min_distance=0.05)
-            for rank, (mz, intensity) in enumerate(peaks):
-                below = self._mirror and n % 2 == 1
-                sign = -1.0 if below else 1.0
-                text = pg.TextItem(self._label_for(mz), color=theme.foreground(),
-                                   anchor=(0.5, 0.0 if below else 1.0))
-                font = QtGui.QFont()
-                font.setPointSize(8)
-                text.setFont(font)
-                text.setPos(mz, intensity * sign)
-                # pick_peaks returns the strongest first: that is the order in
-                # which labels get to claim room, so a crowded stretch keeps
-                # the peak worth reading
-                text.mz = mz
-                text.rank = rank
-                text.below = below
-                self.plot.addItem(text, ignoreBounds=True)
-                self._labels.append(text)
+        self._candidates = []
+        if self._show_labels and self._n_labels:
+            for n, trace in enumerate(self.traces):
+                x, y = self._display(trace, n)
+                below = bool(self._mirror and n % 2 == 1)
+                for mz, intensity in pick_peaks(x, np.abs(y),
+                                                max_peaks=LABEL_POOL,
+                                                min_relative=POOL_MIN_RELATIVE,
+                                                min_distance=0.05):
+                    self._candidates.append((mz, intensity, below))
         self._thin_labels()
 
     def _thin_labels(self, *_args) -> None:
         """
-        Hide the labels that would print on top of each other, and keep the
-        ones at the ends of the axis inside the plot.
+        Decide which peaks of the pool are named at the current view range.
 
-        Two peaks a few millidaltons apart are one pixel apart on a full
-        spectrum, and their labels were drawn over one another — unreadable,
-        and worse than unreadable because the result looks like a single wrong
-        number. Zooming in separates the peaks, so the decision is made again
-        on every range change and the hidden labels come back as there is room
-        for them.
+        Two passes. First `labels.choose` gives every eighth of the visible
+        mass axis a budget of three labels and orders them so that the tallest
+        peak of each region asks for room before any region asks for a second
+        — without it the twelve tallest peaks of a real survey scan were all
+        inside the first eighth of the axis and half the spectrum was drawn
+        and never named. Then the collision rule as before: a label that would
+        print on top of one already placed is dropped, not overlapped. Two
+        peaks a few millidaltons apart are one pixel apart on a full spectrum,
+        and their labels drawn over one another are worse than unreadable —
+        the result looks like a single wrong number.
+
+        Both passes follow the view, which is the point of doing this on every
+        range change rather than once: zoomed in, each region is narrower, the
+        peaks in it are further apart in pixels, and more of them get named.
 
         A label at the right-hand end used to run off the edge — the precursor
         is at the end of its own scan window, so this was the normal case for
@@ -1065,18 +1087,44 @@ class SpectrumView(BasePlot):
         be showing masses that were never scanned; the text is anchored to its
         other side instead.
         """
-        if not self._labels:
+        if self._thinning:
+            return
+        self._thinning = True
+        try:
+            self._retag_labels()
+        finally:
+            self._thinning = False
+
+    def _retag_labels(self) -> None:
+        """`_thin_labels` without the guard against being re-entered."""
+        for item in self._labels:
+            self.plot.removeItem(item)
+        self._labels.clear()
+        if not self._candidates:
             return
         box = self.viewbox
         width = float(box.width())
         (x_low, x_high), _y = box.viewRange()
         if width <= 0 or x_high <= x_low:
             return
+        chosen = label_rule.choose(
+            self._candidates, x_low, x_high,
+            most=self._n_labels or None,
+            min_relative=label_rule.LABEL_MIN_RELATIVE)
         scale = width / (x_high - x_low)
         taken: list[tuple[float, float]] = []
-        for text in sorted(self._labels, key=lambda t: getattr(t, "rank", 0)):
+        for mz, intensity, below in chosen:
+            sign = -1.0 if below else 1.0
+            text = pg.TextItem(self._label_for(mz), color=theme.foreground(),
+                               anchor=(0.5, 0.0 if below else 1.0))
+            font = QtGui.QFont()
+            font.setPointSize(8)
+            text.setFont(font)
+            text.setPos(mz, intensity * sign)
+            text.mz = mz
+            text.below = below
             half = text.boundingRect().width() / 2.0
-            centre = (text.mz - x_low) * scale
+            centre = (mz - x_low) * scale
             anchor_x = 0.5
             if centre - half < 0:
                 anchor_x, left = 0.0, centre
@@ -1086,14 +1134,13 @@ class SpectrumView(BasePlot):
                 left = centre - half
             right = left + 2 * half
             if right < 0 or left > width:
-                text.setVisible(False)
                 continue
             if any(left < other_right + LABEL_GAP and right > other_left - LABEL_GAP
                    for other_left, other_right in taken):
-                text.setVisible(False)
                 continue
-            text.setAnchor(pg.Point(anchor_x, 0.0 if text.below else 1.0))
-            text.setVisible(True)
+            text.setAnchor(pg.Point(anchor_x, 0.0 if below else 1.0))
+            self.plot.addItem(text, ignoreBounds=True)
+            self._labels.append(text)
             taken.append((left, right))
 
     def contextMenuEvent(self, event):

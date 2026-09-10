@@ -33,8 +33,10 @@
 
     <!-- the executable carries the icon for Explorer and the taskbar; the
          Start menu entry and Add or remove programs are told separately.
-         SourceFile resolves against this file's directory. -->
-    <Icon Id="OpenQuantIcon" SourceFile="icons\OpenQuant.ico" />
+         IconFile is passed in as an absolute path: a relative SourceFile
+         resolves against the working directory, not against this file, and
+         WIX0103 "cannot find the Icon file" was the first build's answer. -->
+    <Icon Id="OpenQuantIcon" SourceFile="$(IconFile)" />
     <Property Id="ARPPRODUCTICON" Value="OpenQuantIcon" />
 
     <StandardDirectory Id="LocalAppDataFolder">

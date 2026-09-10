@@ -81,7 +81,10 @@ def test_the_windows_installer_names_the_icon_for_the_shortcut_and_the_programs_
     ns = {"w": "http://wixtoolset.org/schemas/v4/wxs"}
     icon = root.find(".//w:Icon", ns)
     assert icon is not None and icon.get("Id") == "OpenQuantIcon"
-    assert (WXS.parent / icon.get("SourceFile").replace("\\", "/")).is_file()
+    assert icon.get("SourceFile") == "$(IconFile)"
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert 'IconFile="$PWD\\packaging\\icons\\OpenQuant.ico"' in workflow
+    assert (ICONS / "OpenQuant.ico").is_file()
     arp = root.find(".//w:Property[@Id='ARPPRODUCTICON']", ns)
     assert arp is not None and arp.get("Value") == "OpenQuantIcon"
     shortcut = root.find(".//w:Shortcut", ns)

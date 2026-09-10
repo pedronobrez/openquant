@@ -257,6 +257,7 @@ jobs:
             -Pattern '__version__ = "([^"]+)"').Matches.Groups[1].Value
           wix build packaging/openquant.wxs -d Version=$version `
             -d BundleDir="$PWD\dist\OpenQuant" `
+            -d IconFile="$PWD\packaging\icons\OpenQuant.ico" `
             -o "dist/OpenQuant-$version-windows-x64.msi"
 
       - name: Tarball

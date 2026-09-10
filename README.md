@@ -38,6 +38,11 @@ written as `.oqproj`.*
 
 ## Formats
 
+`.wiff2`, which SCIEX OS writes beside the pair, is not opened and nothing is
+lost: measured to hold the method and the hashes of its two companions,
+with no spectrum or chromatogram in its schema. The `.wiff` of the same
+name is the acquisition.
+
 `.wiff` (with its `.wiff.scan`) is read through SCIEX's own libraries. `.mzML`
 is read directly, which is how data from other instruments gets in: a Thermo
 `.raw`, an Agilent `.d` or a Bruker `.tdf` becomes mzML through ProteoWizard's

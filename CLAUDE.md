@@ -456,6 +456,23 @@ UV detector, is not implemented there) — untested on real Windows.
   services agent, re-registering with Launch Services and stamping the
   SDK were all tried first and changed nothing, because none of them was
   the cause.
+- **A `.wiff2` is not an unread format, it is an empty one.** Measured on
+  nine ZenoTOF 7600 trios: `CreateBatch` raises `Invalid OLE structured
+  storage file` on all nine and Clearcore2's own `CheckDataFileIntegrity`
+  calls them `NotWiffFile` — with the companions beside them, with each
+  removed in turn, and renamed `.wiff` — so it is the container (a
+  password-protected SQLite database) and not the extension.
+  `PersistenceFactory.GetWiff2Schema()` returns seven tables (`header`,
+  `sample`, `method`, `device_method`, `device_descriptor`,
+  `device_identifier`, `method_parameters_info`) with no column for a
+  spectrum, peak, intensity or chromatogram; `header` holds `wiff_hash`,
+  `scan_hash`, `scan_size`. The acquisition is in the `.wiff`, which reads
+  identically with the `.wiff2` deleted. So `raw.FORMATS` has no `.wiff2`.
+  Dead ends if revisited: the Wiff2 metadata layer needs
+  `System.Data.SQLite 1.0.98.0` and the SCIEX OS stack needs
+  `OFX.Core.Contracts`, neither redistributed; and loading every sciex DLL
+  breaks the working `.wiff` path with a `MarshalDirectiveException` —
+  `bootstrap`'s three-assembly set is deliberate.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

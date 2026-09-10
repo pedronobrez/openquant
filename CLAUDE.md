@@ -103,6 +103,7 @@ openquant/
                   contaminant, satellite, or a sub-formula of the precursor
   margin.py       the chosen compound's share against its nearest
                   impostors, enumerated alike
+  infusion_cover.py  the cover before a folder's per-compound pages
   audit.py        the trail of hand edits saved with the project
   labels.py       which peaks get a label: a budget per region of the
                   visible axis, shared by the pane and the print
@@ -131,7 +132,8 @@ openquant/
                   the search index, and the PDF (through report.print_document)
   help/pages/     the manual's pages, one Markdown file per page
   app.py          CLI: --selftest, --digest
-  ui/             shell.py owns the window; explorer / analytics /
+  ui/             shell.py owns the window; new_standard_dialog.py the
+                  bottle-to-component path; explorer / analytics /
                   method_workspace / samples_workspace are the four tabs;
                   help_window.py is Help ▸ Manual; settings.py the one
                   settings constructor;
@@ -1108,6 +1110,47 @@ UV detector, is not implemented there) — untested on real Windows.
   839.56 files out. Two points per activation are the honest limit: with
   both, the optimum lands on one of them, so the line adds the energy and
   not a better score (`PROFILE_BETTER_BY`).
+- **A fixed noise floor is a claim about one scan of one instrument.**
+  `precursor.MIN_INTENSITY` (100) was written for a TripleTOF survey scan;
+  an infusion's average has a base peak of 109 to 12,271 counts on the nine
+  real files. `infusion.noise_floor` measures it two ways and keeps both:
+  the empty mass regions of the average (`processing.spectrum_noise`, the
+  99th percentile of the local maxima there) and the scan-to-scan scatter
+  of the quietest half-dalton window divided by the root of the scans
+  averaged — the count travelling with the spectrum, since the spray mask
+  trims runs. The larger is taken; where neither can be made the fixed 100
+  stands with the reason (one of twelve chromatographic averages has 167
+  measured points in 412). Measured: 0.068–3.53 counts on the nine
+  infusions, 28–1,500× quieter than the constant, (a) larger on nine of
+  nine. Four windows the fixed floor refused hold a real peak, and all four
+  sit 30–70 ppm from the written mass — so `infusion_report._confirms`
+  stops at *found but not confirmed* past `CONFIRMED_PPM`: the height says
+  a peak is there; the mass says what it is.
+- **A standard is not entered until three things agree, and the third is
+  not written.** `ui/new_standard_dialog.py` is the path from a bottle: the
+  name resolved live, the lot, the infusion file (`is_infusion`), the
+  polarity's adducts pre-ticked from `adducts_matching` against the
+  channel's written precursor. **Create** writes the component and the
+  own-library record (the new `lot` in its provenance) and nothing else —
+  the history is the library read back. A ticked adduct that fits nothing
+  is overruled by the one the written precursor reaches (a tick is an
+  expectation, the channel a measurement); a compound the method already
+  carries writes no component and still writes the record. Measured on
+  CA-d4: 1 of 5 adducts reaches 430.35, 2.6 s to open, average and
+  identify, 0.05–0.08 s to re-identify after an edit; on `_TESTEARTIGO`
+  0 of 5, Create disabled, nothing written.
+- **A summary of nine reports is four blocks and no fifth.**
+  `infusion_cover.build_html` prints the folder, the rows, what they add up
+  to, what was left out and where each compound is — then stops. A row
+  whose method isolates a mass the compound's other runs do not is
+  reported *by that mass* (three measurements of 430.34 and two of 839.56,
+  not five of one ion with two failures); an infusion nothing was
+  predicted for is not counted as one that found nothing. Visible only on
+  the printed page: sentences run together needed capitals, and twelve
+  columns on A4 broke `Compound` as `Compoun/d` and `839.2316` as
+  `839.23`/`16` at the old widths — a measurement broken in half is worse
+  than wrapped prose (`CELL_CHARACTERS` 48). On the nine infusions the
+  cover is two pages of 58 and 0.2 s of 31; it reads no file.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

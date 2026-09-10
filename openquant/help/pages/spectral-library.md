@@ -575,6 +575,114 @@ product-ion scan on a TOF carries the precursor, its isotopes and the whole
 low-mass region as well as the fragments, and none of that is in a record
 built from a cleaner average. The reverse score is the one to read.
 
+## Fragmentation across energies
+
+A record is one spectrum at one collision energy, and a record does not
+travel between energies: on the nine bile-acid infusions a cholic acid-d4
+record measured under CID at 45 eV scores **6** against the same vial under
+EAD at 12 eV and **29** against it at 22 eV. Read as a hit list that says
+the compound is not there, which is false.
+
+Where a compound has records at two or more energies of the same
+activation, the panel adds one line under the hit list per compound and
+activation:
+
+> compatible with CA-d4 EAD at ~18 eV (score 0.71; measured at 12 and 22)
+
+The line answers the other question. The hit list asks *which record is
+this like*; this asks *what conditions would produce this*. It is added,
+never a replacement: the hit list is unchanged.
+
+### How the line is worked out
+
+Each of the compound's records is reduced to the share of the intensity its
+own ladder rungs carry — the water-loss ladder the record's `Formula` and
+`Precursor_type` predict through [[lipid-maps]]'s enumeration, plus the
+strongest fragments the records agree on. **Shares of the profile's total,
+never of the record's base peak**, because the base peak itself walks down
+the ladder as the energy rises (see the table below), and a number whose
+own denominator changes rung cannot be interpolated through.
+
+Each rung's share is then linear in energy between the two measured
+energies that bracket it, and the panel sweeps the range at half an
+electronvolt for the best fit. Three refusals are as important as the
+answer:
+
+* **Nothing is extrapolated.** Past the highest energy on file the ladder
+  goes on walking downwards and no record says how fast. A spectrum
+  measured beyond the range can only be reported at the end of it.
+* **No two activations are interpolated across.** EAD records and collision
+  cell records are separate profiles, and a record whose activation is not
+  stated is a third — the same rule [[standard-history]] cuts its series on.
+* **One record is one record.** With a single energy on file the line reads
+  *one energy on file (22 eV): no profile*.
+
+The score is the cosine over the profile's own ions, square-rooted the same
+way the hit list's scores are. It is not the plain cosine: a profile holds
+a dozen ions and a product-ion spectrum holds hundreds, so the plain cosine
+would measure everything else in the vial. A `~` before the energy means it
+was interpolated rather than measured.
+
+### Measured on the nine bile-acid infusions
+
+Cholic acid-d4 was infused at EAD 12 eV, EAD 22 eV and at 45 eV in a file
+whose name states no activation. Its profile, as shares of the profile's
+own total:
+
+| Ion | m/z | EAD 12 eV | EAD 22 eV | 45 eV, unstated |
+|---|---|---|---|---|
+| `[M+NH4]+ +4D` | 430.3465 | 83.5% | 24.6% | 0.0% |
+| `[M+H]+ (-NH3) +4D` | 413.3200 | 0.0% | 0.9% | 0.0% |
+| `[M+H-H2O]+ +4D` | 395.3094 | 0.0% | 6.5% | 0.0% |
+| `[M+H-H2O]+ +3D` | 394.3031 | 0.0% | 0.3% | 0.0% |
+| `[M+H-2H2O]+ +4D` | 377.2988 | 1.5% | 25.2% | 1.7% |
+| `[M+H-2H2O]+ +3D` | 376.2926 | 1.3% | 2.0% | 0.0% |
+| `[M+H-3H2O]+ +4D` | 359.2883 | 0.0% | 6.2% | 54.2% |
+| `[M+H-3H2O]+ +3D` | 358.2820 | 0.0% | 6.5% | 6.8% |
+| twelve shared fragments under m/z 150, together | | 13.7% | 27.8% | 37.2% |
+
+That is the ladder walking. At 12 eV the ammoniated precursor is 83.5% of
+everything; at 22 eV it has handed a quarter of the intensity to
+`[M+H-2H2O]+`; at 45 eV the precursor is gone entirely and `[M+H-3H2O]+`
+is 54.2% with the small fragments taking most of the rest. **The base peak
+is a different ion in all three files**, which is exactly why the profile
+is held as shares of its own total.
+
+Two of the nine files are named `CA-d4` and isolate 839.56 rather than
+430.34. They are left out of CA-d4's profile with the reason on the row —
+*holds fewer than 2 of the ladder's ions* — and nothing had to read a file
+name to know it.
+
+### What two energies per activation allow, and what they do not
+
+Honestly: not much yet, on these files. Leave EAD 12 eV out of the library
+and search it back, and the profile has one EAD record left and says *one
+energy on file (22 eV): no profile*; the 45 eV record cannot help, because
+its activation is unstated and no activation is interpolated across. Leave
+EAD 22 eV out instead and the same thing happens with 12 eV. **Two records
+of one activation is the minimum, and leaving either out takes it below the
+minimum.**
+
+With both EAD records present, the sweep does what it should: the 12 eV
+spectrum comes back at 12 eV and the 22 eV spectrum at 22 eV, both at a
+score of 1.00, and the two 839.56 files score 0.10 and 0.11. The 45 eV
+spectrum comes back at 22 eV — the top of the EAD range, since nothing is
+extrapolated — at 0.56, which is the same 0.56 its reverse score against
+the 22 eV record alone was. That is the honest result of two points: the
+best fit lands on one of the two records, so the line adds the *energy*,
+which a hit list cannot state, and not a better score. A third energy under
+one activation is what would make the interpolation worth its own number,
+and nobody has acquired one yet.
+
+What the arithmetic does when a spectrum genuinely sits between two
+records was checked on these rungs by asking for the halfway shares: the
+sweep answers 16.5 to 17 eV, and everything from 15 to 20 eV scores within
+one per cent of the best. **So a proposal is good to a few electronvolts,
+not to the half-volt step**, which is why it is written with a `~`.
+
+Building a profile and sweeping it takes about 3 ms over a nine-record
+library.
+
 ## What the library does not know
 
 A record is one instrument's spectrum at one collision energy. A match is
@@ -582,6 +690,11 @@ evidence that the measured spectrum resembles that record; how much
 resemblance is enough is the analyst's call, and the [[accurate-precursor]]
 and the [[formula-finder]] are the independent checks on the precursor that
 a library match does not make.
+
+An energy profile does not lift that. It says which of the *recorded*
+conditions a spectrum resembles and at what energy between them; it does
+not say the compound is the right one, and it cannot propose an activation
+nobody has recorded.
 
 ## Reading your own library back
 

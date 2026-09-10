@@ -1092,6 +1092,22 @@ UV detector, is not implemented there) — untested on real Windows.
   71.2); what falls below is a Cer at 538.6 explaining 9.5% where three
   lysophospholipids explain 11–12.4%, and TDCA-d4 at 78.4% against a
   sodiated lysoPC at 72.3% — known from the bottle, not from its spectrum.
+- **A record does not travel between energies, but the records together
+  do.** A CA-d4 record at 45 eV scores 6 against the same vial at 12 eV —
+  a hit list saying the compound is absent, which is false.
+  `library.EnergyProfile` reads one compound's records as a curve: each
+  ladder rung's share against collision energy, computed by `profile_of`
+  from the records present and never written into them. Shares of the
+  profile's own total, never of the base peak, because the base peak walks
+  the ladder — the ammoniated precursor is 83.5% at EAD 12 eV,
+  `[M+H−2H2O]+` 25.2% at 22, `[M+H−3H2O]+` 54.2% at 45. `search_energy`
+  sweeps at `ENERGY_STEP_EV` and says "compatible with CA-d4 EAD at ~18 eV
+  (measured at 12 and 22)" beside an unchanged hit list; nothing past the
+  measured range, no activation crossed, one record is *no profile*.
+  Membership is measured (`MIN_MATCHED` ladder ions), which keeps the
+  839.56 files out. Two points per activation are the honest limit: with
+  both, the optimum lands on one of them, so the line adds the energy and
+  not a better score (`PROFILE_BETTER_BY`).
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

@@ -73,6 +73,44 @@ the rest on the instrument's own*. That is the intended outcome. The split
 itself is exercised only on made-up records, and the manual says so rather
 than implying a measurement that was not made.
 
+### The series boundary is not the end of the story
+
+Those three numbers — 67, 29 and 6 — are the reason a series never crosses
+an energy, and they are also a waste of three measurements. The same
+records that cannot be charted against each other *can* be read as one
+curve: how each fragment's share of the intensity moves as the energy
+rises. That is the energy profile, it is computed from the records of one
+compound with no series crossed, and it is what lets the
+[[spectral-library]] tab say **compatible with CA-d4 EAD at ~18 eV**
+instead of listing three records that all look wrong.
+
+Cholic acid-d4's, as shares of the profile's own total — the same nine
+infusions this page's figures come from:
+
+| Ion | m/z | EAD 12 eV | EAD 22 eV | 45 eV, unstated |
+|---|---|---|---|---|
+| `[M+NH4]+ +4D` | 430.3465 | 83.5% | 24.6% | 0.0% |
+| `[M+H]+ (-NH3) +4D` | 413.3200 | 0.0% | 0.9% | 0.0% |
+| `[M+H-H2O]+ +4D` | 395.3094 | 0.0% | 6.5% | 0.0% |
+| `[M+H-H2O]+ +3D` | 394.3031 | 0.0% | 0.3% | 0.0% |
+| `[M+H-2H2O]+ +4D` | 377.2988 | 1.5% | 25.2% | 1.7% |
+| `[M+H-2H2O]+ +3D` | 376.2926 | 1.3% | 2.0% | 0.0% |
+| `[M+H-3H2O]+ +4D` | 359.2883 | 0.0% | 6.2% | 54.2% |
+| `[M+H-3H2O]+ +3D` | 358.2820 | 0.0% | 6.5% | 6.8% |
+| twelve shared fragments under m/z 150, together | | 13.7% | 27.8% | 37.2% |
+
+The base peak is a different ion in each of the three files — the
+precursor, then `[M+H-2H2O]+`, then `[M+H-3H2O]+` — which is why the
+profile is held as shares of its own total rather than relative to a base
+peak that moves. It is also why the *base peak intensity* chart below is
+drawn inside a series and never across one.
+
+The profile is computed from the records present and is never written into
+them, so appending one more verification changes it with nothing to bring
+up to date. See [[spectral-library]] for the interpolation, the two
+refusals — nothing extrapolated past the measured range, no two activations
+crossed — and what two energies per activation do and do not allow.
+
 ## The three charts
 
 The first record of a series is the **reference**, and everything is

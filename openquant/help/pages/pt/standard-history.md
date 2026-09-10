@@ -74,6 +74,44 @@ uma série e dizem isso no nome da série — *axis corrected +6.6 ppm for 1 of
 divisão em si só é exercitada em registros inventados, e o manual diz isso
 em vez de sugerir uma medição que não foi feita.
 
+### A fronteira da série não é o fim da história
+
+Esses três números — 67, 29 e 6 — são a razão de uma série nunca cruzar uma
+energia, e são também três medidas desperdiçadas. Os mesmos registros que não
+podem ser postos em gráfico uns contra os outros *podem* ser lidos como uma
+curva: como a fração de intensidade de cada fragmento se move conforme a
+energia sobe. Isso é o perfil de energia, é calculado a partir dos registros de
+um composto sem cruzar série alguma, e é o que permite à aba
+[[spectral-library]] dizer **compatible with CA-d4 EAD at ~18 eV** em vez de
+listar três registros que parecem todos errados.
+
+O do ácido cólico-d4, em frações do total do próprio perfil — as mesmas nove
+infusões de onde vêm os números desta página:
+
+| Íon | m/z | EAD 12 eV | EAD 22 eV | 45 eV, não declarada |
+|---|---|---|---|---|
+| `[M+NH4]+ +4D` | 430,3465 | 83,5% | 24,6% | 0,0% |
+| `[M+H]+ (-NH3) +4D` | 413,3200 | 0,0% | 0,9% | 0,0% |
+| `[M+H-H2O]+ +4D` | 395,3094 | 0,0% | 6,5% | 0,0% |
+| `[M+H-H2O]+ +3D` | 394,3031 | 0,0% | 0,3% | 0,0% |
+| `[M+H-2H2O]+ +4D` | 377,2988 | 1,5% | 25,2% | 1,7% |
+| `[M+H-2H2O]+ +3D` | 376,2926 | 1,3% | 2,0% | 0,0% |
+| `[M+H-3H2O]+ +4D` | 359,2883 | 0,0% | 6,2% | 54,2% |
+| `[M+H-3H2O]+ +3D` | 358,2820 | 0,0% | 6,5% | 6,8% |
+| doze fragmentos compartilhados abaixo de m/z 150, juntos | | 13,7% | 27,8% | 37,2% |
+
+O pico-base é um íon diferente em cada um dos três arquivos — o precursor,
+depois `[M+H-2H2O]+`, depois `[M+H-3H2O]+` — que é por que o perfil é mantido
+em frações do próprio total, e não em relação a um pico-base que se muda. É
+também por que o gráfico de *intensidade do pico-base* abaixo é traçado dentro
+de uma série e nunca através de uma.
+
+O perfil é calculado a partir dos registros presentes e nunca é escrito neles,
+de modo que acrescentar mais uma verificação o altera sem deixar nada
+desatualizado. Veja [[spectral-library]] para a interpolação, as duas recusas —
+nada extrapolado além da faixa medida, nenhuma ativação cruzada com outra — e o
+que duas energias por ativação permitem e não permitem.
+
 ## Os três gráficos
 
 O primeiro registro de uma série é a **referência**, e tudo é medido contra

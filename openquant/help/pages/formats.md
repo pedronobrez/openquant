@@ -85,6 +85,41 @@ being converted first. Both profile and centroid spectra are read, and
 zero-intensity points a vendor stripped from a profile are restored — see
 [[chromatograms-and-spectra]] for why that matters.
 
+What the file states about each scan is read and shown, and none of it is
+guessed: the polarity from `positive scan` or `negative scan`, the precursor
+from `selected ion m/z` — or, where a converter wrote only an isolation
+window, from its centre — the charge from `charge state`, the collision
+energy, and **how the precursor was broken** from the `activation` element.
+That last one is the thing a `.wiff` does not carry: SCIEX's library exposes
+the energy and nothing that names the method, so a `.wiff` channel's
+activation is blank while a converted Thermo file's says *beam-type
+collision-induced dissociation*. Twenty-two electronvolts of that and
+twenty-two of electron transfer are different experiments on the same
+precursor, so the activation separates two channels that nothing else in the
+scan tells apart. It all appears under the channel in the [[explorer]].
+
+The instrument's name is read three ways, because vendors write it three
+ways: as its own controlled-vocabulary term with an empty value, as the
+generic *instrument model* term with the model in the value, and — which is
+how ProteoWizard writes every Thermo file — in a `referenceableParamGroup`
+that each instrument configuration only points at. Two real Thermo files,
+an LTQ Orbitrap Elite and ProteoWizard's own LTQ FT example, both said
+*unknown* until that reference was followed.
+
+Averaging a range of scans **adds each scan up at the masses it measured**,
+and puts nothing anywhere else. That is worth stating because the obvious
+alternative is wrong: two scans of a time-of-flight do not share a mass
+axis, so the average is over the union of theirs, and interpolating each
+scan onto that union draws a straight line across every stretch a
+zero-stripped profile spectrum has no points in — signal at masses where the
+instrument reported none. Measured against SCIEX's own averaging of the same
+146 scans over the same 221,847 masses, interpolation put 220,222 of them
+higher and totalled **3.31 times** the vendor's spectrum; centroiding it
+gave 670 peaks where the vendor's average gives 424. Adding the scans up
+where they were measured reproduces the vendor's averaged spectrum exactly —
+largest difference at any mass 0.0 — and is right for a centroided file too,
+where interpolating between two sticks is worse still.
+
 mzML has no notion of an acquisition *channel*. The channels are inferred,
 and inferred from the order of acquisition rather than only from the
 properties of the scans: a method can have two experiments that agree on MS
@@ -96,6 +131,62 @@ the experiment. The file this was developed against is a cycle of 44 run
 44 × 339 + 37 × 238 = 23,722 spectra. A cycle has to repeat at least four
 times to be believed; data-dependent acquisition has no cycle and falls back
 to the scan properties.
+
+The **run's** total ion chromatogram follows the same answer. Where there is
+a cycle, the experiments of one period are added cycle by cycle, because
+that is what the instrument reports — 577 points for those 23,722 spectra,
+not 23,722. Where there is no cycle, it is one point per spectrum, which is
+what a data-dependent run's own software draws. Nothing else will do: a real
+Thermo direct infusion stepping its isolation window across the precursor in
+0.02 Da increments has 164 spectra and 82 inferred channels of one, two and
+five scans, and grouping those by how many scans each had — the rule that
+stood before — gave the run **eight points for 164 spectra**. The total was
+right and the shape was fiction, and the shape is exactly what
+[[direct-infusion]] reads to decide what a sample is.
+
+## Infusions from mzML
+
+An infusion from another instrument goes through the whole of
+[[direct-infusion]] — detection, the average of the run, [[lipid-maps]], the
+[[spectral-library]], the [[infusion-report]] — the same as a `.wiff`. The
+verdict reads chromatograms and never a spectrum, so it cannot depend on the
+format at all.
+
+Checked end to end on one real ZenoTOF 7600 infusion of cholic acid-d4,
+read three ways: from the `.wiff`, from the mzML this program exports from
+it, and from that mzML re-written the way ProteoWizard writes a Thermo
+`.raw` — Thermo scan ids, times in seconds, an isolation window, a charge
+state, `beam-type collision-induced dissociation`, and nothing at all saying
+which experiment a scan belongs to. All three give **one product-ion
+channel**, precursor 430.34 at 22 eV, 146 scans over 0.61 min, both flatness
+figures **1.0000**, an averaged spectrum whose base peak is 377.3018 at
+9,618.10 counts and whose total is 360,596.6986, **424** centroids, **42**
+peaks above the noise share, the precursor surviving at 430.3489 and 9,415
+counts, and the formula explaining **8 of 56 predicted ions and 63.63%** of
+the spectrum. Three differences, all of them the file rather than the
+reader:
+
+| | `.wiff` | its mzML | Thermo-shaped mzML |
+|---|---|---|---|
+| channel name | `TOF PI` | `TOF PI` | `MS2` |
+| activation | *(not carried)* | collision-induced dissociation | beam-type collision-induced dissociation |
+| points in the averaged spectrum | 289,103 | 221,847 | 221,847 |
+
+The name is the acquisition method's, which mzML has nowhere to put — so
+this program's own export keeps it in a parameter of its own and anybody
+else's file is described by its MS level. The point count is the stripped
+zeros: same masses wherever anything was measured, and the zeros put back
+when the spectrum is drawn.
+
+Two things a converted infusion can still be refused for, and both are the
+acquisition rather than the format. A run of fewer than 120 scans is *too
+short to tell* — a real Orbitrap infusion of 108 one-and-a-half-second scans
+is under it. And [[direct-infusion]]'s figures ask whether the ion current
+stays up, so an acquisition that deliberately sweeps — stepping the
+isolation window across the precursor — is read as chromatographic, because
+its ion current genuinely rises and falls: the real one measured above reads
+**0.0123** where 0.75 is needed. **Average whole run** gives the same view
+by hand on any sample.
 
 ## Writing mzML
 

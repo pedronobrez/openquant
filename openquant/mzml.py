@@ -44,6 +44,8 @@ from .wiff import ChannelInfo
 MS_LEVEL = "MS:1000511"
 SCAN_START_TIME = "MS:1000016"
 SELECTED_ION_MZ = "MS:1000744"
+CHARGE_STATE = "MS:1000041"
+ISOLATION_TARGET = "MS:1000827"
 COLLISION_ENERGY = "MS:1000045"
 SCAN_WINDOW_LOWER = "MS:1000501"
 SCAN_WINDOW_UPPER = "MS:1000500"
@@ -69,6 +71,24 @@ NUMPRESS = {
     "MS:1002312": "linear",
     "MS:1002313": "positive integer",
     "MS:1002314": "short logged float",
+}
+
+#: what sits inside `<activation>` besides the dissociation method itself.
+#: The element holds one term naming how the precursor was broken and any
+#: number of terms describing how hard — reading the first cvParam would give
+#: "collision energy" for a Thermo HCD scan, which names a number rather than
+#: a method. Everything not on this list is taken as the method, so a
+#: dissociation this program has never heard of still comes through by name
+#: instead of being dropped for not being recognised.
+NOT_A_DISSOCIATION = {
+    COLLISION_ENERGY,                   # collision energy
+    "MS:1000138",                       # normalized collision energy
+    "MS:1000509",                       # activation energy
+    "MS:1002679",                       # supplemental collision energy
+    # a supplemental activation is a second one applied on top of the first,
+    # and the first is the one that names the experiment
+    "MS:1000892",                       # supplemental collision-induced …
+    "MS:1002680",                       # supplemental beam-type CID
 }
 
 #: how close two precursor masses must be to be counted as the same channel.
@@ -174,6 +194,10 @@ class _ScanHeader:
     rt: float                       # minutes
     precursor: float | None
     collision_energy: float | None
+    #: the dissociation named in `<activation>`, "" when the file names none
+    activation: str
+    #: the precursor's charge from `selectedIon`, None when not stated
+    charge: int | None
     low: float
     high: float
     polarity: str
@@ -192,7 +216,12 @@ class _ScanHeader:
                      if self.precursor is not None else None)
         return (self.ms_level, precursor,
                 round(self.collision_energy, 2) if self.collision_energy else None,
-                round(self.low, 1), round(self.high, 1), self.polarity)
+                round(self.low, 1), round(self.high, 1), self.polarity,
+                # a method that runs the same precursor twice, once by CID and
+                # once by HCD, has two entries and not one. The charge is not
+                # here: data-dependent acquisition assigns it per precursor,
+                # so it separates scans that came from the same entry.
+                self.activation)
 
 
 class MzmlChannel:
@@ -204,10 +233,16 @@ class MzmlChannel:
     """
 
     def __init__(self, sample: "MzmlSample", index: int,
-                 headers: list[_ScanHeader]):
+                 headers: list[_ScanHeader], period: int | None = None):
         self._sample = sample
         self._headers = headers
         self.index = index
+        #: which period of the acquisition's cycle this channel belongs to,
+        #: or None when the scans were grouped by their properties because
+        #: no cycle was found. `MzmlSample.tic` needs it: only channels of
+        #: one period are measured cycle by cycle and may be added up that
+        #: way. See `acquisition_cycles`.
+        self.period = period
         # cached here rather than with lru_cache on the method: that keeps one
         # instance alive for the life of the process, and with maxsize=1 it
         # caches nothing at all when the caller walks 81 channels in turn
@@ -232,6 +267,8 @@ class MzmlChannel:
             end_mass=first.high,
             n_scans=len(self._headers),
             collision_energy=first.collision_energy,
+            activation=first.activation,
+            charge=first.charge,
         )
 
     # -- chromatograms -------------------------------------------------------- #
@@ -336,10 +373,31 @@ class MzmlChannel:
         """
         The average spectrum over a time range.
 
-        Averaging profile spectra means putting them on a common mass axis
-        first. The axis used is the union of the masses actually measured,
-        which keeps every peak the instrument saw; a fixed bin width would
-        move them.
+        The axis is the union of the masses actually measured, which keeps
+        every peak the instrument saw; a fixed bin width would move them. On
+        that axis every scan contributes **only at the masses it measured**,
+        and nothing anywhere else.
+
+        That last sentence is the whole of this method and it was got wrong
+        first. The original put each scan on the common axis with
+        `np.interp`, which is the natural thing to write and is an invention:
+        a profile spectrum arrives with its zero points stripped out, so
+        between two peaks a scan has no points at all, and interpolating it
+        draws a straight line from the end of one peak to the start of the
+        next — signal at every mass in between, in a stretch where the
+        instrument reported nothing. Measured against SCIEX's own averaging
+        of the same 146 scans, over the same 221,847-point axis: the apex
+        heights agreed, but 220,222 of the 221,847 points came back higher
+        and the spectrum totalled **3.31 times** what the vendor's did, an
+        extra 834,025 counts. Centroiding it gave 670 sticks where the
+        vendor's average gives 424.
+
+        Adding each scan up where it was measured instead reproduces SCIEX's
+        averaged spectrum **exactly** — same 221,847 masses, same total to
+        ten figures, largest difference at any point 0.0, cosine 1.00000000.
+        That is the rule the vendor uses, arrived at by measuring rather than
+        by reasoning about it, and it is right for a centroided file too,
+        where interpolating between two sticks is worse still.
         """
         lo, hi = sorted((float(rt_start), float(rt_end)))
         chosen = [h for h in self._headers if lo <= h.rt <= hi]
@@ -350,14 +408,13 @@ class MzmlChannel:
             return arrays["mz"], arrays["intensity"]
 
         parts = [self._read(h) for h in chosen]
-        axis = np.unique(np.concatenate([p["mz"] for p in parts]))
-        if axis.size == 0:
+        masses = np.concatenate([p["mz"] for p in parts])
+        if masses.size == 0:
             return np.zeros(0), np.zeros(0)
-        total = np.zeros(axis.size, dtype=float)
-        for part in parts:
-            if part["mz"].size:
-                total += np.interp(axis, part["mz"], part["intensity"],
-                                   left=0.0, right=0.0)
+        heights = np.concatenate([p["intensity"] for p in parts])
+        # one pass: the distinct masses, and where each point went
+        axis, where = np.unique(masses, return_inverse=True)
+        total = np.bincount(where, weights=heights, minlength=axis.size)
         return axis, total / len(parts)
 
     def parameters(self) -> dict[str, str]:
@@ -369,8 +426,12 @@ class MzmlChannel:
         }
         if first.precursor is not None:
             out["Precursor"] = f"{first.precursor:.4f}"
+        if first.charge is not None:
+            out["Charge"] = str(first.charge)
         if first.collision_energy is not None:
             out["Collision energy"] = f"{first.collision_energy:g}"
+        if first.activation:
+            out["Activation"] = first.activation
         out["Spectrum type"] = "centroid" if first.centroided else "profile"
         return out
 
@@ -429,29 +490,57 @@ class MzmlSample:
         ion chromatogram has 577. That is not a chromatogram, it is a comb.
 
         A method runs its experiments in periods, and every experiment of a
-        period has the same number of cycles. Grouping the channels by that
-        count recovers the periods, and summing a group cycle by cycle at the
-        times of its first experiment gives back exactly what SCIEX reports:
-        for the acquisition this was checked against, two periods of 339 and
-        238 cycles, and 577 points.
+        period has the same number of cycles. Summing a period cycle by cycle
+        at the times of its first experiment gives back exactly what SCIEX
+        reports: for the acquisition this was checked against, two periods of
+        339 and 238 cycles, and 577 points.
+
+        **Only where there is a cycle.** This used to recover the periods by
+        grouping the channels on how many scans each had, which is the same
+        thing for a scheduled method and nonsense for anything else. On a
+        real Thermo direct-infusion acquisition that steps its isolation
+        window across the precursor — 164 spectra, no repeating order, 82
+        inferred channels of one, two and five scans each — the three
+        distinct scan counts became three "periods", and the run's total ion
+        chromatogram came back as **8 points for 164 spectra**, every
+        channel's signal piled onto whichever channel of that length happened
+        to be first. The total was right and the shape was fiction, and
+        `infusion.is_infusion` reads exactly that shape.
+
+        So the period comes from `acquisition_cycles`, which is the only
+        thing that knows whether there is a cycle at all. A channel it could
+        not place is a channel of an acquisition with no repeating order, and
+        there the run's chromatogram is one point per spectrum — which is
+        what a data-dependent run's own software draws.
         """
         if self._tic is not None:
             return self._tic
         if not self.channels:
             return np.zeros(0), np.zeros(0)
         periods: dict[int, list] = {}
+        axes, totals = [], []
         for channel in self.channels:
             times, values = channel.tic()
-            periods.setdefault(times.size, []).append((times, values))
+            if channel.period is None:
+                # no cycle: every scan of it stands on its own time
+                axes.append(times)
+                totals.append(values)
+            else:
+                periods.setdefault(channel.period, []).append((times, values))
 
-        axes, totals = [], []
         for members in periods.values():
-            axis = members[0][0]
+            # an acquisition stopped part way through a cycle leaves the
+            # experiments of its last one a scan longer than the rest, so the
+            # axis is the longest member's and a short one adds nothing to
+            # the points it does not reach
+            axis = max((times for times, _values in members), key=len)
             total = np.zeros(axis.size, dtype=float)
             for _times, values in members:
-                total += values
+                total[:values.size] += values
             axes.append(axis)
             totals.append(total)
+        if not axes:
+            return np.zeros(0), np.zeros(0)
         axis = np.concatenate(axes)
         total = np.concatenate(totals)
         order = np.argsort(axis, kind="stable")
@@ -529,34 +618,39 @@ class MzmlFile:
     @staticmethod
     def _read_instrument(head: bytes) -> str:
         """
-        The instrument model, written two different ways in the wild.
+        The instrument model, written three different ways in the wild.
 
         A vendor converter names the exact model as its own CV term and leaves
         the value empty — "TripleTOF 6600", accession MS:1000932. A generic
         writer uses the parent term "instrument model" and puts the model in
         the value. Reading only one convention leaves half the files saying
         "unknown".
+
+        The third is the one ProteoWizard writes from a Thermo `.raw`, and it
+        is not a variant of the term at all: the model goes in a
+        `referenceableParamGroup` named `CommonInstrumentParams`, and each
+        `instrumentConfiguration` carries only a `referenceableParamGroupRef`
+        pointing at it. An mzML built that way has no cvParam inside the
+        configuration to read, and both real Thermo files measured here —
+        an LTQ Orbitrap Elite infusion and ProteoWizard's own LTQ FT example
+        — came back "unknown" until the reference was followed. So the groups
+        are read first and a `ref` resolves through them.
         """
+        groups = _param_groups(head)
         block = _between(head, b"<instrumentConfiguration",
                          b"</instrumentConfigurationList>")
         if not block:
             return ""
+        for match in re.finditer(rb"<referenceableParamGroupRef[^>]*/?>", block):
+            name = _attribute(match.group(0).decode("utf-8", "replace"), "ref")
+            if name in groups and groups[name]:
+                return groups[name]
         # stop at the component list: its cvParams describe the source and the
         # detector, not the instrument
         cut = block.find(b"<componentList")
         if cut > 0:
             block = block[:cut]
-        first_named = ""
-        for match in re.finditer(rb"<cvParam[^>]*/?>", block):
-            text = match.group(0).decode("utf-8", "replace")
-            accession = _attribute(text, "accession")
-            name = _attribute(text, "name")
-            value = _attribute(text, "value")
-            if accession == "MS:1000031" and value:
-                return value
-            if name and not value and not first_named:
-                first_named = name
-        return first_named
+        return _model_in(block)
 
     # -- the scan index --------------------------------------------------------- #
     def _read_scan_headers(self) -> list[_ScanHeader]:
@@ -584,8 +678,16 @@ class MzmlFile:
     def _header_of(self, element, index: int, start: int, stop: int) -> _ScanHeader:
         params = _params(element)
         rt = _minutes(element)
+        # `selected ion m/z` is what the instrument decided to fragment and is
+        # the number to prefer. Some converters write only the isolation
+        # window, and a channel with no precursor at all would be read as a
+        # survey scan — so the window's centre stands in where there is one,
+        # rather than the scan becoming MS1 by omission.
         precursor = _float_or_none(params.get(SELECTED_ION_MZ))
+        if precursor is None:
+            precursor = _float_or_none(params.get(ISOLATION_TARGET))
         ce = _float_or_none(params.get(COLLISION_ENERGY))
+        charge = _float_or_none(params.get(CHARGE_STATE))
         low = _float_or_none(params.get(SCAN_WINDOW_LOWER))
         high = _float_or_none(params.get(SCAN_WINDOW_UPPER))
         experiment = params.get(EXPERIMENT_PARAM)
@@ -597,6 +699,8 @@ class MzmlFile:
             rt=rt,
             precursor=precursor,
             collision_energy=ce,
+            activation=_activation(element),
+            charge=int(charge) if charge is not None else None,
             low=low if low is not None else 0.0,
             high=high if high is not None else 0.0,
             polarity="Negative" if NEGATIVE_SCAN in params else "Positive",
@@ -647,13 +751,15 @@ class MzmlFile:
         """
         cycles = acquisition_cycles([h.key for h in self.headers])
         grouped: dict[tuple, list[_ScanHeader]] = {}
+        periods: dict[tuple, int | None] = {}
         # strict: one position per spectrum, and a mismatch would silently
         # drop the scans past the end of the shorter list
         for position, header in zip(cycles, self.headers, strict=True):
             key = header.key if position is None else position
             grouped.setdefault(key, []).append(header)
-        return [MzmlChannel(sample, index, group)
-                for index, group in enumerate(grouped.values())]
+            periods.setdefault(key, position[0] if position is not None else None)
+        return [MzmlChannel(sample, index, group, periods[key])
+                for index, (key, group) in enumerate(grouped.items())]
 
     # -- the same surface as WiffFile -------------------------------------------- #
     @property
@@ -746,12 +852,101 @@ def _attribute(text: str, name: str) -> str:
     return match.group(1) if match else ""
 
 
+#: cvParams that turn up beside the model in an instrument's parameter group
+#: and are not the model. The serial number is the one that matters: it is
+#: written with a value, like the generic "instrument model" term, and
+#: reading it would name every LTQ Orbitrap Elite "SN05311B".
+NOT_A_MODEL = {
+    "MS:1000529",                       # instrument serial number
+    "MS:1000032",                       # customization
+    "MS:1000031",                       # instrument model, handled by name
+}
+
+
+def _model_in(block: bytes) -> str:
+    """
+    The instrument model named in a stretch of mzML, by either convention.
+
+    A vendor converter names the exact model as its own CV term with an empty
+    value; a generic writer uses the parent term MS:1000031 and puts the
+    model in the value.
+    """
+    first_named = ""
+    for match in re.finditer(rb"<cvParam[^>]*/?>", block):
+        text = match.group(0).decode("utf-8", "replace")
+        accession = _attribute(text, "accession")
+        name = _attribute(text, "name")
+        value = _attribute(text, "value")
+        if accession == "MS:1000031" and value:
+            return value
+        if (name and not value and not first_named
+                and accession not in NOT_A_MODEL):
+            first_named = name
+    return first_named
+
+
+def _param_groups(head: bytes) -> dict[str, str]:
+    """
+    The instrument model each `referenceableParamGroup` names, by its id.
+
+    ProteoWizard writes a Thermo file this way as a rule: one group called
+    `CommonInstrumentParams` holding the model and the serial number, and
+    every `instrumentConfiguration` pointing at it and holding nothing of its
+    own.
+    """
+    groups: dict[str, str] = {}
+    block = _between(head, b"<referenceableParamGroupList",
+                     b"</referenceableParamGroupList>")
+    if not block:
+        return groups
+    for match in re.finditer(
+            rb"<referenceableParamGroup\s[^>]*>(.*?)</referenceableParamGroup>",
+            block, re.DOTALL):
+        identifier = _attribute(match.group(0)[:match.group(0).find(b">")]
+                                .decode("utf-8", "replace"), "id")
+        if identifier:
+            groups[identifier] = _model_in(match.group(1))
+    return groups
+
+
 def _between(data: bytes, opening: bytes, closing: bytes) -> bytes:
     start = data.find(opening)
     if start < 0:
         return b""
     stop = data.find(closing, start)
     return data[start:stop] if stop > 0 else data[start:]
+
+
+def _activation(element) -> str:
+    """
+    How the precursor was broken, in the file's own words.
+
+    mzML says so in `<activation>`, and it is the one thing about a product
+    ion scan that a collision energy cannot stand in for: 22 eV of beam-type
+    CID and 22 eV of electron-transfer dissociation are different experiments
+    that give different spectra of the same compound. A `.wiff` does not
+    carry it — Clearcore2 exposes `CollisionEnergy` and nothing that names
+    the method — so this is a place where the open format says more than the
+    vendor's, and the field is empty rather than guessed on that side.
+
+    The element holds the method and any number of energies; the energies are
+    named in `NOT_A_DISSOCIATION` and everything else is taken as the method,
+    so a term this program has never seen comes through by name instead of
+    being dropped for not being recognised.
+    """
+    for child in element.iter():
+        if _local(child.tag) != "activation":
+            continue
+        for param in child:
+            if _local(param.tag) != "cvParam":
+                continue
+            if param.get("accession") in NOT_A_DISSOCIATION:
+                continue
+            name = (param.get("name") or "").strip()
+            if name:
+                return name
+        return ""
+    return ""
 
 
 def _float_or_none(value) -> float | None:
@@ -860,6 +1055,30 @@ def _binary_array(values: np.ndarray, accession: str, name: str,
         + f"<binary>{encoded}</binary>"
         + "</binaryDataArray>"
     )
+
+
+#: the accession to write back for a dissociation read in by name. The reader
+#: keeps whatever term the file used, including one not on this list; writing
+#: that back needs an accession, and MS:1000044 is the parent term every
+#: dissociation is a kind of — a truthful "some dissociation, named here"
+#: rather than a specific method this program made up.
+_ACTIVATION_ACCESSIONS = {
+    "collision-induced dissociation": "MS:1000133",
+    "beam-type collision-induced dissociation": "MS:1000422",
+    "trap-type collision-induced dissociation": "MS:1002472",
+    "higher energy beam-type collision-induced dissociation": "MS:1002481",
+    "electron transfer dissociation": "MS:1000598",
+    "electron capture dissociation": "MS:1000250",
+    "electron activated dissociation": "MS:1003294",
+    "photodissociation": "MS:1000435",
+    "in-source collision-induced dissociation": "MS:1001880",
+    "pulsed q dissociation": "MS:1000599",
+    "surface-induced dissociation": "MS:1000435",
+}
+
+
+def _activation_accession(name: str) -> str:
+    return _ACTIVATION_ACCESSIONS.get(name, "MS:1000044")
 
 
 def write_mzml(sample, path: str | os.PathLike, compress: bool = True,
@@ -993,9 +1212,18 @@ def _spectrum_xml(index: int, identifier: str, channel, rt: float,
         parts.append(_cv(SELECTED_ION_MZ, "selected ion m/z",
                          f"{info.precursor:.6f}", unit="MS:1000040",
                          unit_name="m/z"))
+        if info.charge is not None:
+            parts.append(_cv(CHARGE_STATE, "charge state", int(info.charge)))
         parts.append("</selectedIon></selectedIonList>")
         parts.append("<activation>")
-        parts.append(_cv("MS:1000133", "collision-induced dissociation"))
+        # what the source said, where it said anything. A `.wiff` says
+        # nothing — Clearcore2 exposes the energy and not the method — and
+        # collision-induced dissociation is what a SCIEX product-ion
+        # experiment is, so that stands where the source is silent. An mzML
+        # read in and written back out keeps the term it arrived with.
+        parts.append(_cv(_activation_accession(info.activation) if info.activation
+                         else "MS:1000133",
+                         info.activation or "collision-induced dissociation"))
         if info.collision_energy is not None:
             parts.append(_cv(COLLISION_ENERGY, "collision energy",
                              f"{info.collision_energy:g}", unit="UO:0000266",

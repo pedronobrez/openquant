@@ -87,16 +87,16 @@ ou não algo a mostrar.
 
 Medido em nove infusões de ácidos biliares em um ZenoTOF, a partir do código
 no macOS, com as três corridas CID como biblioteca própria e as três fórmulas
-como CSV de componentes: **42 s** para a pasta inteira — nove arquivos lidos
-e um PDF de 56 páginas escrito, duas de capa e 54 de seções — com **1,1 GB**
-de pico de memória residente (três execuções: 42,4, 44,6 e 49,4 s, 1,03, 1,15
-e 1,13 GB), e `--per-compound` quatro documentos das mesmas 56 páginas, duas
-delas a capa e as outras 54 um documento por composto. Escritas sem capa, as
-mesmas nove seções dão 54 páginas, de modo que a capa custa exatamente as
+como CSV de componentes: **31 s** para a pasta inteira — nove arquivos lidos
+e um PDF de 58 páginas escrito, duas de capa e 56 de seções — com **1,4 GB**
+de pico de memória residente (duas execuções: 30,8 e 31,5 s, 1,42 e 1,40 GB),
+e `--per-compound` quatro documentos das mesmas 58 páginas, duas
+delas a capa e as outras 56 um documento por composto. Escritas sem capa, as
+mesmas nove seções dão 56 páginas, de modo que a capa custa exatamente as
 duas que ela é. Os segundos são o único número
 aqui que não é do programa: a mesma execução sobre os mesmos arquivos já
 levou de 27 s numa máquina ociosa a 255 s numa ocupada. O que é estável é o
-que ela fez — nove arquivos lidos, nenhum excluído, 56 páginas — e o que ela
+que ela fez — nove arquivos lidos, nenhum excluído, 58 páginas — e o que ela
 manteve na memória. Nada foi excluído:
 todos os nove leem como infusões, inclusive as duas aquisições `_TESTEARTIGO`,
 cujas linhas dizem o que há de errado com elas em vez de deixá-las de fora. A

@@ -433,13 +433,13 @@ OpenQuant --infusion-report ~/dados/acidos --out ~/relatorios/acidos.pdf \
 
 A pasta inteira pela linha de comando, com as três corridas CID como
 biblioteca própria e as três fórmulas como CSV de componentes: **9 arquivos
-lidos, nada excluído, um PDF de 56 páginas** — duas de capa e 54 de seções —
-em **42 s**, com 1,1 GB de pico de memória; `--per-compound` dá quatro
-documentos, a capa e um por composto, as mesmas 56 páginas. Escritas sem
-capa, as mesmas nove seções dão 54, de modo que a capa custa exatamente as
+lidos, nada excluído, um PDF de 58 páginas** — duas de capa e 56 de seções —
+em **31 s**, com 1,4 GB de pico de memória; `--per-compound` dá quatro
+documentos, a capa e um por composto, as mesmas 58 páginas. Escritas sem
+capa, as mesmas nove seções dão 56, de modo que a capa custa exatamente as
 duas que ela é. Os segundos são o único número aqui que não é do programa —
-três execuções levaram 42, 45 e 49 s numa máquina fazendo outro trabalho
-também. O que é estável é o que ela fez.
+a mesma execução já levou de 27 s numa máquina ociosa a 255 s numa ocupada.
+O que é estável é o que ela fez.
 Cada linha é
 a que a aba Infusions mediu com os nove arquivos abertos — 2 de 56 íons sob
 CID e 8 de 56 sob EAD para o CA-d4, 29 e 6 e 61 contra os registros próprios,
@@ -521,7 +521,7 @@ que a frase as conta em vez de concluir a partir delas. E **2 had nothing to
 predict from** é o denominador mantido honesto: uma infusão para a qual nada
 foi previsto não é contada como uma que não achou nada.
 
-A capa deu **duas páginas** das 56 da pasta — a tabela de nove linhas ocupa a
+A capa deu **duas páginas** das 58 da pasta — a tabela de nove linhas ocupa a
 primeira e um pouco da segunda — e leva **0,2 s** sozinha: ela é escrita a
 partir das linhas que a execução já fez, e não lê arquivo nenhum.
 

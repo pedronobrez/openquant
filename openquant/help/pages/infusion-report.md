@@ -422,12 +422,12 @@ OpenQuant --infusion-report ~/data/bile-acids --out ~/reports/bile.pdf \
 
 The whole folder from the command line, with the three CID runs as the own
 library and the three formulas as a components CSV: **9 files read, nothing
-skipped, one 56-page PDF** — two of cover and 54 of sections — in **42 s** at
-1.1 GB peak memory; `--per-compound` gives four documents, the cover and one
-per compound, the same 56 pages. Written without a cover the same nine
-sections come to 54, so the cover costs the two it is. The seconds are the
-one figure here that is not the program's — three runs took 42, 45 and 49 s
-on a machine doing other work as well. What is stable is what
+skipped, one 58-page PDF** — two of cover and 56 of sections — in **31 s** at
+1.4 GB peak memory; `--per-compound` gives four documents, the cover and one
+per compound, the same 58 pages. Written without a cover the same nine
+sections come to 56, so the cover costs the two it is. The seconds are the
+one figure here that is not the program's — the same run has taken anything
+from 27 s on an idle machine to 255 s on a busy one. What is stable is what
 it did. Every row is the one the Infusions
 tab measured with the nine files open — 2 of 56 ions under CID and 8 of 56
 under EAD for CA-d4, 29 and 6 and 61 against the own records, +14.6 to
@@ -509,7 +509,7 @@ more, which is why the sentence counts them rather than concluding from them.
 And **2 had nothing to predict from** is the denominator kept honest: an
 infusion nothing was predicted for is not counted as one that found nothing.
 
-The cover came to **two pages** of the folder's 56 — the table of nine rows
+The cover came to **two pages** of the folder's 58 — the table of nine rows
 fills the first and a little of the second — and takes **0.2 s** on its own:
 it is written from the rows the run has already made, and reads no file.
 

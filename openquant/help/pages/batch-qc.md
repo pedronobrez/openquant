@@ -140,3 +140,9 @@ first injection to the last?
 The [[report]]'s *Batch quality* section carries the charts' verdicts, the
 index, the drift, and the precision table, with the rules stated in the
 section's own words.
+
+The same arithmetic answers a slower question elsewhere. A standard infused
+to verify a vial leaves one record in your own library each time, and
+[[standard-history]] charts those records over the days they were acquired
+— the same centre, the same two conditions before a point is out, and the
+same trend rule, over records instead of injections.

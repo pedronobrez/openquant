@@ -127,7 +127,7 @@ INDEX: tuple[tuple[str, tuple[str, ...]], ...] = (
     )),
     ("Chemistry and annotation", (
         "mass-calculator", "formula-finder", "lipid-maps", "spectral-library",
-        "accurate-precursor",
+        "standard-history", "accurate-precursor",
     )),
     ("Samples", (
         "samples-workspace",

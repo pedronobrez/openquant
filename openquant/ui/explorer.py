@@ -1816,6 +1816,10 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         if self.active_ref is not None:
             context["file"] = self.active_ref.filename
             context["sample"] = self.active_ref.alias
+            # the acquisition's own date, for the record's Acquired field:
+            # the day this was measured, not the day it is being written
+            context["acquired"] = str(
+                getattr(self.active_ref.sample, "acquisition_time", "") or "")
             channel = self.active_ref.channel
             if channel is not None:
                 info = channel.info

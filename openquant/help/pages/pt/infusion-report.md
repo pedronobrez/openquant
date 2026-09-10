@@ -228,3 +228,11 @@ de uma corrida bate com essa corrida em 100, o que prova que o arquivo foi
 escrito e lido de volta; os números que significam alguma coisa são 6, 29, 33
 e 61 — o mesmo composto, o mesmo frasco, sob outra ativação, e um registro não
 viaja entre elas.
+
+## O mesmo padrão, no mês que vem
+
+Este relatório é uma verificação. O registro que ele nomeia é escrito na sua
+própria biblioteca, e o [[standard-history]] lê os registros acumulados de
+um composto como um gráfico de controle: o cosseno contra o primeiro
+registro, o pico base em ppm a partir dele, e a altura do pico base, ao
+longo dos dias em que foram adquiridos.

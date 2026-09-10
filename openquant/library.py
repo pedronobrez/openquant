@@ -595,6 +595,70 @@ OWN_MAX_PEAKS = 200
 #: them. `Num Peaks` is last because `parse_msp` reads what follows as peaks
 _HEAD_FIELDS = ("PrecursorMZ", "Precursor_type", "Formula")
 
+#: when the spectrum was acquired, as the file records it — not when the
+#: record was made. The comment already carried "added <today>", and a
+#: library of one's own read back as a history needs the day the instrument
+#: measured on: records written on one afternoon from a folder acquired over
+#: three months are three months of history, and the day they were typed in
+#: says nothing about the standard.
+ACQUIRED_FIELD = "Acquired"
+
+#: the base peak's height in the counts the instrument reported. Every
+#: library format holds intensities relative to the base peak, so the
+#: absolute size of the spectrum is lost the moment a record is written —
+#: and it is the one number that says whether the standard is still giving
+#: what it gave. It is written here, once, where the measurement is still to
+#: hand; a record made before this existed has none and says so.
+BASE_INTENSITY_FIELD = "Base_peak_intensity"
+
+#: what another exporter may spell those two under, matched whole and
+#: without regard to case, underscores or spaces
+_ACQUIRED_KEYS = frozenset({"acquired", "acquisitiondate", "acquisitiontime",
+                            "acquisitiondatetime", "date", "datetime",
+                            "creationdate"})
+_BASE_INTENSITY_KEYS = frozenset({"basepeakintensity", "baseintensity",
+                                  "basepeakheight"})
+
+
+def field_value(entry: LibraryEntry, keys) -> str:
+    """
+    The first of a record's fields whose name is one of `keys`, as written.
+
+    Field names vary by exporter exactly as they do in `parse_msp`, so the
+    comparison is on the name with its case, spaces and underscores taken
+    out — and on the whole name, never on what it contains: matching a
+    fragment of a name is how `Ion_source` comes back as a collision energy.
+    """
+    for key, value in (getattr(entry, "fields", None) or {}).items():
+        if str(key).strip().lower().replace("_", "").replace(" ", "") in keys:
+            text = str(value).strip()
+            if text:
+                return text
+    return ""
+
+
+def acquired_of(entry: LibraryEntry) -> str:
+    """When the spectrum was acquired, as the record carries it, or ""."""
+    return field_value(entry, _ACQUIRED_KEYS)
+
+
+def base_intensity_of(entry: LibraryEntry) -> float | None:
+    """
+    The base peak's absolute height, where the record carries one.
+
+    None means it was not recorded, which is not the same as zero: a record
+    written before the field existed, or by somebody else's exporter, cannot
+    say how big the spectrum was.
+    """
+    text = field_value(entry, _BASE_INTENSITY_KEYS)
+    found = _NUMBER.search(text)
+    if not found:
+        return None
+    try:
+        return float(found.group())
+    except ValueError:
+        return None
+
 
 def _one_line(value: str) -> str:
     """A field is one line: a newline inside it would end the record."""
@@ -617,7 +681,7 @@ def _write_mass(value: float) -> str:
 def entry_from_spectrum(name: str, mz, intensity, precursor: float | None = None,
                         precursor_type: str = "", formula: str = "",
                         collision_energy: float | None = None,
-                        comment: str = "",
+                        comment: str = "", acquired: str = "",
                         min_relative: float = OWN_MIN_RELATIVE,
                         max_peaks: int = OWN_MAX_PEAKS) -> LibraryEntry:
     """
@@ -635,6 +699,13 @@ def entry_from_spectrum(name: str, mz, intensity, precursor: float | None = None
     `max_peaks` of what survives is kept, strongest first. Intensities are
     stored relative to the base peak, as every library format holds them and
     as `parse_msp` reads them back.
+
+    Two fields go in beyond what the analyst types, because a record read
+    back later as a history of one standard needs them and nothing can
+    recover them afterwards: `Acquired`, the day the instrument measured on
+    rather than the day the record was made, and `Base_peak_intensity`, the
+    absolute height the relative peaks are shares of. See
+    `standard_history.py`, which reads both.
     """
     name = _one_line(name)
     if not name:
@@ -655,6 +726,12 @@ def entry_from_spectrum(name: str, mz, intensity, precursor: float | None = None
     fields: dict[str, str] = {}
     if collision_energy is not None:
         fields["Collision_energy"] = f"{float(collision_energy):g}"
+    if acquired:
+        fields[ACQUIRED_FIELD] = _one_line(acquired)
+    # written always, and from the spectrum rather than from an argument:
+    # the base peak's height is known here and nowhere afterwards, since
+    # what is stored is every peak as a share of it
+    fields[BASE_INTENSITY_FIELD] = f"{top:.6g}"
     if comment:
         fields["Comment"] = _one_line(comment)
     return LibraryEntry(

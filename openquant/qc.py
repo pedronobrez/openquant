@@ -178,6 +178,34 @@ def robust_centre(values: np.ndarray) -> tuple[float, float]:
 # one component across the run
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True)
+class Limits:
+    """
+    The floors a chart flags on, and the scale they are written in.
+
+    The defaults are this module's own constants, which is what a batch is
+    charted against; nothing about the rule changes when they are replaced.
+    What they exist for is the other kind of metric. A response is a size,
+    and a deviation from it is naturally a share of the centre — but a mass
+    is not: a base peak sitting a median of zero ppm from where the first
+    record put it has no percentage of itself, and a chart that asks for one
+    divides by zero at the first point. So `absolute` says the deviation is
+    a difference from the centre rather than a share of it, and `unit` says
+    what that difference is measured in, so a verdict can print it.
+    """
+
+    warn: float = WARN_PERCENT
+    out: float = OUT_PERCENT
+    always: float = ALWAYS_OUT_PERCENT
+    drift: float = DRIFT_PERCENT
+    unit: str = "%"
+    absolute: bool = False
+
+
+#: the ordinary case: a response, charted as a share of its own centre
+PERCENT = Limits()
+
+
+@dataclass(frozen=True)
 class Injection:
     """One point on a control chart."""
 
@@ -187,7 +215,11 @@ class Injection:
     when: str
     value: float
     sigmas: float | None = None
+    #: how far from the centre, in the units `limits` is written in: a
+    #: percentage of the centre for a response, and a plain difference
+    #: where the chart's scale is absolute
     percent: float | None = None
+    limits: Limits = PERCENT
 
     @property
     def out(self) -> bool:
@@ -195,11 +227,11 @@ class Injection:
         Unusual for this batch and far enough out to act on — or so far out
         that how usual it is for the batch stops being the question.
         """
-        if self.percent is not None and abs(self.percent) >= ALWAYS_OUT_PERCENT:
+        if self.percent is not None and abs(self.percent) >= self.limits.always:
             return True
         return (self.sigmas is not None and abs(self.sigmas) > OUTLIER_SIGMA
                 and self.percent is not None
-                and abs(self.percent) >= OUT_PERCENT)
+                and abs(self.percent) >= self.limits.out)
 
     @property
     def warned(self) -> bool:
@@ -208,7 +240,7 @@ class Injection:
             return False
         return (self.sigmas is not None and abs(self.sigmas) > WARN_SIGMA
                 and self.percent is not None
-                and abs(self.percent) >= WARN_PERCENT)
+                and abs(self.percent) >= self.limits.warn)
 
 
 @dataclass
@@ -228,6 +260,8 @@ class ControlChart:
     #: the response floor the method declares for this standard, when it
     #: does; the median has to clear it for the chart to flag anything
     floor: float | None = None
+    #: the floors this chart flags on, and the scale they are written in
+    limits: Limits = PERCENT
     note: str = ""
 
     @property
@@ -307,36 +341,50 @@ class ControlChart:
         """
         return (self.quantifiable
                 and self.drift is not None and self.correlation is not None
-                and abs(self.drift) >= DRIFT_PERCENT
+                and abs(self.drift) >= self.limits.drift
                 and abs(self.correlation) >= DRIFT_CORRELATION)
 
 
-def control_chart(component: str, points: list[tuple[SampleEntry, float]],
-                  is_internal_standard: bool = False,
-                  snr: float | None = None,
-                  floor: float | None = None) -> ControlChart:
+def chart_from_values(component: str,
+                      points: list[tuple[str, str, str, float]],
+                      is_internal_standard: bool = False,
+                      snr: float | None = None,
+                      floor: float | None = None,
+                      limits: Limits = PERCENT,
+                      minimum: int = MIN_INJECTIONS,
+                      unit_word: str = "injection",
+                      value_word: str = "response") -> ControlChart:
     """
-    A control chart for one component, from injections already in order.
+    A control chart from bare values: `(name, kind, when, value)`, in order.
 
-    `points` pairs each injection with the response measured in it, in the
-    order the instrument ran them; everything below is about what that
-    sequence does and does not license.
+    This is the arithmetic and nothing else — the robust centre, the two
+    conditions a point has to meet before it is out, the trend that needs
+    both a size and a correlation — with nothing in it that knows what a
+    sample is. `control_chart` below is the batch's way in;
+    `standard_history` charts library records through the same body rather
+    than writing the rules a second time, which is the only way two views
+    can be relied on to agree about what "out" means.
+
+    `minimum` is how many points are needed before any limit is drawn, and
+    `unit_word` and `value_word` are what a point and its value are called
+    in the notes — injections and responses for a batch, records and values
+    for a history.
     """
     chart = ControlChart(component=component, snr=snr, floor=floor,
+                         limits=limits,
                          is_internal_standard=is_internal_standard)
-    if len(points) < MIN_INJECTIONS:
-        chart.note = (f"only {len(points)} injection(s); "
-                      f"{MIN_INJECTIONS} are needed to say what is normal")
+    if len(points) < minimum:
+        chart.note = (f"only {len(points)} {unit_word}(s); "
+                      f"{minimum} are needed to say what is normal")
         chart.injections = [
-            Injection(order=index, sample=entry.name,
-                      sample_type=entry.sample_type,
-                      when=_stamp(entry), value=value)
-            for index, (entry, value) in enumerate(points, start=1)]
+            Injection(order=index, sample=name, sample_type=kind, when=when,
+                      value=value, limits=limits)
+            for index, (name, kind, when, value) in enumerate(points, start=1)]
         return chart
 
-    values = np.array([value for _, value in points], dtype=float)
+    values = np.array([value for *_rest, value in points], dtype=float)
     centre, sigma = robust_centre(values)
-    if centre == 0:
+    if centre == 0 and not limits.absolute:
         chart.note = "the response is zero through the run"
         return chart
 
@@ -355,21 +403,41 @@ def control_chart(component: str, points: list[tuple[SampleEntry, float]],
         # more than half the injections gave the same number to the last
         # digit, which is not a batch behaving well — it is a reason to
         # distrust the measurement rather than to flag every other point
-        chart.note = ("no spread to measure: over half the injections share "
-                      "one response")
+        chart.note = (f"no spread to measure: over half the {unit_word}s "
+                      f"share one {value_word}")
 
     order = np.arange(1, values.size + 1, dtype=float)
     chart.correlation = spearman(order, values)
     slope = float(np.polyfit(order, values, 1)[0])
-    chart.drift = slope * (values.size - 1) / centre * 100.0
+    across = slope * (values.size - 1)
+    chart.drift = across if limits.absolute else across / centre * 100.0
 
-    for index, (entry, value) in enumerate(points, start=1):
+    for index, (name, kind, when, value) in enumerate(points, start=1):
+        away = ((value - centre) if limits.absolute
+                else (value - centre) / centre * 100.0)
         chart.injections.append(Injection(
-            order=index, sample=entry.name, sample_type=entry.sample_type,
-            when=_stamp(entry), value=value,
+            order=index, sample=name, sample_type=kind, when=when, value=value,
             sigmas=(value - centre) / sigma if sigma > 0 else None,
-            percent=(value - centre) / centre * 100.0))
+            percent=away, limits=limits))
     return chart
+
+
+def control_chart(component: str, points: list[tuple[SampleEntry, float]],
+                  is_internal_standard: bool = False,
+                  snr: float | None = None,
+                  floor: float | None = None) -> ControlChart:
+    """
+    A control chart for one component, from injections already in order.
+
+    `points` pairs each injection with the response measured in it, in the
+    order the instrument ran them; everything below is about what that
+    sequence does and does not license.
+    """
+    return chart_from_values(
+        component,
+        [(entry.name, entry.sample_type, _stamp(entry), value)
+         for entry, value in points],
+        is_internal_standard=is_internal_standard, snr=snr, floor=floor)
 
 
 def _stamp(entry: SampleEntry) -> str:

@@ -222,3 +222,11 @@ made from a run matches that run at 100, which proves the file was written and
 read back; the figures that mean anything are 6, 29, 33 and 61 — the same
 compound, the same vial, under another activation, and a record does not
 travel between them.
+
+## The same standard, next month
+
+This report is one verification. The record it names is written into your
+own library, and [[standard-history]] reads the accumulated records of one
+compound back as a control chart: the cosine against the first record, the
+base peak's ppm from it, and the base peak's height, over the days they
+were acquired.

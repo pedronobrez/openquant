@@ -1042,6 +1042,22 @@ UV detector, is not implemented there) — untested on real Windows.
   compositions at 0.2–16.6 ppm, 0.02–0.07 s a file; every row carries how
   many other sub-formulas reach the same mass. The report carries the
   table; the Explain tab still shows bare masses.
+- **Two corrections are not two axes.** A record of one's own carries the
+  correction in force when it was written (`LibraryEntry.recalibrated_ppm`
+  from its comment) and a search is told the query's. The first version
+  called the difference between two corrections a gap between two axes —
+  measured on the three bile-acid standards, the pair whose corrections
+  were furthest apart (+2.0 against −7.5 ppm) agreed best of all, 2.0 ppm
+  per paired peak: each spectrum stands where its own lock masses put it.
+  What is apart by construction is a correction one side carries and the
+  other does not (`library.axis_gap`), which is what is warned on, what
+  *Re-search with the axis matched* removes, and what splits a
+  `standard_history` series past `PEAK_TOLERANCE_PPM`. Both corrected beats
+  every other combination on all four queries — the median gap per paired
+  peak falls from 9.8–13.0 ppm to 2.1–4.3 at 20 ppm, and at 5 ppm three of
+  four queries have no hit with neither side corrected. Matching is a
+  diagnosis, not a repair (61.0 → no hit onto an uncorrected record);
+  *Rewrite from files…* is the repair.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

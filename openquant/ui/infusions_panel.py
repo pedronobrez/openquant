@@ -46,6 +46,7 @@ OTHERS_COLUMN = SUMMARY_COLUMNS.index("Other infusions")
 ADDUCT_COLUMN = SUMMARY_COLUMNS.index("Adduct")
 ISOLATED_COLUMN = SUMMARY_COLUMNS.index("Isolated")
 COMPOUND_COLUMN = SUMMARY_COLUMNS.index("Compound")
+MARGIN_COLUMN = SUMMARY_COLUMNS.index("Margin")
 
 #: the setting the analyst's own library is remembered under, written by the
 #: Explorer's library panel. Read rather than owned: there is one library of
@@ -311,6 +312,18 @@ class InfusionsPanel(QtWidgets.QWidget):
             # other column explains it
             verdict = row.report.isolation
             return verdict.sentence() if verdict is not None else text
+        if column == MARGIN_COLUMN:
+            # the cell is `+16.2 pts vs PG 13:0/18:3 as [M+H]+`; the tooltip
+            # is the whole contrast, rival by rival, since a margin means
+            # nothing without the list it was taken over
+            result = row.report.margin
+            if result is None:
+                return text
+            lines = [result.sentence()]
+            lines += [f"{i.share * 100:.1f}%  {i.label}  {i.formula}  "
+                      f"{i.matched} of {i.predicted} ion(s)"
+                      for i in result.others[:10]]
+            return "\n".join(lines)
         if column == SCANS_COLUMN:
             # the cell is "464 of 473"; where the rest went is a sentence
             return row.report.scans_line()

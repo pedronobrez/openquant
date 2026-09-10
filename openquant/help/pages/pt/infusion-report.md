@@ -70,6 +70,21 @@ próprios átomos do íon precursor — com o erro desse palpite em ppm, e a
 frase embaixo da tabela diz quantos foram explicados de um jeito ou de
 outro. Veja *O que os picos não explicados podem ser*, mais abaixo.
 
+Sob os íons casados a seção traz **a margem** — o que este composto explica
+contra o que explica o melhor dos seus impostores mais próximos, sobre os
+mesmos picos e pela mesma aritmética:
+
+> Margin — CA-d4 explains 63.6%; the best of 17 neighbour(s)
+> (TG 17:1/18:4/18:4 as [M+2H]2+) explains 21.7%: a margin of 41.9 points
+
+Uma parcela não é evidência enquanto não houver algo pontuado ao lado dela, e
+abaixo de dez pontos a frase diz isso: o espectro não distinguiu os dois
+compostos, qualquer que tenha sido a parcela. A aba Infusions traz o mesmo
+número como uma coluna **Margin**, com a lista inteira de rivais na dica de
+ferramenta. [[lipid-maps]] expõe quais registros contam como impostores, por
+que um isômero de mesma fórmula não conta, e os onze espectros reais em que a
+linha de dez pontos foi medida.
+
 **A pureza isotópica**, quando o composto carrega marcações e um aduto foi
 identificado — o número do certificado que ninguém mede. O bloco é o próprio
 envelope: cada degrau de d0 a dn com a sua *m/z*, a sua intensidade, a sua

@@ -685,6 +685,16 @@ Pressione **Measure** antes de salvar um projeto e o projeto guarda estes
 números e a lista de picos média de cada linha, que é contra o que um dia
 posterior é comparado.
 
+## Qual energia manter
+
+Uma bandeja costuma ser o mesmo frasco borrifado em várias energias de
+colisão e, onde o instrumento tem as duas, sob mais de uma ativação. O
+**Recommend energies…** agrupa estas linhas por composto, ativação e energia
+e diz qual condição usar para identificação, qual para quantificação e qual
+para um registro de biblioteca — três perguntas diferentes, cada uma com os
+números em que foi decidida, e nunca uma energia que não foi adquirida. Veja
+a [[collision-energy]].
+
 ## De uma verificação para uma medida
 
 Este relatório pergunta se um frasco é o que o rótulo diz. O **Quantify…** na

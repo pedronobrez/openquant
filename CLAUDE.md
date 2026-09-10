@@ -95,6 +95,10 @@ openquant/
   purity.py       the d0…dn envelope solved; refuses itself without
                   satellites
   api.py          the stable Python surface, imported lazily
+  explain_any.py  one Explain: name, LIPID MAPS, formula and drawing
+                  ranked alike, every route listed
+  energy.py       which collision energy for identification, for
+                  quantitation, for a record — three answers with reasons
   audit.py        the trail of hand edits saved with the project
   labels.py       which peaks get a label: a budget per region of the
                   visible axis, shared by the pane and the print
@@ -990,6 +994,35 @@ UV detector, is not implemented there) — untested on real Windows.
   labelled formula. `tests/test_api.py` extracts the manual's three scripts
   from `python-api.md` and runs them on synthetic mzML; a path it cannot
   stand in for fails the test rather than being skipped.
+- **Asking every route at once is only honest if the routes are enumerated
+  alike.** `explain_any.explain_any` runs the name, LIPID MAPS, formula and
+  drawing routes on one spectrum and ranks them by explained share, ties
+  stated (a drawing beats a formula; a precursor inside the written
+  precision beats one outside; then route order), every loser still listed
+  with its adduct, share, `n of m` ions and ppm. Two cuts, three losses and
+  20 ppm are shared across the structure routes, because a route given
+  more cuts or a wider window wins a comparison it was handed. Measured on
+  four bile-acid infusions, 2.6–4.7 s each: the name route names the right
+  compound in all four and wins three at 92.0/87.3/90.6/92.2%; at 5 ppm it
+  wins one of four (those axes sit 4–7 ppm high). The one it loses is the
+  warning: a triacylglycerol read as `[M+2H]2+` explains 95.0% of CA-d4's
+  EAD spectrum from 4,030 predicted masses — hence the *Ions* column. The
+  label count is per route: PubChem's drawing places its four labels and
+  needs none, the component table's `C24H40O5` needs all four.
+- **Three purposes do not want the same collision energy, and the highest
+  explained share is a trap.** `energy.recommend` groups a tray's infusions
+  by compound, activation and energy and picks separately for
+  identification (most predicted ions *and* a precursor above
+  `MIN_INTENSITY`), for quantitation (the largest share on one fragment,
+  repeating within `qc.OUT_PERCENT` where sprayed twice) and for a library
+  record (the middle *position* among the energies, then the share). On
+  the nine bile-acid infusions EAD 22 eV takes all three for CA-d4 and
+  DCA-d4; TDCA-d4 splits — EAD 22 eV identifies it, 30 eV quantifies it at
+  63% of the intensity on 468.3071. The library rule takes the middle
+  first because the share is highest where the compound barely fragmented
+  (85.0% at EAD 12 eV against 63.6% at 22, the surviving precursor being
+  82% of that spectrum). Nothing between two measured energies is offered;
+  a row the method contradicts is shown, greyed, never recommended.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

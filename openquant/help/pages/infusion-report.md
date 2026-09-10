@@ -673,6 +673,16 @@ reference project saved, matched by compound and by conditions. Press
 every row's averaged peak list, which is what a later day is compared
 against.
 
+## Which energy to keep
+
+A tray is usually the same vial sprayed at several collision energies and,
+where the instrument has both, under more than one activation.
+**Recommend energies…** groups these rows by compound, activation and
+energy and says which condition to use for identification, which for
+quantitation and which for a library record — three different questions,
+each with the figures it was decided on, and never an energy that was not
+acquired. See [[collision-energy]].
+
 ## From a verification to a measurement
 
 This report asks whether a vial is what its label says. **Quantify…** on the

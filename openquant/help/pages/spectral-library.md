@@ -124,7 +124,71 @@ is read again straight away, so the new record can be searched for
 immediately — which is also the check that it was written in a form the
 parser reads back.
 
-### Measured
+### Measured on three infused standards
+
+The acquisitions this was written for: cholic acid-d4, deoxycholic acid-d4
+and taurodeoxycholic acid-d4, infused one at a time into a ZenoTOF 7600 in
+negative mode, product-ion scans, one channel each and no column. The
+[[direct-infusion]] verdict calls all of them infusions, so each record is
+the average of **every scan of the run** — 473, 473 and 257 of them, over
+1.98, 1.98 and 1.07 minutes — centroided:
+
+| | CA-d4 | DCA-d4 | TDCA-d4 |
+|---|---|---|---|
+| profile points in the average | 255,113 | 242,308 | 192,688 |
+| centroids | 811 | 1,059 | 455 |
+| at or above 1% of the base peak | 204 | 226 | 25 |
+| peaks in the record | 200 | 200 | 25 |
+| what bound it | the 200 ceiling | the 200 ceiling | the 1% floor |
+| base peak | 359.2870 | 361.3017 | 468.3072 |
+
+Three records, 8,144 bytes, written in under a second. Read back, all three
+returned with every field they were written with, the masses within
+5·10⁻⁶ Da and the relative intensities within 5·10⁻⁷ — the rounding of the
+text, and nothing else.
+
+Then each compound was **re-acquired with electron-activated dissociation at
+22 eV** and that average searched against the three records, which were
+written from collision-induced dissociation at 45, 40 and 30 eV. This is a
+harder question than the same channel of a different injection: the record
+and the query are not merely two measurements, they are two ways of breaking
+the molecule.
+
+| | CA-d4 | DCA-d4 | TDCA-d4 |
+|---|---|---|---|
+| its own record came first | yes | yes | yes |
+| its score | 29.2 | 33.3 | 61.5 |
+| its reverse score | 38.8 | 43.8 | 68.7 |
+| matched peaks | 22 of 200 | 19 of 200 | 8 of 25 |
+| the best *wrong* record | 14.1 | 14.0 | 10.3 |
+| Δ ppm to the recorded precursor | −23.2 | +0.0 | +0.0 |
+
+**A different compound does not match.** Searched against the other two
+records with no precursor filter, the best wrong score anywhere is 14.1 with
+a reverse of 31.2 — half to a sixth of what the compound's own record gives
+— and CA-d4's spectrum returns **no match at all** against TDCA-d4's record,
+fewer than two peaks in common. With the precursor filter the panel applies
+by default there was exactly one record in the ±0.02 Da window each time and
+it was the right one; the filter changes no score and no order here, only
+which records were scored at all. A search takes 0.1 – 1.6 ms.
+
+CA-d4's Δ of −23.2 ppm is the rule about written precision doing its work:
+the record says `430.35`, which is good to ±0.005 Da, and the channel that
+queried it says `430.34`. Both are the same ion written to two decimals.
+
+**A record is one energy, and one way of breaking the molecule.** The same
+CA-d4 spectrum re-acquired at 12 eV instead of 22, against the same
+CID record, scores **6.4 with a reverse of 21.3 on 8 matched peaks** — from
+29.2, 38.8 and 22 at 22 eV. Splitting the two causes apart: a record written
+from CA-d4's own EAD 22 eV average scores 100.0 against itself (which is the
+round trip, exact), **67.4** against its 12 eV average, and 29.1 with a
+reverse of 55.7 against the CID 45 eV average. So the change of energy costs
+about a third of the score and the change of activation costs most of the
+rest. The ranking survives all of it — the right record was first every
+time — but the number beside it does not travel between methods, and a
+threshold picked on one is not a threshold on another.
+
+### Measured on a sphingolipid batch
 
 On a real batch of product-ion acquisitions — 26 injections of a method
 whose 144 channels are one compound each, at its own collision energy,

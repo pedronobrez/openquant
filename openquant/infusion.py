@@ -17,6 +17,12 @@ The verdict is two figures of the same shape, and nothing else:
     the product-ion channel carrying the most signal, or the survey when the
     method has no product scan.
 
+That "maximum" is the **99th percentile** of the scans, not the largest of
+them. See *The spike that inverted the two populations* below: the largest
+scan is one scan, and on three of nine real infusions it was two to four
+times the median and dragged both figures to 0.002 – 0.006, under every
+chromatographic run measured.
+
 A peak is by definition narrow against the run it sits in, so a run with a
 peak in it spends most of its scans well under half the apex; a spray that
 merely drifts stays above it from the first scan to the last. Both have to be
@@ -28,29 +34,71 @@ statistic reads a spectrum, so the verdict costs one chromatogram per channel,
 works on a `.wiff` whose `.wiff.scan` is missing, and says the same thing
 about a file and about its mzML.
 
+The spike that inverted the two populations
+-------------------------------------------
+
+The first version of this module took the largest scan as the maximum, and
+was written with only the chromatographic population measured. When the nine
+bile-acid infusions were finally read, **three of the nine measured 0.0021,
+0.0039 and 0.0063 on both figures** — lower than every one of the thirty-nine
+chromatographic runs. The two populations were not merely overlapping, they
+were the wrong way round, and no value of `FLAT_FRACTION` separates them.
+
+The cause is one scan. All three carry a transient at scan index 1, 0.0084 min
+in, of 2.8 to 4.4 times the run's median total; `DCA-d4_TOFMSMS_Mix1` carries
+two more mid-run, at 1.08 and 1.10 min. Half of a spike is above everything
+else in the run, so a perfectly flat spray measured as though nothing in it
+ever reached half its own height. The statistic was wrong, not the threshold.
+
+So the reference is the **99th percentile** of the scans, `REFERENCE_PERCENTILE`,
+rather than the largest of them. The choice is measured, not assumed:
+
+| reference | infusions (9) | chromatographic (39) | margin |
+|---|---|---|---|
+| the largest scan | 0.0021 – 1.0000 | 0.0041 – 0.0984 | **−0.096**, inverted |
+| 99.5th percentile | 0.6385 – 1.0000 | 0.0061 – 0.0984 | +0.540 |
+| **99th percentile** | **0.9937 – 1.0000** | **0.0143 – 0.1148** | **+0.879** |
+| 95th percentile | 0.9937 – 1.0000 | 0.0714 – 0.2623 | +0.731 |
+| 90th percentile | 0.9937 – 1.0000 | 0.1148 – 0.4098 | +0.584 |
+
+(each figure the smaller of the two the verdict reads). 99.5 is not enough
+because `DCA-d4_TOFMSMS_Mix1`'s three spiked scans are 0.63% of its 473; the
+widest margin measured is 0.895 at the 99.2nd percentile and 99 is the round
+number next to it. Going lower costs margin from the other end, because
+setting aside a real peak's apex lifts the chromatographic figures too.
+
+**Below about a hundred scans the 99th percentile is the largest scan again**,
+so a single spike can still call a short infusion chromatographic. `MIN_SCANS`
+is 8, and this is a stated gap rather than a fixed one: the shortest infusion
+to hand has 146 scans, and the default whenever anything is unclear is "not an
+infusion", which is what the application did before this module existed.
+
 Measured
 --------
 
-Thirty-nine chromatographic acquisitions, everything to hand, read through
-`openquant.raw`:
+Forty-eight acquisitions, everything to hand, read through `openquant.raw`,
+with the reference at the 99th percentile:
 
 | acquisition set | n | `above_half` | `channel_above_half` |
 |---|---|---|---|
-| `260904_EICs_Isabela_*` — TripleTOF 5600, 21.4 min, 81 channels, MRM-HR | 5 | 0.016 – 0.043 | 0.025 – 0.088 |
-| `20.02.21_Esfing_Zeca_Unicamp_*` — TripleTOF 5600, 14.6 min, 144 channels | 26 | 0.033 – 0.213 | 0.016 – 0.295 |
-| `260406-Teste-*` — ZenoTOF 7600, 24.0 min, 25 channels, DIA | 8 | 0.012 – 0.267 | 0.004 – 0.010 |
+| `/Volumes/NOBRE/Cyborg/Bileomics/*` — ZenoTOF 7600, 0.6 – 2.0 min, product-ion infusions of bile-acid standards, negative | 9 | 0.9937 – 1.0000 | 0.9937 – 1.0000 |
+| `260904_EICs_Isabela_*` — TripleTOF 5600, 21.4 min, 81 channels, MRM-HR | 5 | 0.019 – 0.057 | 0.029 – 0.097 |
+| `20.02.21_Esfing_Zeca_Unicamp_*` — TripleTOF 5600, 14.6 min, 144 channels | 26 | 0.033 – 0.426 | 0.016 – 0.377 |
+| `260406-Teste-*` — ZenoTOF 7600, 24.0 min, 25 channels, DIA | 8 | 0.031 – 0.361 | 0.014 – 0.059 |
 
-The two runs with the least chromatography in them are the ones worth naming,
-and both are caught by the second figure rather than the first.
-`260406-Teste-Eq01` is a column equilibration with no injection at all —
-solvent spraying for 24 minutes, the nearest thing in the set to an infusion —
-and measures 0.267 on the sample total against 0.006 on its strongest channel.
-`20.02.21_Esfing_Zeca_Unicamp_08`, at 0.295 on its strongest channel, measures
-0.049 on the sample total. Across all thirty-nine, the smaller of the two
-figures never exceeds **0.098**, so `FLAT_FRACTION = 0.75` stands at nearly
-eight times the worst chromatographic case; an infusion, where the same ions
-enter the source from the first scan to the last, is expected at 0.95–1.00 on
-both.
+**Nothing is miscalled: 9 infusions and 39 chromatographic runs, 48 of 48.**
+The runs with the least chromatography in them are still caught by the second
+figure rather than the first. `260406-Teste-Eq01` is a column equilibration
+with no injection at all — solvent spraying for 24 minutes, the nearest thing
+in the set to an infusion — and measures 0.361 on the sample total against
+0.059 on its strongest channel. `20.02.21_Esfing_Zeca_Unicamp_08`, at 0.377 on
+its strongest channel, measures 0.049 on the sample total. Across the
+thirty-nine the smaller of the two figures never exceeds **0.1148**, and across
+the nine infusions it never falls below **0.9937**. `FLAT_FRACTION = 0.75`
+therefore sits 0.635 above the worst chromatographic run and 0.244 below the
+worst infusion, inside a gap of 0.879. The maximum-margin cut would be 0.554;
+0.75 is kept because it is already inside the gap, it is the figure the manual
+states, and moving it would change verdicts on nothing measured.
 
 Three other candidate rules were measured and are not used:
 
@@ -78,17 +126,11 @@ surprise — a flat trace gives `estimate_noise` nothing to measure, so
 detection falls back to `NOISE_FLOOR` and gates on absolute height — but it
 makes "no peak was detected" the wrong question to ask of an infusion.
 
-**Not measured: the infusion side.** The acquisitions this was written for
-(`/Volumes/NOBRE/Cyborg/Bileomics/*.wiff`, ZenoTOF 7600 product-ion scans of
-bile-acid standards) sit on a drive that was not mounted when this was
-written, so the figures above are one population and not two. What is claimed
-here is the margin on the chromatographic side, which is measured; the
-infusion side is reasoned from what an infusion is. Getting it wrong is cheap
-by design: the verdict only decides what the Explorer shows first, every
-channel and every range stays reachable by hand, `Average whole run` gives the
-same view on any sample, and the default whenever anything cannot be measured
-is "not an infusion", which is what the application did before this module
-existed.
+Getting the verdict wrong stays cheap by design: it only decides what the
+Explorer shows first, every channel and every range stays reachable by hand,
+`Average whole run` gives the same view on any sample, and the default
+whenever anything cannot be measured is "not an infusion", which is what the
+application did before this module existed.
 """
 
 from __future__ import annotations
@@ -99,9 +141,17 @@ from dataclasses import dataclass
 import numpy as np
 
 #: how much of a run has to sit at or above half its maximum total ion current
-#: before it is called flat. The worst chromatographic acquisition measured
-#: reached 0.098 on the smaller of the two figures.
+#: before it is called flat. Measured on both populations: the worst
+#: chromatographic acquisition reaches 0.1148 on the smaller of the two
+#: figures and the worst infusion 0.9937, so this sits inside a gap of 0.879.
 FLAT_FRACTION = 0.75
+
+#: the reference height every figure is taken against, as a percentile of the
+#: run's scans. **Not the largest scan**: one spray transient at 2.8–4.4 times
+#: the median put three of nine real infusions at 0.002–0.006 and turned the
+#: two populations the wrong way round. See the module docstring for the
+#: measurement behind this particular percentile.
+REFERENCE_PERCENTILE = 99.0
 
 #: below this there is not enough of a run to say anything about its shape
 MIN_SCANS = 8
@@ -118,7 +168,7 @@ class InfusionVerdict:
     #: the run from its first scan to its last, in minutes
     length_min: float = 0.0
     #: fraction of the sample's total ion chromatogram at or above half its
-    #: own maximum
+    #: own maximum — the `REFERENCE_PERCENTILE`-th scan, not the largest one
     above_half: float = 0.0
     #: the same on the channel the average would be shown from
     channel_above_half: float = 0.0
@@ -129,12 +179,22 @@ class InfusionVerdict:
         return self.infusion
 
 
-def above_half_fraction(y) -> float:
-    """The fraction of a trace sitting at or above half its own maximum."""
+def above_half_fraction(y, percentile: float = REFERENCE_PERCENTILE) -> float:
+    """
+    The fraction of a trace sitting at or above half its own maximum.
+
+    The maximum is the `percentile`-th of the scans rather than the largest
+    of them, because the largest is one scan and a spray transient is one
+    scan. Three of nine real infusions carry one, and read 0.002 – 0.006 when
+    the largest scan is the reference against 0.994 – 1.000 when the 99th
+    percentile is. Every scan is still counted; only the height they are
+    counted against changes.
+    """
     y = np.asarray(y, dtype=float)
     if y.size == 0:
         return 0.0
-    top = float(np.max(y))
+    top = float(np.percentile(y, percentile)) if percentile < 100 else float(
+        np.max(y))
     if top <= 0:
         return 0.0
     return float(np.mean(y >= 0.5 * top))
@@ -220,13 +280,15 @@ def is_infusion(sample) -> InfusionVerdict:
             True,
             f"the signal never falls away: {flat * 100:.0f}% of the run and "
             f"{channel_flat * 100:.0f}% of its strongest channel sit at or "
-            f"above half the maximum, over {length:.2f} min — an infusion",
+            f"above half the maximum (the {REFERENCE_PERCENTILE:g}th-percentile "
+            f"scan), over {length:.2f} min — an infusion",
             **figures)
     if flat < FLAT_FRACTION:
         return InfusionVerdict(
             False,
             f"only {flat * 100:.0f}% of the run is at or above half the "
-            f"maximum total ion current ({limit} would make it an infusion) "
+            f"maximum total ion current (the {REFERENCE_PERCENTILE:g}th-"
+            f"percentile scan), where {limit} would make it an infusion "
             f"— chromatographic",
             **figures)
     return InfusionVerdict(

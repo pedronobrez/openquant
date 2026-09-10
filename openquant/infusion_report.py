@@ -203,6 +203,10 @@ class InfusionReport:
     instrument: str = ""
     polarity: str = ""
     channel: str = ""
+    #: the experiment's own name — `TOF PI`, `TOF MS` — where `channel` is
+    #: the whole label with the precursor and the range in it. A table of
+    #: many needs the short one and the document's header the long one.
+    channel_name: str = ""
     #: the precursor as the method wrote it, to the decimals it was typed with
     written_precursor: float | None = None
     collision_energy: float | None = None
@@ -529,6 +533,7 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
     if info is not None:
         report.polarity = str(getattr(info, "polarity", "") or "")
         report.channel = info.label
+        report.channel_name = str(getattr(info, "name", "") or "")
         report.written_precursor = info.precursor
         report.collision_energy = info.collision_energy
         report.scans = int(info.n_scans)
@@ -699,15 +704,20 @@ def from_explorer(explorer, compound: str = "", others=(),
         measure_precursor=measure_precursor)
 
 
-def infusions_open(explorer) -> "list[tuple[SampleEntry, object]]":
+def infusions_open(source) -> "list[tuple[SampleEntry, object]]":
     """
-    Every open sample the Explorer reads as an infusion, with its own channel.
+    Every open sample read as an infusion, with the channel to show it from.
 
-    Read from the session's entries rather than from the tree, so it is the
-    same list whether the tree is filtered or not.
+    `source` is a session, or anything holding one — the Explorer does.
+    Read from the session's entries rather than from a tree, so it is the
+    same list whether a tree is filtered or not, and so the Analytics side
+    can ask the same question without a widget in it.
     """
+    session = getattr(source, "session", None)
+    if session is None or not hasattr(session, "entries"):
+        session = source
     found = []
-    for entry in getattr(getattr(explorer, "session", None), "entries", []):
+    for entry in getattr(session, "entries", []):
         sample = getattr(entry, "sample", None)
         if sample is None:
             continue
@@ -720,6 +730,553 @@ def infusions_open(explorer) -> "list[tuple[SampleEntry, object]]":
         if channel is not None:
             found.append((entry, channel))
     return found
+
+
+# --------------------------------------------------------------------------- #
+# every open infusion, one row each
+# --------------------------------------------------------------------------- #
+#: how far a measured precursor may sit from the written one and still be
+#: counted in the summary line. `precursor.CONSENSUS_SPREAD_PPM` is the limit
+#: the consensus and the mass drift already use to say two measurements are
+#: of the same ion; a fourth number for the same question would be one too
+#: many. It counts a row for a sentence — nothing is decided on it.
+CONFIRMED_PPM = _precursor.CONSENSUS_SPREAD_PPM
+
+#: the library score the summary line counts a record at. Again a figure the
+#: sentence is written with and not a threshold anything passes: a record of
+#: one's own made from another activation of the same vial scored 6 to 61 on
+#: the nine real infusions, and calling 6 a failure would be calling the
+#: collision energy a failure.
+COUNTED_SCORE = 0.60
+
+#: the columns of the summary, in the order they are shown and exported.
+#: One definition for the table, the CSV and the row's own sort keys.
+SUMMARY_COLUMNS = (
+    "Compound", "Sample", "Mode", "CE (eV)", "Scans", "Base peak m/z",
+    "Precursor written", "Found m/z", "Δ ppm", "Height", "Ions found",
+    "Library record", "Score", "Reverse", "Matched", "Record Δ ppm",
+    "Record CE", "Other infusions", "File")
+
+#: what goes in the report's table. A4 does not hold nineteen columns and a
+#: table squeezed into it is a table nobody reads, so the precursor and the
+#: record are each written as one cell there — the panel and the CSV carry
+#: the parts.
+REPORT_COLUMNS = ("Compound", "Sample", "Mode", "Scans", "Base peak m/z",
+                  "Precursor", "Ions found", "Library record", "Score",
+                  "Other infusions")
+
+_NOT_ALPHANUMERIC = re.compile(r"[^a-z0-9]+")
+
+
+def _flat(text) -> str:
+    return _NOT_ALPHANUMERIC.sub("", str(text or "").lower())
+
+
+def component_for(method, compound: str):
+    """
+    The component of the method that is this compound, or None.
+
+    Matched on the name with case, spaces and punctuation set aside, because
+    a file called `CA-d4_TOFMSMS_Mix1` and a component called `CA d4` are the
+    same standard written by two people. Nothing else is guessed: a component
+    that merely has a similar name is not this compound.
+    """
+    want = _flat(compound)
+    if not want:
+        return None
+    for component in getattr(method, "components", []):
+        if _flat(getattr(component, "name", "")) == want:
+            return component
+    return None
+
+
+def _sticks(report: InfusionReport):
+    """The averaged spectrum as centroids: what a search and a score read."""
+    trace = report.trace
+    if trace is None or trace.mz.size == 0:
+        return None
+    if report.spectrum is not None and report.spectrum.centroid:
+        return trace.mz, trace.intensity
+    from .processing import centroid_spectrum
+
+    return centroid_spectrum(trace.mz, trace.intensity)
+
+
+def _report_note(report: InfusionReport) -> str:
+    """How an infusion was acquired, in one cell — `_channel_note`'s words
+    from the report rather than from a channel, since a report holds both."""
+    bits = [f"{report.scans:,} scans"] if report.scans else []
+    if report.collision_energy:
+        bits.append(f"CE {report.collision_energy:g} eV")
+    return ", ".join(bits)
+
+
+@dataclass
+class InfusionRow:
+    """One infusion in the summary: what was measured, and why not."""
+
+    report: InfusionReport
+    #: the peaks this infusion is scored on, at `SCORE_SHARE`, kept because
+    #: picking them walks a quarter of a million points and every other
+    #: infusion of the same compound needs them
+    peaks: list = field(default_factory=list)
+    #: the other infusions of the same compound: label, score, reverse,
+    #: matched, of the other
+    others: list = field(default_factory=list)
+    #: why a cell is empty, one per column that can be. Short enough for a
+    #: cell; the long form of the precursor's is on the report itself.
+    precursor_note: str = ""
+    explanation_note: str = ""
+    library_note: str = ""
+    others_note: str = ""
+
+    # -- what it is ---------------------------------------------------------- #
+    @property
+    def compound(self) -> str:
+        return self.report.compound
+
+    @property
+    def sample(self) -> str:
+        return self.report.sample
+
+    @property
+    def mode(self) -> str:
+        """Polarity and experiment, and not the whole channel label: the
+        precursor and the mass range are columns of their own here, and a
+        cell that repeats two other cells is width spent twice."""
+        parts = [p for p in (self.report.polarity,
+                             self.report.channel_name or self.report.channel)
+                 if p]
+        return " · ".join(parts)
+
+    # -- what was measured --------------------------------------------------- #
+    @property
+    def confirmed(self) -> bool:
+        """Measured, and within `CONFIRMED_PPM` of what was written."""
+        error = self.report.error_ppm()
+        return error is not None and abs(error) <= CONFIRMED_PPM
+
+    @property
+    def found(self) -> tuple[float, float] | None:
+        """The precursor's measured mass and height, wherever it was read."""
+        measurement = self.report.measurement
+        if measurement is not None and measurement.found:
+            return float(measurement.measured), float(measurement.intensity)
+        return self.report.survivor
+
+    @property
+    def score(self) -> float | None:
+        return None if self.report.hit is None else self.report.hit.score
+
+    # -- the row ------------------------------------------------------------- #
+    def cells(self) -> list[str]:
+        report = self.report
+        found = self.found
+        error = report.error_ppm()
+        explanation = report.explanation
+        hit = report.hit
+        base = report.base_peak()
+        gap = report.energy_gap()
+        return [
+            report.compound,
+            report.sample,
+            self.mode,
+            "—" if report.collision_energy is None
+            else f"{report.collision_energy:g}",
+            f"{report.scans:,}" if report.scans else "—",
+            f"{base[0]:,.4f}" if base else "no spectrum",
+            f"{report.written_precursor:g}" if report.written_precursor
+            else "none written",
+            f"{found[0]:,.4f}" if found else (self.precursor_note
+                                              or "not measurable"),
+            f"{error:+.1f}" if error is not None else "—",
+            f"{found[1]:,.0f}" if found else "—",
+            (f"{explanation.matched} of {explanation.predicted}"
+             if explanation is not None and explanation.predicted
+             else f"{explanation.matched}" if explanation is not None
+             else self.explanation_note or "nothing run"),
+            hit.entry.name if hit is not None
+            else self.library_note or "no record",
+            f"{hit.score * 100:.0f}" if hit is not None else "—",
+            f"{hit.reverse * 100:.0f}" if hit is not None else "—",
+            f"{hit.matched} of {hit.of_library}" if hit is not None else "—",
+            (f"{hit.delta_ppm:+.1f}"
+             if hit is not None and hit.delta_ppm is not None else "—"),
+            (f"{gap[1]:g} vs {gap[0]:g}" if gap is not None
+             else "same" if hit is not None and report.collision_energy
+             else "—"),
+            (", ".join(f"{label} {score * 100:.0f}/{reverse * 100:.0f}"
+                       for label, score, reverse, _m, _o in self.others)
+             if self.others else self.others_note or "—"),
+            report.file,
+        ]
+
+    def keys(self) -> list:
+        """
+        What each cell sorts on: the number where there is one.
+
+        A table sorted on its text puts 9 after 100 and "not measurable"
+        wherever the alphabet says, which on a column of measurements is
+        worse than not sorting at all.
+        """
+        report = self.report
+        found = self.found
+        error = report.error_ppm()
+        explanation = report.explanation
+        hit = report.hit
+        base = report.base_peak()
+        cells = self.cells()
+        numbers = {
+            3: report.collision_energy,
+            4: float(report.scans) if report.scans else None,
+            5: base[0] if base else None,
+            6: report.written_precursor,
+            7: found[0] if found else None,
+            8: error,
+            9: found[1] if found else None,
+            10: float(explanation.matched) if explanation is not None else None,
+            12: hit.score if hit is not None else None,
+            13: hit.reverse if hit is not None else None,
+            14: float(hit.matched) if hit is not None else None,
+            15: hit.delta_ppm if hit is not None else None,
+        }
+        keys: list = list(cells)
+        for column, value in numbers.items():
+            # a cell with no number sorts to the end either way round, which
+            # is where a reason belongs in a column of measurements
+            keys[column] = float("inf") if value is None else float(value)
+        return keys
+
+    def report_cells(self) -> list[str]:
+        """The same row, narrow enough for A4."""
+        report = self.report
+        found = self.found
+        error = report.error_ppm()
+        explanation = report.explanation
+        hit = report.hit
+        base = report.base_peak()
+        gap = report.energy_gap()
+        precursor = (f"{found[0]:,.4f} ({error:+.1f} ppm)"
+                     if found and error is not None
+                     else f"{found[0]:,.4f}" if found
+                     else self.precursor_note or "not measurable")
+        record = hit.entry.name if hit is not None else (
+            self.library_note or "no record")
+        if gap is not None:
+            record += f" — {gap[1]:g} eV against this run’s {gap[0]:g}"
+        return [
+            report.compound, report.sample,
+            self.mode + (f", {report.collision_energy:g} eV"
+                         if report.collision_energy is not None else ""),
+            f"{report.scans:,}" if report.scans else "—",
+            f"{base[0]:,.4f}" if base else "no spectrum",
+            precursor,
+            (f"{explanation.matched} of {explanation.predicted}"
+             if explanation is not None and explanation.predicted
+             else self.explanation_note or "nothing run"),
+            record,
+            f"{hit.score * 100:.0f}" if hit is not None else "—",
+            (", ".join(f"{label} {score * 100:.0f}"
+                       for label, score, _r, _m, _o in self.others)
+             if self.others else self.others_note or "—"),
+        ]
+
+
+@dataclass
+class InfusionSummary:
+    """Every open infusion, one row each, and what they add up to."""
+
+    rows: list[InfusionRow] = field(default_factory=list)
+    #: the library of one's own that was searched, as it was named
+    library: str = ""
+    #: why there are no rows, when there are none
+    note: str = ""
+    taken: _dt.datetime = field(default_factory=_dt.datetime.now)
+    #: how long the measurement took, in seconds
+    seconds: float = 0.0
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+    @property
+    def compounds(self) -> list[str]:
+        return list(dict.fromkeys(row.compound for row in self.rows))
+
+    @property
+    def confirmed(self) -> list[InfusionRow]:
+        return [row for row in self.rows if row.confirmed]
+
+    @property
+    def counted(self) -> list[InfusionRow]:
+        return [row for row in self.rows
+                if row.score is not None and row.score >= COUNTED_SCORE]
+
+    def summary(self) -> str:
+        """
+        What the table says, in one line.
+
+        Counts only, and each with what it was counted against: a line that
+        said "3 confirmed" without saying within what would be a verdict
+        rather than a measurement.
+        """
+        if not self.rows:
+            return self.note or "No infusion is open."
+        said = [f"{len(self.compounds)} compound(s) in "
+                f"{len(self.rows)} infusion(s)"]
+        written = [row for row in self.rows if row.report.written_precursor]
+        if written:
+            said.append(f"{len(self.confirmed)} of {len(written)} precursor(s) "
+                        f"confirmed within {CONFIRMED_PPM:g} ppm")
+        else:
+            said.append("no precursor is written in any of their methods")
+        explained = [row for row in self.rows
+                     if row.report.explanation is not None]
+        if explained:
+            found = sum(row.report.explanation.matched for row in explained)
+            offered = sum(row.report.explanation.predicted for row in explained)
+            said.append(f"{found} of {offered} predicted ion(s) found across "
+                        f"{len(explained)}")
+        if self.library:
+            said.append(f"{len(self.counted)} with an own record above "
+                        f"{COUNTED_SCORE * 100:.0f} in {self.library}")
+        else:
+            said.append("no library of your own is set")
+        return "; ".join(said)
+
+
+def cross_compare(reports, peaks=None, centroid: bool = False) -> None:
+    """
+    Every report of one compound drawn and scored against the others.
+
+    Reads no file: both spectra are already held, so this is the picture and
+    the cosine and nothing else. It exists because `report_for(others=…)`
+    averages the other infusion again for every report that mentions it —
+    nine infusions in three compounds would read twenty-seven runs where
+    nine were acquired.
+    """
+    reports = list(reports)
+    if peaks is None:
+        peaks = [r.spectrum.peaks(r.trace, most=SCORE_PEAKS,
+                                  min_relative=SCORE_SHARE)
+                 if r.spectrum is not None and r.trace is not None else []
+                 for r in reports]
+    for index, report in enumerate(reports):
+        report.compared = []
+        trace = report.trace
+        if trace is None:
+            continue
+        for other_index, other in enumerate(reports):
+            other_trace = other.trace
+            if other is report or other_trace is None:
+                continue
+            score, reverse, pairs = score_against(peaks[index],
+                                                  peaks[other_index])
+            report.compared.append(Compared(
+                label=other.sample,
+                comparison=head_to_tail(
+                    trace.label, trace.mz, trace.intensity,
+                    other_trace.label, other_trace.mz, other_trace.intensity,
+                    title="", centroid=centroid,
+                    label_floor=report.label_floor),
+                score=float(score), reverse=float(reverse),
+                matched=len(pairs), of_other=len(peaks[other_index]),
+                note=_report_note(other)))
+
+
+def _headless_explanation(session, report: InfusionReport):
+    """
+    What the component table alone can say about this spectrum.
+
+    A formula and an adduct are enough for the precursor and its neutral
+    losses — `explain.explain_formula`, the same call the LIPID MAPS tab
+    makes for a formula of one's own. It is offered only where the compound
+    is a component of the method **by name**: guessing a formula for a file
+    name would be inventing the denominator of "n of m".
+    """
+    from .explain import explain_formula, formula_ions, significant_peaks
+
+    method = getattr(session, "method", None)
+    component = component_for(method, report.compound)
+    if component is None:
+        return None, "", (f"{report.compound or 'this compound'} is not a "
+                          f"component of the method")
+    if not component.formula:
+        return None, "", f"{component.name} carries no formula"
+    if not component.adduct:
+        return None, "", f"{component.name} carries no adduct"
+    if not formula_ions(component.formula, component.adduct):
+        return None, "", (f"{component.adduct} is not an adduct this "
+                          f"program knows")
+    sticks = _sticks(report)
+    if sticks is None:
+        return None, "", "no spectrum to explain"
+    peaks = significant_peaks(*sticks)
+    if not peaks:
+        return None, "", "no peak above the noise share to explain"
+    explanation = explain_formula(component.formula, component.adduct, peaks,
+                                  name=component.name)
+    basis = (f"the formula {component.formula} as {component.adduct}, from "
+             f"the component table")
+    return explanation, basis, ""
+
+
+def _best_record(library, report: InfusionReport):
+    """The best record of the analyst's own library for this spectrum."""
+    from .library import PRECURSOR_TOLERANCE_DA
+    from .lipidmaps import mass_precision
+
+    if library is None or not len(library):
+        return None, "no library of your own is set"
+    sticks = _sticks(report)
+    if sticks is None:
+        return None, "no spectrum to search"
+    precursor = report.written_precursor or None
+    tolerance = PRECURSOR_TOLERANCE_DA
+    if precursor:
+        # the channel's precursor is good to the decimals it was typed with:
+        # `430.35` is known to ±0.005, and a filter tighter than that asks
+        # for digits the method never carried
+        tolerance = max(tolerance, mass_precision(precursor))
+    hits = library.search(sticks[0], sticks[1], precursor,
+                          precursor_tolerance=tolerance)
+    if not hits:
+        where = (f" within ±{tolerance:g} Da of {precursor:g}"
+                 if precursor else "")
+        return None, f"no record matched{where}"
+    return hits[0], ""
+
+
+def _precursor_reason(report: InfusionReport) -> str:
+    """Why there is no measured precursor, short enough for a cell."""
+    if not report.written_precursor:
+        return "none written"
+    note = report.survivor_note
+    if note.startswith("nothing at all"):
+        return f"nothing within ±{_precursor.SEARCH_WINDOW:g} Da"
+    if note.startswith("too little"):
+        # the height it did find is the part that fits, and the part worth
+        # seeing: the whole sentence is on the report and in the tooltip
+        found = re.search(r"at most ([\d,]+) counts", note)
+        return (f"under {_precursor.MIN_INTENSITY:,.0f} counts"
+                if found is None else
+                f"only {found.group(1)} counts survive")
+    measurement = report.measurement
+    if measurement is not None and measurement.note:
+        return measurement.note
+    return "not measurable"
+
+
+def summarise(session, library=None, explanations=None,
+              progress=None) -> InfusionSummary | None:
+    """
+    Every open infusion as one row: the summary that comes before the pages.
+
+    One row per infused sample, grouped by the compound its name starts
+    with. Each row is a whole `InfusionReport` — the same object the document
+    is printed from, so the table and the pages cannot disagree — plus the
+    two things a table of many has that a page of one does not: the mutual
+    scores between infusions of the same compound, and a reason in every cell
+    that could not be filled.
+
+    `explanations` is what has already been run elsewhere, keyed by compound
+    (the Explorer's LIPID MAPS tab); a compound with none is explained from
+    the component table's formula and adduct where it has them. `library` is
+    the analyst's own `SpectralLibrary`, or None for no library column.
+
+    `progress(done, total)` is called as each infusion is read and stops the
+    measurement by returning False, in which case this returns None.
+    """
+    import time
+
+    started = time.perf_counter()
+    infusions = infusions_open(session)
+    if not infusions:
+        return InfusionSummary(note="No open sample reads as a direct "
+                                    "infusion — see the manual on what makes "
+                                    "one.")
+    groups: dict[str, list] = {}
+    for entry, channel in infusions:
+        groups.setdefault(compound_of(getattr(entry, "name", "")),
+                          []).append((entry, channel))
+
+    given = {str(k): v for k, v in (explanations or {}).items()}
+    name = os.path.basename(getattr(library, "path", "") or "") if library \
+        else ""
+    rows: list[InfusionRow] = []
+    done, total = 0, len(infusions)
+    for compound, members in groups.items():
+        made: list[InfusionRow] = []
+        for entry, channel in members:
+            report = report_for(entry, channel, compound=compound,
+                                library=name)
+            explanation = given.get(compound)
+            note = ""
+            if explanation is not None:
+                report.explanation = explanation
+                report.basis = "what was run in the LIPID MAPS tab"
+            else:
+                report.explanation, report.basis, note = \
+                    _headless_explanation(session, report)
+            hit, library_note = _best_record(library, report)
+            report.hit = hit
+            row = InfusionRow(
+                report=report,
+                peaks=(report.spectrum.peaks(report.trace, most=SCORE_PEAKS,
+                                             min_relative=SCORE_SHARE)
+                       if report.spectrum is not None
+                       and report.trace is not None else []),
+                explanation_note=note, library_note=library_note,
+                precursor_note=_precursor_reason(report))
+            made.append(row)
+            done += 1
+            if progress is not None and not progress(done, total):
+                return None
+        for row in made:
+            for other in made:
+                if other is row:
+                    continue
+                score, reverse, pairs = score_against(row.peaks, other.peaks)
+                row.others.append((other.sample, float(score), float(reverse),
+                                   len(pairs), len(other.peaks)))
+            if not row.others:
+                row.others_note = "the only infusion of this compound"
+        rows += made
+    return InfusionSummary(rows=rows, library=name,
+                           seconds=time.perf_counter() - started)
+
+
+def prepare_documents(rows) -> list[InfusionReport]:
+    """
+    The chosen rows as reports ready to print.
+
+    Each is compared against the other **chosen** infusions of its own
+    compound, and against nothing else: a document of two compounds should
+    not draw one against the other, and a row left unticked was left unticked
+    on purpose. The comparison is made here rather than in `summarise`
+    because it holds a copy of both spectra per pair, which is a price worth
+    paying for the handful of rows that are printed and not for every row of
+    a table.
+    """
+    groups: dict[str, list] = {}
+    for row in rows:
+        groups.setdefault(row.compound, []).append(row)
+    for members in groups.values():
+        cross_compare([row.report for row in members],
+                      [row.peaks for row in members])
+    return [row.report for row in rows]
+
+
+def write_summary_csv(summary: InfusionSummary, path: str | os.PathLike) -> str:
+    """The summary as a CSV, in the order the table holds it."""
+    import csv
+
+    path = str(path)
+    with open(path, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(SUMMARY_COLUMNS)
+        for row in summary.rows:
+            writer.writerow(row.cells())
+    return path
 
 
 # --------------------------------------------------------------------------- #

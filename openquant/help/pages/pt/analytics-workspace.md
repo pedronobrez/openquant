@@ -18,9 +18,13 @@ dobráveis abaixo: **Integration** ([[integration-parameters]]) e **Acceptance**
 **Centro.** A grade de [[peak-review]]: um painel por amostra para o componente
 selecionado, com a área integrada sombreada.
 
-**Base.** Seis abas: [[results-table|Results]], [[calibration|Calibration]],
-[[statistics|Statistics]], [[metric-plot|Metric plot]], [[batch-qc|Batch QC]]
-e [[mass-drift|Mass drift]].
+**Base.** Oito abas: [[results-table|Results]],
+[[calibration|Calibration]], [[statistics|Statistics]],
+[[metric-plot|Metric plot]], [[batch-qc|Batch QC]], [[mass-drift|Mass drift]],
+[[infusion-report|Infusions]] e [[audit-trail|Audit trail]]. As duas últimas
+não medem nada antes de serem pedidas — *Infusions* passa a trazer a contagem
+de linhas no nome da aba depois que mede, e fica vazia num lote que não tenha
+nenhum padrão infundido.
 
 ## A barra de ferramentas
 

@@ -26,6 +26,7 @@ from .acceptance_panel import AcceptancePanel
 from .audit_panel import AuditPanel
 from .calibration_panel import CalibrationPanel
 from .integration_panel import IntegrationPanel
+from .infusions_panel import InfusionsPanel
 from .metric_plot import MetricPlotPanel
 from .mass_drift_panel import MassDriftPanel
 from .qc_panel import QualityPanel
@@ -167,6 +168,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.metrics = MetricPlotPanel(session)
         self.quality = QualityPanel(session)
         self.mass = MassDriftPanel(session)
+        self.infusions = InfusionsPanel(session)
         self.audit = AuditPanel(session)
         self.bottom = QtWidgets.QTabWidget()
         self.bottom.setDocumentMode(True)
@@ -176,6 +178,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.bottom.addTab(self.metrics, "Metric plot")
         self.bottom.addTab(self.quality, "Batch QC")
         self.bottom.addTab(self.mass, "Mass drift")
+        self.infusions_tab = self.bottom.addTab(self.infusions, "Infusions")
         self.bottom.addTab(self.audit, "Audit trail")
         right.addWidget(self.grid)
         right.addWidget(self.bottom)
@@ -197,6 +200,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
                              (self.metrics, "metric-plot"),
                              (self.quality, "batch-qc"),
                              (self.mass, "mass-drift"),
+                             (self.infusions, "infusion-report"),
                              (self.audit, "audit-trail")):
             describe(widget, page)
 
@@ -227,6 +231,8 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.metrics.sigPointActivated.connect(self._on_row_selected)
         self.quality.sigSampleActivated.connect(self.grid.select)
         self.mass.sigSampleActivated.connect(self.grid.select)
+        self.infusions.sigRowsChanged.connect(self._show_infusion_count)
+        self.infusions.sigStatus.connect(self.sigStatus)
         self.audit.sigStatus.connect(self.sigStatus)
 
         session.sigMethodChanged.connect(self.reload_components)
@@ -234,6 +240,12 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         session.sigResultsChanged.connect(self.refresh_grid)
         session.sigResultsChanged.connect(self.refresh_calibration)
         self.reload_components()
+
+    def _show_infusion_count(self, rows: int) -> None:
+        """The tab carries its own count: a table measured on request is
+        otherwise a tab nobody knows has anything in it."""
+        self.bottom.setTabText(self.infusions_tab,
+                               f"Infusions ({rows})" if rows else "Infusions")
 
     def _save_sections(self, *_args) -> None:
         self.integration.save(self.settings, "analytics/integration_open")

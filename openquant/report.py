@@ -61,6 +61,7 @@ SECTIONS = {
     "quality": "Batch quality",
     "sampling": "Sampling",
     "mass": "Mass drift",
+    "infusions": "Infusions",
     "spectra": "Compared spectra",
     "algorithms": "Integration algorithms",
     "batches": "Batch comparison",
@@ -767,6 +768,46 @@ def _corrections(corrections: dict | None, applied: bool) -> str:
     return "".join(parts)
 
 
+def _infusions(title: str, summary, breaks: set[str] | None = None) -> str:
+    """
+    Every infused compound on one row, while the measurement stands.
+
+    The summary that comes before the per-compound pages: what was measured
+    of each vial and, in the cells that could not be filled, what was not
+    there to measure. Printed narrower than the tab shows it, because
+    A4 does not hold nineteen columns and a table squeezed into it is a table
+    nobody reads; `infusion_report.REPORT_COLUMNS` is the same row with the
+    precursor and the record written as one cell each.
+    """
+    from .infusion_report import (CONFIRMED_PPM, COUNTED_SCORE,
+                                  REPORT_COLUMNS, SCORE_SHARE)
+
+    parts = [_heading(title, breaks)]
+    parts.append(
+        f'<p class="meta">One row per infused sample, each averaged over its '
+        f'whole run. The precursor is the method\u2019s own written value '
+        f'measured back off the acquisition, counted as confirmed in the line '
+        f'below at {CONFIRMED_PPM:g} ppm; the ions found are of those a '
+        f'formula or a structure predicted; the record is the best in the '
+        f'library of your own, scored by the same cosine a library search '
+        f'takes and counted below at {COUNTED_SCORE * 100:.0f}. The last '
+        f'column scores each infusion against the others of the same compound '
+        f'over the peaks above {SCORE_SHARE:.0%} of each base peak. A cell '
+        f'that could not be filled says why rather than being blank, and '
+        f'nothing here passes or fails a compound \u2014 see the per-compound '
+        f'report for what a verdict is allowed to claim.</p>')
+    parts.append(_table(
+        list(REPORT_COLUMNS),
+        [[_escape(cell) for cell in row.report_cells()]
+         for row in summary.rows],
+        right={3, 4, 8}, empty="No infusion is open.",
+        widths=["9%", "15%", "9%", "4%", "8%", "14%", "6%", "14%", "4%",
+                "17%"]))
+    parts.append(f'<p class="foot">{_escape(summary.summary())}. '
+                 f'Measured {summary.taken.strftime("%Y-%m-%d %H:%M")}.</p>')
+    return "".join(parts)
+
+
 #: how wide the compared-spectra picture is printed, in pixels of the ninety-
 #: six dots to the inch that Qt's `width` attribute means. The body of an A4
 #: page with these margins is 177 mm, which is 669 of them, so this fills the
@@ -1183,6 +1224,11 @@ def build_html(session, title: str = "Batch report",
     comparison = getattr(session, "comparison", None)
     drift = getattr(session, "mass_drift", None)
     batches = getattr(session, "batch_comparison", None)
+    # likewise the infusion summary: measured on request in the Infusions
+    # tab, and printed only while that measurement stands
+    infusions = getattr(session, "infusion_summary", None)
+    if infusions is not None and not len(infusions.rows):
+        infusions = None
     # printed while there is a history to print: a section saying nothing was
     # changed by hand would be on every report of a batch nobody touched
     trail = getattr(session, "audit", None)
@@ -1194,6 +1240,7 @@ def build_html(session, title: str = "Batch report",
     order = [key for key in ALL_SECTIONS if key in sections
              and (key != "algorithms" or comparison is not None)
              and (key != "mass" or drift is not None)
+             and (key != "infusions" or infusions is not None)
              and (key != "spectra" or spectra is not None)
              and (key != "batches" or batches is not None)
              and (key != "audit" or (trail is not None and len(trail)))]
@@ -1232,6 +1279,8 @@ def build_html(session, title: str = "Batch report",
             parts.append(_mass(name, drift, breaks,
                                 getattr(session, "mass_corrections", None),
                                 bool(getattr(session, "recalibrate", False))))
+        elif key == "infusions":
+            parts.append(_infusions(name, infusions, breaks))
         elif key == "spectra":
             parts.append(_spectra(name, spectra, breaks))
         elif key == "algorithms":

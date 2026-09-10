@@ -63,6 +63,11 @@ class Session(QtCore.QObject):
         self.recalibrate = False
         #: the last comparison against a reference batch, likewise
         self.batch_comparison = None
+        #: the last run of infusion_report.summarise: every open infusion,
+        #: one row each. Derived and not saved — it is a few seconds of
+        #: reading per compound, and a table stored without the spectra
+        #: behind it could not be checked against them.
+        self.infusion_summary = None
         #: the spectra the Explorer is holding together — a
         #: spectra_compare.SpectrumComparison, kept in step with its spectrum
         #: pane and dropped when the pins are cleared. Derived and not saved:
@@ -137,6 +142,7 @@ class Session(QtCore.QObject):
         self.mass_drift = None
         self.mass_corrections = {}
         self.batch_comparison = None
+        self.infusion_summary = None
         self.spectra_comparison = None
         self.entries.clear()
         self.results.clear()

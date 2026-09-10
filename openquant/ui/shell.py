@@ -55,6 +55,11 @@ class MainShell(QtWidgets.QMainWindow):
             workspace.sigStatus.connect(self.statusBar().showMessage)
         self.explorer.component_list.sigEditRequested.connect(
             lambda: self.tabs.setCurrentWidget(self.method))
+        # the Infusions tab reuses whatever the Explorer's LIPID MAPS tab has
+        # already explained, rather than explaining it a second time. Held as
+        # a plain attribute and read defensively, so the panel is still a
+        # panel with no Explorer behind it
+        self.analytics.infusions.explorer = self.explorer
         self.session.sigSamplesChanged.connect(self._samples_changed)
         self.session.sigProjectChanged.connect(self._update_title)
         from .help_window import describe

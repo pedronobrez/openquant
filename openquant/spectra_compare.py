@@ -14,7 +14,7 @@ how they are drawn. The picture is made from that on demand, by
 grabbing the widget — so the image is the same size and the same sharpness
 whatever the window happened to be, and can be made with no window at all.
 
-Three things about the drawing are deliberate:
+Four things about the drawing are deliberate:
 
 * **It is always drawn for paper.** White ground, dark axes, whatever the
   application's theme is. A dark-theme trace colour is lightened for a dark
@@ -29,6 +29,36 @@ Three things about the drawing are deliberate:
   masses printed are the masses on screen. Measured on a survey scan
   against a product-ion scan: 20 labels drawn where picking by height alone
   drew 12, all 12 of them below m/z 360.
+* **A label is never drawn over anything.** Which peaks are offered a label
+  is the budget's business; where the label goes is `paint`'s, and it goes
+  above the peak — never inside it, never over a trace, never over another
+  label. A slot already taken moves it a whole text height further out and
+  a thin leader joins it to its apex; past `MAX_LIFT` of those it is
+  dropped, and the drop is counted. Room for the stack is taken out of the
+  plot before the traces are drawn, the same reservation the pane makes in
+  `BasePlot._headroom_px`.
+
+  Measured by rendering four real spectra at 960 by 520, normalised and
+  head to tail, and counting the trace-coloured pixels found under every
+  label drawn — two averaged product-ion spectra of CA-d4 (CID against
+  EAD at 22 eV, 473 and 146 scans averaged) and the apex survey scans of
+  two injections:
+
+  | | drawn | over a trace | lifted | dropped |
+  |---|---|---|---|---|
+  | product ions, before | 28 | **10** | — | — |
+  | product ions, after | 30 | **0** | 13 | 1 |
+  | survey scans, before | 21 | **13** | — | — |
+  | survey scans, after | 17 | **0** | 8 | 8 |
+
+  The old rule placed a label inside the peak when the room above it was
+  taken, so a third of what it drew was printed on the ink it described —
+  `95.0843` and `101.0589` one text height apart over the same cluster of
+  sticks was the complaint. The product-ion drawing gains two labels and
+  loses the tangle; the survey loses eight, and they are the eight that
+  cannot be placed at all: the isotopes of a base peak that reaches the
+  top of the plot, whose labels have nowhere to go that is not on top of
+  it. Before, they were drawn on top of it.
 """
 
 from __future__ import annotations
@@ -82,6 +112,40 @@ SHARED_MOST = 20
 #: #6f9be0, is 2.8:1 on white and is darkened; the light theme's #234b8c is
 #: 9.4:1 and is left alone.
 MIN_CONTRAST = 3.0
+
+#: how far out a label may be lifted from the peak it names, in text
+#: heights, before it is dropped instead of drawn.
+#:
+#: Measured on the four real comparisons of the note below, drawn at
+#: 960 by 520, labels drawn for 1 / 2 / 4 / 6 / 8 / 12 steps: the two
+#: averaged product-ion spectra 18 / 25 / 29 / **30** / 30 / 30, the two
+#: survey scans 12 / 15 / 16 / **17** / 17 / 18. Six is where it stops
+#: paying: past it the label is following a leader most of the way up the
+#: plot, and the one more it draws at twelve is an isotope of a base peak
+#: with its own label three rows below.
+MAX_LIFT = 6
+
+#: clear space between a label and the apex it names, and between two
+#: labels side by side. The vertical rule is a plain intersection: a text
+#: box is taller than its glyphs, so two rows that touch still read as two
+#: rows, and insisting on a gap as well would waste a whole step.
+LABEL_CLEAR = 2.0
+LABEL_GAP = 3.0
+
+#: text heights of clear space kept above the tallest trace — and below the
+#: lowest, mirrored — for the stack to grow into. Taken out of the plot, not
+#: out of the data: the traces are drawn shorter and the labels have
+#: somewhere to go.
+#:
+#: Same four comparisons, at `MAX_LIFT` steps, for 1 / 2 / 3 / 4 / 6 text
+#: heights: product ions 28 / 30 / **30** / 30 / 30, surveys 14 / 16 /
+#: **17** / 17 / 17. Below three the base peak's own label is against the
+#: ceiling and the row above it has nowhere to go; above three nothing more
+#: is drawn and the traces are shorter for no gain.
+HEADROOM_LIFTS = 3.0
+
+#: the leader that joins a lifted label to its apex
+LEADER_WIDTH = 0.6
 
 
 # --------------------------------------------------------------------------- #
@@ -402,10 +466,114 @@ def _series(comparison: SpectrumComparison):
     return out
 
 
-def paint(comparison: SpectrumComparison, painter, width: float,
-          height: float) -> None:
+@dataclass
+class PlacedLabel:
+    """One peak label, and where it ended up.
+
+    In logical points, `y` downwards like the painter's. `lift` is how many
+    text heights it had to be moved away from its peak to find room — zero
+    is where a label goes when nothing is in the way.
     """
-    Draw the comparison into `painter`, in logical points.
+
+    text: str
+    x: float
+    y: float
+    width: float
+    height: float
+    apex_x: float
+    apex_y: float
+    lift: int = 0
+    down: bool = False
+
+    @property
+    def leader(self) -> bool:
+        """A lifted label is more than one text height from its apex, and is
+        joined to it by a line: at that distance nothing else says which
+        peak it belongs to."""
+        return self.lift > 0
+
+    @property
+    def box(self) -> tuple[float, float, float, float]:
+        return self.x, self.y, self.x + self.width, self.y + self.height
+
+    def overlaps(self, other: "PlacedLabel", gap: float = 0.0) -> bool:
+        """Would the two labels touch? `gap` is clear space asked for
+        sideways only — see `LABEL_GAP`."""
+        return (self.x < other.x + other.width + gap
+                and other.x < self.x + self.width + gap
+                and self.y < other.y + other.height
+                and other.y < self.y + self.height)
+
+
+@dataclass
+class LabelLayout:
+    """What became of the labels of one drawing."""
+
+    placed: list[PlacedLabel] = field(default_factory=list)
+    dropped: int = 0
+    #: the ink of the traces, one box per column of the drawing, as the
+    #: placement saw it
+    ink: list[tuple[float, float, float, float]] = field(default_factory=list)
+
+    @property
+    def drawn(self) -> int:
+        return len(self.placed)
+
+    @property
+    def lifted(self) -> int:
+        return sum(1 for label in self.placed if label.lift)
+
+    @property
+    def with_leader(self) -> int:
+        return sum(1 for label in self.placed if label.leader)
+
+    def summary(self) -> str:
+        return (f"{self.drawn} drawn, {self.lifted} lifted, "
+                f"{self.with_leader} with a leader, {self.dropped} dropped")
+
+
+def _spans(x_pixels: np.ndarray, y_pixels: np.ndarray, columns: int,
+           left: float) -> tuple[np.ndarray, np.ndarray]:
+    """
+    The topmost and the bottommost ink of one trace, per column of the
+    drawing one point wide.
+
+    One box per trace is the whole plot and forbids every label; a column
+    is as fine as the question needs to be, since a label is tens of
+    columns wide. A column with no point of the trace in it keeps `inf` and
+    `-inf`, which no comparison can be inside. A segment between two points
+    crosses the columns between them, so each column takes its neighbours'
+    extremes as well rather than leaving a steep flank as a gap in the ink.
+    """
+    top = np.full(columns, np.inf)
+    bottom = np.full(columns, -np.inf)
+    if x_pixels.size:
+        index = np.clip((x_pixels - left).astype(np.int64), 0, columns - 1)
+        np.minimum.at(top, index, y_pixels)
+        np.maximum.at(bottom, index, y_pixels)
+        padded_top = np.concatenate(([np.inf], top, [np.inf]))
+        padded_bottom = np.concatenate(([-np.inf], bottom, [-np.inf]))
+        top = np.minimum(top, np.minimum(padded_top[:-2], padded_top[2:]))
+        bottom = np.maximum(bottom,
+                            np.maximum(padded_bottom[:-2], padded_bottom[2:]))
+    return top, bottom
+
+
+def _ink_boxes(spans, left: float) -> list[tuple[float, float, float, float]]:
+    """The per-column ink as boxes, for anything that wants to check it."""
+    boxes: list[tuple[float, float, float, float]] = []
+    for top, bottom in spans:
+        for column in np.nonzero(np.isfinite(top) & np.isfinite(bottom))[0]:
+            boxes.append((left + float(column), float(top[column]),
+                          left + float(column) + 1.0, float(bottom[column])))
+    return boxes
+
+
+def paint(comparison: SpectrumComparison, painter, width: float,
+          height: float) -> LabelLayout:
+    """
+    Draw the comparison into `painter`, in logical points, and say where the
+    labels went.
 
     The caller has already scaled the painter, so nothing here knows about
     the scale: a pen of 1.4 is 1.4 points on paper whatever the image's
@@ -430,6 +598,12 @@ def paint(comparison: SpectrumComparison, painter, width: float,
 
     series = _series(comparison)
     drawn = [(t, y, s) for t, y, s in series if t.mz.size and y.size]
+
+    # the labels' own font, measured before the geometry: how tall one label
+    # is decides how much room is kept above the tallest trace
+    painter.setFont(font(10))
+    label_metrics = QtGui.QFontMetricsF(painter.font())
+    text_h = float(label_metrics.height())
 
     top = MARGIN_TOP
     if comparison.title:
@@ -470,7 +644,7 @@ def paint(comparison: SpectrumComparison, painter, width: float,
         painter.drawText(QtCore.QRectF(0, 0, width, height),
                          int(QtCore.Qt.AlignmentFlag.AlignCenter),
                          "Nothing to compare.")
-        return
+        return LabelLayout()
 
     x0 = min(float(t.mz.min()) for t, _y, _s in drawn)
     x1 = max(float(t.mz.max()) for t, _y, _s in drawn)
@@ -481,7 +655,16 @@ def paint(comparison: SpectrumComparison, painter, width: float,
 
     ymax = max(float(y.max()) for _t, y, _s in drawn) or 1.0
     down = any(s < 0 for _t, _y, s in drawn)
-    ylo, yhi = (-ymax, ymax) if down else (0.0, ymax)
+    # room for the stack of labels, taken out of the plot rather than out of
+    # the data: the traces are drawn shorter and the labels have somewhere
+    # to go. Mirrored, both ends need it — a mirrored base peak reaches the
+    # end of its own half. The floor stops a very short drawing from being
+    # all headroom and no trace.
+    headroom = text_h * HEADROOM_LIFTS * (2.0 if down else 1.0)
+    stretch = plot.height() / max(plot.height() - headroom,
+                                  plot.height() * 0.5)
+    ymax_drawn = ymax * stretch
+    ylo, yhi = (-ymax_drawn, ymax_drawn) if down else (0.0, ymax_drawn)
 
     def px(mz: float) -> float:
         return plot.left() + (mz - x0) / (x1 - x0) * plot.width()
@@ -528,31 +711,79 @@ def paint(comparison: SpectrumComparison, painter, width: float,
                      else "Intensity, cps")
     painter.restore()
 
-    # -- the traces ---------------------------------------------------------- #
+    # -- the traces, and the ink a label may not be drawn over ---------------- #
+    slots = max(int(math.ceil(plot.width())), 1)
+
+    def column_of(x: float) -> int:
+        return int(min(max(x - plot.left(), 0.0), slots - 1))
+
+    ink_spans: list[tuple[np.ndarray, np.ndarray]] = []
     for trace, y, sign in drawn:
         colour = for_paper(trace.colour)
         painter.setPen(QtGui.QPen(colour, 1.3))
         xs = trace.mz
         if comparison.centroid:
-            for mz, value in zip(xs.tolist(), y.tolist()):
-                if value <= 0:
-                    continue
+            keep = y > 0
+            dx, dy = xs[keep], y[keep]
+            for mz, value in zip(dx.tolist(), dy.tolist()):
                 painter.drawLine(QtCore.QPointF(px(mz), py(0.0)),
                                  QtCore.QPointF(px(mz), py(value * sign)))
+            # a stick is ink from the baseline to its apex, so both ends go in
+            xp = np.array([px(float(mz)) for mz in dx])
+            yp = np.array([py(float(v) * sign) for v in dy])
+            base = np.full(xp.shape, py(0.0))
+            ink_spans.append(_spans(np.concatenate([xp, xp]),
+                                    np.concatenate([yp, base]),
+                                    slots, plot.left()))
         else:
             # columns of the image, not of the logical drawing: at twice the
             # size there are twice as many pixels to fill
             columns = int(plot.width() * max(painter.transform().m11(), 1.0))
             dx, dy = _decimate(xs, y, x0, x1, columns)
+            xp = np.array([px(float(mz)) for mz in dx])
+            yp = np.array([py(float(v) * sign) for v in dy])
             polygon = QtGui.QPolygonF(
-                [QtCore.QPointF(px(mz), py(value * sign))
-                 for mz, value in zip(dx.tolist(), dy.tolist())])
+                [QtCore.QPointF(a, b) for a, b in zip(xp.tolist(), yp.tolist())])
             painter.drawPolyline(polygon)
+            ink_spans.append(_spans(xp, yp, slots, plot.left()))
 
     # -- peak labels --------------------------------------------------------- #
     painter.setFont(font(10))
-    metrics = QtGui.QFontMetricsF(painter.font())
-    taken: list[QtCore.QRectF] = []
+    placed: list[PlacedLabel] = []
+    dropped = 0
+
+    def slot(text: str, wide: float, apex_x: float, apex_y: float,
+             sign: float) -> PlacedLabel | None:
+        """
+        Where one label goes: the first free step beyond its own peak.
+
+        Beyond it, never inside it — a number printed on the trace it
+        describes is read as part of the picture — and never over another
+        label. A step taken moves the label one whole text height further
+        out, so a crowd stacks into rows; `MAX_LIFT` steps out is as far as
+        a leader is worth following, and past that the label is dropped.
+        A mirrored trace does all of this downwards.
+        """
+        left = apex_x - wide / 2
+        left = min(max(left, plot.left()), max(plot.right() - wide, plot.left()))
+        first, last = column_of(left), column_of(left + wide) + 1
+        for lift in range(MAX_LIFT + 1):
+            clear = LABEL_CLEAR + lift * text_h
+            y_top = apex_y - text_h - clear if sign > 0 else apex_y + clear
+            if y_top < plot.top() or y_top + text_h > plot.bottom():
+                return None                 # and no further step is any better
+            candidate = PlacedLabel(text=text, x=left, y=y_top, width=wide,
+                                    height=text_h, apex_x=apex_x,
+                                    apex_y=apex_y, lift=lift, down=sign < 0)
+            if any(candidate.overlaps(other, LABEL_GAP) for other in placed):
+                continue
+            if any(bool(np.any((y_top < bottom[first:last])
+                               & (y_top + text_h > edge[first:last])))
+                   for edge, bottom in ink_spans):
+                continue
+            return candidate
+        return None
+
     for trace, y, sign in drawn:
         top_value = float(y.max()) or 1.0
         for mz, _height in comparison.label_peaks(trace, x0, x1):
@@ -561,35 +792,35 @@ def paint(comparison: SpectrumComparison, painter, width: float,
             if value < top_value * LABEL_MIN_RELATIVE:
                 continue
             text = f"{mz:.4f}"
-            w = metrics.horizontalAdvance(text) + 4
-            h = metrics.height()
-            x = px(mz) - w / 2
-            apex = py(value * sign)
-            # beyond the apex first, and inside the peak if that would fall
-            # off the edge: the base peak of a mirrored trace reaches the
-            # bottom of the plot, and it is the one label worth having
-            outside = apex - h - 2 if sign > 0 else apex + 2
-            inside = apex + 2 if sign > 0 else apex - h - 2
-            for placement in (outside, inside):
-                rect = QtCore.QRectF(x, placement, w, h)
-                if rect.left() < plot.left():
-                    rect.moveLeft(plot.left())
-                if rect.right() > plot.right():
-                    rect.moveRight(plot.right())
-                if rect.top() < top or rect.bottom() > plot.bottom() + 2:
-                    continue
-                if any(rect.intersects(other) for other in taken):
-                    continue
-                taken.append(rect)
-                painter.setPen(ink)
-                painter.drawText(rect, int(QtCore.Qt.AlignmentFlag.AlignCenter),
-                                 text)
-                break
+            spot = slot(text, label_metrics.horizontalAdvance(text) + 4.0,
+                        px(mz), py(value * sign), sign)
+            if spot is None:
+                dropped += 1
+                continue
+            placed.append(spot)
+
+    painter.setPen(QtGui.QPen(muted, LEADER_WIDTH))
+    for label in placed:                       # leaders first, under the text
+        if not label.leader:
+            continue
+        painter.drawLine(
+            QtCore.QPointF(label.x + label.width / 2,
+                           label.y if label.down else label.y + label.height),
+            QtCore.QPointF(label.apex_x,
+                           label.apex_y + 1.0 if label.down
+                           else label.apex_y - 1.0))
+    painter.setPen(ink)
+    for label in placed:
+        painter.drawText(
+            QtCore.QRectF(label.x, label.y, label.width, label.height),
+            int(QtCore.Qt.AlignmentFlag.AlignCenter), label.text)
+    return LabelLayout(placed=placed, dropped=dropped,
+                       ink=_ink_boxes(ink_spans, plot.left()))
 
 
-def render_image(comparison: SpectrumComparison, width: int = DEFAULT_WIDTH,
-                 height: int = DEFAULT_HEIGHT, scale: float = 1.0):
-    """The comparison as a QImage of `width * scale` by `height * scale`."""
+def _draw(comparison: SpectrumComparison, width: int, height: int,
+          scale: float):
+    """The drawing and its label layout, in one pass."""
     from PyQt6 import QtGui
 
     pixels_w = max(int(round(width * scale)), 1)
@@ -599,10 +830,30 @@ def render_image(comparison: SpectrumComparison, width: int = DEFAULT_WIDTH,
     painter = QtGui.QPainter(image)
     try:
         painter.scale(scale, scale)
-        paint(comparison, painter, width, height)
+        layout = paint(comparison, painter, width, height)
     finally:
         painter.end()
-    return image
+    return image, layout
+
+
+def render_image(comparison: SpectrumComparison, width: int = DEFAULT_WIDTH,
+                 height: int = DEFAULT_HEIGHT, scale: float = 1.0):
+    """The comparison as a QImage of `width * scale` by `height * scale`."""
+    return _draw(comparison, width, height, scale)[0]
+
+
+def label_layout(comparison: SpectrumComparison, width: int = DEFAULT_WIDTH,
+                 height: int = DEFAULT_HEIGHT,
+                 scale: float = 1.0) -> LabelLayout:
+    """
+    Where the labels of this comparison went, by drawing it.
+
+    The drawing is the only thing that knows: the placement follows the
+    font, the geometry and the ink of the traces, so it is measured by
+    rendering rather than by predicting. Logical points, whatever `scale`
+    the image was made at.
+    """
+    return _draw(comparison, width, height, scale)[1]
 
 
 def render_png(comparison: SpectrumComparison, path, width: int = DEFAULT_WIDTH,

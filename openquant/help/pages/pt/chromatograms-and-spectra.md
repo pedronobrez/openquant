@@ -114,6 +114,20 @@ manter legível numa janela escura é escurecida até se ler sobre branco,
 conservando o seu matiz, de modo que um traço conhecido pela sua cor na tela
 é o mesmo traço na página.
 
+As massas impressas ao lado dos picos são as que o painel nomeia — o mesmo
+orçamento de alguns rótulos por região do eixo de massas —, mas a figura
+impressa as posiciona de outro jeito, porque numa página não se dá zoom. Um
+rótulo fica acima do pico que ele nomeia e nunca sobre ele: onde esse espaço
+já está tomado, por outro rótulo ou por qualquer traço, o rótulo sobe uma
+linha inteira e um fio fino o liga ao seu ápice, de modo que um trecho
+apinhado se lê como fileiras de massas em vez de números empilhados sobre os
+bastões. O espaço para as fileiras é reservado acima do traço mais alto, e
+abaixo do mais baixo com o Mirror ligado. Um rótulo que não tem para onde ir
+dentro de seis linhas — um isótopo ao lado de um pico base que alcança o topo
+do gráfico é o caso comum — fica de fora em vez de ser desenhado sobre o que
+descreve, e é por isso que uma comparação impressa pode nomear menos picos
+que o painel, e por isso que os que ela nomeia podem ser lidos.
+
 A mesma figura entra no [[report]], sob *Compared spectra*, com uma tabela
 dos traços e uma tabela das massas que eles têm em comum. O que o relatório
 imprime é o que o painel mostra: fixar um espectro inicia a comparação, mudar

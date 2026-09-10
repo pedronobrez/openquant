@@ -47,7 +47,11 @@ spectrum in the [[chromatograms-and-spectra]] pane and the section
 appears, unpin and it goes. The picture is drawn from the data at the
 moment the report is written, at twice the size it is printed at, and
 travels inside the document: an HTML report is still one file that can be
-mailed. Under it are the traces, each with its base peak and how many
+mailed. Its peak labels are placed for paper: each one above the peak it
+names and never over a trace or over another label, moved a line further
+out with a leader down to its apex where the room is taken, and left out
+altogether where there is no room within six lines — see
+[[chromatograms-and-spectra]]. Under it are the traces, each with its base peak and how many
 peaks it holds, and the masses every one of the spectra carries within 10
 ppm with the height of each as a share of its own base peak — which is the
 only way two spectra of different sizes compare in a table. A mass in one

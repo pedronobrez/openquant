@@ -115,6 +115,20 @@ colour that was lightened to carry on a dark window is darkened until it
 reads on white, keeping its hue, so a trace known by its colour on screen
 is the same trace on the page.
 
+The masses printed beside the peaks are the ones the pane names — the same
+budget of a few labels per region of the mass axis — but the printed
+picture places them differently, because a page cannot be zoomed. A label
+goes above the peak it names and never on it: where that room is already
+taken, by another label or by any trace, the label moves a whole line
+further out and a thin leader joins it to its apex, so a crowded stretch
+reads as rows of masses rather than as numbers piled on the sticks. Room
+for the rows is kept above the tallest trace, and below the lowest with
+Mirror on. A label with nowhere to go within six lines — an isotope beside
+a base peak that reaches the top of the plot is the usual case — is left
+out rather than drawn over what it describes, which is why a printed
+comparison can name fewer peaks than the pane does, and why the ones it
+does name can be read.
+
 The same picture goes into the [[report]], under *Compared spectra*, with
 a table of the traces and a table of the masses they have in common. What
 the report prints is what the pane shows: pinning a spectrum starts the

@@ -799,7 +799,9 @@ def _spectra(title: str, comparison, breaks: set[str] | None = None,
         f"{'Each is on its own base peak. ' if comparison.normalise else ''}"
         f"{'Every other one is drawn downwards, head to tail; the intensity beside it is a magnitude, not a negative number. ' if comparison.mirror else ''}"
         f"Peaks are labelled by the same picker the pane labels with, so the "
-        f"masses here are the masses that were on screen.</p>")
+        f"masses here are the masses that were on screen; one with no room "
+        f"to be printed clear of the traces is left out rather than drawn "
+        f"over them.</p>")
     parts.append(
         f'<p><img src="{spectra_compare.data_uri(comparison)}" '
         f'width="{IMAGE_WIDTH}" height="{height}" /></p>')

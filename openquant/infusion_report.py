@@ -740,6 +740,12 @@ class InfusionReport:
     hit: LibraryHit | None = None
     library: str = ""
     compared: list[Compared] = field(default_factory=list)
+    #: `energy.EnergyRecommendation.paragraph()` for this compound, where the
+    #: chosen rows hold more than one collision energy of it. Written by
+    #: `prepare_documents` rather than measured here: it is arithmetic over
+    #: the *other* infusions of the same compound, which one report has no
+    #: view of, and a compound infused once has none to write.
+    energy_advice: str = ""
     taken: _dt.datetime = field(default_factory=_dt.datetime.now)
 
     # -- derived ------------------------------------------------------------- #
@@ -2515,12 +2521,30 @@ def prepare_documents(rows) -> list[InfusionReport]:
     paying for the handful of rows that are printed and not for every row of
     a table.
     """
+    from .energy import recommend
+
     groups: dict[str, list] = {}
     for row in rows:
         groups.setdefault(row.compound, []).append(row)
     for members in groups.values():
         cross_compare([row.report for row in members],
                       [row.peaks for row in members])
+        # the energies of the *chosen* rows, for the same reason the
+        # comparison is of the chosen rows: a recommendation that ranked an
+        # infusion the reader left unticked would be about another document.
+        # Only where a choice was actually made — a compound infused at one
+        # condition has nothing to choose between and says so in the table,
+        # not in a paragraph of the page about the one vial
+        written = {}
+        for made in recommend(members):
+            if not made.choices:
+                continue
+            paragraph = made.paragraph()
+            for condition in made.conditions:
+                for point in condition.points:
+                    written[point.sample] = paragraph
+        for row in members:
+            row.report.energy_advice = written.get(row.report.sample, "")
     return [row.report for row in rows]
 
 
@@ -3064,6 +3088,31 @@ def _compared_block(report: InfusionReport,
     return "".join(parts)
 
 
+def _energy_block(report: InfusionReport,
+                  breaks: set[str] | None = None) -> str:
+    """
+    Which of this compound's energies to use, and for what.
+
+    Written only where the document holds more than one condition of the
+    compound — `prepare_documents` fills the field and leaves it empty
+    otherwise, so a compound infused once has no paragraph rather than a
+    paragraph saying there was nothing to compare. The sentences are
+    `energy.EnergyRecommendation.paragraph`'s, so the page, the dialog and
+    the CSV cannot disagree about the same arithmetic.
+    """
+    if not report.energy_advice:
+        return ""
+    return "".join([
+        _sub("Collision energy", breaks),
+        '<p class="meta">Three questions and three answers, which do not '
+        'have to be the same energy: the most predicted ions with the '
+        'precursor still standing identifies, one fragment holding as much '
+        'of the spectrum as it can quantifies, and the middle of the '
+        'energies measured makes a record another instrument can match. '
+        'Only the energies that were acquired are offered.</p>',
+        f"<p>{_escape(report.energy_advice)}</p>"])
+
+
 def build_section(report: InfusionReport, heading: str = "",
                   breaks: set[str] | None = None,
                   theme: str = "paper") -> str:
@@ -3085,6 +3134,7 @@ def build_section(report: InfusionReport, heading: str = "",
         _purity_block(report, breaks),
         _library_block(report, breaks, theme),
         _compared_block(report, breaks, theme),
+        _energy_block(report, breaks),
     ])
 
 

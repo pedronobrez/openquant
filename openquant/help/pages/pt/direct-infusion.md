@@ -262,7 +262,59 @@ Para uma amostra lida como infusão:
 
 Nada mais muda. O painel do cromatograma continua desenhando a corrente
 iônica total ao longo do tempo, os controles de scan continuam avançando scan
-a scan, e o [[contour-view]] continua sendo construído.
+a scan, e o [[contour-view]] continua sendo construído — como um filme, com a
+corrente iônica total da corrida ao lado e um Play que percorre os scans. Veja
+adiante.
+
+## Vendo a corrida scan a scan
+
+A média é a coisa certa para ler uma infusão e a coisa errada para conferi-la:
+um transiente no primeiro scan, uma rajada no meio do caminho e um fragmento
+que só aparece depois que a pulverização estabiliza desaparecem todos dentro
+dela. Duas coisas devolvem a corrida.
+
+**O filme.** Mude *View* para *Contour* numa infusão e a superfície vem com a
+corrente iônica total da corrida como uma faixa no mesmo eixo de tempo, os
+scans deixados de fora da média marcados com ✕, e **Play**, que percorre o
+painel de espectro por todos os scans da corrida. Um fragmento é uma crista
+percorrendo toda a corrida; um transiente de pulverização é uma coluna da
+largura de um scan. Veja [[contour-view]] para o que ele mostrou nas
+aquisições reais.
+
+**Δ from average** (Δ em relação à média). *Process ▸ Δ from average*,
+desligado por padrão e oferecido apenas numa infusão, desenha o scan atual
+**menos** a média da corrida inteira, com a média espelhada por baixo — pelo
+mesmo interruptor *Mirror* que um espectro fixado usa, que ele liga e depois
+devolve como estava. Todo scan de uma pulverização deveria ser o mesmo
+espectro, de modo que o que sobra é o que mudou.
+
+A média é interpolada primeiro sobre o próprio eixo de m/z do scan, do jeito
+que um fundo é, porque as duas grades não coincidem: no
+`DCA-d4_TOFMSMS_Mix1` um único scan carrega de 8,815 a 21,960 pontos contra os
+242,308 da média, que é a união das grades de todos os scans. Nada é cortado
+em zero — um scan *abaixo* da média é exatamente para isso que isto serve.
+
+Enquanto está ligado, a diferença **é** o espectro ao vivo: a tabela de picos,
+a comparação e um pin leem-na. Desligue-o antes do *Explain spectrum*, de uma
+busca na biblioteca ou de um relatório, que querem o espectro e não o resíduo.
+
+### O que ele mostrou
+
+Lido por massa nominal no `DCA-d4_TOFMSMS_Mix1`, contra um canal cujo total
+fica em 373,000 contagens:
+
+| o scan | o que a diferença diz |
+|---|---|
+| **scan 1**, 0.0042 min, 0.67× o total mediano | toda a escada abaixo da média — −1,997 em 153, −1,897 em 247, −1,843 em 167. A pulverização não havia estabilizado |
+| **scan 262**, 1.0988 min, 4.36× | toda a escada subindo junta — **+118,209 em 361**, +25,520 em 219, +24,949 em 95, e uma diferença de pico de +21,674 contagens. Um evento de pulverização, não uma espécie nova: uma espécie nova seria uma única massa |
+| **scan 237**, 0.9938 min, 0.91× | quase nada: o maior ponto isolado difere em −523 contagens contra um pico médio de 2,795 |
+
+**Leia por massa, não por ponto.** A grade de perfil se desloca por uma fração
+de ponto entre scans, de modo que o resíduo de um pico sai como um dipolo de
+cada lado dele: no arquivo CA-d4 EAD as três maiores diferenças no scan 1 são
++2,457, −2,052 e +1,978 contagens dentro de 0.010 Da de 377.30, que é o mesmo
+pico chegando ligeiramente adiantado e não três achados. Somado sobre uma
+massa nominal inteira isso se cancela, e o que sobra é a mudança.
 
 ## Uma infusão de outro instrumento
 

@@ -39,6 +39,65 @@ O topo da escala de cor é o percentil 99.7 das intensidades, não o máximo: um
 único scan saturado ou com um pico espúrio de outro modo definiria a escala para
 todo o resto e deixaria o restante da superfície preto.
 
+## Uma infusão como filme
+
+Numa amostra lida como [[direct-infusion]] a mesma superfície é um filme. Não
+há cromatografia, de modo que nada se move ao longo do eixo de tempo exceto a
+própria pulverização: um fragmento é uma **crista em m/z constante percorrendo
+toda a extensão da corrida**, e um transiente de pulverização é uma **coluna
+brilhante da largura de um scan**. A média a partir da qual uma infusão é lida
+esconde os dois, que é para isso que serve o filme.
+
+Três coisas aparecem, e apenas numa infusão:
+
+| | |
+|---|---|
+| **a faixa** | o cromatograma de íons totais do próprio canal, um ponto por scan, no eixo de tempo da superfície. É o cromatograma do instrumento, não uma linha da grade: as linhas da grade podem ser vários scans promediados e seus bins de m/z são mais largos que os passos do instrumento |
+| **as marcas ✕** | os scans deixados de fora da média, marcados na faixa e sombreados na superfície |
+| **Play** | percorre o painel de espectro por todos os scans da corrida, a dez scans por segundo vezes a velocidade ao lado (1×, 5×, 20×). Pressione de novo para pausar; ele para sozinho no último scan, e iniciá-lo ali recomeça do primeiro |
+
+O cursor tanto na faixa quanto na superfície é o scan que o painel de espectro
+está mostrando, venha ele de onde vier — do Play, dos botões ◀ ▶, das setas do
+teclado, do número do scan ou de um clique na superfície.
+
+### O que ele mostrou nas infusões reais
+
+Duas infusões de ácidos biliares em ZenoTOF 7600, um canal de íons produto
+cada, um scan a cada 0.25 s:
+
+| | `DCA-d4_TOFMSMS_Mix1` | `CA-d4_…EAD_22CE…_mix1` |
+|---|---|---|
+| scans, duração | 473, 1.98 min | 146, 0.62 min |
+| a grade | 473 linhas × 1,400 bins | 146 × 1,400 |
+| scans promediados por linha | nenhum — 473 está abaixo do limite de 900 linhas | nenhum |
+| construída e desenhada | 1.4 s | 0.8 s |
+| deixados de fora da média | 4 scans (o primeiro segundo) | 4 scans |
+| o scan mais alto | **4.38×** a mediana da corrida | 1.04× |
+
+`DCA-d4_TOFMSMS_Mix1` é o arquivo contra o qual a regra de infusão foi
+escrita, e o filme é onde seus três transientes ficam visíveis em vez de
+estatísticos: o scan 2 em 0.0084 min a 4.38 vezes o total mediano, e mais dois
+no meio da corrida em 1.0819 e 1.0988 min a 2.40 e 4.36 vezes. Os três se leem
+na faixa como picos e na superfície como colunas brilhantes, e como aqui nenhum
+scan é agrupado numa linha os próprios totais de linha da grade carregam as
+mesmas três razões — 4.38, 2.40 e 4.36. O outro arquivo não tem transiente
+algum: seu scan mais alto é 1.04 vezes sua mediana, e sua faixa é uma banda
+plana.
+
+**O Play roda na velocidade em que o arquivo consegue ser desenhado.** O
+temporizador pede um scan a cada 100 ms em 1×, 20 ms em 5× e 5 ms em 20×; um
+quadro — ler o scan, desenhá-lo, rotulá-lo — foi medido em **52 ms** no
+`DCA-d4_TOFMSMS_Mix1` e **89 ms** no arquivo CA-d4 EAD. Assim 1× roda como
+pedido — dez scans por segundo são duas vezes e meia o tempo real num ciclo de
+0.25 s, e a corrida de 473 scans dá 47 segundos de filme — enquanto 20× chega
+a cerca de dezenove scans por segundo em vez de duzentos. Um tique que chega
+enquanto o anterior ainda está desenhando é descartado, de modo que o filme
+fica mais lento em vez de ficar atrasado em relação a si mesmo. Esses
+números são o que são porque o painel de espectro **não é reescalonado
+enquanto o Play está rodando** — a escala fica onde estava, de modo que o que
+se move na tela são os dados e não os eixos. Com o reescalonamento, os mesmos
+dois quadros custaram 245 ms e 880 ms.
+
 ## Nada é quantificado a partir do contorno
 
 Seus bins de m/z são mais largos que os passos do instrumento e suas linhas

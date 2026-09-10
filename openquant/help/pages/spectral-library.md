@@ -30,13 +30,25 @@ precursor, and scores every record whose precursor sits within
 **Precursor ±** of it. The tolerance is at least the precision the channel's
 precursor was written with: a method value of `647.5` is known to ±0.05,
 and a filter of ±0.02 around it would be asking for digits it lacks.
-Records with no precursor are left out of a filtered search unless **Also
-records with no precursor** is ticked — measured on MassBank, 24,000 of
-139,000 records carry none, and a filter that admitted them all had every
-search dominated by them; ticked, they are scored with their Δ ppm shown
-as `—`, so the reader knows the filter could not apply to them. Measured
-peaks under one per cent of the base peak are not matched against; the
-baseline of a product spectrum is full of them.
+A record states its precursor twice — as `PrecursorMZ`, and again as the
+mass its `Formula` and `Precursor_type` give — and **either** statement
+puts it in the window, so no record is lost because its own two numbers
+disagree. A record that states neither is left out unless **Also records
+with no precursor** is ticked — measured on MassBank, 24,000 of 139,000
+records carry no written precursor, and a filter that admitted them all
+had every search dominated by them; ticked, they are scored with their Δ
+ppm shown as `—`, so the reader knows the filter could not apply to them.
+Measured peaks under one per cent of the base peak are not matched
+against; the baseline of a product spectrum is full of them.
+
+An adduct also declares a charge sign, so a record can be asked whether it
+belongs to the polarity the scan was measured in — and it is. Records
+whose adduct is of the other sign are left out unless **Also the other
+polarity** is ticked. The polarity is the active channel's, read from the
+file: it is not typed anywhere, because a scan's polarity is a fact about
+the acquisition and the only choice you have is whether to honour it. A
+record that says nothing about its own polarity is kept either way — the
+gate refuses what contradicts the query, never what is silent.
 
 A record has to land at least **Matched peaks ≥** of its peaks to be
 listed, two by default. One peak in common is a coincidence: on the same
@@ -60,6 +72,42 @@ co-eluting impurity, or a survey scan with more than one ion in the
 isolation window. A high score with everything matched is the record
 itself. Both are shown as percentages; **Matched** is how many of the
 record's peaks found a partner.
+
+## Δ ppm, and which precursor it is measured against
+
+`PrecursorMZ` is whatever the record's author typed — often two decimals,
+sometimes truncated rather than rounded. `Formula` and `Precursor_type`
+together give the mass the ion actually has, to as many decimals as the
+elements do. Where a record carries both, Δ ppm is measured against
+**that**, and the **Δ from** column says `formula`; where it does not, Δ
+falls back to the written value and the column says `written`, so a number
+is never read as more than it is.
+
+It changes what the number means. Measured on a real infusion: cholic
+acid-d4's record says `430.35` and the channel that searched it says
+`430.34` — two decimals of the same ion, and against each other they read
+**−23.2 ppm**, one typist against another. Against 430.3465, which is what
+`C24H36D4O5` as `[M+NH4]+` weighs, the same search reads **−15.1 ppm**,
+and that is the query's own truncation and nothing else.
+
+A record whose two accounts of itself disagree by more than the written
+one is good to says so on its row: the Precursor cell shows both, as
+`414.3400 ≠ 414.3516`, and hovering explains. Which of the three — the
+formula, the adduct, or the typed mass — is wrong cannot be told from
+here, so this is reported and never repaired. "Good to" is a whole unit in
+the last written decimal, since a method writes `286.2` for 286.2741 as
+readily as it rounds, and never tighter than 25 ppm.
+
+That floor was measured. On a 449,627-record in-silico lipid library whose
+every record writes five decimals — claiming ±0.000005 Da — 96.8% of the
+records sit inside 0.5 ppm of their own formula, 3.1% inside 1 ppm and 309
+inside 2 ppm, which is the exporter's rounding, and then there is nothing
+at all until **one** record 116,411 ppm out. Held to half a unit in the
+last decimal, 30% of that library reads as broken; held to 25 ppm, one
+record does — `TG d5 17:0/17:1/17:0`, whose `[M+NH4]+` record says
+768.57491 where `C54H97D5O6` gives 869.8329, and whose `[M+H]+` record in
+the same file is right. The flag found a genuinely wrong record in a
+public library and nothing else.
 
 ## The matched peaks, and the overlay
 
@@ -87,6 +135,37 @@ precursor, its isotopes and the whole low-mass region as well as the
 fragments the record lists: on such spectra the reverse score is the one
 to read, and the plain score says how much else was there.
 
+## Measured on a large lipid library
+
+The other library measured here is an in-silico lipid MSP of **449,627
+records**, 224 MB, every one of them positive mode: 6.1 seconds to read,
+2.2 GB held, and 5.9 seconds more the first time a search asks what the
+formulas weigh — worked out once, on demand, so a library that is loaded
+and never searched pays nothing.
+
+**449,525 of 449,627 records (100.0%) carry a formula and an adduct that
+both read.** The 102 that do not are all `[M]+`, a radical cation this
+program does not model; they keep their written precursor and their
+polarity, and their Δ says `written`.
+
+Then the 143 product-ion channels of one real injection — a TripleTOF
+5600, positive, one compound per channel — were each averaged, centroided
+and searched against it over a ±0.5 Da window. 132 channels returned hits
+and 11 returned none. **2,414 of the 2,415 hits listed had their Δ
+measured against the formula** and one against the written value: the
+`[M]+` case. The search took a median of 6 ms, and 5.8 s on the one
+channel whose window holds most of the library.
+
+The polarity gate on that batch removed **nothing** — every top-20 list
+identical with it and without it, on all 132 channels — because a
+positive-mode library queried by positive-mode scans has nothing to
+refuse, which is the half of the gate that must not misfire. The other
+half was measured by asking the same 143 channels for negative-mode
+records: **zero hits**, all 449,627 records refused. The interesting
+middle — a library holding both polarities, where the gate has something
+to choose — was not measurable here: the MassBank figures above were taken
+when that export was on the machine, and it is not there now.
+
 ## Your own library
 
 A deuterated internal standard infused on purpose is in no public library.
@@ -103,8 +182,8 @@ supply and prefills everything it can:
 |---|---|
 | **Name** | yours. It is what a search will show, and a record without one is not read back at all |
 | **Precursor m/z** | the active channel, or whatever is typed in **Precursor** above |
-| **Adduct** | the polarity that was run — `[M-H]-` for a negative method, `[M+H]+` for a positive one — and any other adduct may be typed |
-| **Formula** | yours, if it is known; a record does not need one |
+| **Adduct** | offered from the polarity that was run — `[M-H]-` for a negative method, `[M+H]+` for a positive one — and any other adduct may be typed. Change it if the ion was not the one offered |
+| **Formula** | yours, if it is known; a record does not need one, but a record that has one is worth more |
 | **Collision energy** | the channel information, where the instrument recorded one |
 | **Comment** | the spectrum pane's own title — sample, channel, and the scans the average was taken over — with the file and today's date |
 
@@ -119,16 +198,24 @@ which is how every library format holds them.
 
 The record goes into the file as NIST-style MSP: `Name`, `PrecursorMZ`,
 `Precursor_type`, `Formula`, `Collision_energy`, `Comment`, `Num Peaks`,
-then the peak list. If the library loaded is the file just written to, it
-is read again straight away, so the new record can be searched for
-immediately — which is also the check that it was written in a form the
-parser reads back.
+then the peak list. `PrecursorMZ` is written with the precision it was
+given and no more — `430.35` stays `430.35`, and is not padded out to
+`430.3500`, which would claim four decimals a method value does not have
+and have the record's own formula call it wrong. If the library loaded is
+the file just written to, it is read again straight away, so the new
+record can be searched for immediately — which is also the check that it
+was written in a form the parser reads back.
+
+**Give the record its formula and its adduct.** They are not labels: the
+search computes the ion's real mass from them, measures Δ ppm against it,
+and refuses the record to a scan of the other polarity. A record of your
+own is the one library record you can be sure carries them.
 
 ### Measured on three infused standards
 
 The acquisitions this was written for: cholic acid-d4, deoxycholic acid-d4
 and taurodeoxycholic acid-d4, infused one at a time into a ZenoTOF 7600 in
-negative mode, product-ion scans, one channel each and no column. The
+**positive** mode, product-ion scans, one channel each and no column. The
 [[direct-infusion]] verdict calls all of them infusions, so each record is
 the average of **every scan of the run** — 473, 473 and 257 of them, over
 1.98, 1.98 and 1.07 minutes — centroided:
@@ -161,7 +248,8 @@ the molecule.
 | its reverse score | 38.8 | 43.8 | 68.7 |
 | matched peaks | 22 of 200 | 19 of 200 | 8 of 25 |
 | the best *wrong* record | 14.1 | 14.0 | 10.3 |
-| Δ ppm to the recorded precursor | −23.2 | +0.0 | +0.0 |
+| Δ ppm against the record's formula | −15.1 | −28.0 | −18.1 |
+| Δ ppm against its written precursor | −23.2 | +0.0 | +0.0 |
 
 **A different compound does not match.** Searched against the other two
 records with no precursor filter, the best wrong score anywhere is 14.1 with
@@ -172,9 +260,47 @@ by default there was exactly one record in the ±0.02 Da window each time and
 it was the right one; the filter changes no score and no order here, only
 which records were scored at all. A search takes 0.1 – 1.6 ms.
 
-CA-d4's Δ of −23.2 ppm is the rule about written precision doing its work:
-the record says `430.35`, which is good to ±0.005 Da, and the channel that
-queried it says `430.34`. Both are the same ion written to two decimals.
+### What the formula and the adduct changed here
+
+The three records were then written again **with their formulas and their
+adducts** — `C24H36D4O5` `[M+NH4]+`, `C24H36D4O4` `[M+NH4]+`,
+`C26H41D4NO6S` `[M+H]+` — and nothing about the matching moved: the same
+scores, the same reverse scores, the same matched peaks, the right record
+first each time. What moved is the Δ column, and one record grew a flag.
+
+| | CA-d4 | DCA-d4 | TDCA-d4 |
+|---|---|---|---|
+| written precursor | 430.35 | 414.34 | 504.32 |
+| what its formula and adduct weigh | 430.3465 | 414.3516 | 504.3291 |
+| apart by | 3.5 mDa, +8.1 ppm | 11.6 mDa, −28.0 ppm | 9.1 mDa, −18.1 ppm |
+| a two-decimal number is good to | ±10.8 mDa | ±10.4 mDa | ±12.6 mDa |
+| flagged | no | **yes** | no |
+
+CA-d4's Δ used to read −23.2 ppm — the record says `430.35` and the
+channel that queried it says `430.34`, two decimals of the same ion, one
+typist against another. Against 430.3465, which is what the ion weighs, it
+reads −15.1 ppm, which is the query's own truncation.
+
+DCA-d4 is the one worth reading. Its record and its query carry the *same*
+typed number, `414.34`, so the old Δ was **+0.0 ppm** — perfect agreement
+between two copies of the same mistake. Against the formula both are 28
+ppm out, past the ±10.4 mDa a two-decimal number is good to, so the record
+is flagged. And the acquisition settles which of the three is wrong: the
+surviving precursor in DCA-d4's own EAD scan measures **414.3525**, 2.2
+ppm from `C24H36D4O4` `[M+NH4]+` and 28 ppm from the method's `414.34`
+(CA-d4's measures 430.3489, 5.6 ppm from its formula). The formula is
+right and the typed mass is not — but that is the instrument saying so,
+not the flag, which only reports that the two disagree.
+
+TDCA-d4 at 9.1 mDa is not flagged and should not be: `504.3291` truncated
+to two decimals is `504.32`, which is how methods write masses.
+
+**A wrong adduct is caught outright.** The same CA-d4 record written
+`[M-H]-` instead of `[M+NH4]+` — the ion these infusions were first
+assumed to be — puts its formula 19.0446 Da from its own written
+precursor, so it is flagged; and the polarity gate then refuses it to the
+positive scan that would otherwise have matched it, one hit becoming none
+until **Also the other polarity** is ticked.
 
 **A record is one energy, and one way of breaking the molecule.** The same
 CA-d4 spectrum re-acquired at 12 eV instead of 22, against the same

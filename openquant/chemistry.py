@@ -486,6 +486,114 @@ ADDUCTS: list[Adduct] = [
 
 ADDUCTS_BY_NAME = {a.name: a for a in ADDUCTS}
 
+#: what other exporters call the adducts above. A library record spells its
+#: adduct the way its author's software does, and the spellings differ more
+#: than the ions do: MassBank writes `[M+FA-H]-` where MS-DIAL writes
+#: `[M+HCOO]-`, and both mean formate. Keyed on what `_normalise_adduct`
+#: produces, so brackets, spaces, case and a `1` before the sign are gone.
+_ADDUCT_ALIASES = {
+    "M+FA-H": "[M+HCOO]-",
+    "M+HCOOH-H": "[M+HCOO]-",
+    "M+FORMATE": "[M+HCOO]-",
+    "M+OAC": "[M+CH3COO]-",
+    "M+AC": "[M+CH3COO]-",
+    "M+ACETATE": "[M+CH3COO]-",
+    "M+CH3COOH-H": "[M+CH3COO]-",
+    "M+NH3+H": "[M+NH4]+",
+}
+
+_CHARGE_SUFFIX = re.compile(r"(\d*)\s*([+-])\s*$")
+_DECORATION = re.compile(r"[\s\[\]]")
+
+
+def _normalise_adduct(text: str) -> str:
+    """
+    An adduct name with the decoration taken off: no brackets, no spaces,
+    no charge suffix, upper case. `[M+H]+`, `[M+H]1+` and ` m+h ` all come
+    out as `M+H`, which is what the table and the aliases are keyed on.
+    """
+    body = _DECORATION.sub("", str(text)).upper()
+    return _CHARGE_SUFFIX.sub("", body)
+
+
+def polarity_sign(text) -> int | None:
+    """
+    The sign an adduct name or an ion-mode word declares: +1, -1 or None.
+
+    Read from the written name rather than from the table, so an adduct
+    nobody here models — `[M+2Na-H]+`, `[M+HCOOH-H]-` — still says which
+    polarity it belongs to, which is all a polarity filter needs. An ion
+    mode written as a word (`Positive`, `NEGATIVE`, `N`) is read too, since
+    MGF and several MSP exporters write that where an adduct would go, and
+    a channel's polarity arrives as one of those words as well.
+    """
+    if text is None or isinstance(text, bool):
+        return None
+    if isinstance(text, (int, float)):
+        return 1 if text > 0 else (-1 if text < 0 else None)
+    written = str(text).strip()
+    if not written:
+        return None
+    match = _CHARGE_SUFFIX.search(written)
+    if match:
+        return 1 if match.group(2) == "+" else -1
+    word = written.lower()
+    if word.startswith("pos") or word == "p":
+        return 1
+    if word.startswith("neg") or word == "n":
+        return -1
+    return None
+
+
+def adduct_from_name(text) -> "Adduct | None":
+    """
+    The `Adduct` a written name means, or None when it is not one of these.
+
+    Case, spaces, brackets and a `1` before the charge are ignored and the
+    aliases above are followed. The neutral entry is not an adduct and is
+    never returned; neither is a name whose sign contradicts the table's,
+    since `[M+H]-` is not `[M+H]+` with a typo, it is unreadable.
+    """
+    if not text:
+        return None
+    key = _normalise_adduct(text)
+    if not key:
+        return None
+    name = _ADDUCT_ALIASES.get(key)
+    if name is None:
+        for adduct in ADDUCTS:
+            if adduct.name != NEUTRAL and _normalise_adduct(adduct.name) == key:
+                name = adduct.name
+                break
+    if name is None:
+        return None
+    found = ADDUCTS_BY_NAME[name]
+    sign = polarity_sign(text)
+    if sign is not None and (sign > 0) != (found.charge > 0):
+        return None
+    return found
+
+
+def mass_from_formula(formula: str, precursor_type: str) -> float | None:
+    """
+    The m/z a formula and an adduct give, or None when either is unreadable.
+
+    This is the arithmetic a library record already carries the ingredients
+    for but did not do: `library.LibraryEntry.exact_precursor` is this
+    applied to the `Formula` and `Precursor_type` fields it was written
+    with.
+    """
+    adduct = adduct_from_name(precursor_type)
+    if adduct is None or not formula:
+        return None
+    try:
+        counts = parse_formula(formula)
+    except (FormulaError, ValueError):
+        return None
+    if not counts:
+        return None
+    return adduct.mz(monoisotopic_mass(counts))
+
 
 def mass_error_ppm(measured: float, theoretical: float) -> float:
     """Relative mass error in parts per million."""

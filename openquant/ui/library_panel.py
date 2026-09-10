@@ -106,10 +106,18 @@ class LibraryPanel(QtWidgets.QWidget):
         form.addRow("Matched peaks ≥", self.min_matched)
         self.unknown_precursor = QtWidgets.QCheckBox("Also records with no precursor")
         self.unknown_precursor.setToolTip(
-            "A filtered search leaves out records that carry no precursor "
-            "mass — 24,000 of MassBank's 139,000 — since a filter that admits "
-            "them is not one. Tick to score them anyway; their Δ ppm is blank")
+            "A filtered search leaves out records that state no precursor at "
+            "all — neither a written mass nor a formula with an adduct — "
+            "since a filter that admits them is not one. Tick to score them "
+            "anyway; their Δ ppm is blank")
         form.addRow("", self.unknown_precursor)
+        self.other_polarity = QtWidgets.QCheckBox("Also the other polarity")
+        self.other_polarity.setToolTip(
+            "The active channel's polarity leaves out records whose adduct "
+            "declares the other sign — a negative-mode record cannot be what "
+            "a positive-mode scan measured. Records that say nothing about "
+            "their polarity are kept either way. Tick to score them all")
+        form.addRow("", self.other_polarity)
         layout.addLayout(form)
 
         self.btn_search = QtWidgets.QPushButton("Search the spectrum on screen")
@@ -118,7 +126,7 @@ class LibraryPanel(QtWidgets.QWidget):
 
         self.hits = QtWidgets.QTreeWidget()
         self.hits.setHeaderLabels(["Record", "Score", "Reverse", "Matched",
-                                   "Precursor", "Δ ppm", "Formula"])
+                                   "Precursor", "Δ ppm", "Δ from", "Formula"])
         self.hits.setRootIsDecorated(False)
         self.hits.setToolTip(
             "Score: the cosine over everything both spectra hold. Reverse: "
@@ -214,6 +222,16 @@ class LibraryPanel(QtWidgets.QWidget):
         context = current[3] if len(current) > 3 else None
         self.set_spectrum(mz, intensity, precursor, context)
 
+    def query_polarity(self) -> str:
+        """
+        The polarity of the channel the spectrum came from, as the file
+        writes it — `Positive`, `Negative` — or empty when the Explorer
+        could not say. It is not typed anywhere: a scan's polarity is a
+        fact about the acquisition, and the only choice the reader has is
+        whether to honour it.
+        """
+        return str(self._context.get("polarity") or "")
+
     def _query_precursor(self) -> float | None:
         text = self.precursor_edit.text().strip().replace(",", ".")
         try:
@@ -230,34 +248,61 @@ class LibraryPanel(QtWidgets.QWidget):
             self.status.setText("Show a spectrum first.")
             return
         mz, intensity = self._spectrum
+        polarity = self.query_polarity()
         self._hits = self.library.search(
             mz, intensity, self._query_precursor(),
             tolerance_ppm=self.peak_tol.value(),
             precursor_tolerance=self.precursor_tol.value(),
             min_matched=self.min_matched.value(),
-            include_unknown_precursor=self.unknown_precursor.isChecked())
+            include_unknown_precursor=self.unknown_precursor.isChecked(),
+            polarity=polarity,
+            include_other_polarity=self.other_polarity.isChecked())
         self.hits.clear()
         self.pairs.clear()
         for hit in self._hits:
             entry = hit.entry
+            # a record that states its precursor twice and disagrees with
+            # itself says so on the row, with both numbers: which of the
+            # two is wrong cannot be told from here
+            precursor = "—" if entry.precursor is None else f"{entry.precursor:.4f}"
+            if hit.precursor_disagrees:
+                precursor += f" ≠ {entry.exact_precursor:.4f}"
             item = QtWidgets.QTreeWidgetItem([
                 entry.name, f"{hit.score * 100:.0f}", f"{hit.reverse * 100:.0f}",
-                f"{hit.matched}/{hit.of_library}",
-                "—" if entry.precursor is None else f"{entry.precursor:.4f}",
+                f"{hit.matched}/{hit.of_library}", precursor,
                 "—" if hit.delta_ppm is None else f"{hit.delta_ppm:+.1f}",
-                entry.formula])
+                hit.delta_basis or "—", entry.formula])
             for column in (1, 2, 3, 4, 5):
                 item.setTextAlignment(column, QtCore.Qt.AlignmentFlag.AlignRight)
             item.setToolTip(0, "\n".join(f"{k}: {v}" for k, v in entry.fields.items())
                             or entry.precursor_type)
+            if hit.precursor_disagrees:
+                item.setToolTip(4, (
+                    f"{entry.precursor:g} as written, {entry.exact_precursor:.4f} "
+                    f"from {entry.formula} {entry.precursor_type} — further "
+                    f"apart than the ±{entry.written_precision:g} Da the "
+                    f"written value is good to"))
+            if hit.delta_basis == "formula":
+                basis = (f"Δ measured against {entry.exact_precursor:.4f}, what "
+                         f"{entry.formula} {entry.precursor_type} weighs — not "
+                         f"against the written precursor")
+            elif hit.delta_basis == "written":
+                basis = ("The record gives no formula and adduct to compute its "
+                         "mass from, so Δ is against its written precursor, "
+                         "whatever that was typed to")
+            else:
+                basis = "No precursor to measure against"
+            item.setToolTip(6, basis)
             self.hits.addTopLevelItem(item)
-        for column in range(7):
+        for column in range(self.hits.columnCount()):
             self.hits.resizeColumnToContents(column)
         if self._hits:
             self.hits.setCurrentItem(self.hits.topLevelItem(0))
             precursor = self._query_precursor()
             scoped = (f" within ±{self.precursor_tol.value():g} Da of {precursor:.4f}"
                       if precursor is not None else "")
+            if polarity and not self.other_polarity.isChecked():
+                scoped += f", {str(polarity).lower()} records only"
             self.status.setText(f"{len(self._hits)} record(s) matched{scoped}; "
                                 f"best {self._hits[0].score * 100:.0f}.")
         else:

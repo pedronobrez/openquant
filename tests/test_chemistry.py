@@ -263,3 +263,37 @@ def test_satellites_use_the_charge_spacing():
 def test_satellites_on_empty_spectrum():
     empty = np.zeros(0)
     assert not ch.has_isotope_satellites(empty, empty, 300.0)
+
+
+# --- adducts as other people write them ------------------------------------ #
+def test_an_adduct_is_read_however_its_author_spelt_it():
+    for written in ("[M+H]+", "[M+H]1+", " m+h ", "M+H"):
+        assert ch.adduct_from_name(written) is ch.ADDUCTS_BY_NAME["[M+H]+"]
+    assert ch.adduct_from_name("[M+FA-H]-") is ch.ADDUCTS_BY_NAME["[M+HCOO]-"]
+    assert ch.adduct_from_name("[M+OAc]-") is ch.ADDUCTS_BY_NAME["[M+CH3COO]-"]
+    assert ch.adduct_from_name("[M-2H]2-") is ch.ADDUCTS_BY_NAME["[M-2H]2-"]
+    # not an adduct we model, not the neutral entry, and not a contradiction
+    assert ch.adduct_from_name("[M]+") is None
+    assert ch.adduct_from_name(ch.NEUTRAL) is None
+    assert ch.adduct_from_name("[M+H]-") is None
+    assert ch.adduct_from_name("") is None
+
+
+def test_the_polarity_is_read_from_the_name_even_when_the_adduct_is_not():
+    assert ch.polarity_sign("[M+2Na-H]+") == 1
+    assert ch.polarity_sign("[M+HCOOH-H]-") == -1
+    assert ch.polarity_sign("[M-2H]2-") == -1
+    assert ch.polarity_sign("Positive") == 1 and ch.polarity_sign("NEG") == -1
+    assert ch.polarity_sign(1) == 1 and ch.polarity_sign(-2) == -1
+    for nothing in (None, "", "M+H", "unknown", 0):
+        assert ch.polarity_sign(nothing) is None
+
+
+def test_a_formula_and_an_adduct_give_the_mass_the_ion_has():
+    assert ch.mass_from_formula("C24H36D4O5", "[M+NH4]+") == pytest.approx(
+        430.34651, abs=1e-4)
+    assert ch.mass_from_formula("C39H79N2O6P", "[M+H]+") == pytest.approx(
+        703.57485, abs=1e-4)
+    assert ch.mass_from_formula("", "[M+H]+") is None
+    assert ch.mass_from_formula("C24H36D4O5", "") is None
+    assert ch.mass_from_formula("not a formula", "[M+H]+") is None

@@ -86,6 +86,8 @@ openquant/
                   on one row
   standard_history.py  the own library's records of one compound as a
                   control chart over the days they were acquired
+  infusion_batch.py  a folder of infusions reported without the Explorer,
+                  one reader at a time (CLI --infusion-report)
   audit.py        the trail of hand edits saved with the project
   labels.py       which peaks get a label: a budget per region of the
                   visible axis, shared by the pane and the print
@@ -754,6 +756,22 @@ UV detector, is not implemented there) — untested on real Windows.
   56 and the matched precursor's ppm is printed. `explain.resolve_name`
   takes a name through a bile-acid standards table (bottle abbreviations,
   `-d4` = four unplaced labels), then LIPID MAPS, then the shorthand.
+- **A folder of infusions is reported one reader at a time, and every skip
+  says why.** `infusion_batch.run` checks the folder with
+  `folder.check_files`, opens each file into a `Session` of its own, calls
+  `infusion_report.summarise` as the Infusions tab does, and closes the
+  reader before the next — thirty infusions never mean thirty mapped
+  `.wiff.scan`. A `.wiff` without its companion is skipped unopened; a run
+  that is not an infusion is skipped with `verdict_for`'s figures.
+  `_cross_score` puts back the one thing one file per session cannot know:
+  each infusion scored against the others of its compound. On the nine
+  bile-acid infusions the CLI gives 9 read, 0 skipped, one 48-page PDF in
+  32 s at 890 MB, and the tab's summary line to the digit. Two silent
+  failures found doing it: a `QApplication` nothing holds is collected the
+  moment its factory returns (`_APP` keeps it), and `QPdfWriter` reports
+  nothing when it cannot open its file, so every document is checked after
+  it is written. Timings on this machine vary 3× under a load of twenty
+  agents; pages, memory and rows repeat exactly.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

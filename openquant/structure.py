@@ -70,6 +70,8 @@ class Atom:
     y: float
     charge: int = 0
     hydrogens: int = 0
+    #: heavy hydrogens the atom carries, once its explicit ones are folded in
+    deuterium: int = 0
 
 
 @dataclass(frozen=True)
@@ -107,6 +109,8 @@ class Structure:
             counts[atom.element] = counts.get(atom.element, 0) + 1
             if atom.hydrogens:
                 counts["H"] = counts.get("H", 0) + atom.hydrogens
+            if atom.deuterium:
+                counts["D"] = counts.get("D", 0) + atom.deuterium
         return counts
 
     def neighbours(self, atom: int) -> list[int]:
@@ -245,6 +249,48 @@ def parse_molblock(text: str, formula: str = "",
     if formula:
         structure.reliable = _hydrogens_agree(structure, formula)
     return structure
+
+
+def suppress_hydrogens(structure: Structure) -> Structure:
+    """
+    Fold explicit hydrogens into the atoms that carry them.
+
+    PubChem writes every hydrogen out; LIPID MAPS writes the ones a
+    stereocentre needs. Either way a hydrogen is not a piece anybody looks
+    for, and leaving them in the connection table means enumerating the
+    cleavage of forty C–H bonds: forty fragments differing from the whole
+    molecule by one hydrogen, which is what a hydrogen shift already covers,
+    and thousands of candidate masses that match a spectrum by accident.
+
+    The formula is unchanged — a suppressed hydrogen is still counted — and
+    so is the geometry of what is left. A drawing that places deuterium keeps
+    it, on the atom it was drawn on.
+    """
+    heavy = [i for i, a in enumerate(structure.atoms)
+             if a.element not in ("H", "D")]
+    if len(heavy) == len(structure.atoms) or not heavy:
+        return structure
+    position = {old: new for new, old in enumerate(heavy)}
+    light = {i: structure.atoms[i].element for i in range(len(structure.atoms))
+             if i not in position}
+    gained_h = {i: 0 for i in heavy}
+    gained_d = {i: 0 for i in heavy}
+    for bond in structure.bonds:
+        for a, b in ((bond.a, bond.b), (bond.b, bond.a)):
+            if a in light and b in position:
+                if light[a] == "D":
+                    gained_d[b] += 1
+                else:
+                    gained_h[b] += 1
+    atoms = [Atom(element=structure.atoms[i].element, x=structure.atoms[i].x,
+                  y=structure.atoms[i].y, charge=structure.atoms[i].charge,
+                  hydrogens=structure.atoms[i].hydrogens + gained_h[i],
+                  deuterium=structure.atoms[i].deuterium + gained_d[i])
+             for i in heavy]
+    bonds = [Bond(a=position[b.a], b=position[b.b], order=b.order)
+             for b in structure.bonds
+             if b.a in position and b.b in position]
+    return Structure(atoms=atoms, bonds=bonds, reliable=structure.reliable)
 
 
 def _charges(tail: list[str], n_atoms: int) -> dict[int, int]:

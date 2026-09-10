@@ -247,10 +247,43 @@ class LipidPanel(QtWidgets.QWidget):
             "kept. A drawing that places them (an M ISO block, or D atoms) "
             "needs 0 here")
         own_layout.addRow("Deuterium, unplaced:", self.own_deuterium)
+        own_limits = QtWidgets.QHBoxLayout()
+        self.own_cuts = QtWidgets.QSpinBox()
+        self.own_cuts.setRange(1, 2)
+        self.own_cuts.setValue(2)
+        self.own_cuts.setPrefix("cuts ≤ ")
+        self.own_cuts.setToolTip(
+            "Two are needed to open a ring: a steroid cut once is still in "
+            "one piece, so a bile acid gives nothing at one")
+        own_limits.addWidget(self.own_cuts)
+        self.own_losses = QtWidgets.QSpinBox()
+        self.own_losses.setRange(0, 3)
+        self.own_losses.setValue(3)
+        self.own_losses.setPrefix("losses ≤ ")
+        self.own_losses.setToolTip(
+            "Three, because a trihydroxy bile acid sheds three waters and "
+            "the three-water ion is its base peak")
+        own_limits.addWidget(self.own_losses)
+        self.own_tolerance = QtWidgets.QDoubleSpinBox()
+        self.own_tolerance.setRange(0.5, 50.0)
+        self.own_tolerance.setDecimals(1)
+        self.own_tolerance.setValue(5.0)
+        self.own_tolerance.setPrefix("± ")
+        self.own_tolerance.setSuffix(" ppm")
+        self.own_tolerance.setToolTip(
+            "Tighter than the 20 ppm a database candidate is scored at, "
+            "because a label is only 1.55 mDa from the hydrogen it replaced: "
+            "a window wider than that holds both and the number of labels a "
+            "piece kept cannot be read off it")
+        own_limits.addWidget(self.own_tolerance)
+        own_limits.addStretch(1)
+        own_layout.addRow("Limits:", own_limits)
         self.btn_explain_own = QtWidgets.QPushButton("Explain with this")
         own_layout.addRow(self.btn_explain_own)
         explain_layout.addWidget(own)
         self._own_molecule = None
+        self._label_inputs = None
+        self._inference = None
 
         self.explain_tree = QtWidgets.QTreeWidget()
         self.explain_tree.setHeaderLabels(["Candidate", "Explains", "Peaks",
@@ -271,6 +304,36 @@ class LipidPanel(QtWidgets.QWidget):
             "them apart.")
         self.match_tree.setAlternatingRowColors(True)
         explain_layout.addWidget(self.match_tree, 2)
+
+        self.labels_box = QtWidgets.QGroupBox("Where the labels are")
+        labels_layout = QtWidgets.QVBoxLayout(self.labels_box)
+        labels_layout.setContentsMargins(8, 4, 8, 6)
+        self.labels_text = QtWidgets.QLabel("")
+        self.labels_text.setWordWrap(True)
+        self.labels_text.setTextInteractionFlags(
+            QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+        labels_layout.addWidget(self.labels_text)
+        self.labels_hetero = QtWidgets.QCheckBox(
+            "Include O- and N-bound positions")
+        self.labels_hetero.setToolTip(
+            "Off by default: an O–D or an N–D exchanges with the solvent long "
+            "before the spectrum is recorded, so a label drawn there is not "
+            "one that survives to be measured. Tick it to see what the "
+            "spectrum would say if it did.")
+        labels_layout.addWidget(self.labels_hetero)
+        self.labels_note = QtWidgets.QLabel(
+            "A fragment says how many labels it kept, which is a statement "
+            "about which ones only when the pieces are certain. Labels also "
+            "move: a hydrogen that migrates as the bond breaks can be a "
+            "label, and an exchangeable one is gone before the spectrum "
+            "exists. Read a tie as the spectrum bounding the labels, not "
+            "placing them — on a real infusion of a standard whose vendor "
+            "places them, this did not recover the placement.")
+        self.labels_note.setWordWrap(True)
+        self.labels_note.setProperty("role", "warning")
+        labels_layout.addWidget(self.labels_note)
+        self.labels_box.setVisible(False)
+        explain_layout.addWidget(self.labels_box)
 
         self.explain_note = QtWidgets.QLabel(
             "A share is evidence, not proof. Isomers fragment alike, and a long "
@@ -326,6 +389,7 @@ class LipidPanel(QtWidgets.QWidget):
         self.explain_precursor.returnPressed.connect(self.explain_spectrum)
         self.btn_own_structure.clicked.connect(self._load_own_structure)
         self.btn_explain_own.clicked.connect(self.explain_own)
+        self.labels_hetero.toggled.connect(self._replace_labels)
         self.explain_tree.currentItemChanged.connect(self._show_explanation)
         self.refresh_availability()
 
@@ -705,8 +769,11 @@ class LipidPanel(QtWidgets.QWidget):
         name = self.own_name.text().strip()
         deuterium = self.own_deuterium.value()
         if self._own_molecule is not None:
-            explanation = explain_structure(self._own_molecule, peaks, name=name,
-                                            charge=charge, deuterium=deuterium)
+            explanation = explain_structure(
+                self._own_molecule, peaks, name=name, charge=charge,
+                deuterium=deuterium, max_cuts=self.own_cuts.value(),
+                max_losses=self.own_losses.value(),
+                tolerance_ppm=self.own_tolerance.value())
             basis = (f"cleavages and losses of the drawing "
                      f"({self._own_molecule.formula}) as {adduct}")
         else:
@@ -714,8 +781,9 @@ class LipidPanel(QtWidgets.QWidget):
             if not formula:
                 self._report("Load a structure or type a formula.")
                 return
-            explanation = explain_formula(formula, adduct, peaks, name=name,
-                                          deuterium=deuterium)
+            explanation = explain_formula(
+                formula, adduct, peaks, name=name, deuterium=deuterium,
+                tolerance_ppm=self.own_tolerance.value())
             if not explanation.record.exact_mass:
                 self._report(f"\u201c{formula}\u201d is not a formula this can read.")
                 return
@@ -723,6 +791,7 @@ class LipidPanel(QtWidgets.QWidget):
                      f"losses — a formula has no bonds to cut")
         self.explanation_basis = basis
         self._show_ranked([explanation], None, adduct)
+        self._place_labels(explanation, peaks, deuterium)
         labelled = f", {deuterium} unplaced label(s)" if deuterium else ""
         self._report(f"{explanation.name}: {explanation.share * 100:.1f}% of the "
                      f"spectrum from {basis}{labelled}; {explanation.matched} "
@@ -739,6 +808,37 @@ class LipidPanel(QtWidgets.QWidget):
         """
         item = self.explain_tree.currentItem()
         return item.data(0, ROLE_EXPLANATION) if item is not None else None
+
+    def _place_labels(self, explanation, peaks, deuterium: int) -> None:
+        """
+        Where the labels are, under the ranked table, when there are any.
+
+        Only a drawing can be asked: a formula has no atoms to put them on.
+        """
+        from ..explain import infer_labels, placed_labels
+
+        molecule = self._own_molecule
+        self._label_inputs = (explanation, peaks, deuterium)
+        if molecule is None or not (deuterium or placed_labels(molecule)):
+            self.labels_box.setVisible(False)
+            self.labels_text.setText("")
+            return
+        inference = infer_labels(explanation, molecule, deuterium=deuterium,
+                                 peaks=peaks,
+                                 tolerance_ppm=self.own_tolerance.value(),
+                                 heteroatoms=self.labels_hetero.isChecked())
+        self._inference = inference
+        lines = [inference.summary()]
+        for placement in inference.placements[:3]:
+            lines.append("• " + placement.text())
+        self.labels_text.setText("\n".join(lines))
+        self.labels_box.setVisible(True)
+
+    def _replace_labels(self) -> None:
+        """Ask again with the heteroatom positions in or out."""
+        if getattr(self, "_label_inputs", None) is None:
+            return
+        self._place_labels(*self._label_inputs)
 
     def _show_ranked(self, ranked, precursor, adduct) -> None:
         self.explain_tree.clear()

@@ -430,6 +430,123 @@ Those shares are the highest on this page and mean the least, for the reason
 fivefold, and a long enough list of possible masses covers a spectrum by
 accident. Read them beside the placed drawing's, not instead of it.
 
+## Isotopic purity
+
+A bottle of cholic acid-d4 comes with a certificate saying `98 atom % D`, and
+nobody ever measures it. Where the compound carries labels — declared in
+*Deuterium, unplaced*, spelt into the formula, placed by a drawing, or read
+off a `-d4` on the end of a name — and an adduct was identified, a line
+appears under the label inference:
+
+    Isotopic purity: d4 96.2%, ≥d3 99.1% (from the precursor at 430.35; ±0.8%)
+
+The number matters for a reason that has nothing to do with identity. An
+internal standard that is four per cent d3 puts four per cent of its response
+one dalton below where the method looks for it, and no other check in a batch
+can see that.
+
+**It is a deconvolution and not a set of ratios.** The d4 ion and the d3 ion
+are 1.00628 apart, the mass a deuterium adds over the hydrogen it replaced.
+The **carbon-13 satellite of the d3 ion** sits 1.00335 above it — 2.9 mDa
+below the d4 ion — and on these acquisitions the precursor peak is 10.2 mDa
+wide at half height (R = 42,000 at *m/z* 430). Those two are one peak, and no
+instrument in an ordinary laboratory separates them. On a 24-carbon skeleton
+that satellite is 27% of whatever the species below holds, so every rung of
+the ladder leaks into the rung above it. The envelope is therefore solved —
+each species' natural pattern, from the formula, fitted as a non-negative
+least squares — rather than read.
+
+Reading the peaks instead is not wrong the way one expects. Measured on exact
+synthetic envelopes of a d4 material that is 95% pure: the heights normalised
+over d0 – d4 give d4 = 94.81% where it is 95.00%, because the leak onto d4
+also inflates the denominator and the two nearly cancel. **What does not
+cancel is the impurity**, which is the number a purity is bought on: d3
+against d4 reads 4.44% where it is 4.21%, five per cent high, and on a d7
+sphingolipid with 45 carbons it reads 4.63% against 4.21%, ten per cent high.
+
+**Two numbers, and they are not the same number.** `d4 96.2%` is the fraction
+of molecules carrying all four labels. `98 atom % D` is the fraction of the
+*labelled positions* that hold a deuterium, which counts the three that a d3
+molecule does carry — so a material that is 96% d4 and 4% d3 is 99.0 atom % D.
+The line gives the species pair; the report block underneath gives the atom
+per cent as well, because that is what the certificate states.
+
+### When it says it cannot
+
+The check is free, because the natural pattern is already in hand: **the
+fully-labelled ion's own M+1 satellite has to be there**, at roughly the share
+the formula demands. Where it is not, the line says so instead of giving a
+number:
+
+    Isotopic purity: not measured — the d4 ion's own M+1 satellite is 0.006%
+    of it where the formula says 26.6% …
+
+That is not a rare case. It is what a **product-ion scan** looks like: the
+quadrupole isolated the precursor before the collision cell, and a window
+narrow enough to pick one species out of the d-ladder has already thrown away
+the satellites the solve needs. Measured on the nine bile-acid infusions, all
+of them product-ion scans with no survey scan at all:
+
+| infusion | CE | M+1 measured | formula says | ratio |
+|---|---|---|---|---|
+| CA-d4 EAD | 12 eV | 0.006% | 26.6% | 0.0002 |
+| CA-d4 EAD | 22 eV | 0.028% | 26.6% | 0.0010 |
+| CA-d4 CID | 45 eV | 0.095% | 26.6% | 0.0036 |
+| DCA-d4 EAD | 22 eV | 0.015% | 26.5% | 0.0006 |
+| DCA-d4 CID | 40 eV | 0.150% | 26.5% | 0.0057 |
+| TDCA-d4 EAD | 22 eV | 0.020% | 30.0% | 0.0007 |
+| TDCA-d4 CID | 30 eV | 0.206% | 30.0% | 0.0069 |
+
+Three orders of magnitude, on every file, under both activations. The same
+threshold catches the other case it should: a precursor too weak for its own
+27% satellite to rise out of the noise is a precursor whose envelope would be
+read off noise.
+
+The refusal is also what the files themselves argue for. On the 12 eV cholic
+acid-d4 run, transmission one dalton *above* the precursor is 0.0002 of
+transmission at it; a quadrupole window symmetric about its centre would pass
+the d3 rung one dalton below at about the same share, and the 0.763% actually
+measured there would then mean a d3 fraction of 3,300%. Either the window is
+asymmetric by three orders of magnitude — in which case the rungs below d4 are
+scaled by a transmission nobody knows — or what sits at that position is not
+d3 at all. And the second is what the energy says: that residue is 0.763% of
+the precursor at 12 eV, 0.328% at 22 eV and 0.067% at 45 eV, so the same
+bottle would be 98.32%, 98.77% and 98.98% pure depending on how hard the ion
+was hit. An isotopic composition cannot do that. What is there is a
+fragmentation channel — a hydrogen atom lost from the ammoniated molecule,
+which EAD makes freely, and 1.5 mDa from where d3 would be.
+
+**What this needs is an MS1 survey scan**, or a full-scan infusion with no
+quadrupole isolation in front of it. Acquire one minute of TOF MS beside the
+product-ion channel and the same line answers.
+
+### The ladder, and why it is only a floor
+
+Where the precursor did not survive its collision energy at all, the same
+arithmetic is offered on the strongest fully-labelled rung of the water-loss
+ladder — `[M+H-3H2O]+` and its −1D rung — and the line says *a lower bound*.
+It answers a different question: a dehydration can leave with a label, so a d4
+molecule that shed a labelled hydroxyl hydrogen arrives at the d3 position and
+is counted as an impurity that was never in the bottle. Measured on the same
+files with the satellite check switched off, the ladder gives d4 fractions of
+36.7%, 90.1% and 85.0% for cholic acid-d4 at 12, 22 and 45 eV, against
+98.3 – 99.0% from the precursors of those very acquisitions — up to a fifth of
+the fully-labelled molecules leave a label behind with the water. On these
+files the ladder cannot even do that much, because the fragments inherit the
+mass filter that made them: the ladder rung's own M+1 satellite is
+0.015 – 0.63% where the formula says 26 – 30%.
+
+### Where it goes
+
+The line is in the panel; the **infusion report** carries the whole envelope —
+every rung with its *m/z*, its intensity, its share of the fully-labelled ion
+and its fitted fraction — with the atom per cent underneath, or the reason
+there is none. See [[infusion-report]]. And *Add spectrum to library…* writes
+it into the record as `Isotopic_purity`, because a record keeps its peaks
+above one per cent of the base peak and an isotope envelope lives at tenths of
+one per cent: nothing can recover the purity from a record afterwards, so it
+is written while it is still known. See [[spectral-library]].
+
 ## Against a library
 
 The **Library** tab beside this one asks the other question — what

@@ -611,6 +611,14 @@ ACQUIRED_FIELD = "Acquired"
 #: hand; a record made before this existed has none and says so.
 BASE_INTENSITY_FIELD = "Base_peak_intensity"
 
+#: the isotopic purity of a labelled standard, as `purity.Purity.field`
+#: writes it: the species distribution, the atom % D and the ion it was read
+#: from. A record of a d4 standard says what it fragments to and nothing at
+#: all about what the material was; this is the missing half, and it can only
+#: be written here because the measurement needs the profile spectrum the
+#: record does not keep.
+PURITY_FIELD = "Isotopic_purity"
+
 #: what another exporter may spell those two under, matched whole and
 #: without regard to case, underscores or spaces
 _ACQUIRED_KEYS = frozenset({"acquired", "acquisitiondate", "acquisitiontime",
@@ -682,6 +690,7 @@ def entry_from_spectrum(name: str, mz, intensity, precursor: float | None = None
                         precursor_type: str = "", formula: str = "",
                         collision_energy: float | None = None,
                         comment: str = "", acquired: str = "",
+                        isotopic_purity: str = "",
                         min_relative: float = OWN_MIN_RELATIVE,
                         max_peaks: int = OWN_MAX_PEAKS) -> LibraryEntry:
     """
@@ -706,6 +715,14 @@ def entry_from_spectrum(name: str, mz, intensity, precursor: float | None = None
     rather than the day the record was made, and `Base_peak_intensity`, the
     absolute height the relative peaks are shares of. See
     `standard_history.py`, which reads both.
+
+    `isotopic_purity` is a third of the same kind and it is why this
+    parameter exists rather than being folded into the comment: the purity is
+    measured from the **profile** spectrum, whose isotope envelope sits at
+    tenths of a per cent of the base peak — under `min_relative`, and so
+    thrown away by the very next line of this function. A record cannot be
+    asked afterwards what the material's purity was, so it is written when it
+    is still known. `purity.Purity.field` is the text.
     """
     name = _one_line(name)
     if not name:
@@ -732,6 +749,8 @@ def entry_from_spectrum(name: str, mz, intensity, precursor: float | None = None
     # the base peak's height is known here and nowhere afterwards, since
     # what is stored is every peak as a share of it
     fields[BASE_INTENSITY_FIELD] = f"{top:.6g}"
+    if isotopic_purity:
+        fields[PURITY_FIELD] = _one_line(isotopic_purity)
     if comment:
         fields["Comment"] = _one_line(comment)
     return LibraryEntry(

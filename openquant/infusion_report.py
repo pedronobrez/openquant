@@ -70,6 +70,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from . import precursor as _precursor
+from . import purity as _purity
 from . import spectra_compare
 from .components import Component
 from .explain import Explanation
@@ -234,6 +235,11 @@ class InfusionReport:
     #: what the denominator of "n of m" counts
     basis: str = ""
     deuterium: int = 0
+    #: the isotopic purity of a labelled standard, where the compound carries
+    #: labels and an ion could be identified to read the envelope at. Always
+    #: present when it was attempted, `usable` or not: a refusal is the
+    #: measurement's own finding and belongs on the page beside the rest
+    purity: "_purity.Purity | None" = None
     hit: LibraryHit | None = None
     library: str = ""
     compared: list[Compared] = field(default_factory=list)
@@ -311,6 +317,7 @@ class InfusionReport:
         said: list[str] = []
         said += self._precursor_sentences()
         said += self._fragment_sentences()
+        said += self._purity_sentences()
         said += self._library_sentences()
         if not said:
             said.append(
@@ -378,6 +385,9 @@ class InfusionReport:
                          f"above the label floor are not accounted for, the "
                          f"strongest at {left[0][0]:.4f}.")
         return said
+
+    def _purity_sentences(self) -> list[str]:
+        return [] if self.purity is None else self.purity.sentences()
 
     def _library_sentences(self) -> list[str]:
         hit = self.hit
@@ -567,6 +577,8 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
         if report.measurement is None or not report.measurement.found:
             _survivor(report, mz, intensity)
 
+    _measure_purity(report, mz, intensity)
+
     mine = (report.spectrum.peaks(report.trace, most=SCORE_PEAKS,
                                   min_relative=SCORE_SHARE)
             if report.trace is not None else [])
@@ -576,6 +588,52 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
         if other is not None:
             report.compared.append(other)
     return report
+
+
+def _measure_purity(report: InfusionReport, mz=None, intensity=None,
+                    formula: str = "", adduct: str = "",
+                    deuterium: int | None = None) -> None:
+    """
+    The isotopic purity of a labelled standard, from the averaged spectrum.
+
+    Only where three things are known: what the compound is made of, how it
+    was ionised, and how many labels it carries. Two of those come from
+    whatever was scored against the spectrum, so an infusion nobody explained
+    is not asked — there is no formula to build the envelope from, and
+    guessing one would be inventing the answer's own model. The arguments
+    exist because the headless path knows all three a moment before the
+    report does.
+
+    It reads the **profile** spectrum, not the report's peak list: an isotope
+    envelope's rungs are tenths of a per cent of the base peak and every peak
+    list in this module starts at one per cent.
+
+    A refusal is kept rather than dropped. On the nine bile-acid infusions
+    this was written against it is the *only* outcome, because every one is a
+    product-ion scan whose precursor the quadrupole isolated, and a page that
+    silently omits the block cannot be told from a build that never had it.
+    """
+    explanation = report.explanation
+    formula = formula or (explanation.record.formula
+                          if explanation is not None else "")
+    adduct = adduct or report.adduct
+    if deuterium is None:
+        deuterium = int(report.deuterium)
+    if not formula or not adduct:
+        return
+    if mz is None or intensity is None:
+        trace = report.trace
+        if trace is None:
+            return
+        mz, intensity = trace.mz, trace.intensity
+    try:
+        attempt = _purity.purity_from_spectrum(mz, intensity, formula,
+                                               adduct, int(deuterium))
+    except Exception:                          # a formula the reader refuses
+        return
+    result = attempt.best
+    if result is not None and result.labels > 0:
+        report.purity = result
 
 
 def _survivor(report: InfusionReport, mz, intensity) -> None:
@@ -1120,6 +1178,14 @@ def _headless_explanation(session, report: InfusionReport):
     explanation = explain_formula(component.formula, adduct, peaks,
                                   name=component.name, deuterium=deuterium)
     basis = f"the formula {formula} as {adduct}, {why}{labelled}"
+    # the isotopic purity is asked here rather than by the caller, because
+    # this is the one place holding the composition, the adduct and the label
+    # count at once — on this path the report carries none of the three. The
+    # component's *own* formula goes over with the labels declared beside it,
+    # the same pair `explain_formula` was given: `formula` above already has
+    # them folded in, and handing over both would count every label twice
+    _measure_purity(report, formula=component.formula, adduct=adduct,
+                    deuterium=deuterium)
     return explanation, basis, ""
 
 
@@ -1557,6 +1623,69 @@ def _explanation_block(report: InfusionReport,
     return "".join(parts)
 
 
+def _purity_block(report: InfusionReport,
+                  breaks: set[str] | None = None) -> str:
+    """
+    The isotopic purity, its envelope, and — where there is none — why not.
+
+    The envelope table goes on the page whether or not a fraction came out of
+    it, because the refusal is a statement about those numbers and a reader
+    who cannot see them cannot check it.
+    """
+    result = report.purity
+    if result is None:
+        return ""
+    n = result.labels
+    parts = [_sub("Isotopic purity", breaks),
+             f'<p class="meta">The species distribution of the labelled '
+             f'standard — how much of it is d{n}, how much d{n - 1} and so on '
+             f'— solved from the envelope at {_escape(result.ion)}, '
+             f'{result.at:.4f}. It is a deconvolution and not a set of '
+             f'ratios: each species’ carbon-13 satellite lands 2.9 mDa from '
+             f'the next species’ own peak, which no ordinary instrument '
+             f'separates. The atom % D underneath is the quantity a '
+             f'certificate states and is a different number.</p>']
+    names = [f"d{i}" for i in range(n + 1)] + ["M+1", "M+2"]
+    top = result.measured[n] if len(result.measured) > n else 0.0
+    rows = []
+    for index, name in enumerate(names[:len(result.measured)]):
+        share = (f"{result.measured[index] / top * 100:,.3f}"
+                 if top else "—")
+        fraction = ("—" if index >= len(result.fractions)
+                    else f"{result.fractions[index] * 100:,.2f}")
+        rows.append([name, _number(result.positions[index], 4),
+                     _number(result.measured[index], 0), share, fraction])
+    parts.append(_table(
+        ["Rung", "m/z", "Intensity", f"% of d{n}", "Fraction %"], rows,
+        right={1, 2, 3, 4},
+        empty="No rung of the envelope could be read.",
+        widths=["12%", "22%", "22%", "22%", "22%"]))
+    if result.usable:
+        atom = result.atom_percent
+        parts.append(
+            f'<p class="foot">d{n} {result.purity * 100:.1f}%'
+            + (f', ≥d{n - 1} {result.at_least * 100:.1f}%' if n >= 1 else "")
+            + (f', ±{result.uncertainty * 100:.1f}% on a floor of '
+               f'{result.floor:,.0f} counts' if result.uncertainty is not None
+               else "")
+            + (f'; {atom:.2f} atom % D over the {n} labelled positions.'
+               if atom is not None else ".")
+            + (' Read from a fragment, so this is a lower bound: a '
+               'dehydration can leave with a label.' if result.lower_bound
+               else "")
+            + '</p>')
+    else:
+        satellite = result.satellite_ratio
+        measured = ("" if satellite is None else
+                    f' The d{n} ion shows {satellite * 100:.2f}% of the '
+                    f'carbon-13 satellite its own formula demands.')
+        parts.append(
+            f'<p class="foot">No purity was read from this envelope: '
+            f'{_escape(result.reason)}.{measured} The rungs above are what '
+            f'that judgement was made on.</p>')
+    return "".join(parts)
+
+
 def _library_block(report: InfusionReport,
                    breaks: set[str] | None = None) -> str:
     hit = report.hit
@@ -1679,6 +1808,7 @@ def build_section(report: InfusionReport, heading: str = "",
         _verdict(report, breaks),
         _spectrum_block(report, breaks),
         _explanation_block(report, breaks),
+        _purity_block(report, breaks),
         _library_block(report, breaks),
         _compared_block(report, breaks),
     ])

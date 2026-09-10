@@ -435,6 +435,10 @@ class LibraryPanel(QtWidgets.QWidget):
             # and "added" says nothing about it. `standard_history` orders
             # by this
             "acquired": str(context.get("acquired", "") or ""),
+            # measured from the profile spectrum by the Explain tab, and not
+            # recoverable from the record afterwards: the envelope it was
+            # read from is under the floor the record's peaks are kept at
+            "isotopic_purity": str(context.get("isotopic_purity", "") or ""),
         }
 
     def add_spectrum(self) -> None:
@@ -462,6 +466,7 @@ class LibraryPanel(QtWidgets.QWidget):
                            precursor_type: str = "", formula: str = "",
                            collision_energy: float | None = None,
                            comment: str = "", acquired: str = "",
+                           isotopic_purity: str = "",
                            path: str = "") -> LibraryEntry | None:
         """
         Append the spectrum on screen to the analyst's own MSP, and say so.
@@ -485,7 +490,7 @@ class LibraryPanel(QtWidgets.QWidget):
                 name, mz, intensity, precursor=precursor,
                 precursor_type=precursor_type, formula=formula,
                 collision_energy=collision_energy, comment=comment,
-                acquired=acquired)
+                acquired=acquired, isotopic_purity=isotopic_purity)
             write_msp([entry], path, append=True)
         except (ValueError, OSError) as exc:
             self.status.setText(f"Could not write the record: {exc}")

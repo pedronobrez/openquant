@@ -445,6 +445,125 @@ suficientemente longa de massas possíveis cobre um espectro por acidente.
 Leia-as ao lado das do desenho com marcações posicionadas, não no lugar
 delas.
 
+## Pureza isotópica
+
+Um frasco de ácido cólico-d4 vem com um certificado dizendo `98 átomo % D`, e
+ninguém nunca mede isso. Quando o composto carrega marcações — declaradas em
+*Deuterium, unplaced*, escritas na fórmula, posicionadas por um desenho, ou
+lidas de um `-d4` no fim de um nome — e um aduto foi identificado, uma linha
+aparece abaixo da inferência de posições:
+
+    Isotopic purity: d4 96.2%, ≥d3 99.1% (from the precursor at 430.35; ±0.8%)
+
+O número importa por uma razão que nada tem a ver com identidade. Um padrão
+interno que é quatro por cento d3 coloca quatro por cento da sua resposta um
+dálton abaixo de onde o método procura, e nenhuma outra verificação de um lote
+enxerga isso.
+
+**É uma deconvolução e não um conjunto de razões.** O íon d4 e o íon d3 estão
+a 1,00628 um do outro, a massa que um deutério acrescenta sobre o hidrogênio
+que substituiu. O **satélite de carbono-13 do íon d3** fica 1,00335 acima dele
+— 2,9 mDa abaixo do íon d4 — e nestas aquisições o pico do precursor tem
+10,2 mDa de largura a meia altura (R = 42.000 em *m/z* 430). Esses dois são um
+pico só, e nenhum instrumento de laboratório comum os separa. Num esqueleto de
+24 carbonos aquele satélite é 27% do que quer que a espécie de baixo tenha, de
+modo que cada degrau da escada vaza para o degrau acima. O envelope é portanto
+resolvido — o padrão natural de cada espécie, vindo da fórmula, ajustado como
+mínimos quadrados não negativos — em vez de lido.
+
+Ler os picos, em vez disso, não erra do jeito que se espera. Medido em
+envelopes sintéticos exatos de um material d4 com 95% de pureza: as alturas
+normalizadas sobre d0 – d4 dão d4 = 94,81% onde ele é 95,00%, porque o
+vazamento para o d4 também infla o denominador e os dois quase se cancelam.
+**O que não se cancela é a impureza**, que é o número pelo qual se compra uma
+pureza: d3 contra d4 lê 4,44% onde é 4,21%, cinco por cento alto, e num
+esfingolipídio d7 com 45 carbonos lê 4,63% contra 4,21%, dez por cento alto.
+
+**Dois números, e não são o mesmo número.** `d4 96,2%` é a fração de moléculas
+que carregam as quatro marcações. `98 átomo % D` é a fração das *posições
+marcadas* que têm um deutério, o que conta as três que uma molécula d3 de fato
+carrega — de modo que um material 96% d4 e 4% d3 é 99,0 átomo % D. A linha dá
+o par de espécies; o bloco do relatório embaixo dá também o átomo por cento,
+porque é isso que o certificado declara.
+
+### Quando ela diz que não pode
+
+A verificação é de graça, porque o padrão natural já está em mãos: **o
+satélite M+1 do próprio íon totalmente marcado tem de estar lá**, mais ou
+menos na fração que a fórmula exige. Quando não está, a linha diz isso em vez
+de dar um número:
+
+    Isotopic purity: not measured — the d4 ion's own M+1 satellite is 0.006%
+    of it where the formula says 26.6% …
+
+Não é um caso raro. É a cara de um **espectro de íons produto**: o quadrupolo
+isolou o precursor antes da cela de colisão, e uma janela estreita o bastante
+para escolher uma espécie da escada de d já jogou fora os satélites de que a
+solução precisa. Medido nas nove infusões de ácidos biliares, todas espectros
+de íons produto sem nenhuma varredura de survey:
+
+| infusão | CE | M+1 medido | a fórmula diz | razão |
+|---|---|---|---|---|
+| CA-d4 EAD | 12 eV | 0,006% | 26,6% | 0,0002 |
+| CA-d4 EAD | 22 eV | 0,028% | 26,6% | 0,0010 |
+| CA-d4 CID | 45 eV | 0,095% | 26,6% | 0,0036 |
+| DCA-d4 EAD | 22 eV | 0,015% | 26,5% | 0,0006 |
+| DCA-d4 CID | 40 eV | 0,150% | 26,5% | 0,0057 |
+| TDCA-d4 EAD | 22 eV | 0,020% | 30,0% | 0,0007 |
+| TDCA-d4 CID | 30 eV | 0,206% | 30,0% | 0,0069 |
+
+Três ordens de grandeza, em todos os arquivos, sob as duas ativações. O mesmo
+limiar pega o outro caso que deveria pegar: um precursor fraco demais para que
+o seu próprio satélite de 27% saia do ruído é um precursor cujo envelope seria
+lido do ruído.
+
+A recusa também é o que os próprios arquivos defendem. Na corrida de ácido
+cólico-d4 a 12 eV, a transmissão um dálton *acima* do precursor é 0,0002 da
+transmissão nele; uma janela de quadrupolo simétrica em torno do seu centro
+passaria o degrau d3 um dálton abaixo mais ou menos na mesma fração, e os
+0,763% de fato medidos ali significariam então uma fração d3 de 3.300%. Ou a
+janela é assimétrica por três ordens de grandeza — caso em que os degraus
+abaixo do d4 estão escalados por uma transmissão que ninguém conhece — ou o
+que está naquela posição não é d3. E a segunda hipótese é o que a energia diz:
+aquele resíduo é 0,763% do precursor a 12 eV, 0,328% a 22 eV e 0,067% a 45 eV,
+de modo que o mesmo frasco teria 98,32%, 98,77% e 98,98% de pureza conforme a
+força com que o íon foi golpeado. Uma composição isotópica não faz isso. O que
+está ali é um canal de fragmentação — um átomo de hidrogênio perdido da
+molécula amoniada, que a EAD produz à vontade, e a 1,5 mDa de onde o d3
+estaria.
+
+**O que isto precisa é de uma varredura MS1 de survey**, ou de uma infusão em
+varredura completa sem isolamento no quadrupolo à frente. Adquira um minuto de
+TOF MS ao lado do canal de íons produto e a mesma linha responde.
+
+### A escada, e por que ela é só um piso
+
+Quando o precursor não sobreviveu à sua energia de colisão, a mesma aritmética
+é oferecida no degrau totalmente marcado mais forte da escada de perdas de
+água — `[M+H-3H2O]+` e o seu degrau −1D — e a linha diz *a lower bound*. Ela
+responde a outra pergunta: uma desidratação pode sair com uma marcação, de
+modo que uma molécula d4 que perdeu um hidrogênio hidroxílico marcado chega à
+posição d3 e é contada como uma impureza que nunca esteve no frasco. Medido
+nos mesmos arquivos com a verificação do satélite desligada, a escada dá
+frações d4 de 36,7%, 90,1% e 85,0% para o ácido cólico-d4 a 12, 22 e 45 eV,
+contra 98,3 – 99,0% dos precursores dessas mesmas aquisições — até um quinto
+das moléculas totalmente marcadas deixa uma marcação para trás com a água.
+Nestes arquivos a escada não consegue nem isso, porque os fragmentos herdam o
+filtro de massa que os fez: o satélite M+1 do próprio degrau da escada é
+0,015 – 0,63% onde a fórmula diz 26 – 30%.
+
+### Para onde vai
+
+A linha fica no painel; o **relatório de infusão** carrega o envelope inteiro
+— cada degrau com a sua *m/z*, a sua intensidade, a sua fração do íon
+totalmente marcado e a fração ajustada — com o átomo por cento embaixo, ou a
+razão de não haver nenhum. Veja [[infusion-report]]. E *Add spectrum to
+library…* escreve isso no registro como `Isotopic_purity`, porque um registro
+guarda os seus picos acima de um por cento do pico base e um envelope
+isotópico vive em décimos de um por cento: nada consegue recuperar a pureza de
+um registro depois, então ela é escrita enquanto ainda é conhecida. Veja
+[[spectral-library]].
+
 ## Contra uma biblioteca
 
 A aba **Library** ao lado desta faz a outra pergunta — o que alguém

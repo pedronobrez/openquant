@@ -309,6 +309,39 @@ ambos casam depois que cada uma é corrigida contra o seu próprio precursor. O
 par do CA-d4 já estava a 0.3 ppm de distância e não se move, o que é o
 controle: a correção não fabrica concordância onde já havia alguma.
 
+### E o registro diz de qual eixo foi escrito
+
+Aquela tabela compara dois espectros tratados do mesmo jeito. Uma biblioteca
+não é tratada de uma vez só: ela é acrescentada ao longo de meses, parte dela
+com isto ligado e parte com isto desligado. Então um registro seu **carrega a
+correção que estava em vigor quando ele foi escrito**, no próprio comentário
+— `recalibrated −5.2 ppm`, com aquilo em que a correção se apoiou —, tenha
+ele sido escrito pelo painel do espectro, por uma pasta inteira de infusões
+de uma vez, ou por *Rewrite from files…*. Um registro que nada diz foi
+escrito a partir dos números que o instrumento deu, e todo registro feito
+antes disto existir é exatamente isso.
+
+Daí em diante ele é lido de volta em vez de suposto:
+
+- uma **busca** diz de qual eixo cada lado foi escrito e como os dois se
+  combinam, e avisa quando uma correção que um lado carrega e o outro não é
+  maior que a tolerância dentro da qual os picos dela foram pareados.
+  *Re-search with the axis matched* refaz a pergunta com os dois num só
+  eixo;
+- uma **[[standard-history]]** mantém tais registros em séries separadas, de
+  modo que uma correção nunca é traçada como o padrão tendo mudado;
+- **Rewrite from files…** escreve cada registro cuja aquisição ainda está em
+  disco a partir do eixo em vigor agora, que é o que põe de volta num só
+  eixo uma biblioteca preenchida nos dois estados.
+
+As quatro combinações do eixo de um registro com o de uma consulta — os dois
+corrigidos, nenhum, e cada uma das duas misturas — estão medidas nestas
+mesmas aquisições em [[spectral-library]]. A versão curta é que os dois
+corrigidos é o melhor dos quatro todas as vezes, que nenhum é o pior, e que
+**dois espectros corrigidos por valores diferentes não são dois eixos**: o
+par cujas correções estavam a 9.5 ppm uma da outra concordou a 2.0 ppm por
+pico, melhor que qualquer outra combinação daquele composto.
+
 ## Ver também
 
 - [[direct-infusion]] — o que faz de uma amostra uma infusão

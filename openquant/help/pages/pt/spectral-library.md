@@ -123,6 +123,103 @@ desenha os picos do registro sobre o painel do espectro, escalados ao pico-base
 dele, do mesmo modo que a [[mass-calculator]] sobrepõe um padrão isotópico.
 **Clear overlay** remove a sobreposição.
 
+## Dois eixos de massa numa mesma comparação
+
+Um registro escrito enquanto a [[mass-recalibration]] estava ligada carrega
+picos que o instrumento nunca reportou: cada um deles foi deslocado por
+algumas partes por milhão antes de o registro ser escrito, e o comentário
+dele diz isso — `recalibrated −5.2 ppm`. Um registro que nada diz foi
+escrito a partir dos números que o instrumento deu. Os dois são legítimos;
+não são a mesma medição, e uma busca entre eles precisa dizer qual é qual.
+
+Por isso a coluna **Axis** de cada acerto diz de qual eixo o registro foi
+escrito e — quando o espectro na tela está ele próprio num eixo corrigido, o
+que o Explorer informa junto com ele — como os dois se combinam:
+
+| Os dois eixos | O que o acerto diz |
+|---|---|
+| nenhum corrigido | *record and query both on the instrument's axis* |
+| os dois corrigidos | *record corrected −5.2 ppm, query corrected −6.1 ppm: each on the axis its own lock masses define* |
+| um dos dois | *record on the instrument's axis, query corrected −5.6 ppm: 5.6 ppm apart by construction* |
+
+**Dois espectros corrigidos estão num só eixo, por mais distantes que as
+correções tenham sido.** Cada um foi levado às massas que as próprias lock
+masses da sua aquisição definem, de modo que a diferença entre as duas
+correções é o quanto as duas corridas haviam derivado uma da outra — que é
+justamente o que corrigi-las removeu. O que está *apartado por construção* é
+uma correção que um lado carrega e o outro não: essa está em cada Δ ppm da
+comparação e em cada pico que o pareamento teve de decidir. Onde ela é maior
+que a tolerância **Peaks ±** da busca, a linha é marcada e a frase sob os
+acertos diz isso, nestas palavras: a pontuação está então medindo os eixos e
+não o composto.
+
+**Re-search with the axis matched** refaz a pergunta com o espectro movido
+para o eixo do registro — uma consulta corrigida devolvida a onde o
+instrumento a leu, para encontrar um registro não corrigido, ou uma consulta
+não corrigida movida ao encontro de um registro corrigido. Nada muda na
+tela; as massas são movidas só para aquela busca, e a linha diz qual eixo
+foi usado.
+
+É um diagnóstico, não um reparo. Tira a diferença que as correções puseram
+ali; não põe nenhum dos dois lados no eixo *certo*, e onde o registro é o não
+corrigido ele afasta a consulta das próprias lock masses dela. Medido
+abaixo: um acerto de 61.0 virou nenhum acerto desse jeito. O que põe uma
+biblioteca inteira num só eixo é **Rewrite from files…**.
+
+### Medido: o eixo de um registro contra o de uma consulta, de quatro modos
+
+Os três padrões de ácido biliar, com as infusões CID escritas numa
+biblioteca própria duas vezes — uma a partir do eixo que o instrumento
+reportou e outra com a recalibração ligada — e cada infusão EAD do mesmo
+composto buscada contra as duas bibliotecas, ela própria dos dois modos. As
+correções são a escada de precursor de cada aquisição
+([[mass-recalibration]]): os registros CID **+3.8, +6.6 e +2.0 ppm**, as
+consultas EAD **−5.3, −5.6, −8.6 e −7.5 ppm**. Cada célula é *pontuação /
+mediana de |Δ ppm| sobre os picos pareados*.
+
+Na tolerância de pico padrão da busca, **20 ppm**:
+
+| consulta | ambos como medidos | registro cru, consulta corrigida | registro corrigido, consulta crua | **ambos corrigidos** |
+|---|---|---|---|---|
+| CA-d4 EAD 12 eV | 6.5 / 11.5 | 6.5 / 7.7 | 6.5 / 9.2 | **6.5 / 4.3** |
+| CA-d4 EAD 22 eV | 29.3 / 10.8 | 29.3 / 5.2 | 29.3 / 7.0 | **29.6 / 3.5** |
+| DCA-d4 EAD 22 eV | 34.3 / 13.0 | 35.3 / 4.6 | 35.3 / 6.4 | **35.5 / 2.4** |
+| TDCA-d4 EAD 22 eV | 61.4 / 9.8 | 61.4 / 3.1 | 61.4 / 7.8 | **61.4 / 2.1** |
+
+A **5 ppm**:
+
+| consulta | ambos como medidos | registro cru, consulta corrigida | registro corrigido, consulta crua | **ambos corrigidos** |
+|---|---|---|---|---|
+| CA-d4 EAD 12 eV | **nenhum acerto** | 1.8 / 0.9 | 1.8 / 2.4 | **5.1 / 3.4** |
+| CA-d4 EAD 22 eV | 1.0 / 3.4 | 16.5 / 2.1 | 15.9 / 2.5 | **26.6 / 2.5** |
+| DCA-d4 EAD 22 eV | **nenhum acerto** | 13.8 / 4.1 | 2.7 / 4.3 | **33.5 / 2.2** |
+| TDCA-d4 EAD 22 eV | **nenhum acerto** | 61.0 / 3.0 | 2.4 / 4.4 | **61.0 / 2.0** |
+
+Três coisas saem daí, e uma delas mudou o programa.
+
+**Ambos corrigidos é o melhor dos quatro, todas as vezes.** A 20 ppm as
+pontuações quase não se mexem — um pareamento que já vinha dando certo
+continua dando —, mas as massas concordam muito melhor: a mediana da
+distância por pico pareado cai de 9.8–13.0 ppm para 2.1–4.3. A 5 ppm esse é
+o resultado inteiro: três das quatro consultas **não acertam nada** quando
+nenhum dos lados está corrigido, e as quatro acertam quando os dois estão.
+
+**E isso vale embora as duas correções sejam ali as mais distantes entre
+si.** O registro de TDCA-d4 foi corrigido em +2.0 ppm e a consulta dele em
+−7.5 — 9.5 ppm entre as duas — e deu a melhor concordância da linha, 2.0 ppm
+por pico. A primeira versão disto avisava sobre esse par, pela aritmética de
+que duas correções diferentes teriam de significar dois eixos diferentes. A
+medição diz o contrário, e a regra agora é a de cima: o que conta é uma
+correção que um lado carrega e o outro não.
+
+**Igualar o eixo não é o mesmo que corrigi-lo.** TDCA-d4 a 5 ppm contra o
+registro não corrigido pontua 61.0 com a consulta corrigida, e **nenhum
+acerto** assim que a consulta é devolvida ao eixo não corrigido do registro
+— porque o próprio registro estava 2.0 ppm fora. Igualar os eixos remove a
+diferença que as correções puseram ali e deixa o erro que cada lado tinha de
+seu. Diz quanto da concordância era a correção; não fabrica concordância, e
+não é o reparo.
+
 ## Medido no MassBank
 
 A exportação completa do MassBank em formato NIST — 139,006 registros, 137 MB —
@@ -220,6 +317,19 @@ volta.
 calcula a massa real do íon a partir deles, mede o Δ ppm contra ela, e recusa
 o registro a uma varredura da polaridade oposta. Um registro seu é o único
 registro de biblioteca do qual se pode ter certeza de que os traz.
+
+**E o registro sabe de qual eixo de massa foi escrito.** Com a
+[[mass-recalibration]] ligada, o espectro na tela não é o que o instrumento
+reportou — cada pico foi movido por algumas partes por milhão —, de modo que
+o comentário carrega `recalibrated −5.2 ppm` e aquilo em que a correção se
+apoiou, seja o registro escrito pelo Explorer, pela pasta inteira de uma vez
+ou por uma reescrita. Um registro que nada diz foi escrito a partir dos
+números do próprio instrumento, que é o que todo registro feito antes disto
+existir é. Daí em diante o eixo é lido de volta onde importa: uma busca
+declara a combinação dos dois eixos e avisa quando estão mais distantes que
+a própria tolerância de pico dela, e a [[standard-history]] mantém um
+registro corrigido e um não corrigido em séries separadas quando a correção
+entre eles é grande o bastante para quebrar o pareamento.
 
 ### Uma pasta inteira de uma vez
 

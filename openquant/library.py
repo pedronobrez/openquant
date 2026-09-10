@@ -27,6 +27,15 @@ measures Δ ppm against it and says so, matches a record whose written mass
 *or* whose formula mass is in the window, flags a record whose two numbers
 disagree by more than the written one's own precision, and — since an
 adduct also declares a charge sign — refuses records of the other polarity.
+
+A record of one's own also knows **which mass axis it was written from**.
+Where the recalibration was on, its comment says `recalibrated -5.2 ppm` and
+`LibraryEntry.recalibrated_ppm` reads it back; a record that says nothing was
+written from the numbers the instrument reported. A search is told the
+correction in force on the query, so every hit can state the *combined*
+situation — record corrected, query corrected, both, or neither — and warn
+where the two are further apart than the tolerance its peaks were paired
+within, since a score across two axes is a measurement of the axes.
 """
 
 from __future__ import annotations
@@ -71,7 +80,129 @@ INDEX_BIN = 0.05
 #: for two measurements of one ion that ought to agree
 DISAGREE_FLOOR_PPM = 25.0
 
+#: what a record's mass axis is called, in the two states it can be in. A
+#: record written while `recalibrate` was on carries peaks the instrument
+#: never reported; one written without it carries the numbers the instrument
+#: wrote. Both are legitimate and they are not the same measurement, which is
+#: why the words exist rather than a flag.
+CORRECTED_AXIS = "corrected"
+INSTRUMENT_AXIS = "instrument"
+
 _NUMBER = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
+
+#: how a record's comment says its mass axis was moved before it was written.
+#: Both shapes this program writes are read by it: the note `rewrite_records`
+#: puts on a record it re-reads (`recalibrated -5.2 ppm`) and the basis
+#: sentence the Explorer carries from `recalibrate.MassCorrection.short`
+#: (`on an axis recalibrated -5.2 ppm from 3 lock masses; …`). A comment that
+#: says nothing is a record on the instrument's axis — which is what every
+#: record written before this existed is, and correctly so: nothing was
+#: applied to them.
+_COMMENT_RECALIBRATED = re.compile(
+    r"recalibrat\w*\s*(?:by\s+)?([-+\u2212]?\d+(?:\.\d+)?)\s*ppm",
+    re.IGNORECASE)
+
+
+def recalibration_in(text) -> float | None:
+    """
+    The mass correction a piece of text says was applied, in ppm, or None.
+
+    None means the axis is the instrument's own. Note that a correction of
+    zero is not None: a record saying it was recalibrated by +0.0 ppm was
+    written from a fitted axis that happened to need nothing, and that is a
+    different statement from a record nobody ever corrected.
+    """
+    found = _COMMENT_RECALIBRATED.search(str(text or ""))
+    if found is None:
+        return None
+    return float(found.group(1).replace("\u2212", "-"))
+
+
+def correction_ppm(correction, mz=None) -> float | None:
+    """
+    One number for the correction in force on a spectrum, in ppm.
+
+    Takes a plain number as written, or a `recalibrate.MassCorrection`, whose
+    linear term makes its strength depend on where in the spectrum it is
+    read: the median over `mz` is then the figure, which is exactly what
+    `rewrite_records` writes into a rewritten record's own comment. A
+    correction with nothing behind it — no lock mass, so `apply` is the
+    identity — is None, because the axis it leaves behind is the
+    instrument's.
+    """
+    if correction is None:
+        return None
+    if isinstance(correction, bool):
+        return None
+    if isinstance(correction, (int, float)):
+        return float(correction)
+    if getattr(correction, "usable", True) is False:
+        return None
+    at = getattr(correction, "ppm_at", None)
+    if at is None:
+        return None
+    masses = np.asarray(() if mz is None else mz, dtype=float)
+    if masses.size == 0:
+        return float(getattr(correction, "offset_ppm", 0.0))
+    return float(np.median(np.asarray(at(masses), dtype=float)))
+
+
+def axis_gap(record_ppm: float | None, query_ppm: float | None) -> float:
+    """
+    The correction one side of a comparison carries and the other does not,
+    in ppm — signed as what the query's masses carry over the record's.
+
+    **Not** the difference between the two corrections, and the difference is
+    the whole point. Two spectra each corrected against their own lock masses
+    stand on the axis those lock masses define, which is one axis however far
+    apart the two corrections were: measured on the three bile-acid standards
+    (see `spectral-library.md`), a record corrected +2.0 ppm searched with a
+    query corrected −7.5 ppm — 9.5 ppm of correction between them — gave the
+    *best* agreement of the four combinations, a median 2.1 ppm per paired
+    peak against the 9.8 ppm of the pair with nothing applied to either. Two
+    spectra with nothing applied are likewise not apart by construction:
+    whatever their acquisitions drifted is unknown here rather than built in.
+
+    What is built in is a correction applied to one side and not the other.
+    That one is present in every Δ ppm of the comparison and is the only
+    figure this can state, so it is the only one it does.
+    """
+    if (record_ppm is None) == (query_ppm is None):
+        return 0.0
+    return float(query_ppm) if record_ppm is None else -float(record_ppm)
+
+
+def to_axis(mz, from_ppm: float | None = None, to_ppm: float | None = None):
+    """
+    A query's masses moved off its own axis and onto a record's.
+
+    `from_ppm` is the correction in force on the query and `to_ppm` the one
+    the record was written with, either of them None for the instrument's own
+    axis. What is applied is `axis_gap` and never the difference between two
+    corrections: undoing a corrected query's own correction to meet an
+    uncorrected record, or applying the record's to an uncorrected query, and
+    **nothing at all** where both were corrected or neither was, since there
+    is then no correction on one side that is missing from the other.
+
+    This is arithmetic on numbers already applied. Nothing is fitted here and
+    nothing is measured, and it does not put either side on the *right* axis
+    — only on one axis.
+    """
+    gap = axis_gap(to_ppm, from_ppm)
+    mz = np.asarray(mz, dtype=float)
+    return mz if gap == 0.0 else mz * (1.0 - gap * 1e-6)
+
+
+def axis_named(ppm: float | None) -> str:
+    """One mass axis in words, for a status line."""
+    return ("the instrument's axis" if ppm is None
+            else f"an axis corrected {ppm:+.1f} ppm")
+
+
+def _axis_side(word: str, ppm: float | None) -> str:
+    """One side of the comparison — the record's axis, or the query's."""
+    return (f"{word} on the instrument's axis" if ppm is None
+            else f"{word} corrected {ppm:+.1f} ppm")
 
 
 #: the field names an exporter may write the ion mode under, normalised the
@@ -168,6 +299,29 @@ class LibraryEntry:
         return max(written, abs(self.precursor) * DISAGREE_FLOOR_PPM * 1e-6)
 
     @property
+    def recalibrated_ppm(self) -> float | None:
+        """
+        The mass correction that was in force when this record was written,
+        in ppm, or None where it was written on the instrument's own axis.
+
+        Read from the record's comment, because a library format has nowhere
+        else to put it: `provenance_comment` writes the note and this reads
+        it back. Silence is the instrument's axis and not an unknown — every
+        record this program has written without the note was written from
+        the numbers the instrument reported.
+        """
+        return recalibration_in(field_value(self, {"comment"}))
+
+    @property
+    def written_axis(self) -> str:
+        """
+        `CORRECTED_AXIS` or `INSTRUMENT_AXIS` — which axis it was written
+        from, in one word.
+        """
+        return (CORRECTED_AXIS if self.recalibrated_ppm is not None
+                else INSTRUMENT_AXIS)
+
+    @property
     def precursor_disagrees(self) -> bool:
         """
         Whether the record's two accounts of its own precursor differ by
@@ -216,10 +370,93 @@ class LibraryHit:
     #: the record's written precursor and its formula's disagree by more
     #: than the written one's precision — see `LibraryEntry`
     precursor_disagrees: bool = False
+    #: the correction in force on the **queried** spectrum, in ppm, or None
+    #: where the query stood on the instrument's own axis. The record's half
+    #: of this is on the record and read from it; the query's is the half
+    #: only the caller can know
+    query_ppm: float | None = None
+    #: the ppm the peaks of this search were paired within, kept so a hit can
+    #: say for itself whether the two axes are further apart than that
+    peak_tolerance_ppm: float = PEAK_TOLERANCE_PPM
 
     @property
     def matched(self) -> int:
         return len(self.pairs)
+
+    # -- which mass axis each side was written on ----------------------------- #
+    @property
+    def record_ppm(self) -> float | None:
+        """The correction the record's own comment says was applied to it."""
+        return self.entry.recalibrated_ppm
+
+    @property
+    def record_axis(self) -> str:
+        return self.entry.written_axis
+
+    @property
+    def query_axis(self) -> str:
+        return (CORRECTED_AXIS if self.query_ppm is not None
+                else INSTRUMENT_AXIS)
+
+    @property
+    def axis_gap_ppm(self) -> float:
+        """
+        The correction one of the two carries and the other does not, in ppm.
+
+        By construction, not by measurement: it was applied before either
+        spectrum was written down and is present in every Δ ppm and every
+        paired peak of this hit whether or not anybody looks at it. Zero
+        where both were corrected — each then stands on the axis its own lock
+        masses define — and zero where neither was. See `axis_gap`, which has
+        the measurement that decided this.
+        """
+        return axis_gap(self.record_ppm, self.query_ppm)
+
+    @property
+    def axes_differ(self) -> bool:
+        """Whether that gap is wider than the peaks were paired within."""
+        return abs(self.axis_gap_ppm) > self.peak_tolerance_ppm
+
+    @property
+    def axis_sentence(self) -> str:
+        """
+        The **combined** axis situation, which is the only useful statement.
+
+        Either axis alone says nothing about the comparison: a record
+        corrected by −5.2 ppm searched with a query corrected by −6.1 ppm is
+        an ordinary match — both stand where their own lock masses put them —
+        and the same record searched with an uncorrected query carries 5.2
+        ppm that the query does not, before the compound is considered.
+        """
+        record, query = self.record_ppm, self.query_ppm
+        if record is None and query is None:
+            return "record and query both on the instrument's axis"
+        said = f"{_axis_side('record', record)}, {_axis_side('query', query)}"
+        gap = abs(self.axis_gap_ppm)
+        if gap >= 0.05:
+            return f"{said}: {gap:.1f} ppm apart by construction"
+        return f"{said}: each on the axis its own lock masses define"
+
+    @property
+    def axis_warning(self) -> str:
+        """
+        What has to be said when the two axes are further apart than the
+        tolerance the peaks were paired within, and "" otherwise.
+
+        Past that the pairing is deciding on the axes: a peak that would have
+        matched is outside the window because of a correction one side
+        carries and the other does not, and the score is then a measurement
+        of two axes rather than of the compound. Measured on the bile-acid
+        standards at a 5 ppm tolerance, the two mixed combinations are where
+        a hit is lost or halved; the two with the same treatment either side
+        are not, whatever the corrections were.
+        """
+        if not self.axes_differ:
+            return ""
+        return (f"the axes are {abs(self.axis_gap_ppm):.1f} ppm apart, "
+                f"further than the ±{self.peak_tolerance_ppm:g} ppm peaks "
+                f"are paired within: this score is measuring the axes and "
+                f"not the compound")
 
 
 def _finish(entry: LibraryEntry, mz: list[float], intensity: list[float],
@@ -477,7 +714,8 @@ class SpectralLibrary:
                min_matched: int = MIN_MATCHED,
                include_unknown_precursor: bool = False,
                polarity=None,
-               include_other_polarity: bool = False) -> list[LibraryHit]:
+               include_other_polarity: bool = False,
+               query_correction=None) -> list[LibraryHit]:
         """
         The entries that best match a measured spectrum, best first.
 
@@ -495,6 +733,14 @@ class SpectralLibrary:
         out unless `include_other_polarity`; records that declare no sign
         are always kept. A record has to land `min_matched` peaks to be
         listed at all.
+
+        `query_correction` is the mass correction in force on the **queried**
+        spectrum — a `recalibrate.MassCorrection`, or the ppm as a number, or
+        None for the instrument's own axis. Every hit then says which axis
+        each side was written on and how far apart the two are
+        (`LibraryHit.axis_sentence`), because a record written from a
+        corrected axis and a query that was not are a fixed number of ppm
+        apart before the compound is considered at all.
         """
         mz = np.asarray(mz, dtype=float)
         intensity = np.asarray(intensity, dtype=float)
@@ -506,6 +752,7 @@ class SpectralLibrary:
         keep = intensity >= noise_share * top_i
         query_mz, query_i = mz[keep], intensity[keep] / top_i
         sign = chemistry.polarity_sign(polarity)
+        query_ppm = correction_ppm(query_correction, query_mz)
         hits: list[LibraryHit] = []
         for number in self._candidates(query_mz, precursor, precursor_tolerance,
                                        include_unknown_precursor, min_matched,
@@ -525,7 +772,9 @@ class SpectralLibrary:
                 continue
             hits.append(LibraryHit(entry, score, reverse, tuple(pairs),
                                    entry.peaks, int(query_mz.size), delta,
-                                   basis, entry.precursor_disagrees))
+                                   basis, entry.precursor_disagrees,
+                                   query_ppm=query_ppm,
+                                   peak_tolerance_ppm=float(tolerance_ppm)))
         hits.sort(key=lambda hit: (-hit.score, -hit.reverse))
         return hits[:top]
 
@@ -862,7 +1111,8 @@ _COMMENT_ADDED = re.compile(r"\badded\s+(\S+)", re.IGNORECASE)
 #: Matched as whole words: `^CE` alone would take `CEramide` for a collision
 #: energy, and a sample is named by whoever ran it.
 _COMMENT_NOTE = re.compile(
-    r"^(added|recalibrated|background|average|scans?|RT|CE)\b", re.IGNORECASE)
+    r"^(added|recalibrated|on an axis|background|average|scans?|RT|CE)\b",
+    re.IGNORECASE)
 
 #: how the report names the formula and the adduct it identified, in the
 #: sentence it prints under the table. Read rather than worked out again:
@@ -894,6 +1144,12 @@ class Provenance:
     rt_range: tuple[float, float] | None = None
     #: the day the record was written, as the comment says it
     added: str = ""
+    #: the mass correction in force when the record was written, in ppm, or
+    #: None for the instrument's own axis. Not part of `key`: the same
+    #: channel of the same file written twice is one measurement whichever
+    #: axis each copy was written on, and a rewrite that moves the axis must
+    #: still recognise the record it is replacing
+    recalibrated_ppm: float | None = None
 
     @property
     def key(self) -> tuple[str, str]:
@@ -986,6 +1242,7 @@ def provenance_of(entry: LibraryEntry) -> Provenance:
         rt_range=((float(times.group(1)), float(times.group(2)))
                   if times else None),
         added=added.group(1) if added else "",
+        recalibrated_ppm=recalibration_in(comment),
     )
 
 
@@ -1113,7 +1370,10 @@ def records_from_summary(rows, existing=(), added: str = "",
     * `Acquired` is the day the instrument measured on, from `acquired` — a
       mapping from file name to acquisition time, since a report holds the
       file name and only the session holds the sample;
-    * the comment is the provenance, in the shape `provenance_of` reads.
+    * the comment is the provenance, in the shape `provenance_of` reads,
+      with the mass correction in force written into it where there was one:
+      a record made from a corrected axis says so, in the same words a
+      rewritten record uses, and is treated as its own series afterwards.
 
     A row whose acquisition and channel are already in `existing` — the keys
     `provenance_keys` gives for the file being appended to — is skipped
@@ -1168,7 +1428,8 @@ def records_from_summary(rows, existing=(), added: str = "",
                 comment=provenance_comment(
                     file=provenance.file, sample=provenance.sample,
                     channel=channel, scans=provenance.scans,
-                    rt_range=provenance.rt_range, added=added),
+                    rt_range=provenance.rt_range, added=added,
+                    note=_axis_note(report, [p[0] for p in peaks])),
                 acquired=str(times.get(provenance.file, "")
                              or getattr(report, "acquired", "") or ""))
         except ValueError as exc:
@@ -1181,6 +1442,23 @@ def records_from_summary(rows, existing=(), added: str = "",
         if provenance.keyed:
             seen.add(provenance.key)
     return made
+
+
+def _axis_note(report, mz) -> str:
+    """
+    What was done to the mass axis of the spectrum this record is made of.
+
+    A row measured while the mass recalibration was on carries peaks the
+    instrument did not report, and a record that did not say so could not be
+    compared with one written from the raw axis — nor kept apart from it in a
+    history. The words are `rewrite_records`', so a record written from the
+    Infusions tab and the same record rewritten from its file say the same
+    thing in the same shape.
+    """
+    if not getattr(report, "recalibrated", False):
+        return ""
+    ppm = correction_ppm(getattr(report, "correction", None), mz)
+    return "" if ppm is None else f"recalibrated {ppm:+.1f} ppm"
 
 
 def _short_channel(report) -> str:

@@ -7,6 +7,8 @@ scripted and reused by more than one workspace.
 
 from __future__ import annotations
 
+import hashlib
+import time
 from dataclasses import asdict, dataclass, field
 
 import numpy as np
@@ -82,6 +84,10 @@ class PeakResult:
     #: the peak rather than its feet. None on rows integrated before this
     #: was counted.
     points: int | None = None
+    #: what this row was integrated under: `fingerprint`, below. Empty on a
+    #: row written before this existed, which is why such a row cannot be
+    #: kept by an incremental run — not knowing is not the same as agreeing.
+    fingerprint: str = ""
     #: the mass recalibration applied to the extraction window, in ppm at
     #: this component's mass. None when the switch was off or the injection
     #: had no lock mass — which is not the same as a correction of zero.
@@ -161,6 +167,21 @@ class ResultsSet:
                 return result
         return None
 
+    def by_key(self) -> dict[tuple[str, str], PeakResult]:
+        """
+        Every row indexed by sample and component, first one wins.
+
+        `get` walks the list, which is right for one lookup and quadratic for
+        one per row: linking a batch of 3,666 rows to their internal
+        standards did 13 million comparisons and took over a second on a set
+        where nothing had been integrated at all. Anything that looks a row
+        up for every row builds this once instead.
+        """
+        index: dict[tuple[str, str], PeakResult] = {}
+        for result in self.results:
+            index.setdefault(result.key, result)
+        return index
+
     def for_component(self, component: str) -> list[PeakResult]:
         return [r for r in self.results if r.component == component]
 
@@ -180,6 +201,56 @@ class ResultsSet:
     @classmethod
     def from_list(cls, rows: list[dict]) -> "ResultsSet":
         return cls([PeakResult.from_dict(row) for row in rows or []])
+
+
+# --------------------------------------------------------------------------- #
+# what a row was integrated under
+# --------------------------------------------------------------------------- #
+#: the `Component` fields that decide what is extracted and how it is
+#: integrated. Everything else about a component — its group, the standard it
+#: is reported against, its calibration, its acceptance limits — is either a
+#: label or is recomputed over the whole set afterwards, so changing it does
+#: not need the file read again.
+FINGERPRINTED_FIELDS = ("name", "precursor", "fragment", "rt", "rt_halfwidth",
+                        "tolerance", "unit")
+
+
+def _correction_key(correction) -> tuple | None:
+    """A mass correction as the numbers that move a window, or None."""
+    if correction is None or not correction.usable:
+        return None
+    return (round(float(correction.offset_ppm), 9),
+            round(float(correction.slope_ppm_per_da), 9),
+            round(float(correction.pivot), 9))
+
+
+def fingerprint(component: Component, method: ProcessingMethod,
+                correction=None) -> str:
+    """
+    A short digest of everything that decides this component's numbers.
+
+    Two rows carrying the same fingerprint were integrated from the same mass
+    window over the same time window with the same parameters, so one can
+    stand for the other and `process_incremental` may keep it. It covers the
+    component's own extraction fields, the integration parameters actually in
+    force — the component's override where it has one and the method defaults
+    where it does not, which is what makes a change to the defaults reach
+    exactly the components that inherit them — and the injection's mass
+    correction, since that moves the window.
+
+    It deliberately does **not** cover the file's contents. A fingerprint says
+    the method has not changed; it cannot say the acquisition has not been
+    replaced under the same name, and nothing else in this application can
+    either.
+    """
+    params = method.integration_for(component)
+    parts = (
+        tuple(getattr(component, name) for name in FINGERPRINTED_FIELDS),
+        tuple(sorted(asdict(params).items())),
+        _correction_key(correction),
+    )
+    digest = hashlib.blake2b(repr(parts).encode("utf-8"), digest_size=8)
+    return digest.hexdigest()
 
 
 # --------------------------------------------------------------------------- #
@@ -289,6 +360,7 @@ def integrate_component(entry: SampleEntry, component: Component,
         sample_key=entry.key, sample_name=entry.name, component=component.name,
         group=component.group, mz=(mz_lo + mz_hi) / 2,
         expected_rt=component.rt, rt=component.rt or 0.0,
+        fingerprint=fingerprint(component, method, correction),
     )
 
     if correction is not None and correction.usable:
@@ -428,6 +500,10 @@ def integrate_manually(entry: SampleEntry, component: Component,
         sample_key=entry.key, sample_name=entry.name, component=component.name,
         group=component.group, mz=(mz_lo + mz_hi) / 2, expected_rt=component.rt,
     )
+    # a hand-drawn boundary is drawn on the trace the current settings give,
+    # so the row records those settings: it is kept while they stand and
+    # re-integrated when they do not
+    result.fingerprint = fingerprint(component, method, correction)
     if correction is not None and correction.usable:
         result.recalibrated_ppm = float(correction.ppm_at(component.target_mz))
     x, y, channel = extract_xic(entry, component, method, cache, correction)
@@ -467,6 +543,7 @@ def link_internal_standards(results: ResultsSet, method: ProcessingMethod) -> No
     Done after the whole batch, because the standard's own peak has to be
     integrated before anything can be divided by it.
     """
+    index = results.by_key()
     for result in results:
         component = method.by_name(result.component)
         if component is None:
@@ -483,7 +560,7 @@ def link_internal_standards(results: ResultsSet, method: ProcessingMethod) -> No
             result.height_ratio = None
             continue
         result.internal_standard = standard.name
-        reference = results.get(result.sample_key, standard.name)
+        reference = index.get((result.sample_key, standard.name))
         if reference is None or not reference.found:
             result.is_area = None
             result.is_height = None
@@ -517,6 +594,7 @@ def ion_ratio_confidence(measured: float | None, expected: float | None,
 
 def compute_ion_ratios(results: ResultsSet, method: ProcessingMethod) -> None:
     """Score every qualifier against its quantifier, in each sample."""
+    index = results.by_key()
     for result in results:
         component = method.by_name(result.component)
         if component is None:
@@ -526,7 +604,7 @@ def compute_ion_ratios(results: ResultsSet, method: ProcessingMethod) -> None:
             continue
         result.quantifier = quantifier.name
         result.expected_ion_ratio = component.ion_ratio
-        reference = results.get(result.sample_key, quantifier.name)
+        reference = index.get((result.sample_key, quantifier.name))
         if reference is None or not reference.found or not result.found:
             result.ion_ratio = None
             result.confidence = NOT_APPLICABLE
@@ -716,6 +794,11 @@ def process(entries: list[SampleEntry], method: ProcessingMethod,
     — which is the default and what a project saved before this existed asks
     for — every window is exactly the one the method wrote, and the numbers
     are the ones that project has always given.
+
+    This is the full run: every row read from the file. The workspace reaches
+    for `process_incremental` instead wherever an earlier run's rows can
+    answer for themselves; `previous`, `keep_manual` and `only` here predate
+    it and remain for a script that wants to say outright what to redo.
     """
     components = [c for c in method.components if c.is_valid]
     if only is not None:
@@ -746,3 +829,253 @@ def process(entries: list[SampleEntry], method: ProcessingMethod,
     link_internal_standards(out, method)
     compute_ion_ratios(out, method)
     return out
+
+
+# --------------------------------------------------------------------------- #
+# incremental reprocessing
+# --------------------------------------------------------------------------- #
+#: why a row was integrated rather than kept
+NEW_SAMPLE = "a sample the previous run did not have"
+NEW_COMPONENT = "a component the previous run did not have"
+NO_PREVIOUS_ROW = "the previous run has no row for it"
+CHANGED = "the extraction or integration changed"
+CHANGED_MANUAL = "a hand-integrated row whose component changed"
+NOT_RECORDED = "the row does not say what it was integrated under"
+
+#: why a previous row is not in the new set
+SAMPLE_GONE = "the sample is no longer in the batch"
+COMPONENT_GONE = "the component is no longer in the method"
+
+#: below this share of the previous rows kept, the Process button does a full
+#: run instead. Declared, not derived: an incremental run that keeps almost
+#: nothing does the same reading as a full one and adds bookkeeping to it, and
+#: a change reaching most of the method is one the operator should see
+#: reported as a reprocess of the batch rather than as an incremental run that
+#: happened to redo all of it.
+FULL_RUN_BELOW = 0.5
+
+
+@dataclass
+class IncrementalReport:
+    """What an incremental run kept, integrated and dropped, and why."""
+
+    kept: int = 0
+    integrated: int = 0
+    dropped: int = 0
+    #: rows left standing by a cancelled run: the previous numbers, which no
+    #: longer answer to the method. Their fingerprints say so, so pressing
+    #: Process again finishes what was cancelled.
+    pending: int = 0
+    #: how many rows were integrated for each reason, and dropped for each
+    reasons: dict[str, int] = field(default_factory=dict)
+    dropped_reasons: dict[str, int] = field(default_factory=dict)
+    seconds: float = 0.0
+    cancelled: bool = False
+
+    @property
+    def total(self) -> int:
+        return self.kept + self.integrated + self.pending
+
+    @property
+    def reintegrated_manual(self) -> int:
+        """Rows the operator had integrated by hand and that were redone."""
+        return self.reasons.get(CHANGED_MANUAL, 0)
+
+    @property
+    def kept_fraction(self) -> float:
+        considered = self.kept + self.integrated + self.pending
+        return self.kept / considered if considered else 0.0
+
+    @property
+    def is_full(self) -> bool:
+        """True when nothing could be kept: the run read every row."""
+        return self.kept == 0
+
+    def summary(self) -> str:
+        """The one line the status bar shows."""
+        parts = [f"{self.kept:,} kept", f"{self.integrated:,} integrated"]
+        if self.dropped:
+            parts.append(f"{self.dropped:,} dropped")
+        if self.reintegrated_manual:
+            parts.append(f"{self.reintegrated_manual:,} re-integrated "
+                         f"after a manual")
+        if self.pending:
+            parts.append(f"{self.pending:,} left for the next run")
+        # two decimals under a second: the whole point of the thing is runs
+        # that take a twentieth of one, and "0.1 s" for all of them says
+        # nothing about which
+        parts.append(f"{self.seconds:.2f} s" if self.seconds < 1.0
+                     else f"{self.seconds:.1f} s")
+        return ", ".join(parts)
+
+    def why(self) -> str:
+        """The reasons behind those counts, commonest first, as one line."""
+        items = list(self.reasons.items()) + list(self.dropped_reasons.items())
+        items.sort(key=lambda pair: (-pair[1], pair[0]))
+        return "; ".join(f"{count:,} — {reason}" for reason, count in items)
+
+
+@dataclass(frozen=True)
+class _Row:
+    """One cell of the batch grid, and what is to be done with it."""
+
+    entry: SampleEntry
+    component: Component
+    correction: object
+    previous: PeakResult | None
+    keep: bool
+    reason: str
+
+
+def _plan(entries: list[SampleEntry], method: ProcessingMethod,
+          previous: ResultsSet | None,
+          corrections: dict | None) -> tuple[list[_Row], dict[str, int]]:
+    """
+    Which rows can be kept and which have to be read again — reading nothing.
+
+    Everything here is arithmetic over the rows already held, so the Process
+    button can ask what a run would cost before it starts one.
+    """
+    components = [c for c in method.components if c.is_valid]
+    loaded = [e for e in entries if e.is_loaded]
+    rows = {(r.sample_key, r.component): r for r in (previous or ())}
+    known_samples = {key for key, _ in rows}
+    known_components = {name for _, name in rows}
+
+    stamps: dict[tuple, str] = {}
+    work: list[_Row] = []
+    seen: set[tuple[str, str]] = set()
+    for entry in loaded:
+        correction = (corrections or {}).get(entry.key)
+        stamp_key = _correction_key(correction)
+        for component in components:
+            seen.add((entry.key, component.name))
+            wanted = stamps.get((component.name, stamp_key))
+            if wanted is None:
+                wanted = fingerprint(component, method, correction)
+                stamps[(component.name, stamp_key)] = wanted
+            row = rows.get((entry.key, component.name))
+            if row is None:
+                if entry.key not in known_samples:
+                    reason = NEW_SAMPLE
+                elif component.name not in known_components:
+                    reason = NEW_COMPONENT
+                else:
+                    reason = NO_PREVIOUS_ROW
+            elif not row.fingerprint:
+                reason = NOT_RECORDED
+            elif row.fingerprint == wanted:
+                reason = ""
+            elif row.manual:
+                reason = CHANGED_MANUAL
+            else:
+                reason = CHANGED
+            work.append(_Row(entry, component, correction, row,
+                             keep=not reason, reason=reason))
+
+    dropped: dict[str, int] = {}
+    open_keys = {e.key for e in loaded}
+    for sample_key, name in rows:
+        if (sample_key, name) in seen:
+            continue
+        reason = SAMPLE_GONE if sample_key not in open_keys else COMPONENT_GONE
+        dropped[reason] = dropped.get(reason, 0) + 1
+    return work, dropped
+
+
+def incremental_plan(entries: list[SampleEntry], method: ProcessingMethod,
+                     previous: ResultsSet | None,
+                     corrections: dict | None = None) -> IncrementalReport:
+    """
+    What `process_incremental` would keep, integrate and drop — before it runs.
+
+    No file is opened and no peak is integrated, so this costs milliseconds on
+    a batch that takes minutes to process. It is what decides whether the
+    Process button reprocesses incrementally at all.
+    """
+    started = time.perf_counter()
+    work, dropped = _plan(entries, method, previous, corrections)
+    report = IncrementalReport(
+        kept=sum(1 for row in work if row.keep),
+        integrated=sum(1 for row in work if not row.keep),
+        dropped=sum(dropped.values()),
+        dropped_reasons=dropped,
+    )
+    for row in work:
+        if row.reason:
+            report.reasons[row.reason] = report.reasons.get(row.reason, 0) + 1
+    report.seconds = time.perf_counter() - started
+    return report
+
+
+def process_incremental(entries: list[SampleEntry], method: ProcessingMethod,
+                        previous: ResultsSet, cache: XicCache | None = None,
+                        progress=None,
+                        corrections: dict | None = None,
+                        ) -> tuple[ResultsSet, IncrementalReport]:
+    """
+    Run the method over only the rows an earlier run cannot answer for.
+
+    Adding one injection to a batch of twenty-six should read one injection.
+    What makes that safe is `fingerprint`: a row records the component fields,
+    the integration parameters and the mass correction it was integrated
+    under, so a row whose fingerprint still matches the method was produced by
+    exactly the arithmetic a full run would produce now, and keeping it is not
+    an assumption. A row that records nothing — written before fingerprints
+    existed — is integrated again, because not knowing is not the same as
+    agreeing.
+
+    **A hand-integrated row is kept as it stands** while its component's
+    fingerprint holds, which is the whole point of integrating by hand. When
+    the fingerprint changes it is integrated again and the report says how
+    many: a boundary drawn on one trace is not a decision about a different
+    mass window or a different smoothing, and leaving it standing would report
+    a peak nobody chose.
+
+    Everything derived — the ratios to the internal standards, the ion ratios,
+    and, in the caller, the calibrations and the quality charts — is recomputed
+    over the whole set, because those are arithmetic over rows and not reads of
+    a file.
+
+    The result is row for row what `process` would give, in the same order,
+    with two deliberate exceptions the report names: a row the operator
+    integrated by hand, and a row a cancelled run left standing.
+    """
+    started = time.perf_counter()
+    work, dropped = _plan(entries, method, previous, corrections)
+    report = IncrementalReport(dropped=sum(dropped.values()),
+                               dropped_reasons=dropped)
+    to_do = sum(1 for row in work if not row.keep)
+
+    out = ResultsSet()
+    done = 0
+    for row in work:
+        if row.keep:
+            # a label is not a measurement: a renamed injection or a regrouped
+            # component is written onto the kept row rather than bought with a
+            # second read of the file
+            row.previous.sample_name = row.entry.name
+            row.previous.group = row.component.group
+            out.results.append(row.previous)
+            report.kept += 1
+            continue
+        if report.cancelled:
+            # what a cancelled run leaves behind is the old numbers, and they
+            # say so themselves: the fingerprint on them does not match, so
+            # the next run picks them up
+            if row.previous is not None:
+                out.results.append(row.previous)
+                report.pending += 1
+            continue
+        out.results.append(integrate_component(
+            row.entry, row.component, method, cache, row.correction))
+        report.integrated += 1
+        report.reasons[row.reason] = report.reasons.get(row.reason, 0) + 1
+        done += 1
+        if progress is not None and progress(done, to_do) is False:
+            report.cancelled = True
+
+    link_internal_standards(out, method)
+    compute_ion_ratios(out, method)
+    report.seconds = time.perf_counter() - started
+    return out, report

@@ -27,6 +27,18 @@ same group; **Back to method defaults** removes the override. **Copy** and
 **Paste** carry settings between components. Changing a value previews it
 on the grid; only Update keeps it.
 
+Update also reintegrates, and only what it has to. Every setting in the
+table above is part of the component's *fingerprint* — the digest each
+integrated row carries of what produced it (see
+[[analytics-workspace|Processing only what changed]]) — so applying a
+setting to one component reads that component's rows in every sample and
+leaves the rest of the batch untouched. A component with an override of its
+own does **not** move when the method defaults change: what is fingerprinted
+is the parameters in force, and an override is what is in force. Rows that
+were integrated by hand under the old settings are integrated again with the
+rest, because a boundary drawn on one trace is not a decision about another;
+the [[audit-trail]] line says how many there were.
+
 ## How a peak is found
 
 The detector works on the stretch of the XIC it is given, which is the

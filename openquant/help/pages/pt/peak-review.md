@@ -47,8 +47,15 @@ um pico, e num painel tão pequeno é fácil perder a referência.
 Arraste sobre um pico com **Manual** ligado, ou com Shift pressionado. O
 intervalo é integrado como marcado — uma linha de base reta entre as duas
 extremidades, a área acima dela, sem detecção de pico — e a linha é marcada
-como manual com `✎`. Uma linha manual sobrevive ao reprocessamento: ajustar um
-parâmetro ou adotar outro algoritmo a deixa como o operador a definiu. Clique
+como manual com `✎`. Uma linha manual sobrevive ao reprocessamento enquanto
+valerem os parâmetros sob os quais foi desenhada: acrescentar uma injeção,
+mudar outro componente ou reprocessar o lote a deixa exatamente como o
+operador a definiu. O que a substitui é uma mudança nos parâmetros de extração
+ou de integração do **próprio** componente dela — outra janela de massa, outra
+suavização, outro algoritmo — porque uma fronteira desenhada sobre um traço não
+é uma decisão sobre um traço diferente. Ela é integrada de novo
+automaticamente, a linha de status e a [[audit-trail]] dizem quantas linhas
+foram, e basta repetir o arraste. Clique
 com o botão direito no painel e escolha **Back to automatic integration** para
 devolvê-la ao detector. Ambas as coisas são escritas na
 [[audit-trail]], com as fronteiras e a área antes e depois, de modo que um

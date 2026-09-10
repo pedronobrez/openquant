@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.7.8 released. 947 tests. Public repository.**
+**Version 0.7.8 released; 0.7.9 in progress on main. 1066 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -511,6 +511,26 @@ UV detector, is not implemented there) — untested on real Windows.
   past three per region the fourth peak does not fit. The pane chooses
   again on every range change over a pool the peak finder fills once, and
   the floor is 2% of the tallest peak *in view*.
+- **A name says what a compound is made of; the precursor says whether you
+  read it right.** `chemistry.formula_from_name` turns lipid shorthand into
+  a formula (a class table plus the chains) and `components.fill_formulas`
+  writes it into **empty** Formula cells only, never over a typed one and
+  never over a precursor. Each derivation is checked against the written
+  precursor to a whole unit in its last decimal (methods truncate: `286.2`
+  for 286.2741) and a disagreement is reported rather than filled — a
+  wrong formula is a wrong lock mass. On the real method: 125 of 141
+  components and 10 of 11 standards, and all 16 refusals were the written
+  precursor being wrong (`dHCer(d18:0/12:0)` 15 ppm out, two `LacCER` rows
+  exactly 1 and 2 Da out); `check_method` reports both cases. The lock
+  masses did not multiply: of 60 formula-bearing components inside the
+  50–700 survey exactly one measures the same ion across the run, so the
+  fit is still one lock mass at +4.8 ppm — the survey measurement is the
+  binding constraint, not the formula. What the formulas bought is the
+  check: 51 analytes with a theoretical mass instead of 15, and over their
+  197 measurements within 25 ppm the correction moves the median error
+  from −7.0 to −1.4 ppm. `lock_masses_from_drift` has no gate on a lock
+  mass's error against its own formula yet; `C17:0_Ceramide` sits 238 ppm
+  off and was one injection short of qualifying.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and
@@ -720,7 +740,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-947 tests, two skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+1066 tests, two skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `ui/settings.py` is the one place a settings object is made, and
 `tests/conftest.py` sets `OPENQUANT_SETTINGS` before any widget exists so

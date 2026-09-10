@@ -134,3 +134,18 @@ def test_the_liquid_icon_step_runs_on_the_mac_build_and_never_fails_it():
     icon = workflow.index("name: Liquid Glass icon")
     works = workflow.index("name: The bundle works")
     assert build < icon < works, "the re-signed bundle is what the self-test must run"
+
+
+def test_the_bundle_keeps_the_dock_icon_to_itself(monkeypatch):
+    """Qt's window icon becomes the Dock icon on macOS and would cover the
+    layered one; the bundle leaves the Dock to the bundle."""
+    import sys
+    from openquant import app as app_module
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert app_module._bundled_on_macos()
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    assert not app_module._bundled_on_macos()
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert not app_module._bundled_on_macos()

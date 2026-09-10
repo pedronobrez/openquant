@@ -38,7 +38,13 @@ seu vizinho como camadas de vidro) compilado pelo `actool` do Xcode 26 em
 `Assets.car` e nomeado por `CFBundleIconName`, de modo que o Dock e o Finder
 o desenham no estilo escolhido. O `.icns` permanece para o macOS 15 e
 anteriores, que ignoram a chave mais nova. O log do build diz se o ícone em
-camadas foi compilado; uma máquina sem Xcode 26 envia só o `.icns`.
+camadas foi compilado; uma máquina sem Xcode 26 envia só o `.icns`. Foi
+preciso mais uma coisa, descoberta no primeiro build com o ícone em camadas:
+o sistema desenhava-o em vidro e o Dock continuava a mostrar o quadrado
+azul enquanto a aplicação estivesse aberta, porque o Qt entrega o ícone da
+janela ao Dock como ícone da aplicação e um PNG plano cobria o ícone em
+camadas. Dentro do bundle a aplicação já não define ícone de janela; o
+bundle é dono dele.
 
 ### Linux: uma entrada no lançador, para um usuário
 

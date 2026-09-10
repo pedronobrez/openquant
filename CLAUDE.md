@@ -444,6 +444,18 @@ UV detector, is not implemented there) — untested on real Windows.
   and the `export` page says so — as it says no Skyline transition list has
   been imported into Skyline, only that its headers were read off the
   reader that consumes them in the ProteoWizard source.
+- **The Dock icon is whoever spoke last.** The bundle carries a layered
+  Liquid Glass icon (`packaging/icons/OpenQuant.icon`, compiled by Xcode
+  26's `actool` on the runner into `Assets.car`, `CFBundleIconName`), and
+  `assetutil --info` and `NSWorkspace.icon(forFile:)` both showed it drawn
+  in glass on macOS 26 — while the Dock showed the blue square for as long
+  as the application ran. Qt hands `setWindowIcon` to the Dock as the
+  application icon, and the flat `icon.png` covered the layered one. So
+  `app.py` sets no window icon inside the macOS bundle; the window icon
+  stays for source runs, Windows and Linux. Restarting the Dock, the icon
+  services agent, re-registering with Launch Services and stamping the
+  SDK were all tried first and changed nothing, because none of them was
+  the cause.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

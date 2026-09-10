@@ -38,7 +38,12 @@ white peak and its neighbour as glass layers) compiled by Xcode 26's
 the Finder render it in the chosen style. The `.icns` stays for macOS 15
 and earlier, which ignore the newer key. The build says on its log whether
 the layered icon was compiled; a machine without Xcode 26 ships the
-`.icns` alone.
+`.icns` alone. One more thing was needed, found on the first build that
+carried the layered icon: the system drew it in glass, and the Dock kept
+showing the blue square for as long as the application ran, because Qt
+hands a window icon to the Dock as the application icon and a flat PNG
+covered the layered one. Inside the bundle the application no longer sets
+a window icon; the bundle owns it.
 
 ### Linux: a launcher entry, for one user
 

@@ -8,6 +8,11 @@ import sys
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 
+def _bundled_on_macos() -> bool:
+    """Inside OpenQuant.app, where the bundle owns the Dock icon."""
+    return sys.platform == "darwin" and bool(getattr(sys, "frozen", False))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="openquant",
@@ -31,11 +36,15 @@ def main(argv: list[str] | None = None) -> int:
 
     app = QtWidgets.QApplication(sys.argv[:1])
     app.setApplicationName("OpenQuant")
-    # the suite's mark, drawn beside OpenDIAL's (packaging/make_icon.py); the bundle carries the
-    # .icns for the dock, this is the window's own
+    # the suite's mark, drawn beside OpenDIAL's (packaging/make_icon.py), for
+    # the window and the taskbar. Not inside the macOS bundle: there Qt hands
+    # the window icon to the Dock as the application icon, and a flat PNG
+    # then covers the layered Liquid Glass icon the bundle carries — measured
+    # on macOS 26, where the icon services drew the glass and the Dock the
+    # blue square, for exactly as long as the application was running.
     from pathlib import Path
     icon = Path(__file__).with_name("icon.png")
-    if icon.is_file():
+    if icon.is_file() and not _bundled_on_macos():
         app.setWindowIcon(QtGui.QIcon(str(icon)))
 
     from .ui import style

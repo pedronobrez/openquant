@@ -19,9 +19,10 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from openquant.infusion import (FLAT_FRACTION, InfusionVerdict,  # noqa: E402
-                                above_half_fraction, is_infusion, run_range,
-                                strongest_channel, verdict_for)
+from openquant.infusion import (FLAT_FRACTION, REFERENCE_PERCENTILE,  # noqa: E402
+                                InfusionVerdict, above_half_fraction,
+                                is_infusion, run_range, strongest_channel,
+                                verdict_for)
 from openquant.samples import SampleEntry  # noqa: E402
 from openquant.wiff import ChannelInfo  # noqa: E402
 
@@ -166,9 +167,45 @@ def test_a_flat_trace_is_all_above_half_and_a_peak_is_not():
     assert above_half_fraction(np.full(50, 7.0)) == 1.0
     assert above_half_fraction(np.zeros(50)) == 0.0
     assert above_half_fraction(np.zeros(0)) == 0.0
-    spike = np.full(100, 1.0)
-    spike[50] = 100.0
-    assert above_half_fraction(spike) == pytest.approx(0.01)
+    # a trace that is one narrow peak on nothing: only the peak clears half
+    peak = np.full(100, 1.0)
+    peak[45:55] = 100.0
+    assert above_half_fraction(peak) == pytest.approx(0.10)
+
+
+def test_one_spike_does_not_decide_a_whole_run():
+    """
+    The reference is the 99th-percentile scan, not the largest one.
+
+    Measured on the real infusions: three of the nine carry a spray
+    transient at scan 1 of 2.8 to 4.4 times the run's median, and against
+    the largest scan a perfectly flat spray read 0.002 – 0.006 — under
+    every one of the thirty-nine chromatographic runs. The two populations
+    came out the wrong way round, and no threshold separates them.
+    """
+    assert REFERENCE_PERCENTILE == 99.0
+    flat = np.full(500, 1.0)
+    flat[1] = 4.0                       # the transient at the start of a run
+    flat[300] = flat[301] = 3.0         # and a burst part way through
+    assert above_half_fraction(flat) == pytest.approx(1.0)
+    assert above_half_fraction(flat, percentile=100) == pytest.approx(0.006)
+    # a run that really is one peak is unmoved by the change of reference
+    peak = np.full(500, 1.0)
+    peak[240:260] = 100.0
+    assert above_half_fraction(peak) == pytest.approx(0.04)
+    assert above_half_fraction(peak, percentile=100) == pytest.approx(0.04)
+
+
+def test_an_infusion_with_a_spray_transient_is_still_an_infusion():
+    """The shape of `CA-d4_TOFMSMS_Mix1`: flat, with one scan four times over."""
+    sample = infusion_sample(n=473, drift=0.9)
+    for channel in sample.channels:
+        channel._y[1] = channel._y[1] * 4
+    verdict = is_infusion(sample)
+    assert verdict.infusion, verdict.reason
+    assert verdict.above_half >= FLAT_FRACTION
+    assert verdict.channel_above_half >= FLAT_FRACTION
+    assert "99th-percentile scan" in verdict.reason
 
 
 # -- the verdict ------------------------------------------------------------ #

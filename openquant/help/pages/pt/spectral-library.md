@@ -128,7 +128,72 @@ ser escrito, ela é lida de novo em seguida, de modo que o registro novo pode
 ser buscado imediatamente — o que é também a verificação de que ele foi
 escrito numa forma que o analisador lê de volta.
 
-### Medido
+### Medido em três padrões infundidos
+
+As aquisições para as quais isto foi escrito: ácido cólico-d4, ácido
+desoxicólico-d4 e ácido taurodesoxicólico-d4, infundidos um de cada vez num
+ZenoTOF 7600 em modo negativo, varreduras de íons produto, um canal cada e
+sem coluna. O veredito de [[direct-infusion]] chama todos eles de infusões,
+de modo que cada registro é a média de **todos os scans da corrida** — 473,
+473 e 257 deles, ao longo de 1.98, 1.98 e 1.07 minutos — centroidada:
+
+| | CA-d4 | DCA-d4 | TDCA-d4 |
+|---|---|---|---|
+| pontos de perfil na média | 255,113 | 242,308 | 192,688 |
+| centroides | 811 | 1,059 | 455 |
+| em ou acima de 1% do pico base | 204 | 226 | 25 |
+| picos no registro | 200 | 200 | 25 |
+| o que limitou | o teto de 200 | o teto de 200 | o piso de 1% |
+| pico base | 359.2870 | 361.3017 | 468.3072 |
+
+Três registros, 8,144 bytes, escritos em menos de um segundo. Lidos de volta,
+todos os três voltaram com cada campo com que foram escritos, as massas
+dentro de 5·10⁻⁶ Da e as intensidades relativas dentro de 5·10⁻⁷ — o
+arredondamento do texto, e nada mais.
+
+Depois, cada composto foi **readquirido com dissociação ativada por elétrons
+a 22 eV** e essa média buscada contra os três registros, que foram escritos a
+partir de dissociação induzida por colisão a 45, 40 e 30 eV. Essa é uma
+pergunta mais difícil que o mesmo canal de uma injeção diferente: o registro
+e a consulta não são apenas duas medições, são duas maneiras de quebrar a
+molécula.
+
+| | CA-d4 | DCA-d4 | TDCA-d4 |
+|---|---|---|---|
+| o próprio registro veio primeiro | sim | sim | sim |
+| o score dele | 29.2 | 33.3 | 61.5 |
+| o reverse dele | 38.8 | 43.8 | 68.7 |
+| picos correspondidos | 22 de 200 | 19 de 200 | 8 de 25 |
+| o melhor registro *errado* | 14.1 | 14.0 | 10.3 |
+| Δ ppm ao precursor registrado | −23.2 | +0.0 | +0.0 |
+
+**Um composto diferente não corresponde.** Buscados contra os outros dois
+registros sem filtro de precursor, o melhor score errado em qualquer lugar é
+14.1 com um reverse de 31.2 — da metade a um sexto do que o registro do
+próprio composto dá — e o espectro do CA-d4 não retorna **correspondência
+alguma** contra o registro do TDCA-d4, menos de dois picos em comum. Com o
+filtro de precursor que o painel aplica por padrão havia exatamente um
+registro na janela de ±0.02 Da a cada vez e era o certo; o filtro não muda
+nenhum score nem a ordem aqui, apenas quais registros foram pontuados. Uma
+busca leva de 0.1 a 1.6 ms.
+
+O Δ de −23.2 ppm do CA-d4 é a regra sobre a precisão escrita fazendo o seu
+trabalho: o registro diz `430.35`, que é bom até ±0.005 Da, e o canal que o
+consultou diz `430.34`. Os dois são o mesmo íon escrito com duas casas.
+
+**Um registro é uma energia, e uma maneira de quebrar a molécula.** O mesmo
+espectro do CA-d4 readquirido a 12 eV em vez de 22, contra o mesmo registro
+de CID, pontua **6.4 com um reverse de 21.3 sobre 8 picos correspondidos** —
+contra 29.2, 38.8 e 22 a 22 eV. Separando as duas causas: um registro escrito
+a partir da própria média de EAD a 22 eV do CA-d4 pontua 100.0 contra si
+mesmo (que é a ida e volta, exata), **67.4** contra a média dele a 12 eV, e
+29.1 com um reverse de 55.7 contra a média de CID a 45 eV. Ou seja, a mudança
+de energia custa cerca de um terço do score e a mudança de ativação custa
+quase todo o resto. A ordenação sobrevive a tudo isso — o registro certo veio
+primeiro todas as vezes — mas o número ao lado dele não viaja entre métodos,
+e um limiar escolhido num não é um limiar noutro.
+
+### Medido num lote de esfingolipídios
 
 Num lote real de aquisições de íons produto — 26 injeções de um método cujos
 144 canais são um composto cada, na sua própria energia de colisão, que é o

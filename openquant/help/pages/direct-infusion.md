@@ -24,6 +24,16 @@ and on the same acquisition converted to mzML:
   carrying the most signal, or the survey if the method has no product
   scan.
 
+That maximum is the **99th-percentile scan, not the largest one**. The
+largest is a single scan, and so is a spray transient: three of the nine
+real infusions measured carry one at the very start of the acquisition, of
+two to four times the run's median, and half of that spike is above every
+other scan in a perfectly flat run. Setting the top one per cent of scans
+aside costs nothing on a run with a real peak in it — a peak is many scans —
+and it is the difference between reading those three infusions at 0.002 and
+reading them at 1.00. The figures on the sample's hover say which reference
+was used.
+
 Both have to be at least **75%**. A peak is by definition narrow against
 the run it sits in, so a run with any peak in it spends most of its scans
 well under half the apex; a spray that merely drifts stays above it from
@@ -34,28 +44,46 @@ single transition of a blank is flat because it is empty.
 
 ## The figures behind the thresholds
 
-Measured on every chromatographic acquisition to hand — thirty-nine of
-them, none flagged:
+Measured on every acquisition to hand — forty-eight of them, both
+populations, **none of the forty-eight miscalled**:
 
 | acquisition set | n | sample TIC | strongest channel |
 |---|---|---|---|
-| TripleTOF 5600, 21.4 min, 81 channels, MRM-HR | 5 | 0.016 – 0.043 | 0.025 – 0.088 |
-| TripleTOF 5600, 14.6 min, 144 channels | 26 | 0.033 – 0.213 | 0.016 – 0.295 |
-| ZenoTOF 7600, 24.0 min, 25 channels, DIA | 8 | 0.012 – 0.267 | 0.004 – 0.010 |
+| ZenoTOF 7600, 0.6 – 2.0 min, product-ion infusions of bile-acid standards | 9 | 0.9937 – 1.0000 | 0.9937 – 1.0000 |
+| TripleTOF 5600, 21.4 min, 81 channels, MRM-HR | 5 | 0.019 – 0.057 | 0.029 – 0.097 |
+| TripleTOF 5600, 14.6 min, 144 channels | 26 | 0.033 – 0.426 | 0.016 – 0.377 |
+| ZenoTOF 7600, 24.0 min, 25 channels, DIA | 8 | 0.031 – 0.361 | 0.014 – 0.059 |
 
-The two hardest cases are both caught by the second figure. A column
-equilibration with no injection at all — solvent spraying for 24 minutes,
-the nearest thing in the set to an infusion — measures 0.267 on the sample
-total against 0.006 on its strongest channel. A blank measuring 0.295 on
-its strongest channel measures 0.049 on the sample total. Across all
-thirty-nine the smaller of the two figures never exceeds **0.098**, against
-a threshold of 0.75; an infusion is expected at 0.95 – 1.00 on both.
+The hardest chromatographic cases are both caught by the second figure. A
+column equilibration with no injection at all — solvent spraying for 24
+minutes, the nearest thing in the set to an infusion — measures 0.361 on
+the sample total against 0.059 on its strongest channel. A blank measuring
+0.377 on its strongest channel measures 0.049 on the sample total. Across
+all thirty-nine chromatographic runs the smaller of the two figures never
+exceeds **0.1148**, and across the nine infusions it never falls below
+**0.9937**. The threshold of 0.75 therefore sits 0.635 above the worst
+chromatographic run and 0.244 below the worst infusion, in a gap of 0.879.
 
-The infusion side of that comparison has not been measured on real files,
-and the module says so in as many words. The thresholds are therefore
-placed where the chromatographic margin is largest rather than half way
-between two measured populations — which is also why getting the verdict
-wrong is made cheap: it only decides what is shown first.
+That gap did not exist until the reference was changed. Read against the
+largest scan, three of the nine infusions measured 0.0021, 0.0039 and
+0.0063 — **lower than every one of the thirty-nine chromatographic runs**.
+The two populations were not merely overlapping but the wrong way round,
+and no threshold at all would have separated them. One scan did it: a
+transient at 0.008 min, 2.8 to 4.4 times the run's median, and in one file
+two more bursts part way through. The statistic was wrong rather than the
+threshold, which is why the reference is now the 99th-percentile scan.
+
+The 99th is where it is because it was measured. The 99.5th is not enough —
+one file's three spiked scans are 0.63% of its 473, so they survive it and
+it reads 0.639 — while the 95th and the 90th lift the chromatographic
+figures to 0.262 and 0.410 by setting aside real peak apices. The widest
+margin measured is 0.895 at the 99.2nd percentile and 0.879 at the 99th.
+
+Below about a hundred scans the 99th percentile is the largest scan again,
+so one spike could still call a very short infusion chromatographic. That
+is a stated gap and not a fixed one; the shortest infusion measured has 146
+scans, and getting the verdict wrong is cheap on purpose — it only decides
+what is shown first.
 
 Three other rules were tried and rejected, with figures, in
 `openquant/infusion.py`: the scan-to-scan spectral correlation (0.85 – 0.99

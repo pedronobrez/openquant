@@ -238,6 +238,17 @@ class LipidPanel(QtWidgets.QWidget):
         self.explain_header.setProperty("role", "hint")
         explain_layout.addWidget(self.explain_header)
 
+        self.btn_explain_any = QtWidgets.QPushButton("Explain")
+        self.btn_explain_any.setProperty("primary", True)
+        self.btn_explain_any.setToolTip(
+            "Try every route at once — the compound's name, LIPID MAPS at "
+            "this precursor, the formula, and a drawing if one is loaded — "
+            "and show the one that explains the most, with the others listed "
+            "under it. The precursor, the polarity and the survey come from "
+            "the channel; the name and the formula from the component whose "
+            "precursor this channel isolates, unless something is typed below")
+        explain_layout.addWidget(self.btn_explain_any)
+
         explain_form = QtWidgets.QFormLayout()
         self.explain_precursor = QtWidgets.QLineEdit()
         self.explain_precursor.setPlaceholderText("703.5749")
@@ -349,6 +360,16 @@ class LipidPanel(QtWidgets.QWidget):
         #: None when the table is holding a structure of one's own — which
         #: writes its own basis line and must not have it written over
         self._record_context = None
+        #: how the candidates in the ranked table were enumerated, so the
+        #: basis line says what was actually run rather than the default
+        self._record_limits = (1, 2)
+        #: the route the ranked table is showing, prefixed onto the basis
+        #: line so that selecting another candidate does not lose it
+        self._route_basis = ""
+        #: the last `explain_any.AnyExplanation`, and the component table the
+        #: unified button fills itself from
+        self._any = None
+        self._components = []
         self._spectrum = None
         #: the last `purity.Purity`, for a report or a library record to read
         self.purity = None
@@ -364,6 +385,22 @@ class LipidPanel(QtWidgets.QWidget):
             "row says what that adduct does when it breaks up, and ppm is how "
             "far the written precursor sits from that candidate through it")
         explain_layout.addWidget(self.explain_tree, 2)
+
+        self.route_tree = QtWidgets.QTreeWidget()
+        self.route_tree.setHeaderLabels(["Route", "Adduct", "Explains",
+                                         "Ions", "ppm"])
+        self.route_tree.setColumnWidth(0, 110)
+        self.route_tree.setAlternatingRowColors(True)
+        self.route_tree.setMaximumHeight(120)
+        self.route_tree.setToolTip(
+            "What each route made of this spectrum. Click one to put its "
+            "answer in the table above. Ions is how many of the ions that "
+            "route predicted were found, of how many it offered — read it "
+            "beside the share: a route that offers four thousand masses "
+            "covers a spectrum by accident, and one that offers fifty and "
+            "explains most of it has said something.")
+        self.route_tree.setVisible(False)
+        explain_layout.addWidget(self.route_tree)
 
         self.match_tree = QtWidgets.QTreeWidget()
         self.match_tree.setHeaderLabels(["Measured", "ppm", "Route", "Ladder"])
@@ -472,6 +509,8 @@ class LipidPanel(QtWidgets.QWidget):
         self.frag_target.returnPressed.connect(self.predict_fragments)
         self.frag_tree.currentItemChanged.connect(self._show_cleavage)
         self.frag_tree.itemDoubleClicked.connect(self._fragment_activated)
+        self.btn_explain_any.clicked.connect(self.explain_anything)
+        self.route_tree.currentItemChanged.connect(self._route_chosen)
         self.btn_explain.clicked.connect(self.explain_spectrum)
         self.explain_precursor.returnPressed.connect(self.explain_spectrum)
         self.btn_own_structure.clicked.connect(self._load_own_structure)
@@ -879,6 +918,179 @@ class LipidPanel(QtWidgets.QWidget):
                     "precursor alone")
         return ""
 
+    def set_components(self, components) -> None:
+        """
+        The method's component table, for the unified **Explain** button.
+
+        A panel that has been handed a spectrum knows the precursor, the
+        polarity and the survey; what it does not know is what the compound
+        is called or what it is made of, and the component table is where a
+        method writes both. Kept as a list rather than reached for through
+        the session, because this panel has never held one and a widget that
+        can be built alone stays testable alone.
+        """
+        self._components = list(components or [])
+
+    def component_for_channel(self):
+        """
+        The component this channel isolates, or None.
+
+        Nearest written precursor inside `matching.PRECURSOR_MATCH_DA`, which
+        is the window the quadrupole passed: a method writing `430.35` and a
+        component written `430.3465` are the same channel. Nothing is guessed
+        beyond that — a component half a dalton away is a different compound
+        and naming the spectrum after it would be inventing the answer.
+        """
+        text = self.explain_precursor.text().strip().replace(",", ".")
+        try:
+            precursor = float(text)
+        except ValueError:
+            return None
+        near = [(abs(float(getattr(c, "precursor", 0.0) or 0.0) - precursor), c)
+                for c in self._components
+                if getattr(c, "precursor", 0.0)]
+        near = [(gap, c) for gap, c in near if gap <= PRECURSOR_MATCH_DA]
+        near.sort(key=lambda pair: pair[0])
+        return near[0][1] if near else None
+
+    def explain_anything(self) -> None:
+        """
+        Every route at once, and the best of them in the ranked table.
+
+        The inputs are taken from wherever they exist: the precursor, the
+        polarity and the survey from the channel the spectrum came off, the
+        name and the formula from the component whose precursor this channel
+        isolates — unless the boxes below hold something, since an analyst
+        who typed a name meant it — and the drawing from whatever was loaded.
+        A route with nothing to work from is listed as skipped with the
+        reason, not silently left out.
+        """
+        from ..explain_any import explain_any
+
+        peaks = getattr(self, "_spectrum", None)
+        if peaks is None or not getattr(self, "_peaks", None):
+            self._report("Show a spectrum first — Process ▸ Explain spectrum "
+                         "takes the one on screen.")
+            return
+        text = self.explain_precursor.text().strip().replace(",", ".")
+        try:
+            precursor = float(text)
+        except ValueError:
+            precursor = None
+        component = self.component_for_channel()
+        name = (self.own_name.text().strip()
+                or str(getattr(component, "name", "") or ""))
+        formula = (self.own_formula.text().strip()
+                   or str(getattr(component, "formula", "") or ""))
+        QtWidgets.QApplication.setOverrideCursor(
+            QtCore.Qt.CursorShape.WaitCursor)
+        try:
+            # at `explain_any`'s own tolerance, not the box below it. The
+            # box defaults to 5 ppm because a deuterium is 1.55 mDa from the
+            # hydrogen it replaced and a wider window cannot say how many
+            # labels a piece kept — a question about *placing* labels, not
+            # about which route explains the spectrum. Measured on the four
+            # real bile-acid infusions, whose axes sit 4–7 ppm high: at
+            # 20 ppm the route naming the right compound wins 3 of 4, at
+            # 5 ppm 1 of 4, because tightening drops the true compound's
+            # ions while a four-thousand-ion candidate still covers by
+            # accident. The label inference below still gets the box.
+            answer = explain_any(
+                peaks[0], peaks[1], precursor, self._polarity,
+                name=name, formula=formula, molecule=self._own_molecule,
+                deuterium=self.own_deuterium.value(), survey=self._survey)
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
+        self._any = answer
+        # what the survey said, so `adduct_provenance` can tell a record
+        # whose adduct was confirmed from one that was read off two decimals
+        self.adduct_evidence = list(answer.evidence)
+        self._fill_routes(answer)
+        if answer.best is None:
+            self._explain_nothing("; ".join(f"{s.route} — {s.why}"
+                                            for s in answer.skipped))
+            self.route_tree.setVisible(bool(answer.results))
+            return
+        from_table = (f" Name and formula from {component.name}."
+                      if component is not None and (
+                          not self.own_name.text().strip()
+                          and not self.own_formula.text().strip()) else "")
+        self._report(answer.summary + from_table)
+
+    def _fill_routes(self, answer) -> None:
+        """
+        The route table: what every route made of the spectrum, best first.
+
+        A skipped route is a row too, greyed and unselectable, because "the
+        database is not installed" and "the database had nothing at this
+        mass" are different answers and a route that is simply missing from
+        the table says neither.
+        """
+        self.route_tree.blockSignals(True)
+        self.route_tree.clear()
+        for result in answer.results:
+            row = QtWidgets.QTreeWidgetItem(self.route_tree, [
+                result.route, result.adduct,
+                f"{result.share * 100:.1f}%", result.ions,
+                "" if result.precursor_ppm is None
+                else f"{result.precursor_ppm:+.1f}",
+            ])
+            row.setData(0, ROLE_EXPLANATION, result)
+            row.setToolTip(0, result.source or result.basis)
+            row.setToolTip(1, result.reason or result.explanation.behaviour)
+            for column in (2, 3, 4):
+                row.setTextAlignment(column,
+                                     QtCore.Qt.AlignmentFlag.AlignRight
+                                     | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        for skip in answer.skipped:
+            row = QtWidgets.QTreeWidgetItem(self.route_tree,
+                                            [skip.route, "—", "—", "—", ""])
+            row.setToolTip(0, skip.why)
+            row.setFlags(QtCore.Qt.ItemFlag.NoItemFlags)
+        self.route_tree.blockSignals(False)
+        self.route_tree.setVisible(True)
+        if answer.results:
+            self.route_tree.setCurrentItem(self.route_tree.topLevelItem(0))
+
+    def _route_chosen(self, item, _previous=None) -> None:
+        result = item.data(0, ROLE_EXPLANATION) if item is not None else None
+        if result is None:
+            return
+        self._show_route(result)
+        self._report(f"{result.name}: {result.share * 100:.1f}% of the "
+                     f"spectrum {result.basis}; {result.ions} predicted "
+                     f"ion(s) matched, "
+                     f"{len(result.explanation.unexplained(self._peaks))} "
+                     f"peak(s) not.")
+
+    def _show_route(self, result) -> None:
+        """
+        One route's answer in the ranked table, with the line that names it.
+
+        The database route hands over its whole ranked list, so selecting
+        another candidate still works and still rewrites the adduct sentence
+        — with the route kept in front of it, since what is on screen is
+        still an answer that route produced.
+        """
+        from ..explain_any import MAX_CUTS, MAX_LOSSES, ROUTE_DATABASE
+
+        self._route_basis = result.basis
+        self._record_limits = (MAX_CUTS, MAX_LOSSES)
+        self._record_context = (self._any.precursor
+                                if result.route == ROUTE_DATABASE
+                                and self._any is not None else None)
+        self.explanation_basis = self._with_axis(
+            f"{result.basis}; {result.reason}" if result.reason
+            else result.basis)
+        self.explanation_adduct = result.adduct
+        self._show_ranked(list(result.ranked), None, result.adduct)
+        # a label inference needs the drawing the labels would sit on, which
+        # only the analyst's own molfile is; a database record's drawing is
+        # not the labelled compound
+        peaks = getattr(self, "_peaks", None) or []
+        self._place_labels(result.explanation, peaks,
+                           self.own_deuterium.value())
+
     def explain_spectrum(self) -> None:
         database = lipidmaps.database()
         if database is None:
@@ -909,8 +1121,11 @@ class LipidPanel(QtWidgets.QWidget):
         # may have been found at a different adduct and a report that printed
         # the box would name an ion nothing was scored against
         self._record_context = precursor
+        self._record_limits = (1, 2)
+        self._route_basis = ""
         self.explanation_basis = ""
         self.explanation_adduct = ""
+        self.route_tree.setVisible(False)
         self._show_ranked(ranked, precursor, EVERY_ADDUCT if auto else chosen)
 
     def _load_own_structure(self) -> None:
@@ -1064,6 +1279,8 @@ class LipidPanel(QtWidgets.QWidget):
             basis = (f"the precursor {formula} as {adduct.name} and its neutral "
                      f"losses — a formula has no bonds to cut")
         self._record_context = None
+        self._route_basis = ""
+        self.route_tree.setVisible(False)
         self.explanation_basis = self._with_axis(f"{basis}; {reason}")
         self.explanation_adduct = adduct.name
         self._show_ranked([explanation], None, adduct.name)
@@ -1143,6 +1360,7 @@ class LipidPanel(QtWidgets.QWidget):
         empty one.
         """
         self._record_context = None
+        self._route_basis = ""
         self.explain_tree.clear()
         self.match_tree.clear()
         self.sigMatches.emit([])
@@ -1258,8 +1476,15 @@ class LipidPanel(QtWidgets.QWidget):
             return
         reason = adduct_reason(explanation.record.formula, precursor,
                                explanation.adduct, self._polarity or None)
-        basis = (f"the curated structure, one bond cut and up to two neutral "
-                 f"losses, as {explanation.adduct}")
+        cuts, losses = self._record_limits
+        basis = (f"the curated structure, {'one bond' if cuts == 1 else f'up to {cuts} bonds'} "
+                 f"cut and up to {losses} neutral losses, as "
+                 f"{explanation.adduct}")
+        # the route stays in front of the sentence: on the unified path the
+        # reader has to know which of four ways produced what is on screen,
+        # and selecting another candidate must not lose it
+        if self._route_basis:
+            basis = f"{self._route_basis} — {basis}"
         self.explanation_basis = f"{basis}; {reason}" if reason else basis
         self.explanation_adduct = explanation.adduct
 

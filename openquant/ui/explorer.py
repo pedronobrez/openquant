@@ -2171,6 +2171,11 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.lipid_panel.set_spectrum(mz, intensity, precursor, polarity,
                                       self._survey_spectrum(precursor),
                                       recalibration=self._axis_sentence())
+        # what the method says this channel is: the unified Explain button
+        # fills its name and formula from the component whose precursor the
+        # channel isolates, so a spectrum of a declared standard needs
+        # nothing typed at all
+        self.lipid_panel.set_components(self.session.method.components)
         self.show_panel_named("LIPID MAPS")
         self.lipid_panel.explain_spectrum()
 

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from PyQt6 import QtCore, QtWidgets
 
+from ..audit import (AUTOMATIC_INTEGRATION, CALIBRATION_OUTLIERS,
+                     CALIBRATION_POINT, COMPONENT_EDITED,
+                     MANUAL_INTEGRATION, PROCESSED, REPROCESSED,
+                     describe_integration)
 from ..calibration import fit as fit_curve
 from ..calibration import remove_outliers
 from ..components import Component, IntegrationParams
@@ -19,6 +23,7 @@ from ..quantify import (
 )
 from ..session import Session
 from .acceptance_panel import AcceptancePanel
+from .audit_panel import AuditPanel
 from .calibration_panel import CalibrationPanel
 from .integration_panel import IntegrationPanel
 from .metric_plot import MetricPlotPanel
@@ -33,6 +38,14 @@ ROLE_NAME = QtCore.Qt.ItemDataRole.UserRole
 #: the tree entry that means "do not narrow anything down". Not a component
 #: name, and picked so no real one can collide with it.
 ALL_COMPONENTS = "\u0000all-components"
+
+
+def _integration(result) -> str:
+    """One peak as the review grid states it, for the audit trail."""
+    if result is None or not result.found:
+        return "not integrated"
+    return (f"{result.start_rt:.3f}–{result.end_rt:.3f} min, "
+            f"area {result.area:,.0f}")
 
 
 class ComponentTree(QtWidgets.QTreeWidget):
@@ -154,6 +167,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.metrics = MetricPlotPanel(session)
         self.quality = QualityPanel(session)
         self.mass = MassDriftPanel(session)
+        self.audit = AuditPanel(session)
         self.bottom = QtWidgets.QTabWidget()
         self.bottom.setDocumentMode(True)
         self.bottom.addTab(self.results, "Results")
@@ -162,6 +176,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.bottom.addTab(self.metrics, "Metric plot")
         self.bottom.addTab(self.quality, "Batch QC")
         self.bottom.addTab(self.mass, "Mass drift")
+        self.bottom.addTab(self.audit, "Audit trail")
         right.addWidget(self.grid)
         right.addWidget(self.bottom)
         right.setStretchFactor(0, 3)
@@ -181,7 +196,8 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
                              (self.statistics, "statistics"),
                              (self.metrics, "metric-plot"),
                              (self.quality, "batch-qc"),
-                             (self.mass, "mass-drift")):
+                             (self.mass, "mass-drift"),
+                             (self.audit, "audit-trail")):
             describe(widget, page)
 
         self.btn_process.clicked.connect(self.process_batch)
@@ -211,6 +227,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.metrics.sigPointActivated.connect(self._on_row_selected)
         self.quality.sigSampleActivated.connect(self.grid.select)
         self.mass.sigSampleActivated.connect(self.grid.select)
+        self.audit.sigStatus.connect(self.sigStatus)
 
         session.sigMethodChanged.connect(self.reload_components)
         session.sigSamplesChanged.connect(self.refresh_grid)
@@ -469,6 +486,12 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         for point in curve.points:
             if point.sample_key == sample_key:
                 point.used = not point.used
+                self.session.record(
+                    CALIBRATION_POINT, f"{curve.component} · {point.sample_name}",
+                    before="excluded" if point.used else "used",
+                    after="used" if point.used else "excluded",
+                    note=f"{point.concentration:g} "
+                         f"{self.session.method.concentration_unit}".strip())
                 break
         refitted = fit_curve(curve.points, curve.regression, curve.weighting,
                              curve.component)
@@ -485,8 +508,14 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
                  if component is not None else None)
         if curve is None or not curve.is_fitted:
             return
+        was = sum(1 for p in curve.points if not p.used)
         cleaned = remove_outliers(curve, tolerance)
         self.session.calibrations[curve.component] = cleaned
+        self.session.record(
+            CALIBRATION_OUTLIERS, curve.component,
+            before=f"{was} excluded",
+            after=f"{sum(1 for p in cleaned.points if not p.used)} excluded",
+            note=f"automatic, over {tolerance:g}% from the curve")
         apply_calibrations(self.session.results, self.session.entries,
                            self.session.method, self.session.calibrations)
         evaluate_acceptance(self.session.results, self.session.entries,
@@ -503,7 +532,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             return
         self.session.method.set_integration(component, params)
         self.session.notify_method_changed()
-        self._reprocess([component.name])
+        self._reprocess([component.name], describe_integration(params))
         self.integration.report(f"Applied to {component.name}.")
 
     def _apply_to_group(self, params: IntegrationParams) -> None:
@@ -518,7 +547,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         touched = method.apply_integration_to_group(component.group, params)
         self.session.notify_method_changed()
         names = [c.name for c in method.components if c.group == component.group]
-        self._reprocess(names)
+        self._reprocess(names, describe_integration(params))
         self.integration.report(
             f"Applied to {touched} component(s) of {component.group}.")
 
@@ -529,13 +558,20 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.session.method.set_integration(component, None)
         self.session.notify_method_changed()
         self._show_integration_params()
-        self._reprocess([component.name])
+        self._reprocess([component.name],
+                        "back to the method defaults: "
+                        + describe_integration(
+                            self.session.method.integration_for(component)))
         self.integration.report(f"{component.name} back to the method defaults.")
 
-    def _reprocess(self, names: list[str]) -> None:
+    def _reprocess(self, names: list[str], note: str = "") -> None:
         """
         Re-integrate only the components that changed, keeping rows the
         operator integrated by hand.
+
+        The audit entry is written here rather than by the caller, so that
+        one user action — applying a parameter, resetting a component —
+        leaves one line saying what was reprocessed and what with.
         """
         if not self.session.results.results:
             return
@@ -543,7 +579,13 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
                           self.session.cache, previous=self.session.results,
                           keep_manual=True, only=names,
                           corrections=self.session.corrections_in_force())
+        wanted = set(names)
+        touched = sum(1 for r in results if r.component in wanted)
         self.session.results = results
+        self.session.record(
+            REPROCESSED,
+            names[0] if len(names) == 1 else f"{len(names)} component(s)",
+            after=f"{touched} row(s)", note=note)
         self._recalibrate()
 
     # -- manual integration -------------------------------------------------------- #
@@ -553,10 +595,17 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         if component is None or entry is None:
             return
         previous = self.session.results.get(sample_key, component.name)
+        # read before integrating: integrate_manually writes into the row it
+        # is given, so the previous numbers are gone the moment it runs
+        was = _integration(previous)
         result = integrate_manually(entry, component, self.session.method,
                                     start, end, previous, self.session.cache,
                                     self.session.correction_for(sample_key))
         self.session.results.replace(result)
+        self.session.record(
+            MANUAL_INTEGRATION, f"{component.name} · {entry.name}",
+            before=was, after=_integration(result),
+            note=f"dragged {min(start, end):.3f}–{max(start, end):.3f} min")
         self._relink()
         self._recalibrate()
         self.results.select(sample_key, component.name)
@@ -575,6 +624,10 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         component = self.session.method.by_name(component_name)
         if component is None:
             return
+        self.session.record(
+            COMPONENT_EDITED, f"{component_name} · internal standard",
+            before=component.internal_standard, after=standard,
+            note="chosen in the results table")
         component.internal_standard = standard
         self.session.notify_method_changed()
         self._relink()
@@ -621,10 +674,15 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         if component is None or entry is None:
             return
         from ..quantify import integrate_component
+        was = _integration(self.session.results.get(sample_key, component.name))
         result = integrate_component(entry, component, self.session.method,
                                      self.session.cache,
                                      self.session.correction_for(sample_key))
         self.session.results.replace(result)
+        self.session.record(
+            AUTOMATIC_INTEGRATION, f"{component.name} · {entry.name}",
+            before=was, after=_integration(result),
+            note="the detector has it again")
         self._relink()
         self._recalibrate()
         self._report(f"{entry.name}: back to automatic integration.")
@@ -696,6 +754,11 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self.session.results = results
         self._recalibrate()
         found = sum(1 for r in results if r.found)
+        self.session.record(
+            PROCESSED, f"{len(components)} component(s) × "
+                       f"{len(loaded)} sample(s)",
+            after=f"{len(results)} row(s), {found} integrated",
+            note=describe_integration(method.defaults))
         self._report(f"{len(results)} row(s) across {len(loaded)} sample(s); "
                      f"{found} integrated.")
 
@@ -780,6 +843,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         from ..processing import ALGORITHM_LABELS
 
         method = self.session.method
+        label = ALGORITHM_LABELS.get(algorithm, algorithm)
         touched = adopt_algorithm(method, algorithm)
         self.session.notify_method_changed()
         self._show_integration_params()
@@ -789,10 +853,13 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
                               previous=self.session.results, keep_manual=True,
                               corrections=self.session.corrections_in_force())
             self.session.results = results
+            self.session.record(
+                REPROCESSED, "the whole batch",
+                after=f"{len(results)} row(s)",
+                note=f"{label.lower()} adopted from the comparison")
             self._recalibrate()
         else:
             self.process_batch()
-        label = ALGORITHM_LABELS.get(algorithm, algorithm)
         message = f"Batch integrated with {label.lower()}."
         if touched:
             message += f" {touched} component override(s) moved with it."

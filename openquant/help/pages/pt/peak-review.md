@@ -50,7 +50,10 @@ extremidades, a área acima dela, sem detecção de pico — e a linha é marcad
 como manual com `✎`. Uma linha manual sobrevive ao reprocessamento: ajustar um
 parâmetro ou adotar outro algoritmo a deixa como o operador a definiu. Clique
 com o botão direito no painel e escolha **Back to automatic integration** para
-devolvê-la ao detector.
+devolvê-la ao detector. Ambas as coisas são escritas na
+[[audit-trail]], com as fronteiras e a área antes e depois, de modo que um
+pico decidido por alguém pode ser distinguido de um encontrado pelo
+detector.
 
 ## A região de ruído
 

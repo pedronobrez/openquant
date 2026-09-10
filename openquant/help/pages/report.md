@@ -26,6 +26,7 @@ leaving a hole.
 | Compared spectra | only while the Explorer is holding spectra together: the head-to-tail picture, a table of the traces, and the masses they share within 10 ppm — [[chromatograms-and-spectra]] |
 | Integration algorithms | only when [[compare-algorithms]] has been run: the totals per algorithm and the components that moved most |
 | Batch comparison | only when [[compare-batches]] has been run: the totals side by side and the components in the order of how much they moved |
+| Changes made by hand | only while there is a history to print: every hand edit in the order it was made, with the value before and after — the [[audit-trail]], and not an electronic signature |
 | Results | every row: sample, component, RT, area, ratio, concentration, accuracy, status and flags |
 | Statistics | the grouped summary of the [[statistics]] page, by sample type |
 

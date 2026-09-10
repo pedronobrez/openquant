@@ -48,7 +48,10 @@ integrated as marked — a straight baseline between the two ends, the area
 above it, no peak finding — and the row is marked manual with `✎`. A
 manual row survives reprocessing: adjusting a parameter or adopting another
 algorithm leaves it as the operator set it. Right-click the panel and
-choose **Back to automatic integration** to let the detector have it again.
+choose **Back to automatic integration** to let the detector have it again. Both
+are written into the [[audit-trail]] with the boundaries and the area before
+and after, so a peak somebody decided can be told from one the detector
+found.
 
 ## The noise region
 

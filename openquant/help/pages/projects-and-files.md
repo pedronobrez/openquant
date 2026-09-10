@@ -7,11 +7,12 @@ A project is one file, `name.oqproj`, JSON, readable by anything. It holds:
 
 | Key | Content |
 |---|---|
-| `version` | the file format's version, currently 3 |
+| `version` | the file format's version, currently 4 |
 | `method` | the component table, the integration and acceptance defaults, the tolerance and units, the ion-ratio bands — everything on the [[method-workspace]] |
 | `samples` | one entry per injection: the raw file's path and sample index, the display name, type, group, expected concentration, dilution and comment — everything on the [[samples-workspace]] |
 | `results` | every row of the [[results-table]], including manual integrations, notes, the algorithm that produced each area, the points on the peak and, for a fitted peak, the model |
 | `calibrations` | every curve: regression, weighting, coefficients, r², and each standard with whether it is used |
+| `audit` | what was changed by hand, in the order it was changed — see [[audit-trail]]; a project written before this existed has no key and opens with an empty trail |
 
 It does **not** hold the raw data — the project points at the files by
 path — nor the last algorithm comparison, which is derived and rebuilt on

@@ -5,6 +5,7 @@ from __future__ import annotations
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from .. import lipidmaps, precursor
+from ..audit import METHOD_DEFAULT, component_changes
 from ..chemistry import ADDUCTS
 from ..components import RESPONSES, Component, load_components, save_components
 from ..session import Session
@@ -161,6 +162,16 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.conc_edit.textChanged.connect(self._defaults_changed)
         self.ratio_spin.valueChanged.connect(self._defaults_changed)
         self.marginal_spin.valueChanged.connect(self._defaults_changed)
+        # the value is written on every keystroke, because the method has to
+        # follow the box; the trail is written when the typing stops
+        self._recorded_defaults = self._default_values()
+        for name, _field, _label in self._DEFAULTS:
+            widget = getattr(self, name)
+            if isinstance(widget, QtWidgets.QComboBox):
+                widget.currentTextChanged.connect(
+                    lambda _t: self._record_defaults())
+            else:
+                widget.editingFinished.connect(self._record_defaults)
         QtGui.QShortcut(QtGui.QKeySequence("Delete"), self.table,
                         activated=self._remove_rows)
         # F1 on the Skyline button opens the page about exporting rather
@@ -349,9 +360,22 @@ class MethodWorkspace(QtWidgets.QWidget):
         return [c for c in rows if c is not None]
 
     def _commit(self) -> None:
+        """
+        Write the table back into the method, and note what changed.
+
+        The table is committed whole on every edit, so what a change *was*
+        has to be worked out by comparing the two tables — which is what
+        `audit.component_changes` does. One edited cell is one entry naming
+        the column and what was in it; a row added or removed is one entry.
+        """
         if self._loading:
             return
-        self.session.method.replace_all(self.components())
+        components = self.components()
+        for what, target, before, after in component_changes(
+                self.session.method.components, components):
+            self.session.record(what, target, before, after,
+                                note="method table")
+        self.session.method.replace_all(components)
         self.session.notify_method_changed()
         self._update_status()
 
@@ -587,14 +611,50 @@ class MethodWorkspace(QtWidgets.QWidget):
                      "from the survey scan.")
         return measured
 
+    #: the defaults under the table, as (widget attribute, method field, label)
+    _DEFAULTS = (
+        ("tol_spin", "tolerance", "default tolerance"),
+        ("unit_combo", "unit", "tolerance unit"),
+        ("conc_edit", "concentration_unit", "concentration unit"),
+        ("ratio_spin", "ion_ratio_tolerance", "ion ratio ±"),
+        ("marginal_spin", "ion_ratio_marginal", "ion ratio marginal to"),
+    )
+
+    def _default_values(self) -> dict:
+        """What the boxes under the table say, in the method's own terms."""
+        return {
+            "tolerance": self.tol_spin.value(),
+            "unit": self.unit_combo.currentText(),
+            "concentration_unit": self.conc_edit.text().strip(),
+            "ion_ratio_tolerance": self.ratio_spin.value(),
+            "ion_ratio_marginal": self.marginal_spin.value(),
+        }
+
     def _defaults_changed(self, *_args) -> None:
         method = self.session.method
-        method.tolerance = self.tol_spin.value()
-        method.unit = self.unit_combo.currentText()
-        method.concentration_unit = self.conc_edit.text().strip()
-        method.ion_ratio_tolerance = self.ratio_spin.value()
-        method.ion_ratio_marginal = self.marginal_spin.value()
+        for field, value in self._default_values().items():
+            setattr(method, field, value)
         self.session.notify_method_changed()
+
+    def _record_defaults(self) -> None:
+        """
+        Note a default that was changed, once the typing has finished.
+
+        Bound to `editingFinished` rather than to the value: a spin box
+        typed into emits on every digit, and a trail of *2*, *25*, *250* is
+        three entries for one decision.
+        """
+        if self._loading:
+            return
+        values = self._default_values()
+        for _widget, field, label in self._DEFAULTS:
+            after = values[field]
+            before = self._recorded_defaults.get(field)
+            if before == after:
+                continue
+            self._recorded_defaults[field] = after
+            self.session.record(METHOD_DEFAULT, label, before, after,
+                                note="under the component table")
 
     def _update_status(self) -> None:
         method = self.session.method

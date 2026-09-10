@@ -165,7 +165,8 @@ def test_the_panel_writes_a_record_and_counts_its_own_library(panel, tmp_path):
 def test_the_record_is_searchable_at_once_when_it_is_the_loaded_library(panel,
                                                                        tmp_path):
     path = str(tmp_path / "mine.msp")
-    write_msp([a_record(name="deoxycholic acid-d4", precursor=395.3105)], path)
+    write_msp([a_record(name="deoxycholic acid-d4", precursor=395.3105,
+                       formula="C24H36D4O4")], path)
     panel.load(path)
     panel.set_own_path(path)
     assert len(panel.library) == 1
@@ -176,6 +177,79 @@ def test_the_record_is_searchable_at_once_when_it_is_the_loaded_library(panel,
     assert panel.hits.topLevelItemCount() == 1
     assert panel.hits.topLevelItem(0).text(0) == "cholic acid-d4"
     assert panel.hits.topLevelItem(0).text(1) == "100"
+
+
+def test_a_record_keeps_the_precision_its_precursor_was_given(tmp_path):
+    """
+    A method value of `430.35` written back as `430.3500` would claim four
+    decimals it does not have, and `precursor_disagrees` would then measure
+    it to ±0.00005 and call the compound's own formula wrong.
+    """
+    path = tmp_path / "own.msp"
+    write_msp([a_record(name="cholic acid-d4", precursor=430.35,
+                        precursor_type="[M+NH4]+", formula="C24H36D4O5")], path)
+    assert "PrecursorMZ: 430.35\n" in path.read_text(encoding="utf-8")
+    read = load_library(path).entries[0]
+    assert read.precursor_text == "430.35"
+    assert read.exact_precursor == pytest.approx(430.3465, abs=1e-4)
+    assert not read.precursor_disagrees
+    # and a precursor genuinely known to four decimals still writes them
+    write_msp([a_record(precursor=411.3054)], path)
+    assert "PrecursorMZ: 411.3054\n" in path.read_text(encoding="utf-8")
+
+
+def test_the_panel_gates_on_the_channel_polarity_until_the_box_is_ticked(panel,
+                                                                        tmp_path):
+    path = tmp_path / "mixed.msp"
+    path.write_text(
+        "Name: a positive record\nPrecursorMZ: 411.3054\n"
+        "Precursor_type: [M+H]+\nNum Peaks: 2\n"
+        "80.9601 999\n289.2168 500\n\n"
+        "Name: a negative record\nPrecursorMZ: 411.3054\n"
+        "Precursor_type: [M-H]-\nNum Peaks: 2\n"
+        "80.9601 999\n289.2168 500\n", encoding="utf-8")
+    panel.load(str(path))
+    assert not panel.other_polarity.isChecked()          # off by default
+    panel.set_spectrum(MZ, INTENSITY, 411.3054,
+                       {"title": "t", "polarity": "Negative"})
+    assert panel.query_polarity() == "Negative"
+    panel.search()
+    listed = [panel.hits.topLevelItem(i).text(0)
+              for i in range(panel.hits.topLevelItemCount())]
+    assert listed == ["a negative record"]
+    assert "negative records only" in panel.status.text()
+    panel.other_polarity.setChecked(True)
+    panel.search()
+    assert panel.hits.topLevelItemCount() == 2
+    # with no context there is nothing to gate on and everything is scored
+    panel.other_polarity.setChecked(False)
+    panel.set_spectrum(MZ, INTENSITY, 411.3054, {"title": "t"})
+    panel.search()
+    assert panel.hits.topLevelItemCount() == 2
+
+
+def test_the_panel_says_which_precursor_the_delta_was_measured_against(panel,
+                                                                      tmp_path):
+    path = tmp_path / "mixed.msp"
+    path.write_text(
+        "Name: with a formula\nPrecursorMZ: 430.35\n"
+        "Precursor_type: [M+NH4]+\nFormula: C24H36D4O5\nNum Peaks: 2\n"
+        "80.9601 999\n289.2168 500\n\n"
+        "Name: typed wrong\nPrecursorMZ: 430.35\n"
+        "Precursor_type: [M+NH4]+\nFormula: C24H36D4O4\nNum Peaks: 2\n"
+        "80.9601 999\n289.2168 500\n", encoding="utf-8")
+    panel.load(str(path))
+    panel.set_spectrum(MZ, INTENSITY, 430.34, {"title": "t"})
+    panel.precursor_tol.setValue(0.05)
+    panel.search()
+    rows = {panel.hits.topLevelItem(i).text(0): panel.hits.topLevelItem(i)
+            for i in range(panel.hits.topLevelItemCount())}
+    assert set(rows) == {"with a formula", "typed wrong"}
+    assert rows["with a formula"].text(5) == "-15.1"
+    assert rows["with a formula"].text(6) == "formula"
+    assert rows["with a formula"].text(4) == "430.3500"      # no disagreement
+    # the record whose formula is a different compound says both numbers
+    assert "≠" in rows["typed wrong"].text(4)
 
 
 def test_the_panel_refuses_without_a_file_or_a_spectrum(panel, tmp_path):

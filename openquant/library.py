@@ -17,6 +17,16 @@ the plain cosine over everything both spectra hold, and the reverse
 cosine, which asks only whether the library's peaks are in the measured
 spectrum and so forgives a co-eluting impurity. A hit with a high reverse
 score and a low plain one is a compound present with company.
+
+A record's `Formula` and `Precursor_type` are not decoration. Together they
+give the m/z the record's ion actually has, to as many decimals as the
+elements do, where `PrecursorMZ` is whatever its author typed — often two
+places, sometimes truncated, occasionally of a different ion altogether. So
+the search computes that mass where it can (`LibraryEntry.exact_precursor`),
+measures Δ ppm against it and says so, matches a record whose written mass
+*or* whose formula mass is in the window, flags a record whose two numbers
+disagree by more than the written one's own precision, and — since an
+adduct also declares a charge sign — refuses records of the other polarity.
 """
 
 from __future__ import annotations
@@ -26,6 +36,10 @@ import re
 from dataclasses import dataclass, field
 
 import numpy as np
+
+from . import chemistry
+from .components import WRITTEN_UNITS
+from .lipidmaps import mass_precision
 
 #: how close a library peak and a measured one have to be, in ppm
 PEAK_TOLERANCE_PPM = 20.0
@@ -45,8 +59,26 @@ MIN_MATCHED = 2
 #: the bins of the peak index, in daltons: wide enough that a tolerance of
 #: PEAK_TOLERANCE_PPM at m/z 2000 fits inside one bin either side
 INDEX_BIN = 0.05
+#: under this, a record's written precursor and the mass its own formula and
+#: adduct give are not called a disagreement however many decimals were
+#: written. A library that writes five decimals is claiming ±0.000005 Da and
+#: is not good to it: measured over 449,525 records of a lipid MSP that
+#: writes exactly that, 96.8% sit inside 0.5 ppm of their own formula, 3.1%
+#: inside 1 ppm, 309 inside 2 ppm — the exporter's own rounding — and then
+#: **nothing at all** until one record at 116,411 ppm, a precursor typed
+#: 101 Da wrong. So the floor is the far side of an empty trough twelve
+#: times wider than the noise, and it is the number `precursor` already uses
+#: for two measurements of one ion that ought to agree
+DISAGREE_FLOOR_PPM = 25.0
 
 _NUMBER = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
+
+
+#: the field names an exporter may write the ion mode under, normalised the
+#: way `parse_msp` normalises a key. A record with no adduct may still say
+#: which polarity it was measured in, and that is enough for the gate
+_ION_MODE_FIELDS = ("ionmode", "ionisationmode", "ionizationmode",
+                    "polarity", "mode")
 
 
 @dataclass
@@ -63,10 +95,90 @@ class LibraryEntry:
     #: the other fields the record carried, as written
     fields: dict = field(default_factory=dict)
     source: str = ""
+    #: the precursor exactly as the record wrote it. `430.35` and `430.3500`
+    #: are the same float and not the same claim; only the text says how
+    #: many decimals were meant, and `written_precision` needs to know
+    precursor_text: str = ""
+
+    #: worked out once, on demand: a library of 450,000 records pays for
+    #: this only where a search reaches the record
+    _derived: tuple | None = field(default=None, init=False, repr=False,
+                                   compare=False)
 
     @property
     def peaks(self) -> int:
         return int(self.mz.size)
+
+    def _derive(self) -> tuple:
+        if self._derived is None:
+            adduct = chemistry.adduct_from_name(self.precursor_type)
+            exact = chemistry.mass_from_formula(self.formula, self.precursor_type)
+            sign = chemistry.polarity_sign(self.precursor_type)
+            if sign is None:
+                for key, value in self.fields.items():
+                    plain = str(key).lower().replace("_", "").replace(" ", "")
+                    if plain in _ION_MODE_FIELDS:
+                        sign = chemistry.polarity_sign(value)
+                        if sign is not None:
+                            break
+            self._derived = (adduct, exact, sign)
+        return self._derived
+
+    @property
+    def adduct(self) -> "chemistry.Adduct | None":
+        """The adduct `Precursor_type` names, where it is one we model."""
+        return self._derive()[0]
+
+    @property
+    def exact_precursor(self) -> float | None:
+        """
+        The m/z the record's own formula and adduct give, or None when
+        either is missing or unreadable. This is the number the ion has;
+        `precursor` is the number somebody typed.
+        """
+        return self._derive()[1]
+
+    @property
+    def polarity(self) -> int | None:
+        """
+        +1, -1 or None — the sign the record's adduct declares, falling back
+        to an ion-mode field where the adduct says nothing. None means the
+        record does not say, and a record that does not say is never
+        filtered out on polarity.
+        """
+        return self._derive()[2]
+
+    @property
+    def written_precision(self) -> float:
+        """
+        What the precursor as written is actually good to, in Da.
+
+        A whole unit in its last decimal, not half of one:
+        `components.written_tolerance` measured that on 141 real components,
+        because a written mass is as often truncated as rounded — a method
+        writes `286.2` for 286.2741 — and half a unit rejects the compound
+        over the way its own precursor was typed. Never tighter than
+        `DISAGREE_FLOOR_PPM`, since a library that writes five decimals is
+        claiming a precision its own arithmetic does not have.
+        """
+        if self.precursor is None:
+            return 0.5
+        written = WRITTEN_UNITS * mass_precision(self.precursor,
+                                                 self.precursor_text or None)
+        return max(written, abs(self.precursor) * DISAGREE_FLOOR_PPM * 1e-6)
+
+    @property
+    def precursor_disagrees(self) -> bool:
+        """
+        Whether the record's two accounts of its own precursor differ by
+        more than the written one is good to. Either the formula, the
+        adduct or the typed mass is wrong, and which cannot be told from
+        here — so this is reported, never repaired.
+        """
+        exact = self.exact_precursor
+        if exact is None or self.precursor is None:
+            return False
+        return abs(self.precursor - exact) > self.written_precision
 
 
 @dataclass(frozen=True)
@@ -94,9 +206,16 @@ class LibraryHit:
     pairs: tuple[Pair, ...]
     of_library: int
     of_query: int
-    #: measured precursor against the recorded one; None when the record has
-    #: no precursor or none was queried
+    #: measured precursor against the record's own; None when the record
+    #: gives no precursor of either kind, or none was queried
     delta_ppm: float | None = None
+    #: which of the record's two precursors `delta_ppm` was measured
+    #: against: "formula" (its formula and adduct), "written" (its
+    #: `PrecursorMZ`), or "" when there is no delta to measure
+    delta_basis: str = ""
+    #: the record's written precursor and its formula's disagree by more
+    #: than the written one's precision — see `LibraryEntry`
+    precursor_disagrees: bool = False
 
     @property
     def matched(self) -> int:
@@ -174,6 +293,7 @@ def parse_msp(text: str, source: str = "") -> list[LibraryEntry]:
                               "precursor"):
                 numbers = _NUMBER.findall(value)
                 entry.precursor = float(numbers[0]) if numbers else None
+                entry.precursor_text = numbers[0] if numbers else ""
             elif normalised in ("precursortype", "adduct", "iontype"):
                 entry.precursor_type = value
             elif normalised == "formula":
@@ -221,6 +341,7 @@ def parse_mgf(text: str, source: str = "") -> list[LibraryEntry]:
             elif key == "PEPMASS":
                 numbers = _NUMBER.findall(value)
                 entry.precursor = float(numbers[0]) if numbers else None
+                entry.precursor_text = numbers[0] if numbers else ""
             elif key in ("NAME", "COMPOUND"):
                 entry.name = value
             elif key == "FORMULA":
@@ -251,6 +372,27 @@ class SpectralLibrary:
         # search with no precursor filter has 139,000 records to consider,
         # and only the ones that share a peak with the query can score
         self._index: dict[int, np.ndarray] | None = None
+        # the mass each record's formula and adduct give, and the sign that
+        # adduct declares. Both are built on first use for the same reason
+        # as the peak index: reading formulas for every record of a large
+        # library at load time would double the wait for a search that may
+        # never need them
+        self._exact: np.ndarray | None = None
+        self._polarities: np.ndarray | None = None
+
+    def _formula_masses(self) -> np.ndarray:
+        if self._exact is None:
+            self._exact = np.array(
+                [e.exact_precursor if e.exact_precursor is not None else np.nan
+                 for e in self.entries], dtype=float)
+        return self._exact
+
+    def _signs(self) -> np.ndarray:
+        """+1, -1, or 0 where the record does not say."""
+        if self._polarities is None:
+            self._polarities = np.array([e.polarity or 0 for e in self.entries],
+                                        dtype=np.int8)
+        return self._polarities
 
     def _build_index(self) -> dict[int, np.ndarray]:
         bins: dict[int, list[int]] = {}
@@ -261,35 +403,52 @@ class SpectralLibrary:
 
     def _candidates(self, query_mz: np.ndarray, precursor: float | None,
                     precursor_tolerance: float, include_unknown: bool,
-                    min_matched: int) -> np.ndarray:
+                    min_matched: int, polarity: int | None = None,
+                    include_other_polarity: bool = False) -> np.ndarray:
         """
         The records worth scoring.
 
-        With a precursor: the records within the tolerance, plus — only when
-        asked — the ones that carry no precursor. Measured on MassBank,
-        24,000 of 139,000 records carry none, and a filter that admits them
+        With a precursor: the records whose written precursor **or** whose
+        formula mass is within the tolerance — a record states its ion
+        twice and either statement may be the one that matches, so nothing
+        is lost because the two disagree. A record carrying neither is
+        left out unless asked for. Measured on MassBank, 24,000 of 139,000
+        records carry no written precursor, and a filter that admits them
         all is not a filter: every search came back dominated by them.
         Without a precursor: the records sharing at least `min_matched`
         query peaks' bins, counted one per query peak, which is what a hit
         needs before it can be one.
+
+        Either way, a query polarity leaves out the records whose adduct
+        declares the other sign. A record that declares no sign is kept:
+        the gate refuses what contradicts the query, not what is silent.
         """
         if precursor is not None:
-            close = np.abs(self._precursors - precursor) <= precursor_tolerance
-            if include_unknown:
-                close |= np.isnan(self._precursors)
-            return np.flatnonzero(close)
-        if self._index is None:
-            self._index = self._build_index()
-        per_peak: list[np.ndarray] = []
-        for b in np.unique(np.floor(query_mz / INDEX_BIN).astype(np.int64)):
-            members = [self._index[n] for n in (int(b) - 1, int(b), int(b) + 1)
-                       if n in self._index]
-            if members:
-                per_peak.append(np.unique(np.concatenate(members)))
-        if not per_peak:
-            return np.zeros(0, dtype=np.int64)
-        records, counts = np.unique(np.concatenate(per_peak), return_counts=True)
-        return records[counts >= max(min_matched, 1)]
+            exact = self._formula_masses()
+            with np.errstate(invalid="ignore"):
+                close = np.abs(self._precursors - precursor) <= precursor_tolerance
+                close |= np.abs(exact - precursor) <= precursor_tolerance
+                if include_unknown:
+                    close |= np.isnan(self._precursors) & np.isnan(exact)
+            found = np.flatnonzero(close)
+        else:
+            if self._index is None:
+                self._index = self._build_index()
+            per_peak: list[np.ndarray] = []
+            for b in np.unique(np.floor(query_mz / INDEX_BIN).astype(np.int64)):
+                members = [self._index[n] for n in (int(b) - 1, int(b), int(b) + 1)
+                           if n in self._index]
+                if members:
+                    per_peak.append(np.unique(np.concatenate(members)))
+            if not per_peak:
+                return np.zeros(0, dtype=np.int64)
+            records, counts = np.unique(np.concatenate(per_peak),
+                                        return_counts=True)
+            found = records[counts >= max(min_matched, 1)]
+        if polarity and not include_other_polarity and found.size:
+            signs = self._signs()[found]
+            found = found[(signs == 0) | (signs == polarity)]
+        return found
 
     def __len__(self) -> int:
         return len(self.entries)
@@ -298,22 +457,44 @@ class SpectralLibrary:
     def with_precursor(self) -> int:
         return sum(1 for entry in self.entries if entry.precursor is not None)
 
+    @property
+    def with_formula_mass(self) -> int:
+        """Records whose formula and adduct both read, so their ion's mass
+        is known to the elements rather than to whatever was typed."""
+        return int(np.count_nonzero(~np.isnan(self._formula_masses())))
+
+    @property
+    def disagreeing(self) -> list[LibraryEntry]:
+        """The records whose written precursor and whose formula's differ by
+        more than the written one's own precision."""
+        return [e for e in self.entries if e.precursor_disagrees]
+
     def search(self, mz: np.ndarray, intensity: np.ndarray,
                precursor: float | None = None,
                tolerance_ppm: float = PEAK_TOLERANCE_PPM,
                precursor_tolerance: float = PRECURSOR_TOLERANCE_DA,
                top: int = 20, noise_share: float = NOISE_SHARE,
                min_matched: int = MIN_MATCHED,
-               include_unknown_precursor: bool = False) -> list[LibraryHit]:
+               include_unknown_precursor: bool = False,
+               polarity=None,
+               include_other_polarity: bool = False) -> list[LibraryHit]:
         """
         The entries that best match a measured spectrum, best first.
 
         With a precursor, only records whose precursor sits within the
-        tolerance are scored. Records that carry no precursor are left out
-        unless `include_unknown_precursor` asks for them, and then their
-        `delta_ppm` is None so the reader knows the filter could not apply
-        to them rather than believing it did. A record has to land
-        `min_matched` peaks to be listed at all.
+        tolerance are scored — the written one or the one the record's
+        formula and adduct give, whichever fits. Records that state neither
+        are left out unless `include_unknown_precursor` asks for them, and
+        then their `delta_ppm` is None so the reader knows the filter could
+        not apply to them rather than believing it did. Δ ppm is measured
+        against the formula's mass wherever there is one, since that is the
+        mass the ion has; `LibraryHit.delta_basis` says which was used.
+
+        `polarity` is the query's — a sign, or the word a channel writes
+        (`Positive`). Records whose adduct declares the other sign are left
+        out unless `include_other_polarity`; records that declare no sign
+        are always kept. A record has to land `min_matched` peaks to be
+        listed at all.
         """
         mz = np.asarray(mz, dtype=float)
         intensity = np.asarray(intensity, dtype=float)
@@ -324,19 +505,27 @@ class SpectralLibrary:
             return []
         keep = intensity >= noise_share * top_i
         query_mz, query_i = mz[keep], intensity[keep] / top_i
+        sign = chemistry.polarity_sign(polarity)
         hits: list[LibraryHit] = []
         for number in self._candidates(query_mz, precursor, precursor_tolerance,
-                                       include_unknown_precursor, min_matched):
+                                       include_unknown_precursor, min_matched,
+                                       sign, include_other_polarity):
             entry = self.entries[int(number)]
+            reference, basis = entry.exact_precursor, "formula"
+            if reference is None:
+                reference, basis = entry.precursor, "written"
             delta = None
-            if precursor is not None and entry.precursor is not None:
-                delta = (precursor - entry.precursor) / entry.precursor * 1e6
+            if precursor is not None and reference is not None:
+                delta = (precursor - reference) / reference * 1e6
+            else:
+                basis = ""
             score, reverse, pairs = match(query_mz, query_i, entry.mz,
                                           entry.intensity, tolerance_ppm)
             if len(pairs) < max(min_matched, 1):
                 continue
             hits.append(LibraryHit(entry, score, reverse, tuple(pairs),
-                                   entry.peaks, int(query_mz.size), delta))
+                                   entry.peaks, int(query_mz.size), delta,
+                                   basis, entry.precursor_disagrees))
         hits.sort(key=lambda hit: (-hit.score, -hit.reverse))
         return hits[:top]
 
@@ -412,6 +601,19 @@ def _one_line(value: str) -> str:
     return " ".join(str(value).split())
 
 
+def _write_mass(value: float) -> str:
+    """
+    A precursor written with the precision it was given, not more.
+
+    The shortest text that reads back as the same float: `430.35` stays
+    `430.35` and `411.3054` stays `411.3054`. Padding to four decimals
+    instead would write `430.3500`, and a record that claims four decimals
+    is one that `precursor_disagrees` measures to ±0.00005 — so a method
+    value typed to two places would be called wrong by its own formula.
+    """
+    return repr(float(value))
+
+
 def entry_from_spectrum(name: str, mz, intensity, precursor: float | None = None,
                         precursor_type: str = "", formula: str = "",
                         collision_energy: float | None = None,
@@ -463,6 +665,9 @@ def entry_from_spectrum(name: str, mz, intensity, precursor: float | None = None
         mz=mz[keep],
         intensity=intensity[keep] / top,
         fields=fields,
+        # the same text `format_msp` will write, so a record knows what its
+        # precursor is good to before it has been through a file
+        precursor_text="" if precursor is None else _write_mass(precursor),
     )
 
 
@@ -471,7 +676,7 @@ def format_msp(entries: list[LibraryEntry]) -> str:
     out: list[str] = []
     for entry in entries:
         written = {
-            "PrecursorMZ": "" if entry.precursor is None else f"{entry.precursor:.4f}",
+            "PrecursorMZ": "" if entry.precursor is None else _write_mass(entry.precursor),
             "Precursor_type": entry.precursor_type,
             "Formula": entry.formula,
         }

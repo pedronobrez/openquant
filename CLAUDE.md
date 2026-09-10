@@ -100,6 +100,8 @@ openquant/
                   read from its project without opening raw files
   contour.py      the run as a retention time by m/z grid
   health.py       what the method will fail at, before it is run
+  method_report.py  those checks, the formulas, the lock-mass candidates
+                  and the schedule as one document that grades nothing
   suggest.py      retention times and windows the batch can supply
   components.py   the component table; method.py the processing method
   samples.py      SampleEntry, sample types and groups, name shortening
@@ -772,6 +774,27 @@ UV detector, is not implemented there) — untested on real Windows.
   nothing when it cannot open its file, so every document is checked after
   it is written. Timings on this machine vary 3× under a load of twenty
   agents; pages, memory and rows repeat exactly.
+- **A method report is the checks that exist, not a new one, and it refuses
+  to grade.** `method_report.py` runs `check_method`, `fill_formulas`,
+  `precursor_repairs`, `matching` and `build_schedule` over one method and
+  prints the answers through `report.print_document`: the component table
+  with every flagged row marked, the findings by severity, the formulas
+  carried / derivable / refused with both masses, the standards that
+  *could* be lock masses, and, with a sample open, which channel serves
+  what and the schedule the method implies. The closing section is a
+  paragraph of counts whose last sentence says the counts are not a
+  verdict; `fill_formulas` is given `replace()` copies so nothing is
+  written. Measured on the 141-component method against injection 01:
+  0.29 s to read, 15 pages in 5.3 s, 3 serious findings and 4 warnings
+  touching all 141 rows, 125 formulas derivable with 16 refused, no
+  lock-mass candidate, 72 precursors outside the 50–700 survey, 59
+  transitions scheduled / 82 left out / 24 at once at 4.70 min. The cycle
+  it prints is 12.4 s (from `suggested_cycle`, the batch's measured width),
+  not the 3 s of the schedule note; at 3 s the same 24 get 120 ms. Two
+  things a render found: a provenance column carrying the derived formula
+  wrapped to three lines and took the table from six pages to eight; and a
+  closing heading whose paragraph has no *line* that fits ends page 14
+  alone — `_orphan_headings` needs the first line's rule, in the printer.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

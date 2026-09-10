@@ -342,3 +342,65 @@ def test_the_dialog_names_a_page_the_manual_has():
     from openquant.manual import manual
     from openquant.ui.library_add_dialog import HELP_PAGE
     assert HELP_PAGE in manual().pages
+
+
+def test_the_comment_says_whether_the_adduct_was_measured_or_deduced(qapp_module):
+    """
+    A record states an adduct and nothing in it says how that was arrived
+    at. Which of the two it was is the difference between a fact and a
+    reading, so it goes in the comment beside the provenance.
+    """
+    from openquant import chemistry as ch
+    from openquant.samples import SampleEntry
+    from openquant.session import Session
+    from openquant.ui.explorer import ChannelRef, ExplorerWorkspace
+    from openquant.ui.plots import Trace
+    from openquant.wiff import ChannelInfo
+
+    explorer = ExplorerWorkspace(Session())
+    mz = np.arange(425.0, 436.0, 0.002)
+    intensity = np.exp(-((mz - 430.3465) ** 2) / 0.0002) * 1000.0
+    explorer.spectrum.set_traces([Trace("spec", "spectrum", mz, intensity,
+                                        "#000")])
+    explorer.spectrum.set_title("Mix1 · TOF PI 430.35 · average of 120 scans")
+
+    class _Channel:
+        info = ChannelInfo(index=3, name="TOF PI", experiment_type="Product",
+                           polarity="Positive", precursor=430.35,
+                           start_mass=50.0, end_mass=500.0, n_scans=120,
+                           collision_energy=45.0)
+
+    entry = SampleEntry(path="/data/CA-d4_TOFMSMS_Mix1.wiff", sample_index=0,
+                        name="Mix1")
+    explorer.active_ref = ChannelRef(entry, _Channel())
+    panel = explorer.lipid_panel
+
+    # nothing has been handed over yet: nothing is claimed
+    assert panel.adduct_provenance == ""
+
+    # a spectrum with no survey beside it — the nine bile-acid infusions
+    panel.set_spectrum(mz, intensity, 430.35, "Positive", survey=None)
+    assert "no survey scan" in panel.adduct_provenance
+    explorer.library_panel._pull_spectrum()
+    assert "no survey scan" in explorer.library_panel.own_prefill()["comment"]
+
+    # and the same spectrum with the survey the adduct was read from
+    pattern = ch.ion_pattern(
+        "C24H36D4O5", ch.ADDUCTS_BY_NAME["[M+NH4]+"], max_peaks=3)
+    survey = np.zeros_like(mz)
+    for centre, abundance in pattern:
+        survey += 50_000.0 * abundance * np.exp(
+            -((mz - centre) ** 2) / 0.0002)
+    panel.set_spectrum(mz, intensity, 430.35, "Positive", survey=(mz, survey))
+    panel.own_formula.setText("C24H40O5")
+    panel.own_deuterium.setValue(4)
+    adduct, reason = panel._own_adduct("C24H40O5", 4)
+
+    assert adduct is ch.ADDUCTS_BY_NAME["[M+NH4]+"]
+    assert "confirmed by the survey" in reason
+    assert panel.adduct_provenance.startswith(
+        "adduct [M+NH4]+ confirmed by the survey")
+    explorer.library_panel._pull_spectrum()
+    comment = explorer.library_panel.own_prefill()["comment"]
+    assert "adduct [M+NH4]+ confirmed by the survey" in comment
+    explorer.deleteLater()

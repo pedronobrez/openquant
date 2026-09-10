@@ -51,6 +51,14 @@ class LipidPanel(QtWidgets.QWidget):
         #: it off the written precursor, and a report that printed the box
         #: instead would name an ion nothing was scored against
         self.explanation_adduct = ""
+        #: the survey scan of the same acquisition over the same range, as
+        #: `(mz, intensity)`, or None where the sample has no full-scan
+        #: channel. What turns the adduct from arithmetic on a typed number
+        #: into a measurement — see `chemistry.adduct_evidence`.
+        self._survey = None
+        #: `chemistry.AdductEvidence` per candidate from the last automatic
+        #: adduct, for a report to print
+        self.adduct_evidence: list = []
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
@@ -717,7 +725,7 @@ class LipidPanel(QtWidgets.QWidget):
 
     # -- explaining a measured spectrum --------------------------------------- #
     def set_spectrum(self, mz, intensity, precursor: float | None = None,
-                     polarity: str = "") -> None:
+                     polarity: str = "", survey=None) -> None:
         """
         Hand the panel the spectrum on screen, ready to be explained.
 
@@ -727,15 +735,55 @@ class LipidPanel(QtWidgets.QWidget):
         which then decides how tight an adduct has to fit. The polarity is
         a fact about the acquisition, not a choice, and is what stops a
         negative adduct being offered for a positive channel.
+
+        `survey` is the same acquisition's full-scan channel averaged over
+        the same range, as `(mz, intensity)`, or None where the method has no
+        survey. With it the adduct stops being a deduction from the written
+        precursor and becomes a measurement: the exact mass of the ion and
+        its isotope pattern, both of which the product-ion scan cannot show,
+        since Q1 threw away everything but the one mass.
         """
         self._peaks = significant_peaks(mz, intensity)
         self._polarity = str(polarity or "")
+        self._survey = survey
+        self.adduct_evidence = []
         if precursor:
             self.explain_precursor.setText(f"{precursor:g}")
         self.modes.setCurrentIndex(3)
         self.explain_header.setText(
             f"{len(self._peaks)} peak(s) above 1% of the base peak are on "
             "screen. Give the precursor and score the candidates against them.")
+
+    @property
+    def adduct_provenance(self) -> str:
+        """
+        Where the adduct came from, in one clause, for a record's comment.
+
+        A record of one's own states an adduct, and a reader a year later
+        cannot tell whether it was measured or assumed. This is the
+        difference, written into the comment: the survey confirmed it, the
+        survey did not, or the acquisition had no survey and the adduct is
+        the written precursor read as one. Empty before a spectrum has been
+        handed over, since then nothing has been claimed at all.
+        """
+        if getattr(self, "_peaks", None) is None:
+            return ""
+        # present at the right mass is not the same as confirmed: an ion
+        # whose satellites are not its own is something else on the mass
+        best = next((e for e in self.adduct_evidence
+                     if e.present and (e.pattern is None or e.agrees)), None)
+        if best is not None:
+            if self.explanation_adduct in ("", best.name):
+                return (f"adduct {best.name} confirmed by the survey "
+                        f"({best.confirmation})")
+            return (f"adduct {self.explanation_adduct} chosen, though the "
+                    f"survey supports {best.name}")
+        if self.adduct_evidence:
+            return "adduct not confirmed by the survey"
+        if self._survey is None:
+            return ("no survey scan: the adduct is read from the written "
+                    "precursor alone")
+        return ""
 
     def explain_spectrum(self) -> None:
         database = lipidmaps.database()
@@ -868,7 +916,9 @@ class LipidPanel(QtWidgets.QWidget):
             return adduct_from_name(fallback), (
                 f"no precursor is written, so {fallback} was taken from the "
                 f"Adduct box above")
-        choice = identify_adduct(labelled, precursor, self._polarity or None)
+        choice = identify_adduct(labelled, precursor, self._polarity or None,
+                                 survey=self._survey)
+        self.adduct_evidence = list(choice.evidence)
         return choice.adduct, choice.reason
 
     def explain_own(self) -> None:

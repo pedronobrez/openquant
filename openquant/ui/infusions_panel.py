@@ -36,6 +36,7 @@ HELP_PAGE = "infusion-report"
 #: move the tooltip onto the wrong cell without anything failing
 FOUND_COLUMN = SUMMARY_COLUMNS.index("Found m/z")
 OTHERS_COLUMN = SUMMARY_COLUMNS.index("Other infusions")
+ADDUCT_COLUMN = SUMMARY_COLUMNS.index("Adduct")
 
 #: the setting the analyst's own library is remembered under, written by the
 #: Explorer's library panel. Read rather than owned: there is one library of
@@ -227,6 +228,12 @@ class InfusionsPanel(QtWidgets.QWidget):
             return (row.report.survivor_note
                     or getattr(row.report.measurement, "note", "")
                     or text)
+        if column == ADDUCT_COLUMN:
+            # the cell is `[M+NH4]+ confirmed`; the tooltip is what the
+            # survey actually measured, candidate by candidate
+            lines = [row.report.adduct_note] if row.report.adduct_note else []
+            lines += [e.sentence for e in row.report.evidence]
+            return "\n".join(lines) or text
         if column == OTHERS_COLUMN and row.others:
             return "\n".join(
                 f"{label}: score {score * 100:.0f}, reverse "

@@ -245,3 +245,61 @@ def test_an_unreliable_measurement_falls_back_to_the_written_mass(monkeypatch):
     [proposal] = ad.propose([COMPONENT], measured={COMPONENT.name: consensus})
     assert proposal.source == ad.WRITTEN
     assert seen[-1] == COMPONENT.precursor
+
+
+# --- the survey confirming the adduct -------------------------------------- #
+def test_the_adduct_tolerance_is_the_consensus_spread_and_not_a_fourth_number():
+    """One figure for "these two measurements are of the same ion", used by
+    the consensus, the mass drift and now the adduct."""
+    from openquant import chemistry
+
+    assert chemistry.survey_tolerance_ppm() == precursor.CONSENSUS_SPREAD_PPM
+
+
+def test_the_survey_channel_confirms_the_adduct_of_a_written_precursor():
+    """The survey found the way the rest of this module finds it — the
+    full-scan channel covering the mass at that time — read for the adduct
+    rather than for the precursor alone."""
+    from openquant import chemistry
+
+    formula = "C24H36D4O5"
+    pattern = chemistry.ion_pattern(
+        formula, chemistry.ADDUCTS_BY_NAME["[M+NH4]+"], max_peaks=3)
+    sodium = chemistry.ion_pattern(
+        formula, chemistry.ADDUCTS_BY_NAME["[M+Na]+"], max_peaks=3)
+    ions = [(mz, a) for mz, a in pattern] + [(mz, 0.2 * a) for mz, a in sodium]
+    survey = SpectrumChannel(0, None, 100.0, 700.0, 12.0, 14.0, n=200,
+                             ions=ions, apex=13.1, height=50_000.0)
+    product = SpectrumChannel(1, 430.35, 50.0, 450.0, 12.0, 14.0, n=200,
+                              ions=[(183.0, 1.0)], apex=13.1)
+    entry = SampleEntry("/d/CA-d4.wiff", 0, "CA-d4")
+    entry.sample = Sample([survey, product])
+
+    found = precursor.survey_channel(entry.sample, 430.35, 13.1)
+    assert found is survey
+    choice = chemistry.identify_adduct(
+        formula, 430.35, "Positive",
+        survey=found.spectrum_rt_range(13.0, 13.2))
+
+    assert choice.adduct is chemistry.ADDUCTS_BY_NAME["[M+NH4]+"]
+    assert choice.confirmed
+    assert "confirmed by the survey" in choice.reason
+    assert "[M+Na]+ 20%" in choice.reason
+
+
+def test_an_acquisition_with_no_survey_offers_nothing_to_confirm_with():
+    """Nine real bile-acid infusions have no full-scan channel at all, so
+    there is no spectrum to hand in and the adduct stays what the written
+    precursor makes it."""
+    from openquant import chemistry
+
+    product = SpectrumChannel(0, 430.35, 50.0, 450.0, 12.0, 14.0, n=200,
+                              ions=[(183.0, 1.0)], apex=13.1)
+    entry = SampleEntry("/d/CA-d4.wiff", 0, "CA-d4")
+    entry.sample = Sample([product])
+
+    assert precursor.survey_channel(entry.sample, 430.35, 13.1) is None
+    choice = chemistry.identify_adduct("C24H36D4O5", 430.35, "Positive")
+    assert choice.adduct is chemistry.ADDUCTS_BY_NAME["[M+NH4]+"]
+    assert not choice.confirmed and not choice.read_survey
+    assert "survey" not in choice.reason

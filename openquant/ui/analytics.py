@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from PyQt6 import QtCore, QtWidgets
 
 from ..audit import (AUTOMATIC_INTEGRATION, CALIBRATION_OUTLIERS,
@@ -13,13 +15,16 @@ from ..calibration import remove_outliers
 from ..components import Component, IntegrationParams
 from .settings import settings
 from ..quantify import (
+    FULL_RUN_BELOW,
     PeakResult,
     apply_calibrations,
     build_calibrations,
     evaluate_acceptance,
     extract_xic,
+    incremental_plan,
     integrate_manually,
     process,
+    process_incremental,
 )
 from ..session import Session
 from .acceptance_panel import AcceptancePanel
@@ -100,12 +105,29 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
 
         bar = QtWidgets.QHBoxLayout()
-        self.btn_process = QtWidgets.QPushButton("Process batch")
+        # a tool button rather than a push button so the full reprocess can
+        # hang off the same control: it is the same command with the saving
+        # switched off, and a separate button would read as a different one
+        self.btn_process = QtWidgets.QToolButton()
+        self.btn_process.setText("Process batch")
+        self.btn_process.setToolButtonStyle(
+            QtCore.Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.btn_process.setPopupMode(
+            QtWidgets.QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         font = self.btn_process.font()
         font.setBold(True)
         self.btn_process.setFont(font)
         self.btn_process.setToolTip(
-            "Extract and integrate every component in every open sample")
+            "Extract and integrate every component in every open sample. "
+            "With results already in hand it reads only what changed — a new "
+            "injection, a new component, a component whose window or "
+            "parameters moved — and says how many rows it kept")
+        process_menu = QtWidgets.QMenu(self.btn_process)
+        self.act_reprocess_all = process_menu.addAction("Reprocess all…")
+        self.act_reprocess_all.setToolTip(
+            "Integrate every row again from the files, keeping nothing — "
+            "including the rows integrated by hand")
+        self.btn_process.setMenu(process_menu)
         bar.addWidget(self.btn_process)
         self.btn_calibrate = QtWidgets.QPushButton("Recalibrate")
         self.btn_calibrate.setToolTip(
@@ -204,7 +226,8 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
                              (self.audit, "audit-trail")):
             describe(widget, page)
 
-        self.btn_process.clicked.connect(self.process_batch)
+        self.btn_process.clicked.connect(lambda: self.process_batch())
+        self.act_reprocess_all.triggered.connect(self.reprocess_all)
         self.btn_magnify.toggled.connect(self._set_magnified)
         self.btn_calibrate.clicked.connect(lambda: self._recalibrate())
         self.btn_compare.clicked.connect(self.compare_algorithms)
@@ -578,8 +601,14 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
 
     def _reprocess(self, names: list[str], note: str = "") -> None:
         """
-        Re-integrate only the components that changed, keeping rows the
-        operator integrated by hand.
+        Re-integrate the rows a method change reaches, and only those.
+
+        `names` says which components the caller touched; what is actually
+        read is decided by `quantify.fingerprint`, which is the same rule the
+        Process button follows. So a change applied to a group re-integrates
+        that group and nothing else, and a hand-integrated row inside it goes
+        with it — a boundary drawn under the old settings is not a decision
+        about the new ones. The audit says how many.
 
         The audit entry is written here rather than by the caller, so that
         one user action — applying a parameter, resetting a component —
@@ -587,17 +616,19 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         """
         if not self.session.results.results:
             return
-        results = process(self.session.loaded_entries, self.session.method,
-                          self.session.cache, previous=self.session.results,
-                          keep_manual=True, only=names,
-                          corrections=self.session.corrections_in_force())
-        wanted = set(names)
-        touched = sum(1 for r in results if r.component in wanted)
+        results, done = process_incremental(
+            self.session.loaded_entries, self.session.method,
+            self.session.results, self.session.cache,
+            corrections=self.session.corrections_in_force())
         self.session.results = results
+        after = f"{done.integrated} row(s)"
+        if done.reintegrated_manual:
+            after += (f", {done.reintegrated_manual} of them integrated "
+                      f"by hand before")
         self.session.record(
             REPROCESSED,
             names[0] if len(names) == 1 else f"{len(names)} component(s)",
-            after=f"{touched} row(s)", note=note)
+            after=after, note=note)
         self._recalibrate()
 
     # -- manual integration -------------------------------------------------------- #
@@ -739,7 +770,20 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         return None
 
     # -- processing --------------------------------------------------------------- #
-    def process_batch(self) -> None:
+    def process_batch(self, full: bool = False) -> None:
+        """
+        Run the method over the batch — reading only what changed, where it
+        can.
+
+        With results already in hand, most presses of this button follow a
+        small change: one injection added, one component's window widened.
+        `quantify.incremental_plan` says what a run would have to read before
+        it reads anything, and where enough of the previous rows still answer
+        to the method the run keeps them. Where they do not — a change to a
+        method default reaches every component that inherits it — the plan
+        keeps too little to be worth the bookkeeping and the batch is
+        processed in full, which is also what `full=True` asks for outright.
+        """
         method = self.session.method
         components = [c for c in method.components if c.is_valid]
         loaded = self.session.loaded_entries
@@ -750,6 +794,45 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             self._report("Open at least one sample first.")
             return
 
+        previous = self.session.results
+        plan = None
+        if not full and previous.results:
+            plan = incremental_plan(loaded, method, previous,
+                                    self.session.corrections_in_force())
+            if plan.kept_fraction < FULL_RUN_BELOW:
+                plan = None
+        if plan is None:
+            self._process_fully(components, loaded)
+        else:
+            self._process_incrementally(plan, loaded)
+
+    def reprocess_all(self) -> None:
+        """
+        Integrate every row again, keeping nothing.
+
+        Offered because a fingerprint can only say the method has not
+        changed. It cannot say the acquisition under a path has not been
+        replaced, and it cannot answer for a row this version integrated
+        differently from the last. Hand-integrated rows go with it, which is
+        why the question is asked before it runs.
+        """
+        manual = sum(1 for r in self.session.results if r.manual)
+        if manual:
+            answer = QtWidgets.QMessageBox.question(
+                self, "Reprocess all",
+                f"Every row will be integrated again from the files, "
+                f"including {manual:,} integrated by hand. Their boundaries "
+                f"will be replaced by the detector's.\n\nReprocess all?",
+                QtWidgets.QMessageBox.StandardButton.Yes
+                | QtWidgets.QMessageBox.StandardButton.Cancel,
+                QtWidgets.QMessageBox.StandardButton.Cancel)
+            if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+                return
+        self.process_batch(full=True)
+
+    def _process_fully(self, components, loaded) -> None:
+        """Every row from the files, as the first run of a batch always is."""
+        method = self.session.method
         total = len(components) * len(loaded)
         dialog = QtWidgets.QProgressDialog("Processing…", "Cancel", 0, total, self)
         dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
@@ -760,8 +843,10 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             QtWidgets.QApplication.processEvents()
             return not dialog.wasCanceled()
 
+        started = time.perf_counter()
         results = process(loaded, method, self.session.cache, report,
                           corrections=self.session.corrections_in_force())
+        seconds = time.perf_counter() - started
         dialog.setValue(total)
         self.session.results = results
         self._recalibrate()
@@ -770,9 +855,47 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
             PROCESSED, f"{len(components)} component(s) × "
                        f"{len(loaded)} sample(s)",
             after=f"{len(results)} row(s), {found} integrated",
-            note=describe_integration(method.defaults))
-        self._report(f"{len(results)} row(s) across {len(loaded)} sample(s); "
-                     f"{found} integrated.")
+            note=f"every row from the files; "
+                 f"{describe_integration(method.defaults)}")
+        self._report(f"{len(results):,} row(s) across {len(loaded)} sample(s); "
+                     f"{found:,} integrated — {seconds:.1f} s.")
+
+    def _process_incrementally(self, plan, loaded) -> None:
+        """Only the rows the previous run cannot answer for."""
+        method = self.session.method
+        dialog = None
+        if plan.integrated:
+            dialog = QtWidgets.QProgressDialog(
+                f"Integrating {plan.integrated:,} row(s)…", "Cancel", 0,
+                plan.integrated, self)
+            dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+            dialog.setMinimumDuration(300)
+
+        def report(done: int, _total: int) -> bool:
+            dialog.setValue(done)
+            QtWidgets.QApplication.processEvents()
+            return not dialog.wasCanceled()
+
+        results, done = process_incremental(
+            loaded, method, self.session.results, self.session.cache,
+            report if dialog is not None else None,
+            corrections=self.session.corrections_in_force())
+        if dialog is not None:
+            dialog.setValue(plan.integrated)
+        self.session.results = results
+        self._recalibrate()
+        self.session.record(
+            REPROCESSED, "the batch, incrementally",
+            after=f"{done.kept:,} kept, {done.integrated:,} integrated, "
+                  f"{done.dropped:,} dropped",
+            note=done.why() or "nothing had changed")
+        message = done.summary()
+        if done.reintegrated_manual:
+            message += (" — a hand-integrated row is redone when its "
+                        "component changes")
+        if done.cancelled:
+            message += " — cancelled; press Process again to finish it"
+        self._report(message)
 
     # -- algorithms ------------------------------------------------------------- #
     def compare_algorithms(self) -> None:
@@ -848,8 +971,12 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         """
         Put the batch on one algorithm and integrate it again.
 
-        The whole batch, not the comparison's own rows: those were run
-        without the operator's manual integrations, which are kept here.
+        The whole batch, not the comparison's own rows, which were run
+        against a method this one is no longer. An algorithm is how every
+        area is arrived at, so it moves every component's fingerprint and
+        every row is read again — hand-integrated rows included, since a
+        boundary drawn to be integrated one way is not a decision about
+        another. The audit line says how many there were.
         """
         from ..compare import adopt_algorithm
         from ..processing import ALGORITHM_LABELS
@@ -861,13 +988,17 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         self._show_integration_params()
         loaded = self.session.loaded_entries
         if loaded and self.session.results.results:
-            results = process(loaded, method, self.session.cache,
-                              previous=self.session.results, keep_manual=True,
-                              corrections=self.session.corrections_in_force())
+            results, done = process_incremental(
+                loaded, method, self.session.results, self.session.cache,
+                corrections=self.session.corrections_in_force())
             self.session.results = results
+            after = f"{done.integrated} row(s)"
+            if done.reintegrated_manual:
+                after += (f", {done.reintegrated_manual} of them integrated "
+                          f"by hand before")
             self.session.record(
                 REPROCESSED, "the whole batch",
-                after=f"{len(results)} row(s)",
+                after=after,
                 note=f"{label.lower()} adopted from the comparison")
             self._recalibrate()
         else:

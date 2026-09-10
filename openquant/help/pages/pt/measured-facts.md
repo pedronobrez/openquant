@@ -5,11 +5,15 @@ Cada número neste manual foi produzido rodando algo sobre dados reais, e não
 lendo código ou repetindo a afirmação de um fabricante. Esta página os
 reúne, com aquilo em que foram medidos, para que quem lê possa decidir até
 onde cada um alcança no seu próprio instrumento. Salvo indicação em
-contrário, os dados são cinco aquisições reais de um TripleTOF 5600 em modo
-negativo — um método MRM-HR direcionado de 81 experimentos ao longo de dois
-períodos, cerca de 24,000 espectros cada — e um lote de 26 injeções de um
-método agendado para esfingolipídios, com 141 componentes e 11 padrões
-internos, amostrado a cada 14.6 s.
+contrário, os dados são um de três conjuntos: cinco aquisições reais de um
+TripleTOF 5600 em modo **negativo** — um método MRM-HR direcionado de 81
+experimentos ao longo de dois períodos, cerca de 24,000 espectros cada; um
+lote de 26 injeções no mesmo instrumento em modo **positivo**, um método
+agendado para esfingolipídios com 141 componentes e 11 padrões internos,
+amostrado a cada 14.6 s; e nove infusões diretas de padrões de ácidos
+biliares num ZenoTOF 7600, **positivo**, varreduras de íons produto sem
+varredura de survey nenhuma. De qual conjunto veio cada cifra está dito ao
+lado dela.
 
 ## O leitor
 
@@ -23,7 +27,7 @@ internos, amostrado a cada 14.6 s.
   arquivo de infusão de um ZenoTOF 7600 cujo companheiro tinha sido
   renomeado à mão: a lista de amostras, os metadados, os parâmetros do método
   e o cromatograma de íons totais de cada canal foram lidos normalmente; o
-  cromatograma de pico-base, todo cromatograma de íon extraído e todo
+  cromatograma de pico base, todo cromatograma de íon extraído e todo
   espectro falharam, com o Clearcore2 reportando um arquivo 'scan' ausente
   para os espectros e uma montagem ausente (`OFX.Core.Contracts`) para os
   cromatogramas. Nada no próprio arquivo diz que o companheiro está ausente;

@@ -5,10 +5,14 @@ Every figure in this manual was produced by running something on real
 data, not by reading code or repeating a vendor's claim. This page collects
 them, with what they were measured on, so that a reader can decide how
 far each one carries to their own instrument. Unless said otherwise the
-data is five real acquisitions from a TripleTOF 5600 in negative mode — a
-targeted MRM-HR method of 81 experiments across two periods, about 24,000
-spectra each — and a batch of 26 injections of a scheduled sphingolipid
-method of 141 components and 11 internal standards, sampled every 14.6 s.
+data is one of three sets: five real acquisitions from a TripleTOF 5600 in
+**negative** mode — a targeted MRM-HR method of 81 experiments across two
+periods, about 24,000 spectra each; a batch of 26 injections on the same
+instrument in **positive** mode, a scheduled sphingolipid method of 141
+components and 11 internal standards sampled every 14.6 s; and nine
+ZenoTOF 7600 direct infusions of bile-acid standards, **positive**,
+product-ion scans with no survey scan at all. Which set a figure came from
+is said beside it.
 
 ## The reader
 

@@ -19,7 +19,7 @@ distribuída com a lacuna medida escrita — a regra de extração em [[formats]
 exemplo. Um número que é 0.58% mais baixo e o diz vale mais que um que às vezes
 está certo por razões que ninguém consegue enunciar.
 
-## Nunca substituir a aritmética do instrumento pela nossa
+## Nunca substituir a aritmética do instrumento pela deste programa
 
 Totais, tempos de retenção e áreas vêm do fornecedor onde o fornecedor os
 reporta. Somar os pontos armazenados em vez disso moveu cada área em 2%.
@@ -56,4 +56,5 @@ linha diz o que ele fez e o que preteriu.
 
 Cada configuração nova assume por padrão o que o programa fazia antes de ela
 existir: pico *largest*, integração *valley*. Um lote reaberto em uma versão mais
-nova reporta o que reportava.
+nova reporta o que reportava, e o [[version-history]] diz qual versão trouxe
+cada uma delas.

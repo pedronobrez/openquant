@@ -31,8 +31,8 @@ frasco for borrifado. Uma transição é um único íon-produto: a energia que
 põe 60% do espectro em uma massa dá uma transição seis vezes maior do que a
 que espalha os mesmos íons por vinte massas. Onde o composto foi infundido
 mais de uma vez naquela condição, a fração precisa repetir-se dentro de 20%
-— o número em que um gráfico de controle do mesmo padrão marca um ponto
-fora, e em que a [[compare-infusions]] marca um pico-base como deslocado.
+— o número em que uma carta de controle do mesmo padrão marca um ponto
+fora, e em que a [[compare-infusions]] marca um pico base como deslocado.
 Onde foi infundido uma vez só, a justificativa diz que a fração é uma
 medida e não uma repetição, em vez de chamar uma medida de estável.
 
@@ -66,15 +66,15 @@ de uma infusão, cada número é a mediana sobre elas.
 | CE (eV) | a energia que a aquisição declara, ou a que o nome do arquivo escreve |
 | Ions found | dos previstos para a fórmula do composto — veja [[lipid-maps]] |
 | Explained | a fração da intensidade do espectro que a previsão explica |
-| Precursor height, % of base | o que sobreviveu à fragmentação, contra o pico-base |
+| Precursor height, % of base | o que sobreviveu à fragmentação, contra o pico base |
 | Base peak share, Fragment 1–3 | da intensidade somada da lista de picos medida |
 | Against other energies | o cosseno mediano desta infusão contra as outras condições do mesmo composto |
 | Considered | `no` numa linha que o veredicto de isolamento contradiz, com o que o método de fato isola |
 
 As frações têm dois denominadores e cada um é nomeado onde é escrito. O do
-precursor é o **pico-base**, que é como qualquer um lê o traço. Todas as
+precursor é o **pico base**, que é como qualquer um lê o traço. Todas as
 outras frações são da **intensidade somada da lista de picos** em que a
-tabela é medida — os picos em 1% do pico-base ou acima, que é a lista de que
+tabela é medida — os picos em 1% do pico base ou acima, que é a lista de que
 os escores e os registros próprios já são feitos.
 
 ## Linhas que aparecem e nunca são recomendadas

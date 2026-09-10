@@ -69,11 +69,11 @@ pelas cartas, pela aceitação e pela verificação do método. Ver
 ## O piso de ruído de uma infusão
 
 Tudo acima trata de um cromatograma. Uma [[direct-infusion]] não tem nenhum: o
-que se olha é a média de todas as varreduras da corrida, e *ruído* ali quer
+que se olha é a média de todos os scans da corrida, e *ruído* ali quer
 dizer a altura abaixo da qual um pico dessa média é fundo e não medida. Esse
-piso era de cem contagens, fixo, porque foi escrito para uma única varredura de
-survey de um TripleTOF. Uma média de quatrocentas varreduras de um ZenoTOF não
-é aquela varredura, e nas nove infusões de ácidos biliares em mãos o **pico
+piso era de cem contagens, fixo, porque foi escrito para um único scan de
+survey de um TripleTOF. Uma média de quatrocentos scans de um ZenoTOF não
+é aquele scan, e nas nove infusões de ácidos biliares em mãos o **pico
 base do espectro promediado inteiro é de 109 contagens em uma delas** — ou
 seja, o piso fixo era quase o topo do espectro.
 
@@ -92,13 +92,13 @@ deixaria passar quase todo o fundo. Pontos exatamente iguais a zero ficam de
 fora, de modo que um arquivo cujos zeros suprimidos foram restaurados e outro
 cujos zeros não foram dão a mesma resposta.
 
-**(b) A dispersão entre varreduras de uma janela silenciosa.** A janela de meio
+**(b) A dispersão entre scans de uma janela silenciosa.** A janela de meio
 dalton mais silenciosa que não contém pico algum — meio dalton porque é o que a
 busca do precursor alcança de cada lado de um alvo — é extraída ao longo da
-corrida inteira, a mesma janela em cada varredura, e toma-se o desvio padrão da
-sua intensidade somada entre varreduras. Promediar n varreduras divide o ruído
+corrida inteira, a mesma janela em cada scan, e toma-se o desvio padrão da
+sua intensidade somada entre scans. Promediar n scans divide o ruído
 pela raiz de n, então esse desvio padrão é dividido por ela, e os dois números
-são reportados: o que uma varredura faz e o que a promediação comprou.
+são reportados: o que um scan faz e o que a promediação comprou.
 
 O piso é o maior dos dois. Onde nenhum dos dois pode ser medido, as cem
 contagens fixas ficam de pé e o registro diz isso; onde a medida sai **abaixo**
@@ -109,7 +109,7 @@ barra não é margem de segurança.
 ### O que ele mede
 
 Nove infusões de íons produto de padrões de ácidos biliares num ZenoTOF 7600,
-modo positivo, sem varredura de survey, de 146 a 473 varreduras cada,
+modo positivo, sem varredura de survey, de 146 a 473 scans cada,
 promediadas inteiras:
 
 | | |
@@ -118,11 +118,11 @@ promediadas inteiras:
 | (a), as regiões vazias | 0,068 – 3,53 contagens |
 | (b), a dispersão, escalada para a média | 0,026 – 0,36 contagens |
 | o piso adotado | **0,068 – 3,53 contagens**, (a) em nove de nove |
-| quanto uma varredura dispersava, antes da média | 0,45 – 5,05 contagens |
+| quanto um scan dispersava, antes da média | 0,45 – 5,05 contagens |
 | o piso fixo que ele substitui | 100 contagens |
 
 A promediação é onde as duas estimativas se separam. Em
-`CA-d4_TOFMSMS_Mix1`, 473 varreduras, a janela de meio dalton de uma varredura
+`CA-d4_TOFMSMS_Mix1`, 473 scans, a janela de meio dalton de um scan
 se move em 5,05 contagens e a média de 473 delas em 5,05 / √473 = 0,23; as
 regiões vazias dessa mesma média alcançam 0,96. A estimativa (a) só enxerga o
 que sobrou depois da promediação, e a (b) lê a promediação em si — que é por
@@ -133,14 +133,14 @@ gradiente real: um TripleTOF 5600, o canal de íons produto mais forte de cada
 uma promediado sobre os limites do seu próprio pico maior. Onze das doze são
 medidas, com (a) de 0,69 a 20,1 contagens contra (b) de 0,23 a 3,25 — (a) o
 maior em onze de onze, como era nas infusões. A mais alta delas promedia as
-treze varreduras de um pico de 567.000 contagens e sai em **20,1 contagens**:
+treze scans de um pico de 567.000 contagens e sai em **20,1 contagens**:
 trezentas vezes o piso da infusão mais silenciosa, pela razão simples de que
-uma média de treze varreduras não é uma média de quatrocentas. As cem fixas
+uma média de treze scans não é uma média de quatrocentos. As cem fixas
 ainda eram cinco vezes rigorosas demais ali.
 
 A décima segunda é onde o recurso de reserva aparece, num arquivo real e não
 num teste. O canal de íons produto mais forte dela tem um pico de 352 contagens
-sobre três varreduras; a média dessas três tem 167 pontos medidos em 412 e
+sobre três scans; a média desses três tem 167 pontos medidos em 412 e
 nenhuma região vazia larga o bastante para medir, então nenhuma das duas
 estimativas pode ser feita e **as cem contagens fixas ficam de pé**, com o
 motivo impresso ao lado. Uma aquisição silenciosa e uma aquisição que não
@@ -164,11 +164,11 @@ O piso é medido sobre **a mesma média que quem pergunta está olhando**, e é
 por isso que dois deles podem divergir num mesmo arquivo. O painel do Explorer
 promedia a corrida inteira; o [[infusion-report]] promedia o trecho estável do
 spray (*Scans que a pulverização perdeu*, em [[direct-infusion]]), então as
-varreduras que um spray instável contribuiu ficam fora da média dele e também
+scans que um spray instável contribuiu ficam fora da média dele e também
 fora do piso dele. Nas nove
 infusões os pisos da corrida inteira vão de 0,068 a 3,53 contagens e os do
 relatório de 0,068 a 4,27 — iguais nas seis corridas que a máscara não mexeu,
-e maiores nas três que ela aparou, porque jogar varreduras fora é jogar fora
+e maiores nas três que ela aparou, porque jogar scans fora é jogar fora
 parte da promediação. Isso é a resposta estar certa e não os números
 discordarem: um piso que descrevesse um espectro diferente do que foi impresso
 seria o piso errado.

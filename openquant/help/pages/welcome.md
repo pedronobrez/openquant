@@ -20,11 +20,11 @@ application's **Help ▸ Manual** window and in the printed copy that
 | Section | What it covers |
 |---|---|
 | Getting started | [[installation]], [[formats]], [[starting-a-project]], and [[workspaces]] |
-| Explorer | qualitative review: [[chromatograms-and-spectra]], the [[contour-view]], [[manual-xic]] |
-| Chemistry and annotation | the [[mass-calculator]], the [[formula-finder]], [[lipid-maps]], the [[spectral-library]] and the [[accurate-precursor]] |
+| Explorer | qualitative review: [[chromatograms-and-spectra]], the [[contour-view]], [[manual-xic]], and a sprayed standard from end to end — [[direct-infusion]], the [[infusion-report]], [[new-standard]], [[infusion-quantitation]] |
+| Chemistry and annotation | the [[mass-calculator]], the [[formula-finder]], [[lipid-maps]], the [[spectral-library]], the [[standard-history]] and the [[accurate-precursor]] |
 | Samples | the batch: [[samples-workspace]] |
-| Method | the component table: [[method-workspace]], [[internal-standards-and-qualifiers]], [[check-method]], [[suggest-from-data]] |
-| Analytics | quantitation: [[peak-review]], [[integration-parameters]], [[integration-algorithms]], [[calibration]], [[batch-qc]], the [[report]] |
+| Method | the component table: [[method-workspace]], [[internal-standards-and-qualifiers]], [[check-method]], [[method-report]], [[suggest-from-data]], [[acquisition-schedule]], [[collision-energy]] |
+| Analytics | quantitation: [[peak-review]], [[integration-parameters]], [[integration-algorithms]], [[calibration]], [[batch-qc]], [[mass-drift]], [[audit-trail]], the [[report]] |
 | Reference | [[projects-and-files]], the [[command-line]], [[keyboard-shortcuts]], [[troubleshooting]], the [[glossary]] and the [[version-history]] |
 
 ## Getting to it
@@ -74,12 +74,16 @@ rest of this manual describes.
 ## What OpenQuant is not
 
 It is not a vendor-certified replacement for MultiQuant in a regulated
-laboratory: there is no audit trail and no electronic signature. It is not
-a spectral library search. And it does not reproduce SCIEX's own extraction
-rule exactly — see [[measured-facts]] for the one place the two disagree,
-by how much, and why the plain rule ships. Everything else in the feature
-lists of both vendor programs is here, and the [[design-principles]] say
-what was chosen when the two could not both be had.
+laboratory. There is an [[audit-trail]] — every edit made by hand, with the
+value before and after — but it carries no electronic signatures and no user
+accounts: it records what was done and when, never who did it. And it does
+not reproduce SCIEX's own extraction rule exactly — see [[measured-facts]]
+for the one place the two disagree, by how much, and why the plain rule
+ships. Everything else in the feature lists of both vendor programs is here,
+the [[spectral-library|library search]] and the
+[[mass-recalibration|mass recalibration]] included, and the
+[[design-principles]] say what was chosen when the two could not both be
+had.
 
 ## Without the window
 

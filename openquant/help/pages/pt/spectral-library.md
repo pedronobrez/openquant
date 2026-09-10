@@ -41,16 +41,16 @@ precursor** esteja marcado — medido no MassBank, 24,000 de 139,000 registros
 não trazem precursor escrito, e um filtro que os admitisse todos tinha cada
 busca dominada por eles; marcados, eles são pontuados com o Δ ppm mostrado
 como `—`, para que o leitor saiba que o filtro não pôde se aplicar a eles.
-Picos medidos abaixo de um por cento do pico-base não entram na
+Picos medidos abaixo de um por cento do pico base não entram na
 correspondência; a linha de base de um espectro de íons produto está cheia
 deles.
 
 Um aduto também declara um sinal de carga, de modo que se pode perguntar a um
-registro se ele pertence à polaridade em que a varredura foi medida — e se
+registro se ele pertence à polaridade em que o scan foi medido — e se
 pergunta. Registros cujo aduto é do sinal oposto ficam de fora a menos que
 **Also the other polarity** esteja marcado. A polaridade é a do canal ativo,
 lida do arquivo: ela não é digitada em lugar nenhum, porque a polaridade de
-uma varredura é um fato sobre a aquisição e a única escolha que se tem é
+um scan é um fato sobre a aquisição e a única escolha que se tem é
 honrá-la ou não. Um registro que nada diz sobre a sua própria polaridade é
 mantido de todo modo — o portão recusa o que contradiz a consulta, nunca o que
 é silencioso.
@@ -69,7 +69,7 @@ biblioteca nunca é roubado da sua correspondência por um fraco listado antes.
 
 | Pontuação | O que ela pergunta |
 |---|---|
-| **Score** | o cosseno entre os dois espectros, sobre tudo o que ambos contêm, com as intensidades sob raiz quadrada para que um único pico-base não decida tudo |
+| **Score** | o cosseno entre os dois espectros, sobre tudo o que ambos contêm, com as intensidades sob raiz quadrada para que um único pico base não decida tudo |
 | **Reverse** | o mesmo cosseno, mas apenas sobre os picos da biblioteca: se eles estão no espectro medido, ignorados os demais picos do espectro medido |
 
 Um reverse alto com um score baixo é um composto presente acompanhado — uma
@@ -118,8 +118,8 @@ genuinamente errado numa biblioteca pública e mais nada.
 ## Os picos correspondidos, e a sobreposição
 
 Selecionar um registro lista os picos dele contra os medidos — massa, massa,
-ppm e a fração do pico-base de cada espectro — e **Overlay on spectrum**
-desenha os picos do registro sobre o painel do espectro, escalados ao pico-base
+ppm e a fração do pico base de cada espectro — e **Overlay on spectrum**
+desenha os picos do registro sobre o painel do espectro, escalados ao pico base
 dele, do mesmo modo que a [[mass-calculator]] sobrepõe um padrão isotópico.
 **Clear overlay** remove a sobreposição.
 
@@ -295,11 +295,11 @@ fornecer e preenche de antemão tudo o que pode:
 O espectro é escrito como **centroides**: bastões, um por íon, não os pontos
 de perfil. Se o painel de [[chromatograms-and-spectra]] estiver mostrando um
 espectro de perfil, ele é centroidado na saída, do mesmo modo que para uma
-busca. Picos abaixo de um por cento do pico-base são descartados — a linha de
+busca. Picos abaixo de um por cento do pico base são descartados — a linha de
 base de uma varredura de íons produto são milhares deles, e um registro que
 os carregasse corresponderia a qualquer coisa — e no máximo duzentos do que
 sobra são mantidos, do mais forte para o mais fraco. As intensidades são
-guardadas em relação ao pico-base, como porcentagem, que é como todo formato
+guardadas em relação ao pico base, como porcentagem, que é como todo formato
 de biblioteca as contém.
 
 O registro entra no arquivo como MSP no estilo NIST: `Name`, `PrecursorMZ`,
@@ -628,7 +628,7 @@ Cada registro do composto é reduzido à fração da intensidade que os degraus 
 sua própria escada carregam — a escada de perdas de água que a `Formula` e o
 `Precursor_type` do registro preveem pela enumeração de [[lipid-maps]], mais os
 fragmentos mais intensos em que os registros concordam. **Frações do total do
-próprio perfil, nunca do pico-base do registro**, porque o próprio pico-base
+próprio perfil, nunca do pico base do registro**, porque o próprio pico base
 desce a escada conforme a energia sobe (veja a tabela abaixo), e um número cujo
 denominador troca de degrau não pode ser interpolado.
 
@@ -674,7 +674,7 @@ próprio perfil:
 É a escada descendo. A 12 eV o precursor amoniado é 83,5% de tudo; a 22 eV ele
 já entregou um quarto da intensidade a `[M+H-2H2O]+`; a 45 eV o precursor
 desapareceu e `[M+H-3H2O]+` é 54,2%, com os fragmentos pequenos ficando com
-quase todo o resto. **O pico-base é um íon diferente nos três arquivos**, que é
+quase todo o resto. **O pico base é um íon diferente nos três arquivos**, que é
 exatamente por que o perfil é mantido em frações do próprio total.
 
 Dois dos nove arquivos se chamam `CA-d4` e isolam 839,56 em vez de 430,34.
@@ -726,7 +726,7 @@ composto é o certo, e não pode propor uma ativação que ninguém registrou.
 
 Uma biblioteca própria acumula um registro por verificação do mesmo padrão.
 **History…**, ao lado da contagem de registros, lê esses registros de volta
-como um gráfico de controle do padrão ao longo do tempo — veja
+como uma carta de controle do padrão ao longo do tempo — veja
 [[standard-history]].
 
 ## A partir de um script

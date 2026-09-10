@@ -27,6 +27,9 @@ is empty when it is.
 | Used | untick to leave a row out of the statistics and the curve without deleting it |
 | Note | why a row is empty, or what the integration decided — the notes are listed on [[integration-parameters]] |
 
+The column names are the trade's: what each of them means in one line is in
+the [[glossary]].
+
 ## Controls
 
 | Control | Effect |

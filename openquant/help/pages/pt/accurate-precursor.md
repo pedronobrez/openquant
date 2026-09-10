@@ -21,7 +21,10 @@ efetivamente vê o pico**, e usa a massa que o instrumento mediu.
    mão, bem dentro do cerca de 1 Da que o Q1 isola, de modo que uma massa
    nominal vizinha nunca pode ser capturada.
 3. O pico encontrado é centroidizado; um pico mais fraco que 100 contagens não
-   é confiado como medição de massa.
+   é confiado como medição de massa. Essas cem são um piso fixo escrito para
+   uma varredura de survey de um TripleTOF, e são fixas só aqui: onde o
+   espectro é a média de uma [[direct-infusion]] inteira, o piso é medido
+   naquela aquisição e sai muito mais baixo — veja o [[signal-to-noise]].
 4. O mesmo é feito em cada amostra aberta. As amostras têm de concordar dentro
    de 25 ppm para estarem medindo o mesmo íon; o consenso é a mediana.
 5. O **precursor sobrevivente** na varredura de íons produto — o íon não
@@ -79,8 +82,8 @@ aduto que o survey não mostra também é uma medida.
 
 Injeção 01 de um lote de 26 injeções de esfingolipídios num TripleTOF 5600,
 positivo, com survey TOF MS 50–700. O survey é promediado sobre as mesmas
-varreduras que o espectro de produto — duas delas, a uma varredura a cada
-14.6 s.
+scans que o espectro de produto — dois deles, a um scan a cada
+14,6 s.
 
 Estas são corridas **cromatográficas**, não infusões: não havia nenhuma
 infusão com varredura de survey em mãos, então o survey foi promediado sobre

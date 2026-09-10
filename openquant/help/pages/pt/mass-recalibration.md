@@ -211,10 +211,12 @@ passa a dizer `· recalibrated −5.6 ppm from 8 rungs`.
 ### As regras
 
 - um degrau é casado com o **pico mais forte dentro de 20 ppm** de onde a
-  fórmula o coloca, e apenas acima de 100 contagens — o mesmo piso a que o
+  fórmula o coloca, e apenas acima de 100 contagens — o piso fixo a que o
   [[accurate-precursor|precursor acurado]] submete uma varredura de survey,
   porque abaixo dele uma janela é um trecho de eixo cujo ponto mais alto é
-  ruído;
+  ruído. É o único lugar, numa infusão, em que as cem fixas ainda valem em
+  vez do piso medido na aquisição ([[signal-to-noise]]), e a página o diz em
+  vez de deixar dois pisos para serem confundidos;
 - a correção é a **mediana ponderada pela intensidade** dos erros dos
   degraus, com o sinal invertido. Ponderada, porque um pico de doze mil
   contagens localiza o seu centroide melhor do que um de cem; mediana, porque

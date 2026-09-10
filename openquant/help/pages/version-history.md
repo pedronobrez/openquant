@@ -32,6 +32,21 @@ three installers described on [[installation]].
 | 0.6.0 | 2026-09-06 | the Windows and Linux installers alongside the macOS disk image; the Wine ICU shim documented |
 | 0.5.x | 2026-09-06 | the Analytics workspace — peak review, results, calibration, acceptance, statistics; the Method and Samples workspaces; projects; LIPID MAPS annotation, structure explanation and the accurate precursor measurement; mzML reading and writing with the fidelity measurements on [[measured-facts]] |
 
+## Not yet in a released version
+
+A manual read from the source tree describes what the source tree does,
+which runs ahead of the last tag. These pages describe work that is on the
+main branch and has not been in a release: the direct-infusion path end to
+end — [[direct-infusion]]'s spray mask and its film in the
+[[contour-view]], the [[infusion-report]] for a folder with its cover, the
+[[infusion-quantitation]], [[compare-infusions]], [[collision-energy]] and
+[[new-standard]] — the [[method-report]], the [[python-api]], the noise
+floor measured off an infusion ([[signal-to-noise]]), the margin and the
+unexplained-peak hypotheses of [[lipid-maps]], the record's own mass axis
+([[spectral-library]]) and incremental processing
+([[analytics-workspace]]). Each will be named in the row of the version
+that ships it.
+
 The manual is part of every release: a version that changes what the
 application does changes the page that describes it, and the printed copy
 is regenerated from the same pages.

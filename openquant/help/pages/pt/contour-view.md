@@ -28,7 +28,7 @@ e restaurá-los foi medido como triplicando o tempo para a mesma grade.
 
 | Controle | Efeito |
 |---|---|
-| **Intensity** | como as intensidades viram cor: *sqrt* (padrão), *log* ou *linear*. Uma rampa linear sobre quatro décadas mostra o pico-base e mais nada; a raiz quadrada traz os íons menores à vista sem o achatamento que faz um gráfico logarítmico parecer uniformemente cinza |
+| **Intensity** | como as intensidades viram cor: *sqrt* (padrão), *log* ou *linear*. Uma rampa linear sobre quatro décadas mostra o pico base e mais nada; a raiz quadrada traz os íons menores à vista sem o achatamento que faz um gráfico logarítmico parecer uniformemente cinza |
 | **Colours** | a paleta: inferno, viridis, magma, turbo, CET-L9 |
 | **Extract this view** | o cromatograma e o espectro do retângulo na tela — ambos tomados do leitor, não da grade |
 | **Rebuild** | reconstruir a grade sobre a faixa atualmente na tela, em resolução plena para aquela faixa |

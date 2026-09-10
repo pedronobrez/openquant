@@ -102,7 +102,7 @@ lidos em um espectro. Vários marcadores podem ser colocados; *Clear markers* os
 remove.
 
 Aba **Spectrum peaks**. Os picos do espectro na tela — m/z, intensidade e por
-cento do pico-base — encontrados por máximo local, centroidizados em dados de
+cento do pico base — encontrados por máximo local, centroidizados em dados de
 perfil, e fundidos quando mais próximos que 0.03 Da, de modo que o topo ondulado
 de um perfil não apareça como cinco massas. Dê duplo clique numa linha para
 extrair aquela massa como um XIC.
@@ -119,7 +119,7 @@ em sua própria cor e nomeado na legenda pela amostra, pelo canal e pelo scan de
 onde veio. Vários podem ser fixados; **Unpin spectra** os limpa.
 
 Dois interruptores tornam a comparação legível. **Normalise** põe cada espectro
-sobre seu próprio pico-base, que é o que duas amostras em concentrações
+sobre seu próprio pico base, que é o que duas amostras em concentrações
 diferentes precisam. **Mirror** desenha um espectro a cada dois para baixo, de
 modo que um espectro fixado e o ao vivo tornam-se um gráfico cabeça-cauda — o
 modo como uma correspondência de biblioteca é usualmente mostrada, e a maneira

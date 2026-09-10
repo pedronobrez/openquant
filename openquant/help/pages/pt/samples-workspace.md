@@ -25,6 +25,10 @@ Selecione linhas e use **Set type of selected rows**, **Set group** ou
 **Apply concentration to selection** para editar várias de uma vez. **Add data
 files…** e **Close all** são as mesmas ações do menu File.
 
+As colunas que o arquivo *de fato* registra — o frasco, o volume de injeção, o
+método de aquisição, o potencial de desagrupamento — são somente de leitura e
+aparecem no Explorer: veja [[sample-information]].
+
 ## Tipos de amostra e o que os usa
 
 | Tipo | Usado por |

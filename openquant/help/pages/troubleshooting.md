@@ -2,7 +2,8 @@
 title: Troubleshooting
 ---
 The status bar usually says why something did not happen. When it does
-not, this table is the next place to look.
+not, this table is the next place to look; a word in it that means nothing
+to you is in the [[glossary]].
 
 ## Opening files
 

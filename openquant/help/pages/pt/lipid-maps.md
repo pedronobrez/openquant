@@ -198,11 +198,11 @@ a partir do canal ativo, ou digitado), procura o precursor no LIPID MAPS,
 prevê os fragmentos de cada estrutura candidata e pontua cada uma por **a
 parcela da intensidade do espectro que ela explica**. Contar picos
 correspondidos em vez disso premiaria um candidato que explica quarenta
-pontinhos de ruído em detrimento de um que explica o pico-base, o que é o
+pontinhos de ruído em detrimento de um que explica o pico base, o que é o
 contrário do certo: um espectro de produtos é, na maior parte, um punhado de
 íons que importam.
 
-Picos abaixo de 1% do pico-base não contam contra um candidato — a linha de
+Picos abaixo de 1% do pico base não contam contra um candidato — a linha de
 base de um espectro de produtos está cheia deles e nada os explica — e uma
 massa prevista corresponde a uma medida dentro de 20 ppm. Os candidatos são
 listados com o que cada um explica; selecionar um lista os picos
@@ -591,7 +591,7 @@ lote foi quantificado sobre ela — mas *este espectro* não a identifica: três
 lisofosfolipídios de outra fórmula explicam mais dos mesmos picos. A margem
 não diz que o composto está errado. Ela diz que o composto não foi
 distinguido aqui, e que o que sustenta a atribuição tem de vir de outro
-lugar: o tempo de retenção, a massa exata do espectro de varredura, um
+lugar: o tempo de retenção, a massa exata da varredura de survey, um
 registro de [[spectral-library]].
 
 O mesmo vale para o TDCA-d4 com 6,1 pontos. Aquilo é um padrão puro
@@ -688,7 +688,7 @@ tem uma **varredura de survey** — um canal TOF MS de varredura completa
 cobrindo o precursor — o aduto deixa de ser uma dedução e vira uma medida, e
 o painel diz qual das duas você está olhando.
 
-O survey da mesma aquisição, promediado sobre as mesmas varreduras que o
+O survey da mesma aquisição, promediado sobre os mesmos scans que o
 espectro na tela, é perguntado sobre cada candidato: a massa exata do íon,
 dentro de 25 ppm e acima de 100 contagens, e o padrão isotópico da composição
 do próprio íon — átomos do aduto incluídos, já que `[M+NH4]+` carrega um

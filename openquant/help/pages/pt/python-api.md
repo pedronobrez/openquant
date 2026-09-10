@@ -112,7 +112,8 @@ lidos a frio, **26 s** com eles em cache. Imprimiu
 26 injections, 141 components, 3666 rows, 2638 with a peak, 0 curves fitted
 ```
 
-e escreveu um CSV de 678 KB, uma planilha de 408 KB e um PDF de 180 páginas.
+e escreveu um CSV de 678 KB, uma pasta de trabalho de 408 KB e um PDF de 180
+páginas.
 Nenhuma curva porque nenhuma injeção desse lote está marcada como padrão:
 `calibrate()` ajusta a partir das amostras que o projeto chama de padrões e
 não relata nada quando não há nenhuma. `report()` desenha através do Qt e

@@ -19,8 +19,9 @@ from ..chemistry import (
 from ..components import Component
 from .. import infusion as infusion_rules
 from ..infusion import (InfusionVerdict, NoiseFloor, after_settling,
-                        average_stable, format_counts, mask_for,
-                        noise_floor_for, run_range, verdict_for)
+                        format_counts, noise_floor_for, run_range,
+                        verdict_for)
+from ..infusion_report import average_spectrum
 from ..matching import match_channel
 from ..precursor import survey_channel
 from .settings import settings
@@ -1803,9 +1804,21 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         # picked it, and nothing here second-guesses what it holds.
         mask = None
         try:
-            if whole_run and not self.include_unstable_scans():
-                mask = mask_for(self.active_ref.entry.sample, channel)
-                mz, intensity = average_stable(channel, mask)
+            if whole_run:
+                # through the cache, since this is the same average the
+                # Infusions tab measures and the same file it is measured
+                # from: whichever is asked for first pays for it
+                averaged = average_spectrum(
+                    channel,
+                    include_unstable=self.include_unstable_scans(),
+                    sample=self.active_ref.entry.sample,
+                    cache=self.session.averages,
+                    path=str(self.active_ref.entry.path or ""))
+                if averaged is None:
+                    raise ValueError("the channel has no scans to average")
+                mz, intensity, _window, mask = averaged
+                if self.include_unstable_scans():
+                    mask = None
             else:
                 mz, intensity = channel.spectrum_rt_range(rt0, rt1)
         except Exception as exc:
@@ -2581,8 +2594,13 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                 # scan, and which of those the spray was steady for is a
                 # measurement on the file rather than something to store
                 if recipe.whole_run and not self.include_unstable_scans():
-                    mz, intensity = average_stable(
-                        channel, mask_for(ref.entry.sample, channel))
+                    averaged = average_spectrum(
+                        channel, sample=ref.entry.sample,
+                        cache=self.session.averages,
+                        path=str(ref.entry.path or ""))
+                    if averaged is None:
+                        return None
+                    mz, intensity = averaged[0], averaged[1]
                 else:
                     mz, intensity = channel.spectrum_rt_range(*window)
         except Exception:

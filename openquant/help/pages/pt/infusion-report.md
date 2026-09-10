@@ -169,6 +169,90 @@ composto, e uma aba que fizesse isso a cada mudança nos resultados seria uma
 aba que ninguém deixa aberta. A contagem de linhas aparece no próprio nome da
 aba depois que ela mede.
 
+### Enquanto o Measure roda
+
+**A janela continua viva.** A medição roda numa thread própria, de modo que a
+janela redesenha, rola e responde enquanto ela trabalha — medido nas nove
+infusões de ácidos biliares no ZenoTOF contando as voltas do laço de eventos
+durante a corrida: **0,4 por segundo** quando rodava na própria thread da
+janela, **89 por segundo** com ela movida para fora. Essa é a diferença entre
+uma bola de praia girando e uma janela.
+
+Um diálogo de progresso nomeia o arquivo que está sendo lido — *Reading
+CA-d4_TOFMSMS_EAD_22CE_44DP_13KE_mix1 — 4 of 9 done* — e **Cancel** o
+interrompe. O cancelamento é atendido **entre arquivos, nunca dentro de um**:
+um arquivo sendo lido está dentro do leitor e nada aqui pode interrompê-lo,
+então aquele que se espera termina e o próximo não é iniciado. O que já foi
+medido **fica na tabela**, e a linha abaixo dela diz isso — *Cancelled: 4
+infusion(s) measured before you stopped, kept as they stand.* Pressione
+**Measure** de novo para fazer o resto; os arquivos já feitos voltam do cache.
+
+**As linhas aparecem conforme os seus arquivos terminam**, uma de cada vez e
+na ordem em que foram medidas, de modo que o primeiro resultado está na tela
+em um ou dois segundos em vez de tudo chegar no fim. A ordenação fica
+desligada enquanto a tabela se preenche — uma tabela que se reordena sob os
+seus olhos entre um arquivo e o seguinte é mais difícil de ler — e volta com o
+resumo terminado, junto com a coluna **Other infusions**, que não pode ser
+preenchida antes de a última infusão de um composto terminar.
+
+**Um arquivo que falha é uma linha dizendo isso**, não uma corrida parada.
+Nove infusões em que a quarta perdeu o seu `.wiff.scan` são oito medições e um
+motivo: a linha que falhou mantém o seu composto, a sua amostra e o seu canal
+e carrega o erro nas células que de outro modo teriam as medições.
+
+Os botões que leem os mesmos arquivos — *Measure*, *New standard…*,
+*Quantify…* — ficam desabilitados enquanto ela roda, e os que agem sobre a
+tabela só voltam se houver uma tabela sobre a qual agir.
+
+### O cache de espectros promediados
+
+Promediar todos os scans de uma infusão é a metade cara disto, e nada nessa
+média depende da sessão: ela é uma função do arquivo, do canal, de quais scans
+a pulverização manteve estável e de se *Include unstable scans* de
+[[direct-infusion]] foi pedido. Então ela é anotada. **Um arquivo que não
+mudou é lido uma vez**, e todo *Measure* posterior — e o *Average whole run*
+do próprio Explorer, e a rota de pastas de [[command-line]] — lê a média de
+volta do disco.
+
+As entradas ficam **ao lado do projeto**, em `<projeto>.oqcache/`: as médias
+pertencem àquele lote de arquivos, então são achadas onde o lote é achado e
+podem ser apagadas com ele. Sem projeto aberto não há lugar que lhes pertença
+e o diretório de cache do próprio sistema é usado
+(`~/Library/Caches/OpenQuant` no macOS) — o diretório que o sistema
+operacional tem o direito de esvaziar. Veja [[projects-and-files]].
+
+O que é guardado é a média **crua**, antes de qualquer correção de massa: uma
+correção pertence à chave da sessão e é aplicada na saída, de modo que ligar e
+desligar a [[mass-recalibration]] não custa nada e não pode envenenar o que
+foi guardado. Uma entrada é aposentada pela mudança do arquivo — a chave
+guarda o tamanho e a data de modificação da aquisição e **os do seu
+`.wiff.scan`**, que é onde os scans de fato estão — e também pelo canal, pela
+faixa, pela máscara de pulverização e pela chave dos scans instáveis, de modo
+que duas médias diferentes de um arquivo são duas entradas.
+
+**File ▸ Clear cached spectra…** o esvazia e diz o que se foi. Nada se perde
+que não possa ser medido de novo; o que custa é o próximo *Measure* ser um
+frio. O diretório é limitado — 512 MB, cerca de cento e vinte infusões — e
+acima do limite as entradas *usadas* há mais tempo saem primeiro.
+
+Medido nas nove infusões de ácidos biliares no ZenoTOF, cada *Measure* num
+processo novo:
+
+| | *Measure* | cache |
+|---|---|---|
+| frio — nada em cache | 12,6 – 20,9 s | 9 lidos do arquivo |
+| morno — as mesmas nove de novo | **7,7 – 8,5 s** | 9 do cache |
+| um `.wiff.scan` tocado | 8,9 s | 8 do cache, 1 relido |
+| vinte e sete infusões, frio | 55,1 s | 27 lidos do arquivo |
+| vinte e sete infusões, morno | **23,5 s** | 27 do cache |
+
+Cerca de **metade**, e a metade que se vai é a metade que variava: o número
+morno se repete dentro de um décimo de segundo enquanto o frio se move oito,
+porque o que varia é o disco e o leitor e é exatamente isso que já não está
+sendo feito. As nove médias ocupam **39,1 MB** em disco, 4,3 MB cada — contra
+os 47 MB de `.wiff.scan` que elas poupam de ler. O que sobra é aritmética, e a
+thread é o que impede que ela congele a janela.
+
 Cada linha traz o composto e a amostra, o modo e a energia de colisão, quantos
 scans foram promediados — *464 of 473* onde a pulverização perdeu alguns, com
 a linha inteira ao pairar o cursor — o pico base, o precursor como o método o escreveu e

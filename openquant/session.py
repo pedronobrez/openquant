@@ -107,6 +107,11 @@ class Session(QtCore.QObject):
         #: changed. Saved with the project and appended to only — see audit.py
         self.audit = AuditTrail()
         self.project_path: str | None = None
+        #: where averaged spectra are kept on disk instead of either default;
+        #: the window sets it from the `cache/dir` setting. A plain string
+        #: rather than a settings read, so nothing here imports Qt's settings
+        self.cache_dir_override = ""
+        self._averages = None
         #: something changed since the last save. Tracked here rather than in
         #: the window, because every workspace can change the session and none
         #: of them should have to remember to say so.
@@ -190,6 +195,27 @@ class Session(QtCore.QObject):
     @property
     def loaded_entries(self) -> list[SampleEntry]:
         return [e for e in self.entries if e.is_loaded]
+
+    # -- averaged spectra on disk ------------------------------------------------ #
+    @property
+    def averages(self):
+        """
+        The on-disk cache of averaged spectra this project's files belong in.
+
+        Built on first use and rebuilt whenever the directory it should be in
+        changes — which is what saving a project under a new name does, since
+        a saved project keeps its averages beside it (`spectrum_cache`
+        explains why there). The entries themselves are keyed on the files
+        and not on the project, so moving the directory costs one re-read
+        each and never a wrong answer.
+        """
+        from . import spectrum_cache
+
+        wanted = spectrum_cache.cache_dir(self.project_path,
+                                          self.cache_dir_override)
+        if self._averages is None or self._averages.directory != wanted:
+            self._averages = spectrum_cache.AverageCache(wanted)
+        return self._averages
 
     # -- mass recalibration ------------------------------------------------------ #
     def correction_for(self, sample_key: str):

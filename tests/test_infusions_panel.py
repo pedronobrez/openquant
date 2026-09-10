@@ -391,7 +391,7 @@ def test_the_panel_measures_on_request_and_not_before(qapp):
     assert "Not measured yet" in panel.status.text()
     assert not panel.btn_report.isEnabled()
 
-    panel.measure()
+    panel.measure(threaded=False)
     assert session.infusion_summary is not None
     assert panel.table.rowCount() == 1
     assert panel.table.item(0, 0).text() == "TESTOL"
@@ -410,7 +410,7 @@ def test_the_tab_carries_the_row_count(qapp):
     seen: list[int] = []
     panel.sigRowsChanged.connect(seen.append)
 
-    panel.measure()
+    panel.measure(threaded=False)
     assert seen == [2]
 
     panel.deleteLater()
@@ -424,7 +424,7 @@ def test_the_table_sorts_on_numbers_where_it_has_them(qapp):
     second, _c2 = _entry(name="OTHEROL_infusion", stray_only=True)
     session = _session(first, second)
     panel = _panel(session)
-    panel.measure()
+    panel.measure(threaded=False)
 
     column = list(ir.SUMMARY_COLUMNS).index("Base peak m/z")
     panel.table.sortItems(column, QtCore.Qt.SortOrder.AscendingOrder)
@@ -440,7 +440,7 @@ def test_a_file_opened_or_closed_drops_the_measurement(qapp):
     entry, _channel = _entry()
     session = _session(entry)
     panel = _panel(session)
-    panel.measure()
+    panel.measure(threaded=False)
     assert panel.table.rowCount() == 1
 
     session.sigSamplesChanged.emit()
@@ -456,7 +456,7 @@ def test_the_panel_writes_the_document_for_the_rows_chosen(qapp, tmp_path):
     second, _c2 = _entry(name="TESTOL_infusion_B")
     session = _session(first, second)
     panel = _panel(session)
-    panel.measure()
+    panel.measure(threaded=False)
 
     path = panel.write_report(str(tmp_path / "infusions.pdf"))
     assert path and os.path.exists(path)
@@ -480,7 +480,7 @@ def test_one_row_selected_is_one_section_and_nothing_to_compare(qapp, tmp_path):
     second, _c2 = _entry(name="TESTOL_infusion_B")
     session = _session(first, second)
     panel = _panel(session)
-    panel.measure()
+    panel.measure(threaded=False)
     panel.table.selectRow(0)
 
     chosen = panel.chosen()
@@ -499,7 +499,7 @@ def test_the_panel_exports_the_whole_table_not_the_selection(qapp, tmp_path):
     second, _c2 = _entry(name="OTHEROL_infusion", stray_only=True)
     session = _session(first, second)
     panel = _panel(session)
-    panel.measure()
+    panel.measure(threaded=False)
     panel.table.selectRow(0)
 
     path = panel.export_csv(str(tmp_path / "infusions.csv"))
@@ -537,7 +537,7 @@ def test_the_analytics_workspace_carries_the_tab(qapp):
               for i in range(workspace.bottom.count())]
 
     assert "Infusions" in titles
-    workspace.infusions.measure()
+    workspace.infusions.measure(threaded=False)
     assert workspace.bottom.tabText(workspace.infusions_tab) == "Infusions (1)"
 
     workspace.deleteLater()

@@ -28,8 +28,8 @@ from PyQt6 import QtCore, QtWidgets
 
 from .. import audit
 from ..infusion_report import (SUMMARY_COLUMNS, InfusionRow, InfusionSummary,
-                               component_for, prepare_documents, summarise,
-                               write_pdf, write_summary_csv)
+                               component_for, prepare_documents, write_pdf,
+                               write_summary_csv)
 from ..library import (identity_of, provenance_keys, records_from_summary,
                        write_msp)
 from ..session import Session
@@ -83,6 +83,14 @@ class InfusionsPanel(QtWidgets.QWidget):
         #: have explained the compound on screen. Duck-typed and optional, so
         #: this panel can be built and exercised with no Explorer at all.
         self.explorer = None
+        #: the measurement now running, or None. One at a time: *Measure* is
+        #: disabled while it runs and a second press would be a second walk
+        #: over the same readers from a second thread
+        self._task = None
+        self._progress = None
+        #: the rows this run has produced, in the order the files finished —
+        #: what a cancelled measurement keeps
+        self._measured: list = []
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -243,27 +251,191 @@ class InfusionsPanel(QtWidgets.QWidget):
             return {}
         return {compound: explanation}
 
-    def measure(self) -> None:
+    def measure(self, threaded: bool = True):
+        """
+        Measure every open infusion, off this thread.
+
+        Half a minute of averaging and centroiding used to run here under a
+        wait cursor, which is half a minute of a window that does not
+        repaint. It now runs in `infusion_worker.MeasureTask` on the global
+        thread pool and reports back by signal: a cancellable dialog naming
+        the file being read, a row in the table as each file finishes, and
+        the buttons disabled until it is over.
+
+        `threaded=False` runs the same task inline, on this thread, through
+        the same signals. It is what a test uses — a thread pool and a modal
+        dialog make an assertion about rows arriving in order a race — and
+        it is the only difference between the two paths.
+
+        Returns the task, so a caller can cancel it.
+        """
+        from .infusion_worker import MeasureTask
+
+        if self._task is not None:
+            return self._task
         library = self.own_library()
-        QtWidgets.QApplication.setOverrideCursor(
-            QtCore.Qt.CursorShape.WaitCursor)
-        try:
-            summary = summarise(
-                self.session, library=library,
-                explanations=self.explanations(),
-                # the same rule the Explorer's pane is drawing under, so the
-                # table and the spectrum on screen are of the same scans
-                include_unstable=bool(getattr(
-                    self.explorer, "include_unstable_scans",
-                    lambda: False)()))
-        finally:
-            QtWidgets.QApplication.restoreOverrideCursor()
+        task = MeasureTask(
+            self.session, library=library, explanations=self.explanations(),
+            # the same rule the Explorer's pane is drawing under, so the
+            # table and the spectrum on screen are of the same scans
+            include_unstable=bool(getattr(
+                self.explorer, "include_unstable_scans", lambda: False)()),
+            cache=self.session.averages)
+        self._task = task
+        self._measured = []
+        self._start_table()
+        task.signals.progress.connect(self._on_progress)
+        task.signals.row.connect(self._on_row)
+        task.signals.finished.connect(self._on_finished)
+        task.signals.failed.connect(self._on_failed)
+
+        self._progress = QtWidgets.QProgressDialog(
+            "Measuring the open infusions…", "Cancel", 0,
+            max(len(self.session.entries), 1), self)
+        self._progress.setWindowModality(
+            QtCore.Qt.WindowModality.WindowModal)
+        self._progress.setMinimumDuration(400)
+        self._progress.canceled.connect(self.cancel_measure)
+        self._enable(False)
+        if threaded:
+            QtCore.QThreadPool.globalInstance().start(task)
+        else:
+            task.measure()
+        return task
+
+    def cancel_measure(self) -> None:
+        """Stop after the file being read. What is measured is kept."""
+        if self._task is not None:
+            self._task.cancel()
+
+    # -- what the worker says ------------------------------------------------- #
+    def _start_table(self) -> None:
+        """Empty the table for a measurement about to fill it row by row."""
+        self.session.infusion_summary = None
+        self.session.infusion_comparison = None
+        self.table.setSortingEnabled(False)
+        self.table.setRowCount(0)
+        self.status.setText("Measuring…")
+
+    def _on_progress(self, done: int, total: int, name: str) -> None:
+        """
+        The dialog, told which file is being waited for.
+
+        Through a local reference, and with `setValue` last, because a modal
+        `QProgressDialog.setValue` pumps the event loop: it delivers the next
+        queued signal from the worker — the next progress, or the finished —
+        and that one closes the dialog and sets this attribute to None. Read
+        again after the call it therefore raises, which is how this was
+        found: an `AttributeError` on `None` at the end of a measurement that
+        had otherwise worked.
+        """
+        dialog = self._progress
+        if dialog is None:
+            return
+        dialog.setLabelText(
+            f"Reading {name} — {done} of {total} done" if name
+            else f"{done} of {total} done")
+        dialog.setMaximum(max(total, 1))
+        dialog.setValue(min(done, total))
+
+    def _on_row(self, row) -> None:
+        """
+        One finished infusion, appended as it arrives.
+
+        Sorting is off while the table is filling: a table that reorders
+        itself under the reader between one file and the next is harder to
+        read than one that fills in the order the files were measured. It
+        comes back with the finished summary, along with the mutual scores,
+        which are not known until a compound's last infusion is done.
+        """
+        self._measured.append(row)
+        index = self.table.rowCount()
+        self.table.insertRow(index)
+        self._fill_row(index, row)
+        self.table.resizeColumnsToContents()
+
+    def _on_finished(self, summary) -> None:
+        self._close_progress()
+        cancelled = self._task is not None and self._task.cancelled
+        self._task = None
+        if summary is None:
+            # cancelled between files: the rows already measured stand, and
+            # the line says they are part of a batch and not all of it
+            kept = list(self._measured)
+            self.session.infusion_summary = InfusionSummary(
+                rows=kept, library=self.summary.library if self.summary else "",
+                note="Cancelled." if kept else "Cancelled before anything "
+                                               "was measured.")
+            self.reload()
+            self._report(f"Cancelled: {len(kept)} infusion(s) measured before "
+                         f"you stopped, kept as they stand."
+                         if kept else "Cancelled; nothing was measured.")
+            self._enable(True)
+            return
         self.session.infusion_summary = summary
         self.reload()
+        if cancelled:
+            self._report(self.status.text() + " · cancelled")
+        self._enable(True)
+
+    def _on_failed(self, reason: str) -> None:
+        self._close_progress()
+        self._task = None
+        self.session.infusion_summary = None
+        self.reload()
+        self._report(f"The measurement could not be run: {reason}")
+        self._enable(True)
+
+    def _close_progress(self) -> None:
+        if self._progress is not None:
+            self._progress.close()
+            self._progress.deleteLater()
+            self._progress = None
+
+    def _enable(self, on: bool) -> None:
+        """
+        The buttons while a measurement runs.
+
+        *Measure* and everything that reads the same files go; the ones that
+        only need the table are left to `reload`, which knows whether there
+        is a table to act on. Nothing here is enabled by this method — a
+        button turned on because a measurement finished, without asking
+        whether it produced any rows, is a button that acts on nothing.
+        """
+        for button in (self.btn_measure, self.btn_new_standard,
+                       self.btn_quantify):
+            button.setEnabled(on)
+        if not on:
+            for button in (self.btn_report, self.btn_csv, self.btn_compare,
+                           self.btn_energy, self.btn_method, self.btn_library):
+                button.setEnabled(False)
+
+    # -- the cache ------------------------------------------------------------ #
+    def clear_cache(self) -> str:
+        """
+        Empty the on-disk cache of averaged spectra, and say what went.
+
+        Nothing is lost that cannot be measured again: every entry is an
+        average of a file that is still where it was. What it costs is the
+        next *Measure* being a cold one.
+        """
+        from .. import spectrum_cache
+
+        cache = self.session.averages
+        removed, freed = cache.clear()
+        where = spectrum_cache.describe_dir(cache.directory,
+                                            self.session.project_path)
+        said = (f"{removed} cached average(s) removed, "
+                f"{freed / (1024 * 1024):.1f} MB freed from {where}."
+                if removed else f"Nothing was cached in {where}.")
+        self._report(said)
+        return said
 
     def _invalidate(self) -> None:
         """A file opened or closed makes the table a description of a batch
-        that is no longer the open one."""
+        that is no longer the open one — and stops a measurement of it: the
+        readers a worker is walking are the ones being closed."""
+        self.cancel_measure()
         self.session.infusion_summary = None
         self.session.infusion_comparison = None
         self.reload()
@@ -276,15 +448,7 @@ class InfusionsPanel(QtWidgets.QWidget):
         rows = summary.rows if summary is not None else []
         self.table.setRowCount(len(rows))
         for index, row in enumerate(rows):
-            cells, keys = row.cells(), row.keys()
-            for column, text in enumerate(cells):
-                item = _Cell(text, keys[column])
-                if isinstance(keys[column], float):
-                    item.setTextAlignment(
-                        QtCore.Qt.AlignmentFlag.AlignRight
-                        | QtCore.Qt.AlignmentFlag.AlignVCenter)
-                item.setToolTip(self._tooltip(row, column, text))
-                self.table.setItem(index, column, item)
+            self._fill_row(index, row)
         self.table.setSortingEnabled(True)
         self.table.resizeColumnsToContents()
         self.btn_report.setEnabled(bool(rows))
@@ -295,6 +459,19 @@ class InfusionsPanel(QtWidgets.QWidget):
         self.btn_library.setEnabled(bool(rows))
         self._describe()
         self.sigRowsChanged.emit(len(rows))
+
+    def _fill_row(self, index: int, row: InfusionRow) -> None:
+        """One row's cells, wherever the row came from — the finished summary
+        or a worker that has just measured it."""
+        cells, keys = row.cells(), row.keys()
+        for column, text in enumerate(cells):
+            item = _Cell(text, keys[column])
+            if isinstance(keys[column], float):
+                item.setTextAlignment(
+                    QtCore.Qt.AlignmentFlag.AlignRight
+                    | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            item.setToolTip(self._tooltip(row, column, text))
+            self.table.setItem(index, column, item)
 
     @staticmethod
     def _tooltip(row: InfusionRow, column: int, text: str) -> str:

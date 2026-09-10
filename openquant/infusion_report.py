@@ -1131,7 +1131,8 @@ class InfusionReport:
 # --------------------------------------------------------------------------- #
 # building one
 # --------------------------------------------------------------------------- #
-def average_spectrum(channel, include_unstable: bool = False, sample=None):
+def average_spectrum(channel, include_unstable: bool = False, sample=None,
+                     cache=None, path: str = ""):
     """
     Every steady scan of a channel averaged into one spectrum, with the range
     and the mask that says which scans those were.
@@ -1150,18 +1151,39 @@ def average_spectrum(channel, include_unstable: bool = False, sample=None):
     chromatographic run depart from their neighbours further than any spray
     ever does. Without one this trusts the caller that the channel is an
     infusion's, which every caller inside this module is.
+
+    `cache` is a `spectrum_cache.AverageCache` and `path` the acquisition it
+    keys on; with both, an average of a file that has not changed is read
+    from disk instead of from the instrument's scans. The mask is measured
+    either way — it costs one chromatogram and it is what the key is made
+    of — and what is stored is the **raw** average, before any mass
+    correction, because a correction belongs to the session and not to the
+    file. Nothing else changes: a hit and a miss return the same arrays.
     """
     window = run_range(channel)
     if window is None:
         return None
     mask = (mask_for(sample, channel) if sample is not None
             else stable_scans(channel))
+    key = ""
+    if cache is not None and path:
+        from . import spectrum_cache
+
+        key = spectrum_cache.average_key(
+            path, getattr(channel, "index", None), whole_run=True,
+            rt_range=window, mask=mask, include_unstable=include_unstable)
+        stored = cache.get(key)
+        if stored is not None:
+            return (stored[0], stored[1], window, mask)
     if include_unstable:
         mz, intensity = channel.spectrum_rt_range(*window)
     else:
         mz, intensity = average_stable(channel, mask)
-    return (np.asarray(mz, dtype=float), np.asarray(intensity, dtype=float),
-            window, mask)
+    mz = np.asarray(mz, dtype=float)
+    intensity = np.asarray(intensity, dtype=float)
+    if key:
+        cache.put(key, mz, intensity, getattr(mask, "ranges", "") or "")
+    return mz, intensity, window, mask
 
 
 class _Trace:
@@ -1256,7 +1278,7 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
                measure_precursor: bool = True,
                formula: str = "", components=(), own_library=None,
                session=None, recalibrated: bool = False,
-               include_unstable: bool = False) -> InfusionReport:
+               include_unstable: bool = False, cache=None) -> InfusionReport:
     """
     A report for one open infusion, reading the file for what it needs.
 
@@ -1270,6 +1292,11 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
     method isolates. Both are optional and neither is read for anything else:
     without them the verdict can still say *not this*, and with them it can
     sometimes say what instead.
+
+    `cache` is a `spectrum_cache.AverageCache` for the averaged spectrum, or
+    None to read it from the file every time. It is handed to `average_
+    spectrum` and to the comparisons; a caller that already has the spectrum
+    passes it in `spectrum` instead and the cache is not consulted at all.
 
     `session`, where it is given, is what the mass correction lives on: the
     axis is fitted from this infusion's own precursor ladder (`fit_axis`) and
@@ -1322,7 +1349,8 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
         report.unstable_included = bool(include_unstable)
     else:
         averaged = average_spectrum(channel, include_unstable=include_unstable,
-                                    sample=sample)
+                                    sample=sample, cache=cache,
+                                    path=str(getattr(entry, "path", "") or ""))
         if averaged is None:
             return report
         mz, intensity, report.rt_range, report.mask = averaged
@@ -1339,7 +1367,8 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
                 getattr(entry, "key", ""))
         else:
             report.correction = fit_axis(session, entry, channel,
-                                         spectrum=(mz, intensity))
+                                         spectrum=(mz, intensity),
+                                         cache=cache)
         applied = None
         try:
             applied = session.correction_for(getattr(entry, "key", ""))
@@ -1397,7 +1426,8 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
             if report.trace is not None else [])
     for other_entry, other_channel in others:
         other = _compared(report, mine, other_entry, other_channel,
-                          centroid=centroid, label_floor=label_floor)
+                          centroid=centroid, label_floor=label_floor,
+                          cache=cache)
         if other is not None:
             report.compared.append(other)
     return report
@@ -1597,7 +1627,8 @@ def _survivor(report: InfusionReport, mz, intensity) -> None:
 
 def _compared(report: InfusionReport, mine, other_entry,
               other_channel=None, centroid: bool = False,
-              label_floor: float = LABEL_MIN_RELATIVE) -> Compared | None:
+              label_floor: float = LABEL_MIN_RELATIVE,
+              cache=None) -> Compared | None:
     sample = getattr(other_entry, "sample", None)
     channel = other_channel if other_channel is not None else (
         strongest_channel(sample) if sample is not None else None)
@@ -1605,7 +1636,8 @@ def _compared(report: InfusionReport, mine, other_entry,
         return None
     averaged = average_spectrum(channel,
                                 include_unstable=report.unstable_included,
-                                sample=sample)
+                                sample=sample, cache=cache,
+                                path=str(getattr(other_entry, "path", "") or ""))
     if averaged is None:
         return None
     other_mz, other_intensity, _window, other_mask = averaged
@@ -2586,7 +2618,8 @@ def axis_subject(session, compound: str, written_precursor: float | None,
                        why=f"{where}; {choice.reason}")
 
 
-def fit_axis(session, entry, channel, spectrum=None, refit: bool = False):
+def fit_axis(session, entry, channel, spectrum=None, refit: bool = False,
+             cache=None):
     """
     One infusion's mass correction, fitted once and kept on the session.
 
@@ -2636,7 +2669,9 @@ def fit_axis(session, entry, channel, spectrum=None, refit: bool = False):
         return correction
 
     if spectrum is None:
-        averaged = average_spectrum(channel)
+        averaged = average_spectrum(
+            channel, sample=sample, cache=cache,
+            path=str(getattr(entry, "path", "") or ""))
         if averaged is None:
             return None
         spectrum = (averaged[0], averaged[1])
@@ -2755,8 +2790,8 @@ def _precursor_reason(report: InfusionReport) -> str:
 
 
 def summarise(session, library=None, explanations=None,
-              progress=None,
-              include_unstable: bool = False) -> InfusionSummary | None:
+              progress=None, include_unstable: bool = False,
+              cache=None, on_row=None) -> InfusionSummary | None:
     """
     Every open infusion as one row: the summary that comes before the pages.
 
@@ -2772,10 +2807,26 @@ def summarise(session, library=None, explanations=None,
     the component table's formula and adduct where it has them. `library` is
     the analyst's own `SpectralLibrary`, or None for no library column.
 
-    `progress(done, total)` is called as each infusion is read and stops the
-    measurement by returning False, in which case this returns None.
+    `progress(done, total, name)` is called **before** each infusion is read,
+    with the number already finished and the sample about to be read, and
+    once more when the last one is done; returning False stops the
+    measurement, in which case this returns None. It is called before rather
+    than after because what a progress dialog has to say is which file is
+    being waited for, not which one has stopped being waited for.
+    `on_row(row)` is called as each row is finished, so a table can fill
+    itself one file at a time; the mutual scores of a compound's infusions
+    are not in it yet, since they need every member of the group, so a caller
+    that shows rows early has to read the finished summary again for those.
+
     `include_unstable` averages every scan rather than only the steady ones —
     the Explorer's *Include unstable scans* — and every row then says so.
+    `cache` is a `spectrum_cache.AverageCache`, or None to read every average
+    from its file.
+
+    A file that raises on the way through is **one row saying so**, not a
+    dead run: nine infusions where the fourth has lost its `.wiff.scan`
+    should give eight measurements and a reason, which is what the headless
+    folder route already does per file and what this could not do at all.
     """
     import time
 
@@ -2799,44 +2850,18 @@ def summarise(session, library=None, explanations=None,
     for compound, members in groups.items():
         made: list[InfusionRow] = []
         for entry, channel in members:
-            report = report_for(entry, channel, compound=compound,
-                                library=name,
-                                components=getattr(method, "components", ()),
-                                own_library=library, session=session,
-                                include_unstable=include_unstable)
-            explanation = given.get(compound)
-            note = ""
-            if explanation is not None:
-                report.explanation = explanation
-                report.basis = "what was run in the LIPID MAPS tab"
-            else:
-                report.explanation, report.basis, note = \
-                    _headless_explanation(session, report, entry)
-                # the same explanation on the axis as the instrument read it,
-                # so the mass-axis paragraph can say what the correction
-                # bought rather than only what it was
-                raw = raw_sticks(report)
-                if report.explanation is not None and raw is not None:
-                    report.raw_explanation = _headless_explanation(
-                        session, report, entry, sticks=raw)[0]
-            hit, library_note = _best_record(library, report)
-            report.hit = hit
-            # the explanation only reached the report after `report_for`
-            # returned, so its margin is measured here instead
-            report.margin = _margin.for_report(report, _sticks(report))
-            row = InfusionRow(
-                report=report,
-                peaks=(report.spectrum.peaks(report.trace, most=SCORE_PEAKS,
-                                             min_relative=SCORE_SHARE)
-                       if report.spectrum is not None
-                       and report.trace is not None else []),
-                explanation_note=note, library_note=library_note,
-                precursor_note=_precursor_reason(report),
-                energy=_energy_match(library, report, compound))
+            if progress is not None and not progress(
+                    done, total, str(getattr(entry, "name", "") or "")):
+                return None
+            try:
+                row = _row_for(session, entry, channel, compound, method,
+                               library, name, given, include_unstable, cache)
+            except Exception as exc:                # one row, with the reason
+                row = _failed_row(entry, channel, compound, exc)
             made.append(row)
             done += 1
-            if progress is not None and not progress(done, total):
-                return None
+            if on_row is not None:
+                on_row(row)
         for row in made:
             for other in made:
                 if other is row:
@@ -2844,11 +2869,82 @@ def summarise(session, library=None, explanations=None,
                 score, reverse, pairs = score_against(row.peaks, other.peaks)
                 row.others.append((other.sample, float(score), float(reverse),
                                    len(pairs), len(other.peaks)))
-            if not row.others:
+            if not row.others and not row.others_note:
                 row.others_note = "the only infusion of this compound"
         rows += made
+    if progress is not None and not progress(done, total, ""):
+        return None
     return InfusionSummary(rows=rows, library=name,
                            seconds=time.perf_counter() - started)
+
+
+def _failed_row(entry, channel, compound: str, error: Exception) -> InfusionRow:
+    """
+    A row for an infusion that could not be measured, saying why.
+
+    Everything the file name and the channel already gave is kept — the
+    sample, the compound, the channel's written precursor — because a row
+    identifying nothing would be indistinguishable from a row about another
+    file. The reason goes in every cell that has a note, since which
+    measurement failed is not knowable once the exception has been caught.
+    """
+    reason = f"{type(error).__name__}: {str(error).splitlines()[0]}" \
+        if str(error).strip() else type(error).__name__
+    report = InfusionReport(
+        compound=compound or compound_of(getattr(entry, "name", "")),
+        file=getattr(entry, "filename", ""),
+        sample=getattr(entry, "name", ""),
+    )
+    info = getattr(channel, "info", None)
+    if info is not None:
+        report.polarity = str(getattr(info, "polarity", "") or "")
+        report.channel = getattr(info, "label", "")
+        report.channel_name = str(getattr(info, "name", "") or "")
+        report.written_precursor = getattr(info, "precursor", None)
+        report.collision_energy = getattr(info, "collision_energy", None)
+        report.scans = int(getattr(info, "n_scans", 0) or 0)
+    report.survivor_note = f"could not be measured — {reason}"
+    return InfusionRow(report=report, precursor_note=reason,
+                       explanation_note=reason, library_note=reason,
+                       others_note=reason)
+
+
+def _row_for(session, entry, channel, compound, method, library, name,
+             given, include_unstable, cache) -> InfusionRow:
+    """One infusion measured, which is the body of `summarise`'s loop."""
+    report = report_for(entry, channel, compound=compound, library=name,
+                        components=getattr(method, "components", ()),
+                        own_library=library, session=session,
+                        include_unstable=include_unstable, cache=cache)
+    explanation = given.get(compound)
+    note = ""
+    if explanation is not None:
+        report.explanation = explanation
+        report.basis = "what was run in the LIPID MAPS tab"
+    else:
+        report.explanation, report.basis, note = \
+            _headless_explanation(session, report, entry)
+        # the same explanation on the axis as the instrument read it, so the
+        # mass-axis paragraph can say what the correction bought rather than
+        # only what it was
+        raw = raw_sticks(report)
+        if report.explanation is not None and raw is not None:
+            report.raw_explanation = _headless_explanation(
+                session, report, entry, sticks=raw)[0]
+    hit, library_note = _best_record(library, report)
+    report.hit = hit
+    # the explanation only reached the report after `report_for` returned,
+    # so its margin is measured here instead
+    report.margin = _margin.for_report(report, _sticks(report))
+    return InfusionRow(
+        report=report,
+        peaks=(report.spectrum.peaks(report.trace, most=SCORE_PEAKS,
+                                     min_relative=SCORE_SHARE)
+               if report.spectrum is not None
+               and report.trace is not None else []),
+        explanation_note=note, library_note=library_note,
+        precursor_note=_precursor_reason(report),
+        energy=_energy_match(library, report, compound))
 
 
 def prepare_documents(rows) -> list[InfusionReport]:

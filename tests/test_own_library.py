@@ -758,7 +758,7 @@ def test_the_infusions_tab_writes_a_record_for_every_row(qapp_module, tmp_path):
     panel.settings.setValue("library/own_path", path)
     try:
         assert not panel.btn_library.isEnabled()      # nothing measured yet
-        panel.measure()
+        panel.measure(threaded=False)
         assert panel.btn_library.isEnabled()
 
         made = panel.add_all_to_library()

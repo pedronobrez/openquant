@@ -29,6 +29,33 @@ available: file missing* rather than being dropped without a word.
 A file that has moved is reported by name when the project opens, and the
 project opens without it; see [[starting-a-project]].
 
+## What sits beside a project
+
+One directory, `name.oqcache/`, and it holds nothing you would lose by
+deleting it: the averaged spectra of the infusions the project's files
+carry, one `.npz` of masses and intensities each, so that a file which has
+not changed is read once rather than on every **Measure**. It is beside the
+project because the averages belong to that batch — found where the batch is
+found, deleted with it, and left behind when the project is copied
+elsewhere, since arrays that travelled without their files would be a
+reading of nothing.
+
+With **no project open** there is nowhere that belongs to them and the
+system's own cache directory is used instead — see the table at the foot of
+this page — which is the directory the operating system is entitled to
+empty. The `cache/dir` setting overrules both.
+
+An entry is retired when the file changes: the key holds the acquisition's
+size and modification time and **its `.wiff.scan`'s**, which is where the
+scans are. The directory is bounded at 512 MB, about a hundred and twenty
+infusions, and over that the least recently used entries go first.
+**File ▸ Clear cached spectra…** empties it and says how much went. Measured
+on nine ZenoTOF infusions: 39.1 MB for the nine, and a second *Measure* in
+about half the time of the first. See [[infusion-report]].
+
+`*.oqcache/` is in the repository's `.gitignore`, with the raw data: it is
+derived from files that are never committed and is rebuilt by asking again.
+
 Projects written by the program under its earlier name, `.opvproj`, are
 opened; nothing new is written with that suffix. A project written by an
 older version opens in a newer one: fields the newer one added take their
@@ -73,8 +100,11 @@ manual as PDF…` writes this manual.
 | What | Where |
 |---|---|
 | preferences | the platform's settings store, organisation `OpenQuant`, application `OpenQuant`: window geometry, last folder, folded panels, the start prompt |
+| averaged spectra, with no project open | `~/Library/Caches/OpenQuant` on macOS, `%LOCALAPPDATA%\OpenQuant\Cache` on Windows, `$XDG_CACHE_HOME/openquant` elsewhere — or wherever the `cache/dir` setting says |
 | the .NET runtime, when installed by the bootstrap | `~/.dotnet` |
 | downloaded NuGet assemblies, the LIPID MAPS index | `~/.openquant`, or the directory named by the `OPENPEAKVIEW_HOME` environment variable |
 
 Deleting `~/.openquant` costs a download of the assemblies and the lipid
 index the next time each is needed; nothing about any batch is in it.
+Deleting the cache directory costs one cold **Measure**; nothing in it is a
+measurement that cannot be made again from the files.

@@ -47,6 +47,25 @@ spectrum instead, and that is what the pane opens on: see
 | right-click | *Extract XIC from selection*, *Find formula for this peak*, *Add marker here*, *Clear markers*, *Clear theoretical overlay* |
 | drag / double-click | zoom / fit |
 
+**m/z labels** writes the mass beside the peaks worth naming, and which
+those are is decided again every time the view moves. The mass axis on
+screen is cut into eight equal windows, each may claim three labels
+starting with its tallest, and the tallest peak of every window asks for
+room before any window asks for a second — so a crowded stretch cannot
+spend the whole allowance on itself. A label that would print on top of one
+already placed is still dropped rather than overlapped, which means the
+number drawn is what fits and not what was offered.
+
+Picking by height alone is what this replaced, and it read badly on a
+survey scan: on the TOF MS survey of a real acquisition the twelve tallest
+peaks all fell inside a stretch 118 Da wide near the bottom of a 100–2000
+axis, eleven of the twelve collided with one another, and the whole
+spectrum was drawn with a single label on it. By region, six are drawn and
+they run the length of the axis. Because the windows follow the view,
+zooming in names more: on the same scan, seven labels over m/z 150–350
+against four before. *Compare spectra…* prints with the same rule — twenty
+labels on that pair of spectra against twelve.
+
 **Markers.** Drop a marker on a peak and the other peaks are labelled with
 their distance to it in daltons, which is how neutral losses (18.011 for
 water, 44.026 for CO₂, 87.032 for a serine) and isotope spacings are read

@@ -45,6 +45,25 @@ o painel abre: ver [[direct-infusion]].
 | clique com o botão direito | *Extract XIC from selection*, *Find formula for this peak*, *Add marker here*, *Clear markers*, *Clear theoretical overlay* |
 | arrastar / duplo clique | zoom / ajustar |
 
+**m/z labels** escreve a massa ao lado dos picos que valem ser nomeados, e
+quais são eles é decidido de novo cada vez que a vista se move. O eixo de massas
+na tela é dividido em oito janelas iguais, cada uma pode reivindicar três
+rótulos começando pelo seu mais alto, e o pico mais alto de cada janela pede
+espaço antes que qualquer janela peça um segundo — de modo que um trecho
+congestionado não pode gastar toda a cota consigo mesmo. Um rótulo que seria
+impresso em cima de outro já colocado continua sendo descartado em vez de
+sobreposto, o que significa que o número desenhado é o que cabe e não o que foi
+oferecido.
+
+Escolher só por altura é o que isto substituiu, e lia-se mal num scan de survey:
+no survey TOF MS de uma aquisição real os doze picos mais altos caíam todos
+dentro de um trecho de 118 Da perto do início de um eixo de 100–2000, onze dos
+doze colidiam entre si, e o espectro inteiro era desenhado com um único rótulo.
+Por região, seis são desenhados e percorrem todo o eixo. Como as janelas seguem
+a vista, dar zoom nomeia mais: no mesmo scan, sete rótulos entre m/z 150–350
+contra quatro antes. *Compare spectra…* imprime com a mesma regra — vinte
+rótulos naquele par de espectros contra doze.
+
 **Marcadores.** Solte um marcador sobre um pico e os demais picos são rotulados
 com sua distância até ele em daltons, que é como perdas neutras (18.011 para
 água, 44.026 para CO₂, 87.032 para uma serina) e espaçamentos isotópicos são

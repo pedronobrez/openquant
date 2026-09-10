@@ -23,8 +23,12 @@ Three things about the drawing are deliberate:
 * **A mirrored trace is labelled with its magnitude.** It is drawn
   downwards because that is how a head-to-tail comparison is read; the
   number beside it is an intensity, not a negative one.
-* **Peaks are labelled from the same picker the pane uses**, so the masses
-  printed are the masses on screen.
+* **Peaks are labelled from the same picker and the same budget the pane
+  uses** — `labels.choose`, which gives each eighth of the mass axis a few
+  labels rather than spending them all on the densest stretch — so the
+  masses printed are the masses on screen. Measured on a survey scan
+  against a product-ion scan: 20 labels drawn where picking by height alone
+  drew 12, all 12 of them below m/z 360.
 """
 
 from __future__ import annotations
@@ -36,6 +40,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from . import labels
 from .processing import pick_peaks
 
 #: the drawing's logical size, in points. `render_png` multiplies it by the
@@ -50,11 +55,17 @@ DEFAULT_HEIGHT = 520
 #: `tests/test_spectra_compare.py`.
 PRINT_SCALE = 2.0
 
-#: how many peaks of each trace are labelled, and how far down its own base
-#: peak one has to be before it is not worth a label. The same rule the
-#: spectrum pane uses for its own labels.
-LABEL_PEAKS = 6
-LABEL_MIN_RELATIVE = 0.02
+#: the most labels one trace may carry, how far down its own base peak a
+#: peak has to be before it is not worth one, and how many maxima are
+#: offered to the region budget. The same rule the spectrum pane uses for
+#: its own labels — `labels.choose` gives each eighth of the mass axis a
+#: budget of three, and the collision rule below drops whatever will not
+#: fit. Six labels picked by height alone put every one of them inside the
+#: first eighth of a real survey scan.
+LABEL_PEAKS = labels.LABEL_REGIONS * labels.LABEL_BUDGET
+LABEL_MIN_RELATIVE = labels.LABEL_MIN_RELATIVE
+#: maxima kept as candidates before the budget chooses among them
+LABEL_POOL = 200
 #: two maxima closer than this in Da are one peak
 MIN_DISTANCE = 0.05
 
@@ -132,6 +143,22 @@ class SpectrumComparison:
                           min_relative=min_relative,
                           min_distance=MIN_DISTANCE,
                           centroid=not self.centroid)
+
+    def label_peaks(self, trace: SpectrumTrace, low: float, high: float,
+                    most: int = LABEL_PEAKS) -> list[tuple[float, float]]:
+        """
+        The peaks of one trace worth labelling on a drawing of `low` to
+        `high`, in the order they may claim room.
+
+        The mass axis is cut into `labels.LABEL_REGIONS` equal windows and
+        each may claim `labels.LABEL_BUDGET` labels; the tallest peak of
+        every window asks before any window asks for a second, so a dense
+        stretch cannot spend the whole allowance. Whether a label is
+        actually drawn is still the caller's collision rule.
+        """
+        pool = self.peaks(trace, most=LABEL_POOL, min_relative=0.002)
+        return labels.choose(pool, low, high, most=most,
+                             min_relative=LABEL_MIN_RELATIVE)
 
     def summary(self) -> str:
         names = ", ".join(t.label for t in self.traces if t.label)
@@ -528,7 +555,7 @@ def paint(comparison: SpectrumComparison, painter, width: float,
     taken: list[QtCore.QRectF] = []
     for trace, y, sign in drawn:
         top_value = float(y.max()) or 1.0
-        for mz, _height in comparison.peaks(trace):
+        for mz, _height in comparison.label_peaks(trace, x0, x1):
             index = int(np.argmin(np.abs(trace.mz - mz)))
             value = float(y[index])
             if value < top_value * LABEL_MIN_RELATIVE:

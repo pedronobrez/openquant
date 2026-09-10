@@ -13,7 +13,7 @@ projeto.
 
 ## O que conta como lock mass
 
-Uma lock mass aqui é um padrão interno que satisfaz três condições:
+Uma lock mass aqui é um padrão interno que satisfaz quatro condições:
 
 1. ele carrega uma **fórmula e um aduto** no [[method-workspace|method]], de
    modo que a sua massa verdadeira é conhecida. O *Fill formulas from names*
@@ -28,7 +28,28 @@ Uma lock mass aqui é um padrão interno que satisfaz três condições:
    `same_ion` que a medida de [[mass-drift|drift]] aplica: injeções que
    discordam por mais de 25 ppm não estavam medindo um único íon, e
    promediá-las recalibraria o instrumento sobre o que por acaso estivesse
-   mais perto.
+   mais perto;
+4. ele mediu esse íon **perto de onde a fórmula o coloca** — dentro de
+   **50 ppm**, na maioria das suas injeções. A condição 3 pergunta às injeções
+   se elas concordam *entre si*; ela não consegue perguntar se elas concordam
+   com o composto, e um padrão cuja janela de ±0.25 Da contém o mesmo íon
+   *errado* em toda injeção concorda consigo mesmo perfeitamente. Um padrão
+   além do limite é nomeado na tabela — *measures 237 ppm from its formula:
+   not the ion the formula names* — e não é usado, por mais firme que tenha
+   sido a medida. Onde um padrão está dentro do limite na maioria das injeções
+   e além dele em uma, apenas aquela injeção o perde, e a linha daquela
+   injeção diz isso.
+
+**De onde vêm os 50 ppm.** Medido sobre as 1,439 medidas de survey que o lote
+real fornece — todos os 60 componentes com fórmula dentro do survey, em cada
+injeção — a distância até a fórmula é bimodal: 19.5% delas abaixo de 20 ppm,
+53.5% além de 200 ppm, e o fundo do vale entre os dois lóbulos em 30–50 ppm,
+onde um intervalo de 10 ppm contém 1.0–1.4%. Cinquenta é a borda distante
+desse vale, e é o dobro dos 25 ppm que a condição 3 já tolera: um íon ao qual
+se permite vagar o equivalente a uma dispersão pode ficar o equivalente a uma
+dispersão longe da verdade, e não mais. As margens de cada lado são ambas de
+cerca de um fator de cinco — 11.7 ppm na pior injeção da lock mass honesta,
+237 ppm no impostor.
 
 O **precursor escrito é deliberadamente recusado**. Um método que diz `647.5`
 é bom até cerca de 800 ppm naquela massa; corrigir um eixo de massa em
@@ -106,12 +127,27 @@ injeção:
 | offset mediano | **+4.8 ppm** (−4.4 a +11.7) |
 | dispersão dos offsets | 16.1 ppm |
 
+**O que a barreira da fórmula recusa.** Cinco dos dez padrões que carregam
+uma fórmula são nomeados como medindo um íon que a fórmula deles não nomeia:
+`Sphingosine C17:0` a 383 ppm dela, `C17:0_Ceramide` a 237, `C12:0 _Ceramide`
+a 204, `Cer1P (12:0)` a 91 e `Sphingosine-1-P C17:0` a 82 — este último
+montado a cavalo sobre a sua fórmula, com um erro mediano de apenas −43 ppm e
+a maioria das suas injeções além do limite de um lado ou do outro. Cada um
+deles já havia falhado na condição 3 ou estava aquém das injeções que uma
+tendência exige, de modo que o ajuste abaixo permanece inalterado até a última
+casa decimal e nenhuma injeção perdeu uma medida: neste lote a barreira é uma
+guarda e não um achado. O quase-acerto diz por que vale a pena tê-la. O
+`Sphingosine C14:0`, um analito e não um padrão, mantém a sua medida dentro de
+**52 ppm ao longo de 25 injeções** — o dobro do limite de mesmo-íon, e nada
+mais — a uma mediana de **156 ppm** da sua fórmula. Isso é um íon, medido
+firmemente, e não é o composto; nada além da fórmula consegue dizer isso.
+
 Os outros dez padrões falham por um motivo que fórmula nenhuma resolve: o
 sinal deles no survey é fraco demais, de modo que a janela de busca de
 ±0.25 Da pega um vizinho diferente em cada injeção e eles se dispersam entre
 98 e 534 ppm ao longo da corrida — e um fica fora do survey por completo. O
 `C17:0_Ceramide` foi encontrado em apenas cinco injeções e a sua mediana fica
-238 ppm da sua própria fórmula, o que é um íon diferente e não um íon mal
+237 ppm da sua própria fórmula, o que é um íon diferente e não um íon mal
 medido. **Várias lock masses não estão disponíveis neste lote com nenhuma
 cobertura de fórmulas**, de modo que o termo linear continua nunca tendo
 disparado em dados reais.

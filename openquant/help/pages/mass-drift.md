@@ -72,7 +72,11 @@ selects that sample in the [[peak-review]] grid.
 This page reports; on its own it changes no mass. What to do about what it
 shows is [[mass-recalibration]], whose switch sits on this same tab: it
 reuses exactly these measurements, so a standard that failed the same-ion
-test here is not a lock mass there either. A measurement the product-ion
+test here is not a lock mass there either. The traffic goes the other way
+too: a standard whose measurements sit more than 50 ppm from its own formula
+in most injections is not the ion the formula names, and the Verdict column
+here says so — a check the same-ion test cannot make, since it only asks the
+injections whether they agree with each other. A measurement the product-ion
 scan did not confirm is kept and counted — a drift is a drift whether or not
 the confirming scan was strong enough — and the count is on the row.
 

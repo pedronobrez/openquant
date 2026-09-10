@@ -19,9 +19,12 @@ from openquant.components import Component  # noqa: E402
 from openquant.mass_drift import mass_drift  # noqa: E402
 from openquant.method import ProcessingMethod  # noqa: E402
 from openquant.quantify import extract_xic, integrate_component, process  # noqa: E402
+from openquant.precursor import CONSENSUS_SPREAD_PPM  # noqa: E402
 from openquant.recalibrate import (LockMass, MassCorrection,  # noqa: E402
-                                   MIN_MASS_SPAN, MIN_SLOPE_LOCK_MASSES,
-                                   describe, fit_batch, fit_correction,
+                                   MAX_LOCK_ERROR_PPM, MIN_MASS_SPAN,
+                                   MIN_SLOPE_LOCK_MASSES, describe,
+                                   dropped_lock_masses, fit_batch,
+                                   fit_correction, lock_mass_refusal,
                                    lock_masses_from_drift)
 from openquant.samples import SampleEntry  # noqa: E402
 from openquant.session import Session  # noqa: E402
@@ -235,6 +238,159 @@ def test_the_verdict_names_the_offset_and_the_count():
 
 
 # --------------------------------------------------------------------------- #
+# the formula gate
+# --------------------------------------------------------------------------- #
+#: an honest standard and one measuring a neighbour, in one batch. The
+#: impostor's offset is the one the real batch's `C17:0_Ceramide` shows.
+HONEST_PPM = -4.8
+IMPOSTOR_PPM = 238.0
+
+
+def _two_entry(name: str, honest_ppm: float, impostor_ppm: float) -> SampleEntry:
+    """One injection measuring two standards, each in its own transition."""
+    honest = _exact("C18H30O5") * (1 + honest_ppm * 1e-6)
+    impostor = _exact("C24H38O4") * (1 + impostor_ppm * 1e-6)
+    survey = SpectrumChannel(0, None, 100.0, 2000.0, 12.0, 14.0, n=200,
+                             ions=[(honest, 1.0), (impostor, 0.8)],
+                             apex=13.1, height=10_000.0)
+    first = SpectrumChannel(1, 325.20, 50.0, 350.0, 12.0, 14.0, n=200,
+                            ions=[(183.0, 1.0), (honest, 0.4)], apex=13.1)
+    second = SpectrumChannel(2, 389.27, 50.0, 400.0, 12.0, 14.0, n=200,
+                             ions=[(191.0, 1.0), (impostor, 0.4)], apex=13.1)
+    entry = SampleEntry(f"/d/{name}.wiff", 0, name)
+    entry.sample = Sample([survey, first, second])
+    return entry
+
+
+def _two_method() -> ProcessingMethod:
+    method = ProcessingMethod()
+    method.replace_all([
+        Component("FA 18:3;O3", 325.20, 183.0, rt=13.1, rt_halfwidth=0.5,
+                  is_internal_standard=True, formula="C18H30O5",
+                  adduct="[M-H]-"),
+        Component("DCA", 389.27, 191.0, rt=13.1, rt_halfwidth=0.5,
+                  is_internal_standard=True, formula="C24H38O4",
+                  adduct="[M-H]-"),
+    ])
+    return method
+
+
+def test_the_limit_has_margin_on_both_sides_of_the_real_batch():
+    """
+    Fifty ppm is twice the spread `same_ion` tolerates between injections,
+    and the batch it was measured on leaves a factor of about five either
+    side: its one honest lock mass is 11.7 ppm from its formula in its worst
+    injection, and its impostor 238.
+    """
+    assert MAX_LOCK_ERROR_PPM == 2 * CONSENSUS_SPREAD_PPM
+    assert 11.7 * 4 < MAX_LOCK_ERROR_PPM < 238.0 / 4
+
+
+def test_an_ion_measured_steadily_at_the_wrong_mass_passes_same_ion():
+    """
+    The gate exists because the test before it cannot ask this question.
+    Six injections agreeing to a ppm about an ion 238 ppm from the formula
+    are one ion, measured well — and it is not the compound.
+    """
+    entries = [_entry(f"S{i:02d}", IMPOSTOR_PPM) for i in range(6)]
+    drift = mass_drift(entries, _method())
+    trend = drift.trends[0]
+    assert trend.same_ion and trend.measurable
+    assert trend.error_ppm == pytest.approx(IMPOSTOR_PPM, abs=1.0)
+
+
+def test_without_the_gate_the_impostor_is_a_lock_mass(monkeypatch):
+    """The same batch with the limit lifted: it fits, and fits wrongly."""
+    monkeypatch.setattr("openquant.recalibrate.MAX_LOCK_ERROR_PPM", 1e9)
+    entries = [_entry(f"S{i:02d}", IMPOSTOR_PPM) for i in range(6)]
+    method = _method()
+    drift = mass_drift(entries, method)
+    assert lock_mass_refusal(drift.trends[0]) is None
+    corrections = fit_batch(_Batch(entries, method), drift)
+    assert all(c.usable for c in corrections.values())
+    # every mass in the batch pulled 238 ppm by one wrong ion
+    assert next(iter(corrections.values())).offset_ppm == pytest.approx(
+        -IMPOSTOR_PPM, abs=1.0)
+
+
+def test_with_the_gate_it_is_refused_for_the_run_and_says_why():
+    entries = [_entry(f"S{i:02d}", IMPOSTOR_PPM) for i in range(6)]
+    method = _method()
+    drift = mass_drift(entries, method)
+    refusal = lock_mass_refusal(drift.trends[0])
+    assert refusal == ("measures 238 ppm from its formula: not the ion the "
+                       "formula names")
+    assert lock_masses_from_drift(drift) == {}
+    corrections = fit_batch(_Batch(entries, method), drift)
+    assert not any(c.usable for c in corrections.values())
+    assert "no usable lock mass" in next(iter(corrections.values())).verdict
+    assert f"{MAX_LOCK_ERROR_PPM:g} ppm" in describe(corrections)
+
+
+def test_the_impostor_does_not_drag_the_honest_lock_mass():
+    """
+    Two standards, one of them measuring a neighbour: the fit is the honest
+    one alone, and identical to the fit of a batch the impostor never
+    entered.
+    """
+    entries = [_two_entry(f"S{i:02d}", HONEST_PPM, IMPOSTOR_PPM)
+               for i in range(6)]
+    method = _two_method()
+    drift = mass_drift(entries, method)
+    kept = {lock.component for row in lock_masses_from_drift(drift).values()
+            for lock in row}
+    assert kept == {"FA 18:3;O3"}
+    corrections = fit_batch(_Batch(entries, method), drift)
+    for correction in corrections.values():
+        assert len(correction.lock_masses) == 1
+        assert correction.offset_ppm == pytest.approx(-HONEST_PPM, abs=0.5)
+
+    alone = fit_batch(_Batch([_entry(f"S{i:02d}", HONEST_PPM) for i in range(6)],
+                             _method()))
+    assert ([round(c.offset_ppm, 9) for c in corrections.values()]
+            == [round(c.offset_ppm, 9) for c in alone.values()])
+
+
+def test_one_injection_past_the_limit_is_dropped_where_it_happened():
+    """
+    Most injections, not any: a standard that reads its own formula in four
+    injections and a neighbour in two is a lock mass in the four. The
+    injections that lost it say so rather than reading as injections nobody
+    measured anything in.
+    """
+    errors = [30.0, 32.0, 34.0, 36.0, 52.0, 54.0]
+    entries = [_entry(f"S{i:02d}", ppm) for i, ppm in enumerate(errors)]
+    method = _method()
+    drift = mass_drift(entries, method)
+    trend = drift.trends[0]
+    assert trend.same_ion                     # they agree with each other
+    assert lock_mass_refusal(trend) is None   # and mostly with the formula
+
+    locks = lock_masses_from_drift(drift)
+    assert len(locks) == 4
+    dropped = dropped_lock_masses(drift)
+    assert sorted(round(ppm) for row in dropped.values()
+                  for _, ppm in row) == [52, 54]
+
+    corrections = fit_batch(_Batch(entries, method), drift)
+    kept = [c for c in corrections.values() if c.usable]
+    assert len(kept) == 4
+    lost = [c for c in corrections.values() if not c.usable]
+    assert len(lost) == 2
+    for correction in lost:
+        assert "left out of this injection" in correction.verdict
+        assert "FA 18:3;O3" in correction.verdict
+
+
+def test_a_trend_with_no_formula_cannot_be_gated():
+    """Nothing to measure against is not a refusal, it is silence."""
+    entries = [_entry(f"S{i:02d}", IMPOSTOR_PPM) for i in range(6)]
+    drift = mass_drift(entries, _method(formula=""))
+    assert lock_mass_refusal(drift.trends[0]) is None
+    assert dropped_lock_masses(drift) == {}
+
+
+# --------------------------------------------------------------------------- #
 # the switch
 # --------------------------------------------------------------------------- #
 def test_the_switch_is_off_by_default_and_survives_a_round_trip(tmp_path):
@@ -429,3 +585,38 @@ def test_the_explorer_moves_the_spectrum_axis_and_says_so(qt_app):
     assert np.allclose((axis - mz) / mz * 1e6, -7.0, atol=0.5)
     explorer.deleteLater()
     qt_app.processEvents()
+
+
+def test_the_panel_names_the_refused_standard_in_its_verdict(qt_app):
+    """A wrong ion measured steadily looks like a well-behaved standard in
+    every column but this one."""
+    from openquant.ui.mass_drift_panel import MassDriftPanel
+
+    session = Session()
+    session.entries = [_entry(f"S{i:02d}", IMPOSTOR_PPM) for i in range(6)]
+    session.method = _method()
+
+    panel = MassDriftPanel(session)
+    panel.measure()
+    row = next(r for r in range(panel.table.rowCount())
+               if panel.table.item(r, 0).text() == "FA 18:3;O3")
+    verdict = panel.table.item(row, 8)
+    assert "not the ion the formula names" in verdict.text()
+    assert verdict.toolTip() == verdict.text()
+    # and nothing was corrected from it
+    assert not panel.recalibrate.isEnabled()
+    panel.deleteLater()
+
+
+def test_the_report_names_the_refused_standard_too():
+    from openquant.report import build_html
+
+    session = Session()
+    session.entries = [_entry(f"S{i:02d}", IMPOSTOR_PPM) for i in range(6)]
+    session.method = _method()
+    session.mass_drift = mass_drift(session.entries, session.method)
+    session.mass_corrections = fit_batch(session, session.mass_drift)
+
+    html = build_html(session, sections=["mass"])
+    assert "not the ion the formula names" in html
+    assert f"{MAX_LOCK_ERROR_PPM:g} ppm from its" in html

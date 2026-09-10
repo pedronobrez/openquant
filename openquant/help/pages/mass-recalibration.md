@@ -13,7 +13,7 @@ saved with the project.
 
 ## What counts as a lock mass
 
-A lock mass here is an internal standard that meets three conditions:
+A lock mass here is an internal standard that meets four conditions:
 
 1. it carries a **formula and an adduct** in the [[method-workspace|method]],
    so its true mass is known. *Fill formulas from names* fills the empty
@@ -26,7 +26,26 @@ A lock mass here is an internal standard that meets three conditions:
    `same_ion` test the [[mass-drift|drift]] measurement applies: injections
    disagreeing by more than 25 ppm were not measuring one ion, and averaging
    them would recalibrate the instrument onto whatever happened to be
-   nearest.
+   nearest;
+4. it measured that ion **near where the formula puts it** — within
+   **50 ppm**, in most of its injections. Condition 3 asks the injections
+   whether they agree with *each other*; it cannot ask whether they agree
+   with the compound, and a standard whose ±0.25 Da window holds the same
+   *wrong* ion in every injection agrees with itself perfectly. One past the
+   limit is named in the table — *measures 237 ppm from its formula: not the
+   ion the formula names* — and is not used, however steadily it was
+   measured. Where a standard is inside the limit in most injections and past
+   it in one, only that injection loses it, and that injection's row says so.
+
+**Where 50 ppm comes from.** Measured over the 1,439 survey measurements the
+real batch supplies — all 60 formula-bearing components inside its survey, in
+every injection — the distance from the formula is bimodal: 19.5% of them
+under 20 ppm, 53.5% past 200 ppm, and the floor of the trough between the two
+lobes at 30–50 ppm, where a 10 ppm bin holds 1.0–1.4%. Fifty is that trough's
+far edge, and it is twice the 25 ppm condition 3 already tolerates: an ion
+allowed to wander a spread's worth may sit a spread's worth from the truth
+and no further. The margins either side are each about a factor of five —
+11.7 ppm in the honest lock mass's worst injection, 237 ppm for the impostor.
 
 The **written precursor is deliberately refused**. A method that says `647.5`
 is good to about 800 ppm at that mass; correcting a mass axis towards
@@ -100,11 +119,26 @@ injection:
 | median offset | **+4.8 ppm** (−4.4 to +11.7) |
 | spread of the offsets | 16.1 ppm |
 
+**What the formula gate refuses.** Five of the ten standards carrying a
+formula are named as measuring an ion their formula does not: `Sphingosine
+C17:0` at 383 ppm from it, `C17:0_Ceramide` at 237, `C12:0 _Ceramide` at 204,
+`Cer1P (12:0)` at 91 and `Sphingosine-1-P C17:0` at 82 — the last of these
+straddling its formula, with a median error of only −43 ppm and most of its
+injections past the limit either side. Every one of them had already failed
+condition 3 or was short of the injections a trend needs, so the fit below is
+unchanged to the last decimal and not one injection lost a measurement: on
+this batch the gate is a guard rather than a finding. The near miss says why
+it is worth having. `Sphingosine C14:0`, an analyte rather than a standard,
+holds its measurement to **52 ppm across 25 injections** — twice the same-ion
+limit and no more — at a median **156 ppm** from its formula. That is one
+ion, measured steadily, and it is not the compound; nothing but the formula
+can say so.
+
 The other ten standards fail for a reason no formula can fix: their survey
 signal is too weak, so the ±0.25 Da search window catches a different
 neighbour in each injection and they scatter by 98 to 534 ppm across the run
 — and one lies outside the survey altogether. `C17:0_Ceramide` was found in
-only five injections and its median sits 238 ppm from its own formula, which
+only five injections and its median sits 237 ppm from its own formula, which
 is a different ion rather than a badly measured one. **Several lock masses
 are not available on this batch at any formula coverage**, so the linear
 term has still never fired on real data.

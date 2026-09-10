@@ -104,6 +104,8 @@ openquant/
   margin.py       the chosen compound's share against its nearest
                   impostors, enumerated alike
   infusion_cover.py  the cover before a folder's per-compound pages
+  spectrum_cache.py  raw averages of unchanged files, on disk beside the
+                  project; ui/infusion_worker.py measures off the window
   audit.py        the trail of hand edits saved with the project
   labels.py       which peaks get a label: a budget per region of the
                   visible axis, shared by the pane and the print
@@ -1151,6 +1153,24 @@ UV detector, is not implemented there) — untested on real Windows.
   `839.23`/`16` at the old widths — a measurement broken in half is worse
   than wrapped prose (`CELL_CHARACTERS` 48). On the nine infusions the
   cover is two pages of 58 and 0.2 s of 31; it reads no file.
+- **An average of a file that has not changed is a function, so it is
+  written down — and the arithmetic left is moved off the window.**
+  `spectrum_cache.py` keys the raw average on the acquisition and its
+  `.wiff.scan` by size and mtime, the channel, the range, the spray mask's
+  bytes and `include_unstable`, stored as one `.npz` in `<project>.oqcache/`
+  (or the system cache with no project; `cache/dir`, `OPENQUANT_CACHE_DIR`,
+  `CACHE_MAX_MB` 512, LRU, every failure a miss). Raw, before any mass
+  correction, which is applied on read. Measured on the nine infusions:
+  cold 12.6–20.9 s, warm 7.7–8.5 s, one `.scan` touched 8.9 s; 27 infusions
+  55.1 → 23.5 s; 39.1 MB against 47 MB of `.wiff.scan`; arrays identical hit
+  or miss. `ui/infusion_worker.MeasureTask` takes the rest off the GUI
+  thread: event-loop turns went from 0.4 a second to 89, rows arrive as
+  files finish, Cancel is answered between files. Clearcore2 tolerates two
+  `.wiff` in two threads — the single sequential worker is our constraint
+  (the session's samples memoise without locks). A modal
+  `QProgressDialog.setValue` pumps the event loop and can close the dialog
+  underneath its own handler. Left: `processing.pick_peaks` is 64% of what
+  remains, 188 M generator calls, the same trace picked three times.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

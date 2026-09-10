@@ -350,7 +350,7 @@ def test_the_panel_says_so_when_the_reference_holds_no_summary(qapp, tmp_path):
     session.entries.extend([_infusion("CA-d4_TOFMSMS_EAD_22CE_mix1")])
     panel = InfusionsPanel(session)
     try:
-        panel.measure()
+        panel.measure(threaded=False)
         assert panel.table.rowCount() == 1 and panel.btn_compare.isEnabled()
 
         plain = str(tmp_path / "plain.oqproj")

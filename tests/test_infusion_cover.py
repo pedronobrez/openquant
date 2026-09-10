@@ -498,7 +498,7 @@ def _measured(qapp):
         entry, _channel = _entry(name=name)
         session.entries.append(entry)
     panel = _panel(session)
-    panel.measure()
+    panel.measure(threaded=False)
     return session, panel
 
 
@@ -543,7 +543,7 @@ def test_the_tab_says_what_it_passed_over_rather_than_nothing(qapp):
     other = SampleEntry("/d/gradient.wiff", 0, "GRADIENT_run")
     other.sample = gradient_sample()
     session.entries.append(other)
-    panel.measure()
+    panel.measure(threaded=False)
 
     result = panel.batch_result(panel.chosen())
     assert [skip.kind for skip in result.skipped] == [batch.NOT_INFUSION]

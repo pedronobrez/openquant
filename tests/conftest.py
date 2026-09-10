@@ -38,6 +38,14 @@ from PyQt6 import QtCore, QtWidgets
 os.environ["OPENQUANT_SETTINGS"] = os.path.join(
     tempfile.mkdtemp(prefix="openquant-test-settings-"), "OpenQuant.ini")
 
+# And for the same reason, the on-disk cache of averaged spectra: without
+# this the folder route and anything that opens a session would write .npz
+# entries into ~/Library/Caches/OpenQuant, where the next run of the suite
+# would read them back and a test of a cold measurement would be measuring a
+# warm one. See spectrum_cache.ENV_DIR.
+os.environ["OPENQUANT_CACHE_DIR"] = tempfile.mkdtemp(
+    prefix="openquant-test-cache-")
+
 
 @pytest.fixture(autouse=True)
 def _settle_qt():

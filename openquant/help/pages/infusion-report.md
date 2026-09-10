@@ -333,6 +333,103 @@ The report's own table is narrower — A4 does not hold twenty-three columns —
 so it writes the precursor and the record as one cell each and leaves the
 parts to the panel and the CSV.
 
+### While Measure runs
+
+**The window stays alive.** The measurement runs on a thread of its own, so
+the window repaints, scrolls and answers while it works — measured on the
+nine ZenoTOF bile-acid infusions by counting event-loop turns during the run:
+**0.4 a second** when it ran on the window's own thread, **89 a second** with
+it moved off. That is the difference between a beachball and a window.
+
+A progress dialog names the file being read — *Reading
+CA-d4_TOFMSMS_EAD_22CE_44DP_13KE_mix1 — 4 of 9 done* — and **Cancel** stops
+it. Cancel is answered **between files, never inside one**: a file being
+read is inside the reader and nothing here can interrupt it, so the one being
+waited for finishes and the next is not started. What was already measured
+**stays in the table**, and the line under it says so — *Cancelled: 4
+infusion(s) measured before you stopped, kept as they stand.* Press
+**Measure** again to do the rest; the files already done come back from the
+cache.
+
+**Rows appear as their files finish**, one at a time and in the order they
+were measured, so the first result is on screen in a second or two rather
+than everything arriving at the end. Sorting is off while the table is
+filling — a table that reorders itself under you between one file and the
+next is harder to read — and comes back with the finished summary, together
+with the **Other infusions** column, which cannot be filled until the last
+infusion of a compound is done.
+
+**A file that fails is one row saying so**, not a stopped run. Nine
+infusions where the fourth has lost its `.wiff.scan` are eight measurements
+and a reason: the failing row keeps its compound, its sample and its channel
+and carries the error in the cells that would otherwise have held
+measurements.
+
+The buttons that read the same files — *Measure*, *New standard…*,
+*Quantify…* — are disabled while it runs, and the ones that act on the table
+come back only if there is a table to act on.
+
+### The cache of averaged spectra
+
+Averaging every scan of an infusion is the expensive half of this, and
+nothing about that average depends on the session: it is a function of the
+file, the channel, which scans the spray was steady for and whether
+[[direct-infusion]]'s *Include unstable scans* was asked for. So it is
+written down. **A file that has not changed is read once**, and every later
+*Measure* — and the Explorer's own *Average whole run*, and the folder route
+of [[command-line]] — reads the average back from disk instead.
+
+The entries live **beside the project**, in `<project>.oqcache/`: the
+averages belong to that batch of files, so they are found where the batch is
+found and can be deleted with it. With no project open there is nowhere that
+belongs to them and the system's own cache directory is used
+(`~/Library/Caches/OpenQuant` on macOS) — the directory the operating system
+is entitled to empty. See [[projects-and-files]].
+
+What is stored is the **raw** average, before any mass correction: a
+correction belongs to the session's switch and is applied on the way out, so
+turning [[mass-recalibration]] on and off costs nothing and cannot poison
+what was stored. An entry is retired by the file changing — the key holds
+the acquisition's size and modification time and **its `.wiff.scan`'s**,
+which is where the scans actually are — and also by the channel, the range,
+the spray mask and the unstable-scans switch, so two different averages of
+one file are two entries.
+
+**File ▸ Clear cached spectra…** empties it and says what went. Nothing is
+lost that cannot be measured again; what it costs is the next *Measure*
+being a cold one. The directory is bounded — 512 MB, about a hundred and
+twenty infusions — and over the bound the least recently *used* entries are
+dropped first.
+
+Measured on the nine ZenoTOF bile-acid infusions, each *Measure* in a fresh
+process:
+
+| | *Measure* | cache |
+|---|---|---|
+| cold — nothing cached | 12.6 – 20.9 s | 9 read from file |
+| warm — the same nine again | **7.7 – 8.5 s** | 9 from the cache |
+| one `.wiff.scan` touched | 8.9 s | 8 from the cache, 1 re-read |
+| twenty-seven infusions, cold | 55.1 s | 27 read from file |
+| twenty-seven infusions, warm | **23.5 s** | 27 from the cache |
+
+Roughly **half**, and the half that goes is the half that varied: the warm
+figure repeats to within a tenth of a second while the cold one moves by
+eight, because what varies is the disk and the reader and that is exactly
+what is no longer being done. The nine averages take **39.1 MB** on disk,
+4.3 MB each — against the 47 MB of `.wiff.scan` they save reading. What is
+left is arithmetic, and the thread is what stops it freezing the window.
+
+Each row carries the compound and the sample, the mode and collision energy,
+how many scans were averaged — *464 of 473* where the spray lost some, with
+the whole line on hover — the base peak, the precursor as the method wrote
+it and as it was measured back with its error in ppm and its height, the ions
+found of those predicted, the best record of your own library with both scores
+and the record's collision energy against this acquisition's, and the other
+infusions of the same compound with the cosine each way, and the **Mass
+axis** column — the correction fitted from that vial's own precursor ladder,
+whether it was applied, or the reason there is none. See
+[[mass-recalibration]].
+
 Two of those come from somewhere the report of one vial gets them from a
 person:
 

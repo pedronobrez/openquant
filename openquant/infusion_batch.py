@@ -342,7 +342,8 @@ def _write(reports, rows, out: str, fmt: str, per_compound: bool,
 
 
 def run(paths, out, library=None, components=None, fmt: str = "pdf",
-        csv=None, progress=None, per_compound: bool = False) -> BatchResult:
+        csv=None, progress=None, per_compound: bool = False,
+        cache=None) -> BatchResult:
     """
     Report every infusion in the given files and folders, opening no window.
 
@@ -359,9 +360,21 @@ def run(paths, out, library=None, components=None, fmt: str = "pdf",
     `done` files behind it — and once more when the last is finished, and
     stops the run by returning False, in which case nothing is written and
     `BatchResult.cancelled` says so.
+
+    `cache` is a `spectrum_cache.AverageCache` for the averaged spectra;
+    None takes the default directory, which with no project open is the
+    system's. A folder reported twice — a library added, an energy
+    reconsidered — then reads its scans once. Pass `False` for no cache at
+    all, which is what a measurement of the cold cost wants.
     """
     started = time.perf_counter()
     _ensure_app()
+    if cache is None:
+        from . import spectrum_cache
+
+        cache = spectrum_cache.for_project(None)
+    elif cache is False:
+        cache = None
     wanted, skipped, findings = _to_open(paths)
     result = BatchResult(requested=[str(p) for p in paths],
                          skipped=skipped, findings=findings)
@@ -394,7 +407,7 @@ def run(paths, out, library=None, components=None, fmt: str = "pdf",
                     path, UNREADABLE,
                     f"could not be opened — {type(exc).__name__}: {exc}"))
                 continue
-            summary = summarise(session, library=library)
+            summary = summarise(session, library=library, cache=cache)
             if summary is None or not summary.rows:
                 result.skipped.append(
                     Skipped(path, NOT_INFUSION, _why_not(session)))

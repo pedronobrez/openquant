@@ -24,6 +24,11 @@ from .new_project import (METHOD, METHOD_EMPTY, NewProjectWizard,
 from .plots import BasePlot
 from .samples_workspace import SamplesWorkspace
 
+#: where averaged spectra are kept, when it is not either default. Empty for
+#: `spectrum_cache.cache_dir`'s own answer — beside the project, or the
+#: system's cache directory with no project open
+SETTING_CACHE_DIR = "cache/dir"
+
 
 class MainShell(QtWidgets.QMainWindow):
     """Holds the session and switches between workspaces."""
@@ -35,6 +40,11 @@ class MainShell(QtWidgets.QMainWindow):
         self.settings = settings()
 
         self.session = Session(self)
+        # where averaged spectra are kept, when the analyst has said. Read
+        # once, here, because it is the window that has a settings object and
+        # the session that has the files
+        self.session.cache_dir_override = self.settings.value(
+            SETTING_CACHE_DIR, "", type=str)
 
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setDocumentMode(True)
@@ -318,6 +328,12 @@ class MainShell(QtWidgets.QMainWindow):
             "What was changed by hand in this project — integrations, "
             "exclusions, method and sample edits — in the order it was "
             "changed. Read-only")
+        self.act_clear_cache = file_menu.addAction("Clear cached spectra…")
+        self.act_clear_cache.setToolTip(
+            "Empty the cache of averaged spectra kept beside the project — "
+            "or in the system's cache directory with no project open. "
+            "Nothing is lost: every entry is an average of a file that is "
+            "still where it was, and the next Measure reads it again")
         self.act_workbook = file_menu.addAction("Export workbook (Excel)…")
         self.act_workbook.setToolTip(
             "The same batch as a spreadsheet — one sheet per section, every "
@@ -359,6 +375,7 @@ class MainShell(QtWidgets.QMainWindow):
         self.act_new_standard.triggered.connect(self.new_standard)
         self.act_infusion_folder.triggered.connect(self.report_infusion_folder)
         self.act_close.triggered.connect(self.close_all)
+        self.act_clear_cache.triggered.connect(self.clear_cached_spectra)
         self.act_open_project.triggered.connect(self.open_project)
         self.act_save_project.triggered.connect(self.save_project)
         self.act_save_project_as.triggered.connect(self.save_project_as)
@@ -568,6 +585,20 @@ class MainShell(QtWidgets.QMainWindow):
             return
         self.explorer.clear_views()
         self.session.close_all()
+
+    def clear_cached_spectra(self) -> str:
+        """
+        Empty the on-disk cache of averaged spectra, and say what went.
+
+        On the window rather than on the Infusions tab's button bar because
+        the cache is not the tab's: the Explorer's *Average whole run* fills
+        it too, and a project has one whichever tab is in front. The panel
+        does the work — it is the one place that knows how to say what a
+        cache did — and this reports it in the status bar.
+        """
+        said = self.analytics.infusions.clear_cache()
+        self.statusBar().showMessage(said)
+        return said
 
     def _samples_changed(self) -> None:
         loaded = len(self.session.loaded_entries)

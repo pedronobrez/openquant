@@ -31,6 +31,34 @@ ser descartado sem uma palavra.
 Um arquivo que mudou de lugar é reportado pelo nome quando o projeto abre, e
 o projeto abre sem ele; ver [[starting-a-project]].
 
+## O que fica ao lado de um projeto
+
+Um diretório, `nome.oqcache/`, e ele não guarda nada que se perca ao ser
+apagado: os espectros promediados das infusões que os arquivos do projeto
+carregam, um `.npz` de massas e intensidades cada, para que um arquivo que não
+mudou seja lido uma vez em vez de a cada **Measure**. Ele fica ao lado do
+projeto porque as médias pertencem àquele lote — achadas onde o lote é achado,
+apagadas com ele, e deixadas para trás quando o projeto é copiado para outro
+lugar, já que arranjos que viajassem sem os seus arquivos seriam a leitura de
+nada.
+
+**Sem projeto aberto** não há lugar que lhes pertença e o diretório de cache
+do próprio sistema é usado — ver a tabela ao pé desta página — que é o
+diretório que o sistema operacional tem o direito de esvaziar. A configuração
+`cache/dir` sobrepõe-se aos dois.
+
+Uma entrada é aposentada quando o arquivo muda: a chave guarda o tamanho e a
+data de modificação da aquisição e **os do seu `.wiff.scan`**, que é onde os
+scans estão. O diretório é limitado em 512 MB, cerca de cento e vinte
+infusões, e acima disso as entradas usadas há mais tempo saem primeiro.
+**File ▸ Clear cached spectra…** o esvazia e diz quanto se foi. Medido em nove
+infusões no ZenoTOF: 39,1 MB para as nove, e um segundo *Measure* em cerca de
+metade do tempo do primeiro. Ver [[infusion-report]].
+
+`*.oqcache/` está no `.gitignore` do repositório, junto com os dados brutos:
+ele é derivado de arquivos que nunca são versionados e é reconstruído
+perguntando de novo.
+
 Projetos escritos pelo programa sob o nome anterior, `.opvproj`, são abertos;
 nada novo é escrito com esse sufixo. Um projeto escrito por uma versão mais
 antiga abre em uma mais nova: os campos que a mais nova acrescentou assumem
@@ -75,9 +103,11 @@ manual as PDF…` escreve este manual.
 | O quê | Onde |
 |---|---|
 | preferências | o repositório de configurações da plataforma, organização `OpenQuant`, aplicação `OpenQuant`: geometria da janela, última pasta, painéis recolhidos, o aviso inicial |
+| espectros promediados, sem projeto aberto | `~/Library/Caches/OpenQuant` no macOS, `%LOCALAPPDATA%\OpenQuant\Cache` no Windows, `$XDG_CACHE_HOME/openquant` nos demais — ou onde a configuração `cache/dir` disser |
 | o runtime .NET, quando instalado pelo bootstrap | `~/.dotnet` |
 | assemblies NuGet baixados, o índice do LIPID MAPS | `~/.openquant`, ou o diretório indicado pela variável de ambiente `OPENPEAKVIEW_HOME` |
 
 Apagar `~/.openquant` custa um download dos assemblies e do índice de lipídios
 na próxima vez que cada um for necessário; nada sobre qualquer lote está lá
-dentro.
+dentro. Apagar o diretório de cache custa um **Measure** frio; nada nele é uma
+medição que não possa ser feita de novo a partir dos arquivos.

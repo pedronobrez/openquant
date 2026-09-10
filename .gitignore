@@ -32,6 +32,10 @@ exports/
 !tests/fixtures/*.csv
 !tests/fixtures/*.mol
 
+# Espectros medios guardados em disco ao lado do projeto (spectrum_cache.py):
+# derivados dos ficheiros brutos, reconstruiveis, nunca versionados
+*.oqcache/
+
 # Anotacoes locais sobre os dados, nunca versionadas
 NOTES.local.md
 

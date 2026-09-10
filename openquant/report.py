@@ -62,6 +62,7 @@ SECTIONS = {
     "sampling": "Sampling",
     "mass": "Mass drift",
     "infusions": "Infusions",
+    "infusion-comparison": "Infusion comparison",
     "spectra": "Compared spectra",
     "algorithms": "Integration algorithms",
     "batches": "Batch comparison",
@@ -811,6 +812,93 @@ def _infusions(title: str, summary, breaks: set[str] | None = None) -> str:
     return "".join(parts)
 
 
+def _infusion_comparison(title: str, comparison,
+                         breaks: set[str] | None = None,
+                         most: int = 60) -> str:
+    """
+    Today's infusions against a reference day's, while the comparison stands.
+
+    The same shape as the batch comparison below it, on the other kind of
+    batch: the totals, then every compound at every set of conditions, with
+    the rows that moved first — since what a reader wants pointed at is the
+    standard that no longer looks like itself.
+    """
+    from .infusion_compare import MOVED_PERCENT, SAME_PEAK_PPM, _ions_cell
+
+    parts = [_heading(title, breaks)]
+    parts.append(
+        f'<p class="meta">{_escape(comparison.reference)} is the reference, '
+        f"read from its project: the figures and the averaged, centroided "
+        f"peak list its Infusions tab measured, with no raw file opened. "
+        f"{_escape(comparison.current)} is what is open now. Rows are matched "
+        f"by compound <em>and</em> by conditions — a spray at one "
+        f"collision energy and activation is only ever compared with the "
+        f"reference's at the same ones. The score is the cosine of this "
+        f"day's peaks against the reference's, the same one a library search "
+        f"takes; the reverse asks only whether the reference's peaks are "
+        f"still there. A row is marked where the base peak is more than "
+        f"{SAME_PEAK_PPM:g} ppm from the reference's — which is a "
+        f"different ion and not a mass error — or where its height is "
+        f"more than {MOVED_PERCENT:g}% from it.</p>")
+    parts.append(f"<p>{_escape(comparison.summary())}</p>")
+    ref, cur = comparison.totals()
+
+    def figure(value, decimals=0):
+        return _number(value, decimals) if value is not None else "—"
+
+    parts.append(_table(
+        ["", _escape(comparison.reference), _escape(comparison.current)],
+        [["Infusions", f"{ref['infusions']}", f"{cur['infusions']}"],
+         ["Compounds", f"{ref['compounds']}", f"{cur['compounds']}"],
+         ["Precursors measured", f"{ref['measured']}", f"{cur['measured']}"],
+         ["Median base-peak height", figure(ref["median_height"]),
+          figure(cur["median_height"])],
+         ["Median peaks stored", figure(ref["median_peaks"]),
+          figure(cur["median_peaks"])],
+         ["Median own-record score", figure(ref["median_record"]),
+          figure(cur["median_record"])]],
+        right={1, 2}, widths=["40%", "30%", "30%"]))
+    if comparison.only_reference or comparison.only_current:
+        parts.append(
+            f"<p>{len(comparison.only_reference)} infusion(s) only in the "
+            f"reference: "
+            f"{_escape(', '.join(s.label for s in comparison.only_reference)) or '—'}. "
+            f"{len(comparison.only_current)} only in this day: "
+            f"{_escape(', '.join(s.label for s in comparison.only_current)) or '—'}.</p>")
+
+    rows = sorted(comparison.rows, key=lambda r: (not r.moved, r.score))
+    table = []
+    for row in rows[:most]:
+        name = _escape(row.compound)
+        if row.moved:
+            name = f'<span class="bad">{name}</span>'
+        r, c = row.reference, row.current
+        table.append([name, _escape(row.conditions),
+                      f"{row.score * 100:.0f}", f"{row.reverse * 100:.0f}",
+                      f"{row.matched}/{row.of_reference}",
+                      figure(row.base_gap_ppm, 1),
+                      figure(r.base_height), figure(c.base_height),
+                      figure(row.intensity_change, 1),
+                      f"{_ions_cell(r) or '—'} → "
+                      f"{_ions_cell(c) or '—'}",
+                      figure(row.precursor_ppm_change, 1)])
+    if len(rows) > most:
+        parts.append(f"<p>{most} rows of {len(rows)}: the marked ones first, "
+                     f"then the lowest scores.</p>")
+    parts.append(_table(
+        ["Compound", "Conditions", "Score", "Rev.", "Matched",
+         "Base Δ ppm", "Height (ref.)", "Height (now)", "Δ height %",
+         "Ions found", "Δ precursor ppm"],
+        table, right={2, 3, 4, 5, 6, 7, 8, 10},
+        empty="No infusion is in both days at the same conditions.",
+        widths=["13%", "12%", "6%", "6%", "8%", "9%", "10%", "10%", "9%",
+                "9%", "8%"]))
+    for row in comparison.moved:
+        parts.append(f'<p class="foot">{_escape(row.label)}: '
+                     f'{_escape(row.why)}.</p>')
+    return "".join(parts)
+
+
 #: how wide the compared-spectra picture is printed, in pixels of the ninety-
 #: six dots to the inch that Qt's `width` attribute means. The body of an A4
 #: page with these margins is 177 mm, which is 669 of them, so this fills the
@@ -1232,6 +1320,12 @@ def build_html(session, title: str = "Batch report",
     infusions = getattr(session, "infusion_summary", None)
     if infusions is not None and not len(infusions.rows):
         infusions = None
+    # and the comparison of those infusions against a reference day's,
+    # which stands only while somebody has run one
+    against = getattr(session, "infusion_comparison", None)
+    if against is not None and not (against.rows or against.only_reference
+                                    or against.only_current):
+        against = None
     # printed while there is a history to print: a section saying nothing was
     # changed by hand would be on every report of a batch nobody touched
     trail = getattr(session, "audit", None)
@@ -1244,6 +1338,7 @@ def build_html(session, title: str = "Batch report",
              and (key != "algorithms" or comparison is not None)
              and (key != "mass" or drift is not None)
              and (key != "infusions" or infusions is not None)
+             and (key != "infusion-comparison" or against is not None)
              and (key != "spectra" or spectra is not None)
              and (key != "batches" or batches is not None)
              and (key != "audit" or (trail is not None and len(trail)))]
@@ -1284,6 +1379,8 @@ def build_html(session, title: str = "Batch report",
                                 bool(getattr(session, "recalibrate", False))))
         elif key == "infusions":
             parts.append(_infusions(name, infusions, breaks))
+        elif key == "infusion-comparison":
+            parts.append(_infusion_comparison(name, against, breaks))
         elif key == "spectra":
             parts.append(_spectra(name, spectra, breaks))
         elif key == "algorithms":

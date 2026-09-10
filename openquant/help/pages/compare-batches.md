@@ -43,4 +43,7 @@ column poses, and the one that a single batch cannot answer about itself.
 
 The same shape as [[compare-algorithms]], which puts three algorithms
 side by side on one batch; this puts two batches side by side on one
-method.
+method. A tray of infused standards is a batch of another kind, and
+[[compare-infusions]] puts two days of those side by side — matched by
+compound and by collision energy, and scored on the spectra rather than on
+the areas.

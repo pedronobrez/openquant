@@ -121,3 +121,9 @@ that did. Several standards falling together at one verification is what
 says which, and that judgement is the analyst's — this draws the charts
 that make it possible. **Export CSV…** writes every record with what each
 chart said above the rows.
+
+It also needs records, which means somebody has to have written them. The
+same two rules — fifty ppm for *the same ion*, twenty per cent for *the
+same response* — are applied to a whole tray at once by
+[[compare-infusions]], which reads a reference day out of its project file
+instead of out of a library, and needs nothing to have been added to one.

@@ -68,10 +68,22 @@ class Session(QtCore.QObject):
         #: the last comparison against a reference batch, likewise
         self.batch_comparison = None
         #: the last run of infusion_report.summarise: every open infusion,
-        #: one row each. Derived and not saved — it is a few seconds of
-        #: reading per compound, and a table stored without the spectra
-        #: behind it could not be checked against them.
+        #: one row each. Measured on request and never restored as a live
+        #: measurement — it is a few seconds of reading per compound, and a
+        #: table put back without the spectra behind it could not be checked
+        #: against them. Its figures and peak lists *are* written into the
+        #: project, and come back as `infusion_stored` below.
         self.infusion_summary = None
+        #: the summary the project was *saved* with, read back as figures
+        #: and peak lists rather than as spectra — `infusion_compare`
+        #: writes it under `infusions` when one stands. It is what a later
+        #: day is compared against, and it is deliberately not the live
+        #: measurement above: that one is measured from the open files and
+        #: this one is what the file remembers.
+        self.infusion_stored = None
+        #: the last comparison of the open infusions against a reference
+        #: project's saved summary, likewise derived and not saved
+        self.infusion_comparison = None
         #: the spectra the Explorer is holding together — a
         #: spectra_compare.SpectrumComparison, kept in step with its spectrum
         #: pane and dropped when the pins are cleared. Derived and not saved:
@@ -160,6 +172,8 @@ class Session(QtCore.QObject):
         self.mass_corrections = {}
         self.batch_comparison = None
         self.infusion_summary = None
+        self.infusion_stored = None
+        self.infusion_comparison = None
         self.spectra_comparison = None
         self.view = {}
         self.entries.clear()
@@ -274,7 +288,35 @@ class Session(QtCore.QObject):
             self.view = dict(self.view_source() or {})
         return self.view
 
+    def saved_infusions(self) -> dict | None:
+        """
+        The infusion summary to write into the project, or None.
+
+        The live measurement when the Infusions tab has made one, and
+        otherwise whatever the project was opened with — so that saving a
+        project again does not throw away the reference somebody measured
+        last month. Written as figures and peak lists (`infusion_compare`),
+        which is what a comparison needs and what a file can hold: the
+        spectra themselves stay in the acquisitions.
+        """
+        from . import infusion_compare
+
+        summary = self.infusion_summary
+        if summary is not None and len(getattr(summary, "rows", []) or []):
+            name = (os.path.splitext(os.path.basename(self.project_path))[0]
+                    if self.project_path else "")
+            return infusion_compare.summary_to_dict(summary, name=name)
+        if self.infusion_stored is not None and len(self.infusion_stored):
+            return infusion_compare.summary_to_dict(self.infusion_stored)
+        return None
+
     def to_dict(self) -> dict:
+        # the version is not bumped for the infusion summary: the key is
+        # additive and every reader that does not know it opens the project
+        # exactly as it did before
+        from .infusion_compare import PROJECT_KEY
+
+        infusions = self.saved_infusions()
         return {
             "version": 5,
             "method": self.method.to_dict(),
@@ -285,6 +327,7 @@ class Session(QtCore.QObject):
             "recalibrate": self.recalibrate,
             "view": self.current_view(),
             "audit": self.audit.to_dict(),
+            **({PROJECT_KEY: infusions} if infusions else {}),
         }
 
     def save_project(self, path: str) -> None:
@@ -347,6 +390,16 @@ class Session(QtCore.QObject):
         # likewise absent from every project written before this existed,
         # which loads with an empty trail rather than an invented one
         self.audit = AuditTrail.from_dict(data.get("audit"))
+        # absent from every project written before this existed, and from
+        # every project whose Infusions tab was never asked to measure —
+        # which is not an error, and is why nothing is invented for it
+        from . import infusion_compare
+
+        stored = data.get(infusion_compare.PROJECT_KEY)
+        self.infusion_stored = (
+            infusion_compare.summary_from_dict(
+                stored, name=os.path.splitext(os.path.basename(path))[0])
+            if isinstance(stored, dict) and stored.get("rows") else None)
         self.project_path = path
         self.sigMethodChanged.emit()
         self.sigSamplesChanged.emit()

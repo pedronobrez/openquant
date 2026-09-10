@@ -11,9 +11,13 @@ Nothing is measured until asked. Averaging a whole run, centroiding a quarter
 of a million points, searching a library and scoring every infusion of a
 compound against the others is a few seconds per compound, so *Measure* waits
 to be pressed and the table stays as it was until it is pressed again. The
-summary is held on the session and not saved with the project: it is derived
-from the files, and a table stored without the spectra behind it could not be
-checked against them.
+summary is held on the session and is never *re-measured* from a project: it
+is derived from the files.
+
+What the project does save, once a summary stands, is the figures of the
+table and the averaged, centroided peak list behind every row — see
+`infusion_compare`, which is what *Compare infusions…* reads back to put a
+reference day beside this one without opening a raw file.
 """
 
 from __future__ import annotations
@@ -98,6 +102,14 @@ class InfusionsPanel(QtWidgets.QWidget):
         self.btn_csv.setToolTip("The table as it stands, every column")
         self.btn_csv.setEnabled(False)
         bar.addWidget(self.btn_csv)
+        self.btn_compare = QtWidgets.QPushButton("Compare infusions…")
+        self.btn_compare.setToolTip(
+            "These infusions against a reference project's — compound by "
+            "compound and at the same collision energy and activation. The "
+            "reference is read from its project file, which has to have "
+            "been saved with a measured summary in it; no raw file is opened")
+        self.btn_compare.setEnabled(False)
+        bar.addWidget(self.btn_compare)
         bar.addStretch(1)
         layout.addLayout(bar)
 
@@ -124,6 +136,7 @@ class InfusionsPanel(QtWidgets.QWidget):
         self.btn_measure.clicked.connect(self.measure)
         self.btn_report.clicked.connect(self.write_report)
         self.btn_csv.clicked.connect(self.export_csv)
+        self.btn_compare.clicked.connect(self.compare_infusions)
         session.sigSamplesChanged.connect(self._invalidate)
 
         from .help_window import describe
@@ -191,6 +204,7 @@ class InfusionsPanel(QtWidgets.QWidget):
         """A file opened or closed makes the table a description of a batch
         that is no longer the open one."""
         self.session.infusion_summary = None
+        self.session.infusion_comparison = None
         self.reload()
 
     # -- content -------------------------------------------------------------- #
@@ -214,6 +228,7 @@ class InfusionsPanel(QtWidgets.QWidget):
         self.table.resizeColumnsToContents()
         self.btn_report.setEnabled(bool(rows))
         self.btn_csv.setEnabled(bool(rows))
+        self.btn_compare.setEnabled(bool(rows))
         self._describe()
         self.sigRowsChanged.emit(len(rows))
 
@@ -319,6 +334,52 @@ class InfusionsPanel(QtWidgets.QWidget):
         self._report(f"{len(rows)} infusion(s) written to "
                      f"{os.path.basename(path)}.")
         return path
+
+    def compare_infusions(self, path: str = ""):
+        """
+        These infusions against a reference project's saved summary.
+
+        The reference is read from the project file alone — the figures and
+        the peak lists its Infusions tab measured — so a reference whose
+        acquisitions have moved to another disk is still a reference. A
+        project that never measured one holds nothing to compare against,
+        which is said in those words rather than shown as an empty table.
+        """
+        from ..infusion_compare import compare_infusions, read_summary
+        from .infusion_compare_dialog import InfusionCompareDialog
+
+        summary = self.summary
+        if summary is None or not summary.rows:
+            self.status.setText("Measure first; there is nothing to compare.")
+            return None
+        if not path:
+            start = self.settings.value("io/last_dir", "", type=str)
+            path, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self, "Reference project", start,
+                "OpenQuant project (*.oqproj *.opvproj)")
+            if not path:
+                return None
+            self.settings.setValue("io/last_dir", os.path.dirname(path))
+        try:
+            reference = read_summary(path)
+        except (OSError, ValueError) as exc:
+            self._report(f"Could not read {os.path.basename(path)}: {exc}")
+            return None
+        if reference is None:
+            self._report(f"{os.path.basename(path)} holds no infusion "
+                         f"summary: open it, press Measure on the Infusions "
+                         f"tab and save it again.")
+            return None
+        comparison = compare_infusions(
+            summary, reference,
+            current_name=(os.path.splitext(os.path.basename(
+                self.session.project_path))[0]
+                if self.session.project_path else "the open infusions"))
+        self.session.infusion_comparison = comparison
+        self._dialog = InfusionCompareDialog(comparison, self)
+        self._dialog.show()
+        self._report(comparison.summary())
+        return comparison
 
     def export_csv(self, path: str = "") -> str:
         """The whole table, not the selection: a summary with rows left out

@@ -408,3 +408,10 @@ own library, and [[standard-history]] reads the accumulated records of one
 compound back as a control chart: the cosine against the first record, the
 base peak's ppm from it, and the base peak's height, over the days they
 were acquired.
+
+The tray as a whole is the other half of that question, and
+[[compare-infusions]] is where it is asked: this table against the one a
+reference project saved, matched by compound and by conditions. Press
+**Measure** before saving a project and the project keeps these figures and
+every row's averaged peak list, which is what a later day is compared
+against.

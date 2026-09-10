@@ -622,6 +622,25 @@ UV detector, is not implemented there) — untested on real Windows.
   never did. Measured on CA-d4: 7 of 97 predicted ions at 22 eV against 2
   of 97 at 45 eV, 29/39 against the CID record with the energy difference
   stated, 2→4 pages, 0.3–1.0 s each.
+- **A library record states its precursor twice, and only one of them is a
+  mass.** `PrecursorMZ` is what its author typed; `Formula` +
+  `Precursor_type` is what the ion weighs. `LibraryEntry.exact_precursor`
+  computes the second (`chemistry.adduct_from_name`, `mass_from_formula`);
+  `search` admits a record on **either** mass, measures Δ ppm against the
+  formula's where there is one (`LibraryHit.delta_basis`), and gates on the
+  sign the adduct declares, keeping records that declare none.
+  `precursor_disagrees` flags a record whose two numbers differ by more
+  than a whole unit in the last written decimal and never by less than
+  `DISAGREE_FLOOR_PPM` (25): over 449,525 records of a five-decimal lipid
+  MSP, 96.8% sit inside 0.5 ppm of their formula and 309 inside 2, then
+  nothing until one record 116,411 ppm out — half a unit calls 30% of that
+  library broken, 25 ppm calls one and it is. On 143 real product-ion
+  channels 2,414 of 2,415 hits took Δ from the formula, and the gate
+  refused every record to a negative query while removing nothing from a
+  positive one. On the bile-acid infusions no score or rank moved and
+  DCA-d4's flattering +0.0 ppm became −28.0: record and query carried the
+  same mistyped `414.34`, and its own scan measures 414.3525. `format_msp`
+  writes `430.35`, not `430.3500`.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

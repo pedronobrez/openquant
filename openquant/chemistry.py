@@ -1469,7 +1469,7 @@ def adduct_evidence(mz, intensity, formula: str, candidates=None,
                          f"past ±{tolerance:g}")
         else:
             item.present = True
-            item.measured = _measured_ratios(mz, intensity, pattern)
+            item.measured = measured_ratios(mz, intensity, pattern)
             if has_isotope_satellites(mz, intensity, item.found_mz,
                                       adduct.charge, tolerance=SURVEY_PEAK_DA):
                 item.pattern = pattern_agreement(item.measured, item.expected)
@@ -1508,13 +1508,24 @@ def _as_adducts(candidates, polarity=None) -> list[Adduct]:
     return out
 
 
-def _measured_ratios(mz: np.ndarray, intensity: np.ndarray,
-                     pattern: list[tuple[float, float]]) -> tuple[float, ...]:
-    """The heights at the pattern's masses, as shares of the first."""
+def measured_ratios(mz: np.ndarray, intensity: np.ndarray,
+                    pattern: list[tuple[float, float]],
+                    window: float = SURVEY_PEAK_DA) -> tuple[float, ...]:
+    """
+    The heights at the pattern's masses, as shares of the first.
+
+    Public because the same reading is wanted of a *fragment* on a
+    product-ion spectrum (`explain.isotope_evidence`), and two functions
+    reading a satellite two ways would be one too many. `window` is how far
+    either side of each mass a height may be taken from: `SURVEY_PEAK_DA` is
+    right for a survey, where the neighbours are whole nominal masses apart,
+    and too wide for a labelled fragment, whose own `-1D` rung sits 2.9 mDa
+    from where its M+1 belongs.
+    """
     heights = []
     for target, _abundance in pattern:
-        window = (mz >= target - SURVEY_PEAK_DA) & (mz <= target + SURVEY_PEAK_DA)
-        heights.append(float(intensity[window].max()) if window.any() else 0.0)
+        inside = (mz >= target - window) & (mz <= target + window)
+        heights.append(float(intensity[inside].max()) if inside.any() else 0.0)
     if not heights or heights[0] <= 0:
         return ()
     return tuple(round(h / heights[0], 6) for h in heights)

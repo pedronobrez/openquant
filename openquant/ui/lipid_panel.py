@@ -9,7 +9,8 @@ from PyQt6 import QtCore, QtWidgets
 
 from .. import lipidmaps
 from ..chemistry import ADDUCTS, NEUTRAL
-from ..explain import rank_candidates, significant_peaks
+from ..explain import (isotope_column, rank_candidates,
+                       significant_peaks)
 from ..matching import PRECURSOR_MATCH_DA
 from ..structure import predict
 from .structure_view import StructureView
@@ -355,14 +356,17 @@ class LipidPanel(QtWidgets.QWidget):
 
         self.explain_tree = QtWidgets.QTreeWidget()
         self.explain_tree.setHeaderLabels(["Candidate", "Explains", "Peaks",
-                                           "Formula", "Adduct", "ppm"])
+                                           "Formula", "Adduct", "ppm",
+                                           "Isotopes"])
         self.explain_tree.setColumnWidth(0, 190)
         self.explain_tree.setAlternatingRowColors(True)
         self.explain_tree.setToolTip(
             "Select a candidate to mark the peaks it accounts for on the "
             "spectrum. Adduct is the ion the precursor was taken to be — the "
             "row says what that adduct does when it breaks up, and ppm is how "
-            "far the written precursor sits from that candidate through it")
+            "far the written precursor sits from that candidate through it. "
+            "Isotopes is what each matched fragment's own M+1 said — hover "
+            "the cell for the sentence")
         explain_layout.addWidget(self.explain_tree, 2)
 
         self.match_tree = QtWidgets.QTreeWidget()
@@ -1200,6 +1204,7 @@ class LipidPanel(QtWidgets.QWidget):
         self.explain_tree.clear()
         self.match_tree.clear()
         for explanation in ranked:
+            found = self._isotopes_for(explanation)
             row = QtWidgets.QTreeWidgetItem(self.explain_tree, [
                 explanation.name,
                 f"{explanation.share * 100:.1f}%",
@@ -1208,8 +1213,12 @@ class LipidPanel(QtWidgets.QWidget):
                 explanation.adduct,
                 "" if explanation.precursor_ppm is None
                 else f"{explanation.precursor_ppm:+.1f}",
+                isotope_column(found, explanation.isolation),
             ])
             row.setData(0, ROLE_EXPLANATION, explanation)
+            # the count is a summary of a finding per ion, so the sentence
+            # that says what the counts mean goes where it is read
+            row.setToolTip(6, explanation.isotope_summary)
             # what the adduct does when the ion breaks up decides which masses
             # the spectrum can hold, so it belongs on the row rather than in
             # the reader's memory
@@ -1241,6 +1250,21 @@ class LipidPanel(QtWidgets.QWidget):
                 f"No structure in the curated database sits within "
                 f"±{PRECURSOR_MATCH_DA:g} Da of {precursor:.4f} {where}. "
                 "A theoretical species may still exist in the computed set.")
+
+    def _isotopes_for(self, explanation):
+        """
+        What each matched ion's own satellites say, where there is a spectrum.
+
+        Off the whole spectrum rather than off `self._peaks`, for the reason
+        the purity solve is: a satellite is tenths of a per cent of the base
+        peak and `significant_peaks` has already dropped it.
+        """
+        from ..explain import isotope_evidence
+
+        spectrum = getattr(self, "_spectrum", None)
+        if spectrum is None:
+            return {}
+        return isotope_evidence(explanation, spectrum[0], spectrum[1])
 
     def _record_basis(self, explanation) -> None:
         """

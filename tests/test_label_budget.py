@@ -22,6 +22,15 @@ from PyQt6 import QtWidgets
 from openquant import labels as label_rule
 from openquant import spectra_compare as sc
 from openquant.ui.plots import SpectrumView, Trace
+from openquant.ui import plots
+
+
+@pytest.fixture(autouse=True)
+def _one_font_everywhere(monkeypatch):
+    """The label width is what decides a collision, and the platform's
+    default font made Windows draw a different set than macOS for the same
+    spectrum; the pane tests pin it to one width."""
+    monkeypatch.setattr(plots, "_label_half_width", lambda text: 22.0)
 
 
 @pytest.fixture(scope="module")

@@ -54,6 +54,17 @@ class Trace:
     source: object | None = None  # originating Channel, when there is one
 
 
+def _label_half_width(text) -> float:
+    """
+    Half the width a label takes on screen, from the font it was given.
+
+    A function of its own so the suite can pin it: the collision rule
+    depends on it, and the platform's default font gave different label
+    sets on Windows than on macOS for the same spectrum.
+    """
+    return float(text.boundingRect().width()) / 2.0
+
+
 def _sticks(x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Turn centroids into a single polyline of vertical sticks, split by NaN."""
     xs = np.repeat(x, 3)
@@ -1123,7 +1134,7 @@ class SpectrumView(BasePlot):
             text.setPos(mz, intensity * sign)
             text.mz = mz
             text.below = below
-            half = text.boundingRect().width() / 2.0
+            half = _label_half_width(text)
             centre = (mz - x_low) * scale
             anchor_x = 0.5
             if centre - half < 0:

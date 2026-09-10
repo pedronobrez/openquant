@@ -742,7 +742,10 @@ def _corrections(corrections: dict | None, applied: bool) -> str:
              f"errors, sign flipped; a linear term is fitted only where "
              f"{MIN_SLOPE_LOCK_MASSES} or more of them span "
              f"{MIN_MASS_SPAN:,.0f} Da and leave-one-out prediction of a "
-             f"held-out lock mass says it helps. The correction moves the extraction "
+             f"held-out lock mass says it helps. A direct infusion has no "
+             f"second injection to be read against and is fitted instead "
+             f"from its own precursor ladder, which the Source column names. "
+             f"The correction moves the extraction "
              f"window, never the reader\u2019s arithmetic. "
              f"{_escape(describe(corrections))}. "
              + ("The results in this report were produced with it applied."
@@ -753,7 +756,8 @@ def _corrections(corrections: dict | None, applied: bool) -> str:
     rows = []
     for correction in corrections.values():
         rows.append([
-            _escape(correction.sample_name), f"{len(correction.lock_masses)}",
+            _escape(correction.sample_name), _escape(correction.source),
+            f"{len(correction.lock_masses)}",
             _number(correction.offset_ppm if correction.usable else None, 1),
             _number(correction.slope_ppm_per_da * 1000
                     if correction.linear else None, 2),
@@ -762,10 +766,10 @@ def _corrections(corrections: dict | None, applied: bool) -> str:
             _number(correction.worst_after, 1),
             _escape(correction.verdict)])
     parts.append(_table(
-        ["Injection", "Lock masses", "Offset ppm", "Slope ppm/kDa",
+        ["Injection", "Source", "Lock masses", "Offset ppm", "Slope ppm/kDa",
          "Median before", "Median after", "Worst after", "Verdict"],
-        rows, right={1, 2, 3, 4, 5, 6}, empty="Nothing fitted.",
-        widths=["18%", "8%", "9%", "10%", "11%", "10%", "10%", "24%"]))
+        rows, right={2, 3, 4, 5, 6, 7}, empty="Nothing fitted.",
+        widths=["15%", "13%", "7%", "8%", "9%", "10%", "9%", "9%", "20%"]))
     return "".join(parts)
 
 
@@ -805,8 +809,8 @@ def _infusions(title: str, summary, breaks: set[str] | None = None) -> str:
         [[_escape(cell) for cell in row.report_cells()]
          for row in summary.rows],
         right={3, 4, 9}, empty="No infusion is open.",
-        widths=["9%", "13%", "9%", "4%", "8%", "13%", "10%", "5%", "13%",
-                "4%", "12%"]))
+        widths=["8%", "12%", "8%", "4%", "7%", "12%", "9%", "5%", "12%",
+                "4%", "11%", "8%"]))
     parts.append(f'<p class="foot">{_escape(summary.summary())}. '
                  f'Measured {summary.taken.strftime("%Y-%m-%d %H:%M")}.</p>')
     return "".join(parts)

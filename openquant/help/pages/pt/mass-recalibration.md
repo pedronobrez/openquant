@@ -184,8 +184,135 @@ Ajuste, leia a tabela por injeção, e ligue apenas quando as lock masses o
 justificarem — e então processe o lote de novo para que os resultados
 acompanhem.
 
+## Uma infusão se recalibra sobre o próprio precursor
+
+Tudo acima precisa de um **lote**: um composto de composição conhecida medido
+injeção após injeção, para que o erro de uma injeção possa ser distinguido do
+de outra. Uma [[direct-infusion|infusão direta]] é uma única aquisição de um
+único frasco, e não existe segunda injeção alguma.
+
+Ela não precisa de uma. Uma infusão pulveriza o composto por um ou dois
+minutos e a média da corrida inteira traz o precursor **junto com os seus
+próprios fragmentos**, e a aritmética já sabe onde cada um deles pertence: o
+aduto intacto, o `[M+H]+` que um amônio deixa para trás ao entregar o seu
+próton, a escada de perdas cumulativas de água e — para um padrão marcado — o
+degrau ao lado de cada um deles que perdeu um deutério junto com a água. São
+os mesmos íons que a aba [[lipid-maps|LIPID MAPS]] prevê para uma fórmula.
+Cada um deles que de fato esteja lá é uma medida independente de uma massa
+que a fórmula já conhece, na mesma aquisição, em uma massa diferente.
+
+Assim, uma infusão é recalibrada contra **si mesma**. Nada precisa ser
+digitado: o composto é a parte do nome do arquivo antes do primeiro `_`, a
+sua fórmula vem da tabela de padrões, do LIPID MAPS ou da notação abreviada
+de lipídios, e o aduto é lido do precursor que o canal recebeu. O ajuste
+acontece quando o Explorer promedia a corrida inteira, e o título do painel
+passa a dizer `· recalibrated −5.6 ppm from 8 rungs`.
+
+### As regras
+
+- um degrau é casado com o **pico mais forte dentro de 20 ppm** de onde a
+  fórmula o coloca, e apenas acima de 100 contagens — o mesmo piso a que o
+  [[accurate-precursor|precursor acurado]] submete uma varredura de survey,
+  porque abaixo dele uma janela é um trecho de eixo cujo ponto mais alto é
+  ruído;
+- a correção é a **mediana ponderada pela intensidade** dos erros dos
+  degraus, com o sinal invertido. Ponderada, porque um pico de doze mil
+  contagens localiza o seu centroide melhor do que um de cem; mediana, porque
+  um degrau apanhado sobre um vizinho não deve arrastar o eixo parte do
+  caminho até ele;
+- é um **deslocamento e mais nada**. Os degraus de um precursor abrangem as
+  águas que ele pode perder — 72 Da no caso mais amplo medido — contra os
+  100 Da de que uma inclinação precisa antes de ser extrapolação, e a linha
+  diz isso com a abrangência do próprio arquivo;
+- um degrau que discorda dos demais por mais de **25 ppm** é um íon diferente
+  dentro da janela: ele é descartado e nomeado;
+- abaixo de **dois** degraus, nada é corrigido e a linha diz por quê. Dois, e
+  não um: um único degrau é o precursor medido contra a sua própria fórmula
+  sem nada que o verifique, e uma infusão não tem outra injeção contra a qual
+  ser lida.
+
+### A que isso se aplica
+
+Enquanto o interruptor está ligado, e atrás do mesmo interruptor de tudo o que
+está acima: o espectro promediado no [[explorer|Explorer]] e o seu título, a
+[[lipid-maps|explicação]] — cuja linha de base passa a imprimir o erro do
+degrau mais forte cru *e* corrigido — o [[spectral-library|registro escrito
+na sua própria biblioteca]], cujo comentário diz que o eixo foi movido e por
+quanto, o parágrafo *Mass axis* do [[infusion-report|relatório de infusão]]
+por composto, a coluna *Mass axis* da aba Infusions, e uma linha própria na
+tabela por injeção da aba **Mass drift**, com *from the precursor ladder*
+como fonte.
+
+### O que as nove infusões reais disseram
+
+Nove infusões de ácidos biliares em um ZenoTOF 7600, modo positivo, um único
+canal de íons produto cada e **nenhuma varredura de survey**. As quatro
+últimas colunas são a explicação do LIPID MAPS rodada no seu próprio padrão
+de 5 ppm, no eixo como medido e no eixo corrigido:
+
+| infusão | degraus | deslocamento | dispersão | abrangência | íons antes | depois | intensidade antes | depois |
+|---|---|---|---|---|---|---|---|---|
+| CA-d4, EAD 12 eV | 3 | −5.3 ppm | 7.5 ppm | 54 Da | 2 de 56 | 2 de 56 | 2.8% | **83.7%** |
+| CA-d4, EAD 22 eV | 8 | −5.6 | 6.3 | 72 | 5 de 56 | **8 de 56** | 14.0% | **63.6%** |
+| CA-d4, CID 45 eV | 3 | +3.6 | 1.3 | 19 | 2 de 56 | 2 de 56 | 24.2% | 24.2% |
+| DCA-d4, EAD 22 eV | 8 | −8.6 | 19.9 | 72 | 2 de 41 | **5 de 41** | 16.2% | **53.0%** |
+| DCA-d4, CID 40 eV | 3 | +6.2 | 2.5 | 18 | 1 de 41 | **3 de 41** | 1.6% | **17.1%** |
+| TDCA-d4, EAD 22 eV | 5 | −7.5 | 3.3 | 37 | 0 de 104 | **5 de 104** | 0.0% | **78.4%** |
+| TDCA-d4, CID 30 eV | 4 | +1.8 | 4.1 | 37 | 4 de 104 | 4 de 104 | 72.1% | 72.1% |
+| CA-d4, EAD 12 eV, `_TESTEARTIGO` | — | — | — | — | — | — | — | — |
+| CA-d4, EAD 22 eV, `_TESTEARTIGO` | — | — | — | — | — | — | — | — |
+
+Sete das nove são corrigidas, com três a oito degraus cada, por −8.6 a
++6.2 ppm. As duas que não são constituem a recusa correta: o par
+`_TESTEARTIGO` tem o nome do ácido cólico-d4 e isola **839.56**, que não é
+nenhum dos adutos daquela fórmula, de modo que não há escada a procurar e a
+linha diz *no lock mass* com esse motivo. O sinal não é o mesmo para as sete
+— as aquisições EAD leem alto, as CID leem baixo — e é por isso que isto é
+ajustado por aquisição e nunca uma vez só para o instrumento.
+
+O número que diz que valeu a pena é o último par de colunas. O CA-d4 a EAD
+22 eV chegando a **8 de 56 íons e 63.6% da intensidade a 5 ppm** é exatamente
+o que aquele arquivo dava a *10 ppm* no eixo não corrigido: a correção
+devolve a tolerância que havia sido alargada para absorvê-la, e uma
+tolerância que absorve um erro de eixo é uma tolerância que não testa nada.
+Nada piorou: os dois arquivos que não se movem já estavam dentro de 5 ppm nos
+seus degraus mais fortes e voltam idênticos até o décimo de por cento.
+
+### E um registro seu viaja entre ativações
+
+Um registro escrito a partir de uma infusão e procurado com outra do mesmo
+composto — a ida e volta da [[spectral-library|biblioteca própria]] — antes e
+depois, na tolerância de pico padrão da busca, 20 ppm, e a 5 ppm:
+
+| registro / consulta | tolerância | eixo | pontuação | reversa | casados | mediana &#124;Δ ppm&#124; |
+|---|---|---|---|---|---|---|
+| CA-d4 EAD 22 / EAD 12 | 20 ppm | como medido | 67.4 | 67.4 | 12 de 42 | 0.6 |
+| | | recalibrado | 67.4 | 67.4 | 12 de 42 | 0.6 |
+| DCA-d4 EAD 22 / CID 40 | 20 ppm | como medido | 33.4 | 70.0 | 21 de 39 | 12.3 |
+| | | recalibrado | **34.5** | **71.3** | **23 de 39** | **2.6** |
+| TDCA-d4 EAD 22 / CID 30 | 20 ppm | como medido | 61.5 | 69.4 | 8 de 32 | 8.6 |
+| | | recalibrado | 61.5 | 69.4 | 8 de 32 | **2.1** |
+| CA-d4 EAD 22 / EAD 12 | 5 ppm | como medido | 65.9 | 66.3 | 11 de 42 | 0.4 |
+| | | recalibrado | 65.9 | 66.3 | 11 de 42 | 0.5 |
+| DCA-d4 EAD 22 / CID 40 | 5 ppm | como medido | **sem acerto** | | | |
+| | | recalibrado | **31.8** | **69.6** | **19 de 39** | 2.5 |
+| TDCA-d4 EAD 22 / CID 30 | 5 ppm | como medido | **sem acerto** | | | |
+| | | recalibrado | **61.0** | **69.1** | **7 de 32** | 1.9 |
+
+A 20 ppm as pontuações quase não se movem — um casamento que já vinha dando
+certo continua dando — mas as *massas* concordam muito melhor: a distância
+mediana entre um pico do registro e o pico medido sobre o qual ele caiu vai
+de 12.3 para 2.6 ppm e de 8.6 para 2.1. A **5 ppm** esse é o resultado
+inteiro. Dois dos três pares não casam de modo algum nos eixos do próprio
+instrumento, porque as duas aquisições estavam a 14.8 e 9.3 ppm uma da outra;
+ambos casam depois que cada uma é corrigida contra o seu próprio precursor. O
+par do CA-d4 já estava a 0.3 ppm de distância e não se move, o que é o
+controle: a correção não fabrica concordância onde já havia alguma.
+
 ## Ver também
 
+- [[direct-infusion]] — o que faz de uma amostra uma infusão
+- [[infusion-report]] — onde o parágrafo *Mass axis* é impresso
 - [[mass-drift]] — a medida a partir da qual isto é ajustado
 - [[accurate-precursor]] — a medida da massa de um componente na varredura de
   survey

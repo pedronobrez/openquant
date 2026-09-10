@@ -109,6 +109,13 @@ UNEXPLAINED_LISTED = 10
 #: at most this many matched fragments are tabulated, strongest first.
 FRAGMENTS_LISTED = 40
 
+#: the tolerance the mass-axis paragraph counts its before and after at. Not
+#: the 20 ppm the ladder is *matched* in — that window is wide enough to
+#: absorb the error being measured, so counting in it would show nothing —
+#: but the 5 ppm the LIPID MAPS tab's own-structure box defaults to, which is
+#: the tolerance somebody would actually judge an identification at.
+LADDER_CHECK_PPM = 5.0
+
 #: how wide the head-to-tail pictures are drawn, in the pixels of the ninety-
 #: six dots to the inch that Qt's `width` attribute means — the same measure
 #: the batch report's compared spectra use.
@@ -692,6 +699,22 @@ class InfusionReport:
     #: the averaged spectrum, drawn for paper; one trace
     spectrum: SpectrumComparison | None = None
     label_floor: float = LABEL_MIN_RELATIVE
+    # -- the mass axis ------------------------------------------------------- #
+    #: the correction fitted from this infusion's own precursor ladder, or
+    #: the refusal that says why there is none. Held whether or not it was
+    #: applied: a vial that was looked at and left alone is a finding.
+    correction: object | None = None
+    #: whether the spectrum above is on the corrected axis. False with a
+    #: correction present means the switch was off — the fit stands and the
+    #: masses printed are the instrument's own.
+    recalibrated: bool = False
+    #: the same explanation run on the axis as measured, for the before and
+    #: after. Only where a correction was applied; None otherwise.
+    raw_explanation: Explanation | None = None
+    #: the formula and adduct the ladder was predicted from, and where they
+    #: came from. Kept so the paragraph can count the ladder's own ions
+    #: before and after without asking the session a second time.
+    axis_subject: "AxisSubject | None" = None
     # -- what was run -------------------------------------------------------- #
     explanation: Explanation | None = None
     #: what the prediction was made from, in words — the sentence that says
@@ -1033,8 +1056,8 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
                centroid: bool = False,
                spectrum: tuple | None = None,
                measure_precursor: bool = True,
-               formula: str = "", components=(),
-               own_library=None) -> InfusionReport:
+               formula: str = "", components=(), own_library=None,
+               session=None, recalibrated: bool = False) -> InfusionReport:
     """
     A report for one open infusion, reading the file for what it needs.
 
@@ -1048,6 +1071,12 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
     method isolates. Both are optional and neither is read for anything else:
     without them the verdict can still say *not this*, and with them it can
     sometimes say what instead.
+
+    `session`, where it is given, is what the mass correction lives on: the
+    axis is fitted from this infusion's own precursor ladder (`fit_axis`) and
+    applied when the session's switch is on. `recalibrated` says the caller
+    has already applied it to the `spectrum` handed in — the Explorer draws
+    the corrected axis, so its report would otherwise correct it twice.
     """
     sample = getattr(entry, "sample", None)
     channel = channel if channel is not None else (
@@ -1093,6 +1122,28 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
         if averaged is None:
             return report
         mz, intensity, report.rt_range = averaged
+    # the mass axis, before anything reads a mass off it. Fitted from the
+    # uncorrected average, which is why this comes before the correction is
+    # applied and why a caller that has already applied one says so.
+    if session is not None:
+        report.axis_subject = axis_subject(
+            session, report.compound, report.written_precursor,
+            report.polarity)
+        if recalibrated:
+            report.correction = getattr(session, "mass_corrections", {}).get(
+                getattr(entry, "key", ""))
+        else:
+            report.correction = fit_axis(session, entry, channel,
+                                         spectrum=(mz, intensity))
+        applied = None
+        try:
+            applied = session.correction_for(getattr(entry, "key", ""))
+        except Exception:
+            applied = None
+        if applied is not None:
+            report.recalibrated = True
+            if not recalibrated:
+                mz = np.asarray(applied.apply(mz), dtype=float)
     report.spectrum = one_spectrum(
         f"{report.sample} · {report.channel}", mz, intensity,
         title=f"{report.title} — averaged over the whole run",
@@ -1365,13 +1416,26 @@ def from_explorer(explorer, compound: str = "", others=(),
     # not asked
     formula = str(getattr(getattr(explanation, "record", None), "formula", "")
                   or "")
+    # the pane's axis is already corrected exactly when a correction is in
+    # force for this sample, so that — and not the switch alone — is what
+    # says whether the report would be correcting it a second time. Only
+    # where the pane actually handed a spectrum over: with none, the report
+    # reads its own average and has to correct that itself.
+    session = getattr(explorer, "session", None)
+    corrected = False
+    if session is not None and spectrum is not None:
+        try:
+            corrected = session.correction_for(ref.entry.key) is not None
+        except Exception:
+            corrected = False
     return report_for(
         ref.entry, ref.channel, compound=compound, explanation=explanation,
         basis=basis, deuterium=deuterium, hit=hit, library=library,
         adduct=adduct, others=others, label_floor=float(floor),
         centroid=centroid, spectrum=spectrum,
         measure_precursor=measure_precursor, formula=formula,
-        components=components, own_library=own)
+        components=components, own_library=own,
+        session=session, recalibrated=corrected)
 
 
 def infusions_open(source) -> "list[tuple[SampleEntry, object]]":
@@ -1425,7 +1489,7 @@ SUMMARY_COLUMNS = (
     "Compound", "Sample", "Isolated", "Mode", "CE (eV)", "Scans",
     "Base peak m/z", "Precursor written", "Found m/z", "Δ ppm", "Height",
     "Adduct", "Ions found", "Library record", "Score", "Reverse", "Matched",
-    "Record Δ ppm", "Record CE", "Other infusions", "File")
+    "Record Δ ppm", "Record CE", "Other infusions", "Mass axis", "File")
 
 #: the columns of `SUMMARY_COLUMNS` that hold a number, and what to sort each
 #: on. Keyed by the column's **name**: `keys()` used to hold the positions,
@@ -1433,7 +1497,7 @@ SUMMARY_COLUMNS = (
 #: the right without anything failing.
 _SORT_KEYS = ("CE (eV)", "Scans", "Base peak m/z", "Precursor written",
               "Found m/z", "Δ ppm", "Height", "Ions found", "Score",
-              "Reverse", "Matched", "Record Δ ppm")
+              "Reverse", "Matched", "Record Δ ppm", "Mass axis")
 
 #: what goes in the report's table. A4 does not hold nineteen columns and a
 #: table squeezed into it is a table nobody reads, so the precursor and the
@@ -1441,7 +1505,7 @@ _SORT_KEYS = ("CE (eV)", "Scans", "Base peak m/z", "Precursor written",
 #: the parts.
 REPORT_COLUMNS = ("Compound", "Sample", "Mode", "Scans", "Base peak m/z",
                   "Precursor", "Adduct", "Ions found", "Library record",
-                  "Score", "Other infusions")
+                  "Score", "Other infusions", "Mass axis")
 
 _NOT_ALPHANUMERIC = re.compile(r"[^a-z0-9]+")
 
@@ -1478,6 +1542,22 @@ def _sticks(report: InfusionReport):
     from .processing import centroid_spectrum
 
     return centroid_spectrum(trace.mz, trace.intensity)
+
+
+def raw_sticks(report: InfusionReport):
+    """
+    The report's centroids put back on the axis the instrument read.
+
+    `MassCorrection.undo` rather than a second copy of the spectrum: an
+    offset inverts exactly, so this is the measured masses to the last
+    digit and costs one multiplication per peak instead of holding a
+    quarter of a million points twice. None when there is nothing to undo.
+    """
+    sticks = _sticks(report)
+    if sticks is None or not report.recalibrated or report.correction is None:
+        return None
+    return (np.asarray(report.correction.undo(sticks[0]), dtype=float),
+            sticks[1])
 
 
 def _report_note(report: InfusionReport) -> str:
@@ -1586,6 +1666,24 @@ class InfusionRow:
     def score(self) -> float | None:
         return None if self.report.hit is None else self.report.hit.score
 
+    @property
+    def mass_axis(self) -> str:
+        """
+        What the recalibration did to this vial, in one cell.
+
+        Says whether it was *applied* as well as what it was: a fit that
+        stands with the switch off is a measurement of the axis and not a
+        change to the numbers beside it, and a cell that read
+        "−5.2 ppm, 4 rungs" either way would make the two look the same.
+        """
+        correction = self.report.correction
+        if correction is None:
+            return "not fitted"
+        if not correction.usable:
+            return correction.note.split(" \u00b7 ")[0] or "no lock mass"
+        return correction.short + ("" if self.report.recalibrated
+                                   else ", not applied")
+
     # -- the row ------------------------------------------------------------- #
     def cells(self) -> list[str]:
         report = self.report
@@ -1628,6 +1726,7 @@ class InfusionRow:
             (", ".join(f"{label} {score * 100:.0f}/{reverse * 100:.0f}"
                        for label, score, reverse, _m, _o in self.others)
              if self.others else self.others_note or "—"),
+            self.mass_axis,
             report.file,
         ]
 
@@ -1664,6 +1763,9 @@ class InfusionRow:
             "Reverse": hit.reverse if hit is not None else None,
             "Matched": float(hit.matched) if hit is not None else None,
             "Record Δ ppm": hit.delta_ppm if hit is not None else None,
+            "Mass axis": (self.report.correction.offset_ppm
+                          if self.report.correction is not None
+                          and self.report.correction.usable else None),
         }
         keys: list = list(cells)
         for name in _SORT_KEYS:
@@ -1711,6 +1813,7 @@ class InfusionRow:
             (", ".join(f"{label} {score * 100:.0f}"
                        for label, score, _r, _m, _o in self.others)
              if self.others else self.others_note or "—"),
+            self.mass_axis,
         ]
 
 
@@ -1815,7 +1918,8 @@ def cross_compare(reports, peaks=None, centroid: bool = False) -> None:
                 note=_report_note(other)))
 
 
-def _headless_explanation(session, report: InfusionReport, entry=None):
+def _headless_explanation(session, report: InfusionReport, entry=None,
+                          sticks=None):
     """
     What the component table alone can say about this spectrum.
 
@@ -1824,6 +1928,10 @@ def _headless_explanation(session, report: InfusionReport, entry=None):
     makes for a formula of one's own. It is offered only where the compound
     is a component of the method **by name**: guessing a formula for a file
     name would be inventing the denominator of "n of m".
+
+    `sticks` overrides the spectrum this reads, so the same explanation can
+    be run twice — once on the corrected axis and once on the axis as
+    measured — which is the before and after the mass-axis paragraph prints.
     """
     from .explain import explain_formula, formula_ions, significant_peaks
 
@@ -1840,7 +1948,7 @@ def _headless_explanation(session, report: InfusionReport, entry=None):
         return None, "", why
     if not formula_ions(component.formula, adduct):
         return None, "", f"{adduct} is not an adduct this program knows"
-    sticks = _sticks(report)
+    sticks = _sticks(report) if sticks is None else sticks
     if sticks is None:
         return None, "", "no spectrum to explain"
     peaks = significant_peaks(*sticks)
@@ -1934,6 +2042,161 @@ def _headless_adduct(component, report: InfusionReport,
     return "", f"{component.name} carries no adduct"
 
 
+# --------------------------------------------------------------------------- #
+# the mass axis, from this infusion's own precursor
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class AxisSubject:
+    """What an infusion's ladder is predicted from, and where it came from."""
+
+    formula: str = ""
+    deuterium: int = 0
+    adduct: str = ""
+    #: the sentence that says which of the two below answered, and how
+    why: str = ""
+
+    def __bool__(self) -> bool:
+        return bool(self.formula and self.adduct)
+
+
+def axis_subject(session, compound: str, written_precursor: float | None,
+                 polarity: str = "") -> AxisSubject:
+    """
+    The formula and adduct to build one infusion's lock-mass ladder from.
+
+    The method's component table first, exactly as the explanation reads it,
+    because a component the analyst filled in is a declaration. Where the
+    method does not hold the compound the **name** is asked —
+    `explain.resolve_name`, the standards table then LIPID MAPS then the
+    lipid shorthand — which `_headless_explanation` deliberately refuses to
+    do, and the difference is worth stating. A guessed formula is a bad
+    denominator for "n of m found": it changes the number of ions offered
+    and nothing in the answer says the guess was wrong. It is a safe source
+    of a *lock mass*, because a lock mass has to be **found**: a wrong
+    formula predicts masses that are not in the spectrum, no rung matches,
+    and the fit refuses rather than correcting onto a compound that is not
+    in the vial. The two questions have different failure modes and get
+    different rules.
+
+    The adduct comes from the written precursor either way, since that is
+    the one number the instrument was actually given. The nine real
+    infusions are named after the bottle — `CA-d4`, `DCA-d4`, `TDCA-d4` —
+    and the standards table answers all three; the two isolating 839.56 get
+    no adduct at all, which is the correct answer for a channel that is not
+    the compound its file is named after.
+    """
+    from .chemistry import (FormulaError, format_formula, identify_adduct,
+                            parse_formula)
+    from .explain import resolve_name
+
+    component = component_for(getattr(session, "method", None), compound)
+    formula, deuterium, where = "", 0, ""
+    if component is not None and component.formula:
+        shim = InfusionReport(compound=compound,
+                              written_precursor=written_precursor,
+                              polarity=polarity)
+        formula, deuterium, _labels = _headless_labels(component, shim)
+        where = f"the method's formula for {component.name}"
+    if not formula:
+        resolved = resolve_name(compound)
+        if resolved is None:
+            return AxisSubject(why=f"“{compound or 'this file'}” is not in the "
+                                   f"method, in the standards table, in LIPID "
+                                   f"MAPS or in the lipid shorthand, so "
+                                   f"nothing says what mass to look for")
+        formula, deuterium = resolved.formula, resolved.labels
+        where = f"{compound} read from {resolved.source}"
+    try:
+        counts = dict(parse_formula(formula))
+    except (FormulaError, ValueError):
+        return AxisSubject(why=f"“{formula}” is not a formula this can read")
+    if deuterium:
+        if counts.get("H", 0) < deuterium:
+            return AxisSubject(why=f"{formula} has fewer than the {deuterium} "
+                                   f"hydrogen(s) its name replaces")
+        counts["D"] = counts.get("D", 0) + deuterium
+        counts["H"] -= deuterium
+    labelled = format_formula(counts)
+    if not written_precursor:
+        return AxisSubject(formula=labelled, why=(
+            f"{where}, but the channel writes no precursor, so nothing says "
+            f"which adduct it was ionised as"))
+    choice = identify_adduct(labelled, float(written_precursor),
+                             polarity or None)
+    if choice.adduct is None:
+        return AxisSubject(formula=labelled,
+                           why=f"{where}; {choice.reason}")
+    return AxisSubject(formula=labelled, deuterium=0,
+                       adduct=choice.adduct.name,
+                       why=f"{where}; {choice.reason}")
+
+
+def fit_axis(session, entry, channel, spectrum=None, refit: bool = False):
+    """
+    One infusion's mass correction, fitted once and kept on the session.
+
+    `session.mass_corrections[entry.key]` is where every correction in this
+    program lives, so the extraction, the report and the mass-drift panel's
+    table need nothing new to see this one. The fit is cached there — the
+    refusals too, since a vial that was looked at and left alone is a row
+    with a reason on it and not a missing row.
+
+    `spectrum` is the **uncorrected** profile average when the caller has it
+    already; the correction cannot be fitted from a corrected axis, which is
+    why the Explorer passes what it read before applying anything.
+
+    Returns the correction, or None where this is not an infusion or there is
+    no session to keep it on.
+    """
+    from .processing import centroid_spectrum
+    from .recalibrate import fit_infusion
+
+    corrections = getattr(session, "mass_corrections", None)
+    if corrections is None or entry is None or channel is None:
+        return None
+    key = getattr(entry, "key", "")
+    if not refit and key in corrections:
+        return corrections[key]
+    sample = getattr(entry, "sample", None)
+    try:
+        if sample is None or not verdict_for(sample):
+            return None
+    except Exception:
+        return None
+
+    info = getattr(channel, "info", None)
+    compound = compound_of(getattr(entry, "name", ""))
+    subject = axis_subject(session, compound,
+                           getattr(info, "precursor", None),
+                           str(getattr(info, "polarity", "") or ""))
+    name = str(getattr(entry, "name", "") or "")
+    if not subject:
+        from .recalibrate import LADDER_SOURCE, MassCorrection
+
+        correction = MassCorrection(
+            sample_key=key, sample_name=name, source=LADDER_SOURCE,
+            unit="rung",
+            note=f"no lock mass: {subject.why}; the axis stands as measured")
+        corrections[key] = correction
+        return correction
+
+    if spectrum is None:
+        averaged = average_spectrum(channel)
+        if averaged is None:
+            return None
+        spectrum = (averaged[0], averaged[1])
+    mz, intensity = centroid_spectrum(np.asarray(spectrum[0], dtype=float),
+                                      np.asarray(spectrum[1], dtype=float))
+    correction = fit_infusion(mz, intensity, subject.formula, subject.adduct,
+                              deuterium=subject.deuterium,
+                              sample_key=key, sample_name=name)
+    if correction is None:
+        return None
+    correction.note = " · ".join(p for p in (subject.why, correction.note) if p)
+    corrections[key] = correction
+    return correction
+
+
 def _best_record(library, report: InfusionReport):
     """The best record of the analyst's own library for this spectrum."""
     from .library import PRECURSOR_TOLERANCE_DA
@@ -2025,7 +2288,7 @@ def summarise(session, library=None, explanations=None,
             report = report_for(entry, channel, compound=compound,
                                 library=name,
                                 components=getattr(method, "components", ()),
-                                own_library=library)
+                                own_library=library, session=session)
             explanation = given.get(compound)
             note = ""
             if explanation is not None:
@@ -2034,6 +2297,13 @@ def summarise(session, library=None, explanations=None,
             else:
                 report.explanation, report.basis, note = \
                     _headless_explanation(session, report, entry)
+                # the same explanation on the axis as the instrument read it,
+                # so the mass-axis paragraph can say what the correction
+                # bought rather than only what it was
+                raw = raw_sticks(report)
+                if report.explanation is not None and raw is not None:
+                    report.raw_explanation = _headless_explanation(
+                        session, report, entry, sticks=raw)[0]
             hit, library_note = _best_record(library, report)
             report.hit = hit
             row = InfusionRow(
@@ -2233,6 +2503,127 @@ def _verdict(report: InfusionReport, breaks: set[str] | None = None) -> str:
     parts.append("<p>" + " ".join(_escape(s) for s in report.sentences())
                  + "</p>")
     return "".join(parts)
+
+
+def _mass_axis_block(report: InfusionReport,
+                     breaks: set[str] | None = None) -> str:
+    """
+    What the mass axis was doing, and what was done about it.
+
+    Printed above the spectrum because it governs every mass printed below
+    it, and printed even where nothing was corrected: "no lock mass" is a
+    statement about this vial, and a page that simply omitted the paragraph
+    would leave a reader unable to tell a corrected axis from an
+    uncorrected one.
+    """
+    from .recalibrate import CONSENSUS_SPREAD_PPM, MIN_LADDER_RUNGS
+
+    correction = report.correction
+    if correction is None:
+        return ""
+    parts = [_sub("Mass axis", breaks),
+             f'<p class="meta">A direct infusion has no second injection to '
+             f'be read against, so it is recalibrated against itself: the '
+             f'precursor and every rung of its own ladder — the core ion a '
+             f'labile adduct leaves behind, the cumulative waters, and the '
+             f'−1D rungs a labelled standard sheds — each of which is a mass '
+             f'the formula already knows, measured here. The correction is '
+             f'the intensity-weighted median of their errors, sign flipped, '
+             f'and an offset only: the rungs of one precursor span the '
+             f'waters it can lose, which is far short of the range they '
+             f'would be used over. A rung disagreeing with the rest by more '
+             f'than {CONSENSUS_SPREAD_PPM:g} ppm is a different ion in the '
+             f'window and is dropped; under {MIN_LADDER_RUNGS} rungs, '
+             f'nothing is corrected.</p>']
+    # the note only where it is not the verdict already: a refusal's verdict
+    # *is* its note, and printing it twice reads as two findings
+    aside = ("" if correction.note == correction.verdict
+             else f' <span class="meta">{_escape(correction.note)}</span>')
+    parts.append(f'<p>{_escape(correction.verdict)}'
+                 + (" It <b>is</b> applied to every mass on these pages."
+                    if report.recalibrated else
+                    " It is <b>not</b> applied: the masses on these pages "
+                    "are the ones the instrument read.")
+                 + aside + "</p>")
+    before, after = correction.before_ppm, correction.after_ppm
+    order = sorted(range(len(correction.lock_masses)),
+                   key=lambda i: -correction.lock_masses[i].intensity)
+    rows = []
+    for index in order:
+        rung = correction.lock_masses[index]
+        rows.append([_escape(rung.component), _number(rung.theoretical, 4),
+                     _number(rung.measured, 4), f"{before[index]:+.1f}",
+                     f"{after[index]:+.1f}", _number(rung.intensity, 0)])
+    parts.append(_table(
+        ["Rung", "Theoretical m/z", "Measured m/z", "Δ ppm before",
+         "Δ ppm after", "Intensity"], rows, right={1, 2, 3, 4, 5},
+        empty="No rung of the ladder was found in this spectrum.",
+        widths=["26%", "16%", "16%", "14%", "14%", "14%"]))
+    parts.append(_ladder_before_after(report))
+    parts.append(_ions_before_after(report))
+    return "".join(parts)
+
+
+def _ladder_before_after(report: InfusionReport) -> str:
+    """
+    How many of the ladder's own ions land on a peak, before and after.
+
+    Counted at `LADDER_CHECK_PPM` and not at the window the rungs were
+    *matched* in: that window has to be wide enough to hold the error being
+    measured, so counting inside it would show nothing moving. This is the
+    one before-and-after that can always be printed — its denominator is the
+    precursor's own formula, which is what the paragraph is about — where
+    the explanation's, below, needs an explanation to have been run.
+    """
+    from .explain import match_peaks, precursor_ions, significant_peaks
+
+    subject, correction = report.axis_subject, report.correction
+    if not subject or correction is None or not correction.usable:
+        return ""
+    now = _sticks(report)
+    before = raw_sticks(report)
+    if now is None or before is None:
+        return ""
+    ions = precursor_ions(subject.formula, subject.adduct, subject.deuterium)
+    if not ions:
+        return ""
+
+    def found(sticks) -> int:
+        # `significant_peaks` and not every stick in the window: a product
+        # scan averaged over a whole run has thousands of baseline centroids
+        # and a 5 ppm window somewhere in the middle of one will always hold
+        # something. This is the same floor the explanation is scored on, so
+        # the two sentences count the same peaks.
+        return len(match_peaks(significant_peaks(*sticks), ions,
+                               LADDER_CHECK_PPM))
+
+    return (f'<p class="foot">Of the {len(ions):,} ion(s) '
+            f'{_escape(subject.formula)} as {_escape(subject.adduct)} can '
+            f'give without cutting a bond, {found(before)} landed on a peak '
+            f'within {LADDER_CHECK_PPM:g} ppm on the axis as measured and '
+            f'{found(now)} once corrected — counted over the peaks above '
+            f'the noise share, which is the floor an explanation is scored '
+            f'on.</p>')
+
+
+def _ions_before_after(report: InfusionReport) -> str:
+    """
+    What the correction bought the explanation, in one sentence.
+
+    The figure that matters is not the residual — the correction was fitted
+    to make that small — but how many of the *other* predicted ions land on
+    a peak once the axis has moved, at the tolerance the explanation was
+    run at. Absent where the same explanation was not run both ways.
+    """
+    now, before = report.explanation, report.raw_explanation
+    if now is None or before is None:
+        return ""
+    return (f'<p class="foot">At the tolerance this explanation was run at, '
+            f'the axis as measured accounted for {before.matched} of '
+            f'{before.predicted} predicted ion(s) and '
+            f'{before.share * 100:.1f}% of the intensity; corrected, '
+            f'{now.matched} of {now.predicted} and '
+            f'{now.share * 100:.1f}%.</p>')
 
 
 def _spectrum_block(report: InfusionReport,
@@ -2449,6 +2840,7 @@ def build_section(report: InfusionReport, heading: str = "",
         _heading(heading, breaks) if heading else "",
         _identity(report),
         _verdict(report, breaks),
+        _mass_axis_block(report, breaks),
         _spectrum_block(report, breaks),
         _explanation_block(report, breaks),
         _library_block(report, breaks),

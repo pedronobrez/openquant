@@ -1382,7 +1382,9 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
 
         Returns the axis and the words for the title. The title has to say so:
         a mass axis that has been moved and does not admit it is the one thing
-        worse than a mass axis that is wrong.
+        worse than a mass axis that is wrong — and it says what the correction
+        stood on, since "recalibrated −5.2 ppm" from one measurement and from
+        four are not the same claim.
         """
         if entry is None:
             entry = self.active_ref.entry if self.active_ref else None
@@ -1391,8 +1393,39 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         if correction is None or mz.size == 0:
             return mz, ""
         middle = float(np.median(mz))
-        return (correction.apply(mz),
-                f" · recalibrated {float(correction.ppm_at(middle)):+.1f} ppm")
+        said = f" · recalibrated {float(correction.ppm_at(middle)):+.1f} ppm"
+        count = len(correction.lock_masses)
+        if count:
+            said += f" from {count} {correction.plural}"
+        return correction.apply(mz), said
+
+    def _fit_infusion_axis(self, mz, intensity,
+                           entry: SampleEntry | None = None) -> None:
+        """
+        Fit this infusion's axis from its own precursor ladder, once.
+
+        Called with the average **as the instrument read it**, before
+        `_recalibrate_mz` moves it: a correction cannot be fitted from an
+        axis that has already been corrected. The result — the refusals
+        included — goes on `session.mass_corrections`, which is where every
+        correction in this program lives, so the extraction, the report and
+        the mass-drift panel's table need nothing new to see it. Fitting is
+        skipped when the key already has one; the drift panel clears them
+        when the batch changes.
+        """
+        if entry is None:
+            entry = self.active_ref.entry if self.active_ref else None
+        channel = self.active_ref.channel if self.active_ref else None
+        if entry is None or channel is None:
+            return
+        from ..infusion_report import fit_axis
+
+        try:
+            fit_axis(self.session, entry, channel, spectrum=(mz, intensity))
+        except Exception:
+            # a reader that cannot say, a formula that cannot be parsed: the
+            # spectrum is still worth drawing, uncorrected
+            pass
 
     def _recipe(self, channel, scan: int | None = None,
                 rt0: float | None = None, rt1: float | None = None,
@@ -1468,6 +1501,10 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             return
         intensity, subtracted = self._apply_background(channel, mz, intensity)
         first, last = channel.scans_in_range(rt0, rt1)
+        if whole_run:
+            # the whole run averaged is what an infusion's ladder is read
+            # from, and this is the one place that has it uncorrected
+            self._fit_infusion_axis(mz, intensity)
         mz, recalibrated = self._recalibrate_mz(mz)
         # the scan numbers are what says which part of the run was taken;
         # a whole-run average has no other part to be told from, so the tag
@@ -1860,7 +1897,8 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             # sign is a fact about the acquisition rather than a choice
             polarity = str(getattr(info, "polarity", "") or "")
         self.lipid_panel.set_spectrum(mz, intensity, precursor, polarity,
-                                      self._survey_spectrum(precursor))
+                                      self._survey_spectrum(precursor),
+                                      recalibration=self._axis_sentence())
         self.show_panel_named("LIPID MAPS")
         self.lipid_panel.explain_spectrum()
 
@@ -1909,6 +1947,22 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             return 0.0, 0.0
         return float(times[0]), float(times[-1])
 
+    def _axis_sentence(self) -> str:
+        """
+        What the mass axis of the spectrum on screen has had done to it.
+
+        Empty when nothing was applied, which is the ordinary case; a
+        sentence naming the offset, what it stood on and the strongest
+        rung's error raw and corrected when something was. It goes into the
+        basis line of the explanation, because a prediction scored at 5 ppm
+        against an axis that was moved by five is a different claim from one
+        scored against the instrument's own numbers.
+        """
+        entry = self.active_ref.entry if self.active_ref else None
+        correction = (self.session.correction_for(entry.key)
+                      if entry is not None else None)
+        return "" if correction is None else correction.basis_sentence()
+
     def _library_spectrum(self):
         """
         The spectrum on screen as the library panel wants it.
@@ -1931,7 +1985,10 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         precursor = None
         context = {"title": self.spectrum.title,
                    # whether the adduct on the record was measured or assumed
-                   "adduct": self.lipid_panel.adduct_provenance}
+                   "adduct": self.lipid_panel.adduct_provenance,
+                   # a record written from a corrected axis and one written
+                   # from the instrument's are different measurements
+                   "recalibration": self._axis_sentence()}
         if self.active_ref is not None:
             context["file"] = self.active_ref.filename
             context["sample"] = self.active_ref.alias

@@ -239,13 +239,38 @@ class Session(QtCore.QObject):
     # -- method ------------------------------------------------------------------ #
     def set_components(self, components: list[Component]) -> None:
         self.method.replace_all(components)
+        self._forget_ladder_corrections()
         self.sigMethodChanged.emit()
 
     def notify_method_changed(self) -> None:
         # Conditioning is baked into the cached traces, so a method change
         # invalidates them.
         self.cache.clear()
+        self._forget_ladder_corrections()
         self.sigMethodChanged.emit()
+
+    def _forget_ladder_corrections(self) -> None:
+        """
+        Drop the corrections an infusion's own precursor ladder gave.
+
+        The formula and the adduct the ladder is predicted from come from the
+        component table, so editing it changes what the fit would find — and
+        a fit is kept rather than repeated, since it costs a centroiding of
+        the whole averaged spectrum. Filling in a formula that was missing
+        must therefore not leave the vial reading "no lock mass" for the rest
+        of the session. The batch's own corrections are not touched here:
+        they come from `mass_drift`, which the Mass drift tab invalidates
+        itself, and throwing them away on a method edit would silently
+        change every extraction window.
+        """
+        from .recalibrate import LADDER_SOURCE
+
+        stale = [key for key, correction in self.mass_corrections.items()
+                 if getattr(correction, "source", "") == LADDER_SOURCE]
+        for key in stale:
+            del self.mass_corrections[key]
+        if stale:
+            self.cache.clear()
 
     # -- results ------------------------------------------------------------------ #
     def set_results(self, results: ResultsSet) -> None:

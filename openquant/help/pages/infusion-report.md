@@ -26,6 +26,21 @@ nine real infusions this was built against; they carry one product-ion
 channel each and nothing else — the precursor is read from the averaged
 product-ion spectrum itself and the report says so in those words.
 
+**The mass axis**, always — whether it was corrected or not. A direct
+infusion has no second injection to be read against, so it is recalibrated
+against **itself**: the precursor is in the average together with its own
+fragments, and arithmetic already knows where each of those belongs. The
+paragraph names every rung that was found, its theoretical and measured
+mass, its error before and after the correction and its height; the offset
+and how many rungs it stood on; and, where the same explanation was run
+both ways, how many predicted ions landed on a peak on the axis as measured
+and on the corrected one. Where nothing was corrected the paragraph says
+that instead, with the reason — a vial that was looked at and left alone is
+a finding, and a page that omitted the paragraph would leave a reader unable
+to tell a corrected axis from an uncorrected one. The rules and what the
+nine real infusions gave are in
+[[mass-recalibration|An infusion recalibrates on its own precursor]].
+
 **The averaged spectrum**, drawn for paper at the label floor the pane was
 left at, so the masses printed are the masses that were on screen — see
 [[chromatograms-and-spectra]] for the floor and how labels are placed. Under
@@ -99,7 +114,10 @@ how many scans were averaged, the base peak, the precursor as the method wrote
 it and as it was measured back with its error in ppm and its height, the ions
 found of those predicted, the best record of your own library with both scores
 and the record's collision energy against this acquisition's, and the other
-infusions of the same compound with the cosine each way.
+infusions of the same compound with the cosine each way, and the **Mass
+axis** column — the correction fitted from that vial's own precursor ladder,
+whether it was applied, or the reason there is none. See
+[[mass-recalibration]].
 
 Two of those come from somewhere the report of one vial gets them from a
 person:

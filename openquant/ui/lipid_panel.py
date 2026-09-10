@@ -63,6 +63,11 @@ class LipidPanel(QtWidgets.QWidget):
         #: `chemistry.AdductEvidence` per candidate from the last automatic
         #: adduct, for a report to print
         self.adduct_evidence: list = []
+        #: what was done to the mass axis of the peaks on screen, in the
+        #: Explorer's words, or empty for the instrument's own numbers. Part
+        #: of the basis, since a 5 ppm tolerance against an axis moved by
+        #: five is not the same test as one against the axis as measured.
+        self._recalibration = ""
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
@@ -781,7 +786,8 @@ class LipidPanel(QtWidgets.QWidget):
 
     # -- explaining a measured spectrum --------------------------------------- #
     def set_spectrum(self, mz, intensity, precursor: float | None = None,
-                     polarity: str = "", survey=None) -> None:
+                     polarity: str = "", survey=None,
+                     recalibration: str = "") -> None:
         """
         Hand the panel the spectrum on screen, ready to be explained.
 
@@ -798,11 +804,14 @@ class LipidPanel(QtWidgets.QWidget):
         precursor and becomes a measurement: the exact mass of the ion and
         its isotope pattern, both of which the product-ion scan cannot show,
         since Q1 threw away everything but the one mass.
+        `recalibration` is what was done to the mass axis of these peaks, in
+        the caller's own words, or empty for the instrument's own numbers.
         """
         self._peaks = significant_peaks(mz, intensity)
         self._polarity = str(polarity or "")
         self._survey = survey
         self.adduct_evidence = []
+        self._recalibration = str(recalibration or "")
         if precursor:
             self.explain_precursor.setText(f"{precursor:g}")
         self.modes.setCurrentIndex(3)
@@ -1026,7 +1035,7 @@ class LipidPanel(QtWidgets.QWidget):
             basis = (f"the precursor {formula} as {adduct.name} and its neutral "
                      f"losses — a formula has no bonds to cut")
         self._record_context = None
-        self.explanation_basis = f"{basis}; {reason}"
+        self.explanation_basis = self._with_axis(f"{basis}; {reason}")
         self.explanation_adduct = adduct.name
         self._show_ranked([explanation], None, adduct.name)
         self._place_labels(explanation, peaks, deuterium)
@@ -1037,6 +1046,19 @@ class LipidPanel(QtWidgets.QWidget):
                      f"{explanation.matched} of {explanation.predicted} "
                      f"predicted ion(s) matched, "
                      f"{len(explanation.unexplained(peaks))} peak(s) not.")
+
+    def _with_axis(self, basis: str) -> str:
+        """
+        The basis line with what was done to the mass axis on the end.
+
+        Only where something was done. The sentence carries the raw and the
+        corrected error of the rung the offset mostly rests on, because
+        either alone is misleading: the corrected figure is a residual the
+        fit was made to produce, and the raw one does not say the axis
+        moved.
+        """
+        return (f"{basis} \u00b7 {self._recalibration}"
+                if self._recalibration else basis)
 
     def _explain_nothing(self, reason: str) -> None:
         """

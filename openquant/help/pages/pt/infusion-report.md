@@ -65,7 +65,7 @@ foi feita não ganha frase nenhuma:
   …"** com o motivo. Uma janela que contém menos de cem contagens não é uma
   massa: é reportada como pouco demais para medir, com a altura que foi
   encontrada, em vez de virar um centroide tirado sobre ruído.
-- **"7 of the 97 ions predicted for … were found"** — o denominador é quantos
+- **"8 of the 56 ions predicted for … were found"** — o denominador é quantos
   íons a previsão ofereceu, para que o leitor veja do que a contagem é uma
   fração, e o pico não explicado mais intenso é nomeado ao lado.
 - **"Best library record … at score 29, reverse 39"**, com a diferença entre
@@ -110,10 +110,18 @@ Dois desses vêm de onde o relatório de um frasco os recebe de uma pessoa:
 
 - **a explicação.** Quando a aba [[lipid-maps]] já explicou o espectro na
   tela, é essa explicação que é usada. Caso contrário o composto é procurado
-  na tabela de componentes pelo nome, e quando o componente carrega uma
-  fórmula e um aduto ele é explicado a partir delas — o caminho da fórmula do
-  [[annotate-from-lipid-maps]], executado sem ninguém na aba. Um composto que
-  o método não tem não é adivinhado: a célula diz isso.
+  na tabela de componentes pelo nome e explicado a partir da sua fórmula — o
+  caminho da fórmula do [[annotate-from-lipid-maps]], executado sem ninguém
+  na aba. Duas coisas são lidas em vez de tomadas como escritas, pelo mesmo
+  motivo: uma tabela de componentes não tem coluna para nenhuma das duas. As
+  **marcações**: um componente chamado `CA-d4` cuja fórmula é a não marcada
+  `C24H40O5` é explicado como `C24H36D4O5`, porque o nome diz quatro e a
+  aritmética estaria fora por 4,025 Da. E o **aduto**: o do próprio
+  componente é usado quando concorda com o precursor escrito do canal, e
+  quando não concorda, o precursor vence e a linha de base diz isso — ver
+  *Adutos* em [[lipid-maps]]. Um composto que o método não tem não é
+  adivinhado, e um precursor que nenhum aduto da fórmula alcança não é
+  explicado de modo algum: a célula diz qual dos dois.
 - **a biblioteca.** A biblioteca própria — o MSP a que *Add spectrum to
   library…* acrescenta, veja [[spectral-library]] — buscada na precisão do
   próprio precursor escrito. Um registro feito de uma destas mesmas infusões
@@ -140,8 +148,8 @@ escreve a tabela inteira, todas as colunas, com ou sem seleção: um resumo com
 linhas faltando não é a coisa que ele diz ser.
 
 A linha de resumo sob a tabela é a única frase que a tabela soma — *3
-compound(s) in 9 infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm; 10
-of 305 predicted ion(s) found across 9; 4 with an own record above 60 in
+compound(s) in 9 infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm; 34
+of 458 predicted ion(s) found across 7; 4 with an own record above 60 in
 own-bileomics.msp* — apenas contagens, cada uma com aquilo contra o que foi
 contada. O relatório do lote imprime a tabela e essa linha como a sua seção
 *Infusions*, enquanto a medida valer: veja [[report]].
@@ -149,14 +157,16 @@ contada. O relatório do lote imprime a tabela e essa linha como a sua seção
 ## Medido
 
 Ácido cólico-d4 infundido num ZenoTOF 7600, o mesmo frasco sob duas
-ativações, explicado a partir da fórmula `C24H40O5` como `[M+H]+` com quatro
-deutérios não posicionados e buscado contra um registro feito da corrida CID:
+ativações, explicado a partir do `C24H40O5` da tabela de componentes — lido
+como `C24H36D4O5` a partir das quatro marcações que o nome declara, e como
+`[M+NH4]+` porque é isso que o 430,35 do canal é — e buscado contra um
+registro feito da corrida CID:
 
 | | CID, 45 eV, 473 scans | EAD, 22 eV, 146 scans |
 |---|---|---|
 | pico base | 359,2870 | 377,3015 |
 | precursor 430,35 no espectro de íons produto | 84 contagens, 1,49% — pouco demais | 430,3489 a 9.415 contagens, **+20,7 ppm** |
-| íons encontrados, de 97 previstos | 2 — 24,2% da intensidade | 7 — 41,9% |
+| íons encontrados, de 56 previstos | 2 — 24,2% da intensidade | 8 — 63,6% |
 | contra o registro CID | 100 / 100, o seu próprio registro | **29 / 39**, 22 de 200 picos |
 | energia de colisão contra a do registro | igual | **22 contra 45 eV** |
 | contra o mesmo composto a 12 eV | 7 / 29 | 67 / 81 |
@@ -172,9 +182,11 @@ segundos.
 As duas linhas que vale reler são as duas últimas da coluna CID. A pontuação
 de 100 na biblioteca é um registro casado contra o espectro do qual ele foi
 feito, o que prova que o arquivo foi escrito e lido de volta e mais nada; e
-2 de 97 íons é o que uma fórmula com três perdas neutras consegue dizer sobre
-um espectro cujo pico base precisa de quatro. Nenhuma das duas é uma falha do
-composto, e o relatório é construído de modo que a página diga qual é qual.
+2 de 56 íons é o que uma fórmula com três perdas neutras consegue dizer sobre
+um espectro CID cuja escada já correu até o fim — os dois que ela acha são a
+perda de três águas e o mesmo íon com uma marcação a menos. Nenhuma das duas
+é uma falha do composto, e o relatório é construído de modo que a página diga
+qual é qual.
 
 ### A aba, nos mesmos nove arquivos
 
@@ -186,16 +198,16 @@ figuras cabeça-cauda que cinco infusões de um composto produzem.
 
 | | precursor encontrado | íons dentre os previstos | registro próprio |
 |---|---|---|---|
-| CA-d4 CID 45 eV | 84 contagens — pouco demais | 0 de 31 | 100, o dele mesmo |
-| CA-d4 EAD 22 eV | 430,3489, **+20,7 ppm** | 1 de 31 | **29** a 45 eV |
-| CA-d4 EAD 12 eV | 430,3488, +20,4 ppm | 1 de 31 | **6** a 45 eV |
-| DCA-d4 CID 40 eV | 33 contagens — pouco demais | 0 de 25 | 99, o dele mesmo |
-| DCA-d4 EAD 22 eV | 414,3525, +30,3 ppm | 1 de 25 | **33** a 40 eV |
-| TDCA-d4 CID 30 eV | 504,3273, +14,6 ppm, 124 contagens | 4 de 50 | 100, o dele |
-| TDCA-d4 EAD 22 eV | 504,3325, +24,9 ppm | 3 de 50 | **61** a 30 eV |
+| CA-d4 CID 45 eV | 84 contagens — pouco demais | 2 de 56 | 100, o dele mesmo |
+| CA-d4 EAD 22 eV | 430,3489, **+20,7 ppm** | 8 de 56 | **29** a 45 eV |
+| CA-d4 EAD 12 eV | 430,3488, +20,4 ppm | 3 de 56 | **6** a 45 eV |
+| DCA-d4 CID 40 eV | 33 contagens — pouco demais | 3 de 41 | 99, o dele mesmo |
+| DCA-d4 EAD 22 eV | 414,3525, +30,3 ppm | 8 de 41 | **33** a 40 eV |
+| TDCA-d4 CID 30 eV | 504,3273, +14,6 ppm, 124 contagens | 5 de 104 | 100, o dele |
+| TDCA-d4 EAD 22 eV | 504,3325, +24,9 ppm | 5 de 104 | **61** a 30 eV |
 
 *3 compound(s) in 9 infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm;
-10 of 305 predicted ion(s) found across 9; 4 with an own record above 60.*
+34 of 458 predicted ion(s) found across 7; 4 with an own record above 60.*
 
 Quatro coisas nessa tabela merecem ser lidas em vez de puladas:
 
@@ -204,7 +216,12 @@ Quatro coisas nessa tabela merecem ser lidas em vez de puladas:
   nome CA-d4 e não são aquisições de CA-d4: o método delas mira **839,56**
   sobre 100–1000, o pico base é 839,23, nove e dezessete contagens ficam na
   janela do precursor, nenhum registro da biblioteca chega a ±0,02 Da de
-  839,56, e a fórmula não explica nenhum dos 31. Elas pontuam **73** uma
+  839,56. A célula de explicação delas agora diz a coisa abertamente —
+  *839.56 is none of the adducts of C24H36D4O5 within ±0.05 Da — closest
+  [M+K]+ at 451.2758* — em vez de reportar zero íons de trinta e um, o que
+  era verdade e deixava o leitor descobrir por quê. O *across 7* na linha
+  acima são essas duas linhas: uma infusão para a qual nada foi explicado não
+  é contada como uma que não achou nada. Elas pontuam **73** uma
   contra a outra e **5 a 10** contra os três arquivos de CA-d4 de verdade. O
   prefixo do nome dizia um composto e o método dizia outro, e a linha é onde
   isso aparece — que é toda a razão de o composto nunca ser mais do que uma
@@ -217,11 +234,16 @@ Quatro coisas nessa tabela merecem ser lidas em vez de puladas:
 - **os erros têm todos o mesmo sinal**, de +14,6 a +30,3 ppm. Um deles, o
   DCA-d4 a +30,3, passa dos 25 ppm que a linha conta e está na página do
   mesmo jeito: a contagem é uma frase, não um veredito.
-- **uma fórmula acha um íon em trinta e um.** Uma fórmula oferece o precursor
-  e as suas perdas neutras e mais nada; estes espectros são feitos de
-  clivagens de anel. É para isso que serve o denominador. A linha com que
-  comparar é a da aba [[lipid-maps]], onde uma estrutura ofereceu 97 íons e
-  achou 7.
+- **uma fórmula acha de dois a oito íons, e quais depende da ativação.** Uma
+  fórmula oferece o precursor, a forma que os seus fragmentos carregam e as
+  perdas neutras dela, e mais nada; o resto destes espectros são clivagens de
+  anel. É para isso que serve o denominador. Nas sete aquisições reais:
+  **34 de 458** íons previstos encontrados, 2 de 56 no CA-d4 sob CID contra 8
+  de 56 sob EAD a 22 eV, 3 de 41 e 8 de 41 no DCA-d4, 5 de 104 dos dois lados
+  no TDCA-d4 — as ativações suaves guardam a escada e as duras já a
+  terminaram. A linha com que comparar é a da aba [[lipid-maps]], onde o
+  mesmo composto como *desenho* é pontuado contra milhares de massas em vez
+  de dezenas.
 
 A coluna da biblioteca é a que diz algo que o resto não diz. Um registro feito
 de uma corrida bate com essa corrida em 100, o que prova que o arquivo foi

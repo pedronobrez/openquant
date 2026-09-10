@@ -678,7 +678,10 @@ def from_explorer(explorer, compound: str = "", others=(),
     if lipids is not None:
         try:
             deuterium = int(lipids.own_deuterium.value())
-            adduct = str(lipids.explain_adduct.currentText())
+            # what it was actually scored as, which the own-structure path
+            # reads off the written precursor rather than off the box
+            adduct = str(getattr(lipids, "explanation_adduct", "")
+                         or lipids.explain_adduct.currentText())
         except Exception:
             deuterium, adduct = 0, adduct
 
@@ -1102,22 +1105,98 @@ def _headless_explanation(session, report: InfusionReport):
                           f"component of the method")
     if not component.formula:
         return None, "", f"{component.name} carries no formula"
-    if not component.adduct:
-        return None, "", f"{component.name} carries no adduct"
-    if not formula_ions(component.formula, component.adduct):
-        return None, "", (f"{component.adduct} is not an adduct this "
-                          f"program knows")
+    formula, deuterium, labelled = _headless_labels(component, report)
+    adduct, why = _headless_adduct(component, report, formula)
+    if not adduct:
+        return None, "", why
+    if not formula_ions(component.formula, adduct):
+        return None, "", f"{adduct} is not an adduct this program knows"
     sticks = _sticks(report)
     if sticks is None:
         return None, "", "no spectrum to explain"
     peaks = significant_peaks(*sticks)
     if not peaks:
         return None, "", "no peak above the noise share to explain"
-    explanation = explain_formula(component.formula, component.adduct, peaks,
-                                  name=component.name)
-    basis = (f"the formula {component.formula} as {component.adduct}, from "
-             f"the component table")
+    explanation = explain_formula(component.formula, adduct, peaks,
+                                  name=component.name, deuterium=deuterium)
+    basis = f"the formula {formula} as {adduct}, {why}{labelled}"
     return explanation, basis, ""
+
+
+def _headless_labels(component, report: InfusionReport):
+    """
+    The labels a component declares in its name but not in its formula.
+
+    A d4 standard is bought, named and filed as `CA-d4`, and the formula
+    beside it is usually the unlabelled one: nothing in the component table
+    has a column for four deuteriums. The name has them, and
+    `chemistry.split_labels` reads a trailing `-d4` the same way the LIPID
+    MAPS tab does. Without this the arithmetic is out by 4.025 Da and no
+    adduct fits the written precursor at all — which is a true statement
+    about the formula as typed and a useless one about the compound.
+
+    A formula that already spells its labels out is left alone: it has said
+    what it is.
+    """
+    from .chemistry import (FormulaError, format_formula, parse_formula,
+                            split_labels)
+
+    try:
+        counts = dict(parse_formula(component.formula))
+    except (FormulaError, ValueError):
+        return component.formula, 0, ""
+    if counts.get("D"):
+        return component.formula, 0, ""
+    for written in (component.name, report.compound):
+        _stem, labels = split_labels(written or "")
+        if labels and counts.get("H", 0) >= labels:
+            counts["D"] = labels
+            counts["H"] -= labels
+            return (format_formula(counts), labels,
+                    f", with the {labels} label(s) {written} is named for")
+    return component.formula, 0, ""
+
+
+def _headless_adduct(component, report: InfusionReport,
+                     formula: str = "") -> tuple[str, str]:
+    """
+    The adduct to explain this infusion's formula with, and where it came from.
+
+    The component table's own is used when it agrees with the channel's
+    written precursor, because that is what the analyst declared. When it
+    disagrees — or when the component carries none — the precursor is
+    asked instead: it is the one number the instrument was actually given,
+    and an ammoniated channel explained as [M+H]+ predicts every fragment
+    17 Da away from anything in the spectrum. The reason travels with the
+    answer, into the basis line under the table.
+    """
+    from .chemistry import adducts_matching, identify_adduct
+
+    precursor = report.written_precursor or None
+    declared = component.adduct or ""
+    formula = formula or component.formula
+    if precursor:
+        choice = identify_adduct(formula, float(precursor),
+                                 report.polarity or None)
+        if declared:
+            fits = [m for m in adducts_matching(formula,
+                                                float(precursor),
+                                                report.polarity or None)
+                    if m.within and m.name == declared]
+            if fits:
+                return declared, "from the component table"
+            if choice.adduct is not None:
+                return choice.adduct.name, (
+                    f"read off the written precursor — {choice.reason}, "
+                    f"not the {declared} the component table carries")
+            return "", (f"{component.name} is written {declared}, and "
+                        f"{choice.reason}")
+        if choice.adduct is not None:
+            return choice.adduct.name, f"read off the written precursor — {choice.reason}"
+        return "", (f"{component.name} carries no adduct and {choice.reason}")
+    if declared:
+        return declared, "from the component table"
+    return "", f"{component.name} carries no adduct"
 
 
 def _best_record(library, report: InfusionReport):

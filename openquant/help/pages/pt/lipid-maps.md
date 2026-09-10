@@ -87,6 +87,10 @@ vários candidatos costumam explicar os mesmos picos, porque isômeros
 fragmentam de modo parecido, e os não explicados são a parte honesta da
 resposta.
 
+A caixa **Adduct** ao lado do precursor é usada duas vezes: para procurar a
+massa no banco de dados, e para dizer qual é o íon precursor de cada
+candidato e o que os seus fragmentos carregam — ver *Adutos*, abaixo.
+
 **Explain spectrum** na barra de ferramentas Processing faz o mesmo a partir
 do cromatograma: toma o espectro do scan atual e o precursor do seu canal.
 
@@ -115,6 +119,17 @@ sob o botão Explain aceita uma de duas coisas:
   dióxido de carbono, ácido fórmico, até três de uma vez, cada uma apenas
   onde a fórmula tem os átomos para ela. Menos do que uma estrutura dá, e
   dito que é.
+- **Um nome**, quando não há nem uma nem outra. Ele é procurado em uma
+  tabela de padrões, depois no LIPID MAPS, depois na notação abreviada de
+  lipídios, e traz de volta uma fórmula, o desenho do banco de dados quando
+  há um, e a contagem de marcações que um `-d4` no fim declara. Ver *Um nome
+  de sua autoria*, abaixo.
+
+Seja qual for das três, a caixa **Adduct** diz como o precursor foi
+ionizado, e no automático lê isso do próprio precursor escrito do canal. Não
+é um detalhe: um precursor amoniado pontuado como um protonado prevê cada
+fragmento a 17 Da de qualquer coisa que esteja no espectro. Ver *Adutos*,
+abaixo.
 
 **Deuterium, unplaced** (deutério, não posicionado) serve para um desenho ou
 fórmula do composto *não marcado* e um padrão cujas marcações estão em algum
@@ -240,6 +255,195 @@ cresce à medida que as hidroxilas saem: 5,2% no precursor, 5,0% após uma
 água, 8,0% após duas e 104% após três — o íon que perdeu uma marcação é
 então maior do que o que reteve todas. Qual hidroxila saiu em qual degrau
 posicionaria as marcações; a enumeração ainda não acompanha isso.
+
+## Adutos
+
+Um precursor é uma molécula mais o que quer que a tenha carregado, e qual
+deles decide todas as massas abaixo. A infusão em ZenoTOF contra a qual isto
+foi construído escreve o seu canal de íons-produto em **430,35**, e o ácido
+cólico-d4 pesa 412,31: o número é o aduto de *amônio*, `[M+NH4]+`, e a sua
+forma protonada é 413,32 — dezessete daltons abaixo. Pontuado como
+`[M+H]+`, um desenho prevê um precursor que não está no espectro e uma
+escada de águas deslocada de todos os degraus que estão; pontuado como
+`[M+NH4]+` por uma aritmética que simplesmente soma 18,03 a tudo, ele prevê
+`[M+NH4-H2O]+`, que não é espécie alguma. Ambos falham, e nenhum diz por
+quê.
+
+Por isso um aduto aqui carrega o que faz quando o íon se quebra, e os três
+tipos se comportam de modos diferentes:
+
+- **Um aduto de próton** — `[M+H]+`, `[M-H]-`, `[M+2H]2+` — mantém a sua
+  carga sobre o pedaço que a segurar. Os fragmentos são os pedaços
+  protonados, ou desprotonados.
+- **Um aduto lábil** — `[M+NH4]+`, e em modo negativo `[M+HCOO]-`,
+  `[M+CH3COO]-`, `[M+Cl]-` — é seguro por ligações de hidrogênio e por nada
+  mais forte. Ele sai como um neutro (amônia, ácido fórmico, ácido acético,
+  cloreto de hidrogênio) e entrega um próton no caminho, de modo que o íon
+  que fragmenta é `[M+H]+` ou `[M-H]-`. O precursor é visto intacto, depois
+  como a forma protonada, e a escada de perdas pende *dessa*: `[M+NH4]+`,
+  `[M+H]+ (-NH3)`, `[M+H-H2O]+`, `[M+H-2H2O]+`, `[M+H-3H2O]+`. Nada retém o
+  amônio enquanto perde uma hidroxila, porque a amônia já foi embora havia
+  muito.
+- **Um aduto metálico** — `[M+Na]+`, `[M+K]+` — é uma ligação de
+  coordenação, e o metal fica no pedaço que retém o sítio coordenante, o que
+  a aritmética não tem como saber. Os dois são oferecidos, `[pedaço+Na]+` e
+  `[pedaço+H]+`, e cada íon diz qual foi assumido.
+
+Os íons do precursor são escritos como a forma que são — `[M+NH4]+`,
+`[M+H]+ (-NH3)`, `[M+H-3H2O]+`, com `+3D` depois quando o pedaço reteve três
+de quatro marcações. Um *pedaço* continua escrito como o que sobrou e como
+chegou lá, `C23H37O3 -H2O`, porque essa é a única descrição que uma clivagem
+tem.
+
+### Qual aduto o precursor é
+
+Deixada em **from the precursor**, a caixa Adduct sob *Explain with this*
+descobre sozinha: cada aduto da fórmula é medido contra o precursor escrito
+do canal, a polaridade do canal descarta o outro sinal, e a linha sob o
+botão diz qual é e a que distância —
+
+> 430.35 is [M+NH4]+ of C24H36D4O5 (430.3465, +8.1 ppm); [M+H]+ would be
+> 413.3200
+
+Um aduto tem de cair dentro de **0,05 Da**, alargado para a precisão com que
+o precursor foi escrito quando esta for mais grosseira. 0,05 é medido e não
+escolhido: nas nove infusões de ácidos biliares, a pior distância entre um
+precursor escrito e a massa verdadeira do seu aduto é 0,0117 Da — DCA-d4,
+escrito `414.34` para um aduto de amônio de 414,3516 — porque um método de
+instrumento carrega duas casas decimais e nem sempre as arredonda do mesmo
+jeito; o mesmo composto está escrito `430.35` em um destes arquivos e
+`430.34` em outro. 0,05 cobre isso com folga, e ainda é um cinquenta avos da
+menor distância entre dois adutos de uma mesma molécula que poderiam ser
+confundidos (amônio e sódio, 4,955 Da).
+
+Onde **nada** cai dentro dela, nada é explicado. A linha nomeia os erros mais
+próximos e os seus Δ, e as tabelas ficam vazias:
+
+> Nothing explained: 430.35 is none of the adducts of C24H40O5 within
+> ±0.05 Da — closest [M+Na]+ at 431.2768 (-0.9268 Da), [M+NH4]+ at 426.3214
+> (+4.0286 Da).
+
+Essa é a resposta certa, e não uma falha. A fórmula ali é o ácido cólico sem
+as suas quatro marcações, e explicá-la assim mesmo preveria cada fragmento a
+partir de uma molécula que o quadrupolo nunca isolou — uma tabela de rotas
+erradas e confiantes, mais difícil de duvidar do que uma tabela vazia.
+Digite as marcações, ou escolha o aduto à mão na mesma caixa, que então diz
+*chosen by hand* em vez de fingir que foi derivado.
+
+A polaridade vem do canal e não é digitada em lugar nenhum: um canal
+positivo nunca recebe a oferta de um aduto negativo. Sem nenhum precursor
+escrito não há de onde lê-lo, e a caixa Adduct no topo da aba — a que a
+busca do banco de dados usa — entra no lugar, dito em voz alta.
+
+### O que fez nas infusões reais
+
+Três padrões de ácidos biliares infundidos em um ZenoTOF 7600 em modo
+**positivo**, a corrida inteira promediada e centroidada, pontuados a
+±10 ppm. *Antes* são os mesmos arquivos pelo mesmo botão com o aduto que o
+canal declara, que era tudo o que se podia pedir dele:
+
+| infusão | escrito | lido como | antes | agora |
+|---|---|---|---|---|
+| CA-d4, CID 45 eV | 430,35 | [M+NH4]+, +8,1 ppm | 0 de 31, 0,0% | 2 de 56, 24,2% |
+| CA-d4, EAD 22 eV | 430,34 | [M+NH4]+, −15,1 ppm | 1 de 31, 21,7% | 8 de 56, 63,6% |
+| CA-d4, EAD 12 eV | 430,34 | [M+NH4]+, −15,1 ppm | 1 de 31, 82,3% | 3 de 56, 85,0% |
+| DCA-d4, CID 40 eV | 414,34 | [M+NH4]+, −28,0 ppm | 0 de 25, 0,0% | 3 de 41, 17,1% |
+| DCA-d4, EAD 22 eV | 414,34 | [M+NH4]+, −28,0 ppm | 1 de 25, 15,8% | 7 de 41, 44,4% |
+| TDCA-d4, CID 30 eV | 504,32 | [M+H]+, −18,1 ppm | 3 de 50, 66,5% | 4 de 104, 72,1% |
+| TDCA-d4, EAD 22 eV | 504,32 | [M+H]+, −18,1 ppm | 3 de 50, 71,3% | 5 de 104, 78,4% |
+
+Acertar no palpite também não salvava: o mesmo espectro EAD de CA-d4
+pontuado como `[M+H]+` dava 4 de 31 e 34,2%, porque a escada era então
+prevista e o precursor — 98% do pico base — não. O TDCA-d4 *é* uma molécula
+protonada, e melhora pelo outro motivo desta página: marcações escritas
+dentro da fórmula agora saem junto com a água, como as não posicionadas
+sempre saíram.
+
+No CA-d4 sob EAD a 22 eV a escada inteira é explicada, cada degrau duas
+vezes:
+
+| | medido | rota |
+|---|---|---|
+| precursor | 430,3489 | `[M+NH4]+ +4D` |
+| perde a amônia | 413,3217 | `[M+H]+ (-NH3) +4D` |
+| uma água | 395,3118 | `[M+H-H2O]+ +4D` |
+| duas águas | 377,3015 | `[M+H-2H2O]+ +4D` |
+| três águas | 359,2897 | `[M+H-3H2O]+ +4D` |
+| uma água, com uma marcação junto | 394,3035 | `[M+H-H2O]+ +3D` |
+| duas águas, uma marcação a menos | 376,2935 | `[M+H-2H2O]+ +3D` |
+| três águas, uma marcação a menos | 358,2836 | `[M+H-3H2O]+ +3D` |
+
+Sob CID a 45 eV a escada já correu até o fim: só 359,2870 e 358,2808 estão
+lá acima de 1% do pico base, e ambos são explicados.
+
+**Uma estrutura ganha exatamente um íon, e ele pode ser o pico base.** A
+enumeração de clivagens já constrói pedaços protonados, que é o que os
+fragmentos de um aduto lábil são, de modo que a única coisa que ela não
+alcançava era o amônio intacto — e esse íon é 98% do pico base a 22 eV e o
+próprio pico base a 12 eV. O ácido cólico-d4 do PubChem (CID 16217616, cujo
+bloco `M  ISO` posiciona as quatro marcações), dois cortes, três perdas:
+
+| | antes | agora |
+|---|---|---|
+| CID, 45 eV | 25 de 1080, 56,5% | 25 de 1081, 56,5% |
+| EAD, 22 eV | 21 de 1080, 60,3% | 22 de 1081, 82,0% |
+| EAD, 12 eV | 8 de 1080, 9,7% | 9 de 1081, 92,0% |
+
+**A tolerância é a outra metade disso.** Estes espectros estão de 4,1 a
+7,1 ppm altos no seu próprio eixo de massa — o erro do precursor
+correspondido na tabela acima diz isso — e nos ±5 ppm em que esta caixa vem
+por padrão, a maior parte da escada cai fora da janela: o CA-d4 sob EAD
+22 eV dá 5 de 56 e 14,0% a 5 ppm contra 8 de 56 e 63,6% a 10. O padrão é 5
+porque uma marcação está a apenas 1,55 mDa do hidrogênio que substituiu —
+*Onde estão as marcações*, acima —, de modo que as duas perguntas puxam para
+lados opostos: alargue para ler a escada, aperte para contar marcações, e
+leia os ppm que o painel imprime no precursor para saber de que lado você
+está.
+
+## Um nome de sua autoria
+
+A caixa **Name** resolve um composto quando não há desenho nem fórmula
+digitada. Três lugares são consultados, nesta ordem:
+
+1. **Uma tabela de padrões** comprados pelos seus nomes triviais: os ácidos
+   biliares e os seus conjugados com glicina e taurina — ácidos cólico,
+   desoxicólico, quenodesoxicólico, ursodesoxicólico, hiodesoxicólico e
+   litocólico, e as formas glico- e tauro- de cada um — por nome ou pela
+   abreviação do frasco (`TDCA`, `GCDCA`), porque nada no LIPID MAPS atende
+   por `TDCA` e um `.wiff` é nomeado a partir do frasco. A tabela dá a
+   grafia do LIPID MAPS, de modo que o *desenho* continua vindo do banco de
+   dados; a fórmula que ela também carrega é o recurso para uma máquina sem
+   banco de dados instalado. Ela para nos ácidos biliares de propósito —
+   cada entrada foi conferida contra o LMSD, e uma tabela que crescesse por
+   suposição seria uma lista de fórmulas que ninguém mediu.
+2. **O próprio LIPID MAPS**, por nome ou LM_ID.
+3. **A notação abreviada de lipídios**, que dá uma fórmula e nenhuma
+   estrutura.
+
+Um `-d4`, `_d5` ou `(d4)` no fim é lido como esse número de marcações que o
+nome não posiciona — o mesmo número que a caixa *Deuterium, unplaced*
+recebe — e é retirado antes de qualquer um dos três ser consultado. O `d`
+dentro de `SM(d18:1/16:0)` e o `d` de `DCA` não são contagens de marcação,
+porque o sufixo está ancorado no fim do nome. Um nome que nenhum dos três
+conhece é declarado desconhecido, e não adivinhado.
+
+Assim, `cholic acid-d4` digitado sobre uma infusão de CA-d4 vira ácido
+cólico, C24H40O5, desenhado como `LMST04010001`, com quatro marcações não
+posicionadas, ionizado como `[M+NH4]+` porque é isso que 430,35 é. Nos três
+compostos, a ±10 ppm:
+
+| | CID | EAD, 22 eV |
+|---|---|---|
+| `cholic acid-d4` | 48 de 3.837, 85,7% | 33 de 3.837, 87,3% |
+| `DCA-d4` | 48 de 3.282, 82,2% | 29 de 3.282, 88,6% |
+| `TDCA-d4` | 17 de 8.463, 91,6% | 21 de 8.463, 91,2% |
+
+Essas parcelas são as mais altas desta página e são as que menos significam,
+pelo motivo que *Onde estão as marcações* dá acima: quatro marcações não
+posicionadas multiplicam por cinco as massas oferecidas, e uma lista
+suficientemente longa de massas possíveis cobre um espectro por acidente.
+Leia-as ao lado das do desenho com marcações posicionadas, não no lugar
+delas.
 
 ## Contra uma biblioteca
 

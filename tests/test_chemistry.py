@@ -297,3 +297,127 @@ def test_a_formula_and_an_adduct_give_the_mass_the_ion_has():
     assert ch.mass_from_formula("", "[M+H]+") is None
     assert ch.mass_from_formula("C24H36D4O5", "") is None
     assert ch.mass_from_formula("not a formula", "[M+H]+") is None
+
+
+# --- what an adduct does when the ion breaks up ---------------------------- #
+def test_an_adduct_says_what_its_fragments_carry():
+    """The rule the module docstring states, as four cases. A proton stays
+    on the piece; ammonia leaves and hands over a proton; sodium is a
+    coordinate bond and may go either way, so both are offered."""
+    proton = ch.ADDUCTS_BY_NAME["[M+H]+"]
+    ammonium = ch.ADDUCTS_BY_NAME["[M+NH4]+"]
+    sodium = ch.ADDUCTS_BY_NAME["[M+Na]+"]
+    formate = ch.ADDUCTS_BY_NAME["[M+HCOO]-"]
+
+    assert proton.behaviour == ch.PROTON
+    assert ammonium.behaviour == ch.LABILE and ammonium.leaves == "NH3"
+    assert sodium.behaviour == ch.METAL and sodium.carrier == "Na"
+    assert formate.behaviour == ch.LABILE and formate.leaves == "HCOOH"
+
+    assert ch.fragment_adducts(proton) == (proton,)
+    assert ch.fragment_adducts(ammonium) == (proton,)
+    assert ch.fragment_adducts(sodium) == (sodium, proton)
+    # a formate adduct is negative, so its pieces are deprotonated
+    assert ch.fragment_adducts(formate) == (ch.ADDUCTS_BY_NAME["[M-H]-"],)
+    assert ch.core_adduct(ammonium) is proton
+    assert ch.core_adduct(sodium) is sodium
+
+
+def test_a_doubly_charged_precursor_gives_singly_charged_pieces():
+    assert ch.fragment_adducts(ch.ADDUCTS_BY_NAME["[M+2H]2+"]) == (
+        ch.ADDUCTS_BY_NAME["[M+H]+"],)
+    assert ch.fragment_adducts(ch.ADDUCTS_BY_NAME["[M-2H]2-"]) == (
+        ch.ADDUCTS_BY_NAME["[M-H]-"],)
+
+
+# --- which adduct a written precursor is ----------------------------------- #
+def test_a_written_precursor_names_its_adduct_and_says_how_far_off():
+    """The real case: a ZenoTOF channel written 430.35 for cholic acid-d4.
+    It is the ammonium adduct and nothing else, and the sentence has to
+    carry the number the analyst expected instead."""
+    choice = ch.identify_adduct("C24H36D4O5", 430.35, "Positive")
+
+    assert choice.adduct is ch.ADDUCTS_BY_NAME["[M+NH4]+"]
+    assert "430.35 is [M+NH4]+ of C24H36D4O5" in choice.reason
+    assert "430.3465" in choice.reason and "+8.1 ppm" in choice.reason
+    assert "[M+H]+ would be 413.3200" in choice.reason
+    assert bool(choice)
+
+
+def test_a_precursor_the_method_rounded_its_own_way_still_matches():
+    """The same compound is written 430.35 in one file and 430.34 in
+    another, and DCA-d4's 414.34 is 0.0117 from its true 414.3516 - the
+    worst of the nine infusions and what ADDUCT_MATCH_DA was set from."""
+    assert ch.identify_adduct("C24H36D4O5", 430.34, "Positive").adduct \
+        is ch.ADDUCTS_BY_NAME["[M+NH4]+"]
+    choice = ch.identify_adduct("C24H36D4O4", 414.34, "Positive")
+    assert choice.adduct is ch.ADDUCTS_BY_NAME["[M+NH4]+"]
+    assert "-28.0 ppm" in choice.reason
+    assert abs(choice.matches[0].error_da) < ch.ADDUCT_MATCH_DA
+
+
+def test_a_precursor_no_adduct_reaches_is_refused_with_the_closest_named():
+    choice = ch.identify_adduct("C24H40O5", 430.35, "Positive")
+
+    assert choice.adduct is None and not choice
+    assert "none of the adducts of C24H40O5" in choice.reason
+    assert "[M+Na]+ at 431.2768" in choice.reason
+
+
+def test_a_positive_channel_is_never_offered_a_negative_adduct():
+    names = {m.name for m in ch.adducts_matching("C24H40O5", 409.29, "Positive")}
+    assert names and all("+" in name for name in names)
+    negative = {m.name for m in ch.adducts_matching("C24H40O5", 407.28, "N")}
+    assert negative and all(name.endswith("-") for name in negative)
+    # with no polarity given, both signs are candidates
+    both = {m.name for m in ch.adducts_matching("C24H40O5", 407.28)}
+    assert "[M-H]-" in both and "[M+H]+" in both
+    assert ch.NEUTRAL not in both
+
+
+def test_a_precursor_written_to_one_decimal_widens_its_own_window():
+    """`703.6` is known to +/-0.05, and an adduct cannot be asked to fit
+    closer than the number was written."""
+    inside = ch.adducts_matching("C39H79N2O6P", 703.6, None)
+    assert [m for m in inside if m.name == "[M+H]+"][0].within
+
+
+# --- standards bought by their trivial names ------------------------------- #
+def test_a_label_suffix_is_read_off_the_end_of_a_name_and_nowhere_else():
+    assert ch.split_labels("cholic acid-d4") == ("cholic acid", 4)
+    assert ch.split_labels("TDCA-d4") == ("TDCA", 4)
+    assert ch.split_labels("Cholic acid (d4)") == ("Cholic acid", 4)
+    assert ch.split_labels("cholic acid_d5") == ("cholic acid", 5)
+    # the d of a sphingoid base, and the d of DCA, are not label counts
+    assert ch.split_labels("SM(d18:1/16:0)") == ("SM(d18:1/16:0)", 0)
+    assert ch.split_labels("DCA") == ("DCA", 0)
+
+
+def test_the_standards_table_answers_to_the_bottle_and_to_the_name():
+    assert ch.standard_named("TDCA") == ("C26H45NO6S", "Taurodeoxycholic acid")
+    assert ch.standard_named("taurodeoxycholic acid")[0] == "C26H45NO6S"
+    assert ch.standard_named("Cholic Acid")[0] == "C24H40O5"
+    assert ch.standard_named("cholic")[0] == "C24H40O5"
+    assert ch.standard_named("cortisol") is None
+    assert ch.standard_named("") is None
+
+
+def test_every_standard_in_the_table_weighs_what_the_bottle_says():
+    """The formulas are the fallback for a machine with no LMSD, so they
+    have to be right on their own. Glycine conjugation adds C2H3NO to the
+    acid and taurine C2H5NO2S, which is the arithmetic to check."""
+    acid = ch.monoisotopic_mass(ch.parse_formula(ch.STANDARDS["cholic acid"][0]))
+    glyco = ch.monoisotopic_mass(
+        ch.parse_formula(ch.STANDARDS["glycocholic acid"][0]))
+    tauro = ch.monoisotopic_mass(
+        ch.parse_formula(ch.STANDARDS["taurocholic acid"][0]))
+    assert acid == pytest.approx(408.2876, abs=1e-3)
+    assert glyco - acid == pytest.approx(
+        ch.monoisotopic_mass(ch.parse_formula("C2H3NO")), abs=1e-6)
+    assert tauro - acid == pytest.approx(
+        ch.monoisotopic_mass(ch.parse_formula("C2H5NO2S")), abs=1e-6)
+    for name, (formula, lm_name) in ch.STANDARDS.items():
+        assert ch.parse_formula(formula) and lm_name
+        assert name == name.lower()
+    for alias, name in ch.STANDARD_ALIASES.items():
+        assert name in ch.STANDARDS, alias

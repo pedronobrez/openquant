@@ -207,11 +207,14 @@ def test_a_formula_alone_gives_the_precursor_and_its_losses():
 
     ions = formula_ions("C24H40O5", "[M-H]-")
     descriptions = {ion.description for ion in ions}
-    # a loss ion is written as what is left, and how it got there
-    assert "C24H40O5" in descriptions and "C24H38O4 -H2O" in descriptions
-    assert "C23H36O -H2O -H2O -CO2" in descriptions       # O5 - 2 - 2
-    assert not any("-NH3" in d for d in descriptions)          # no nitrogen
+    # an ion of the precursor is written as the form it is, losses inside
+    # the bracket, and carries the residual formula beside it
+    assert "[M-H]-" in descriptions and "[M-H-H2O]-" in descriptions
+    assert "[M-H-2H2O-CO2]-" in descriptions              # O5 - 2 - 2
+    assert not any("NH3" in d for d in descriptions)           # no nitrogen
     assert len(ions) == len(descriptions)                       # no duplicates
+    water = next(ion for ion in ions if ion.losses == ("H2O",))
+    assert water.formula == "C24H38O4"
     intact = next(ion for ion in ions if not ion.losses)
     assert intact.mz == pytest.approx(407.2803, abs=0.001)
     peaks = [(407.2803, 1000.0), (389.2697, 300.0), (200.0, 100.0)]
@@ -219,7 +222,7 @@ def test_a_formula_alone_gives_the_precursor_and_its_losses():
     assert explanation.name == "Cholic acid"
     assert explanation.matched == 2 and explanation.share == pytest.approx(1300 / 1400)
     routes = {m.best_route for m in explanation.matches}
-    assert "C24H38O4 -H2O" in routes
+    assert "[M-H-H2O]-" in routes
 
 
 def test_unplaced_deuterium_offers_every_count_and_the_spectrum_picks_one():
@@ -510,5 +513,266 @@ def test_the_panel_places_the_labels_under_the_table():
     panel.own_deuterium.setValue(0)
     panel.explain_own()
     assert not panel.labels_box.isVisibleTo(panel)
+    panel.deleteLater()
+    app.processEvents()
+
+
+# --------------------------------------------------------------------------- #
+# the adduct the precursor was ionised as
+# --------------------------------------------------------------------------- #
+#: cholic acid-d4 as the ZenoTOF infusion holds it: the ammonium adduct the
+#: channel is written 430.35 for, and the water ladder the spectrum shows
+CA_D4 = "C24H36D4O5"
+CA_LADDER = {"[M+NH4]+": 430.3465, "[M+H]+": 413.3200, "-H2O": 395.3094,
+             "-2H2O": 377.2988, "-3H2O": 359.2882}
+
+
+def test_a_labile_adduct_leaves_and_the_ladder_hangs_off_the_proton():
+    """The finding this was written for. An ammoniated precursor is seen
+    intact at 430.35 and then as [M+H]+ at 413.32, and every dehydration
+    hangs off the 413 — `[M+NH4-H2O]+` is not a species, because the
+    ammonia is gone before a hydroxyl leaves."""
+    from openquant.explain import formula_ions
+
+    ions = formula_ions(CA_D4, "[M+NH4]+")
+
+    def at(mass):
+        found = [ion for ion in ions if abs(ion.mz - mass) < 0.002]
+        assert found, mass
+        return found[0]
+
+    for label, mass in CA_LADDER.items():
+        assert at(mass), label
+    assert at(430.3465).description == "[M+NH4]+ +4D"
+    assert at(413.3200).description == "[M+H]+ (-NH3) +4D"
+    assert at(359.2882).description == "[M+H-3H2O]+ +4D"
+    # nothing keeps the ammonium while shedding a water
+    assert not any(ion.losses and "NH4" in ion.description for ion in ions)
+
+
+def test_a_dehydration_may_take_a_label_with_it_and_the_rung_says_so():
+    """Measured on the real CID spectrum: 359.2870 is the three-water loss
+    keeping all four labels and 358.2808 beside it is the same ion keeping
+    three, 1.0062 apart, which is D-H and not H."""
+    from openquant.explain import D_MINUS_H, formula_ions
+
+    ions = formula_ions(CA_D4, "[M+NH4]+")
+    kept_three = [ion for ion in ions
+                  if abs(ion.mz - (359.2882 - D_MINUS_H)) < 0.002]
+
+    assert kept_three and kept_three[0].description == "[M+H-3H2O]+ +3D"
+    # the residual formula is corrected for the label that left
+    assert kept_three[0].formula == "C24H31D3O2"
+    # a decarboxylation takes no carbon-bound hydrogen, so it says exactly
+    dropped_co2 = [ion for ion in ions if ion.losses == ("CO2",)]
+    assert {ion.labels for ion in dropped_co2} == {4}
+
+
+def test_labels_spelt_into_the_formula_are_the_same_labels():
+    from openquant.explain import formula_ions
+
+    spelt = {ion.description for ion in formula_ions(CA_D4, "[M+NH4]+")}
+    unplaced = {ion.description
+                for ion in formula_ions("C24H40O5", "[M+NH4]+", deuterium=4)}
+    assert spelt == unplaced
+
+
+def test_a_formate_adduct_fragments_as_the_deprotonated_molecule():
+    """The negative-mode case: formic acid leaves and the pieces are
+    [M-H]-, so a lipid infused in formate buffer shows its own ladder
+    17 Da below what the channel is written for."""
+    from openquant.explain import formula_ions
+
+    ions = formula_ions("C24H40O5", "[M+HCOO]-")
+    descriptions = {ion.description for ion in ions}
+
+    assert "[M+HCOO]-" in descriptions
+    assert "[M-H]- (-HCOOH)" in descriptions
+    assert "[M-H-2H2O]-" in descriptions
+    # nothing keeps the formate while shedding a water. (`-HCOOH` on a rung
+    # is formic acid leaving the deprotonated molecule, which is a different
+    # thing and a real one.)
+    assert not any(ion.losses and ion.form.startswith("[M+HCOO")
+                   for ion in ions)
+    intact = next(ion for ion in ions if ion.description == "[M+HCOO]-")
+    core = next(ion for ion in ions if ion.description == "[M-H]- (-HCOOH)")
+    assert intact.mz - core.mz == pytest.approx(46.0055, abs=1e-3)  # HCOOH
+
+
+def test_a_metal_adduct_offers_the_metal_and_the_proton_and_says_which():
+    """Sodium is a coordinate bond and stays on whichever piece keeps the
+    coordinating site, which arithmetic cannot know. Both are offered."""
+    from openquant.explain import formula_ions
+
+    ions = formula_ions("C24H40O5", "[M+Na]+")
+    descriptions = {ion.description for ion in ions}
+
+    assert "[M+Na]+" in descriptions and "[M+Na-H2O]+" in descriptions
+    assert "[M+H-H2O]+" in descriptions
+    # ... but not the intact protonated molecule, which is a different
+    # precursor rather than a product of this one
+    assert "[M+H]+" not in descriptions
+
+
+def test_a_drawing_is_scored_as_the_adduct_it_was_ionised_as(cholic):
+    """One ion is the whole difference on a structure: the enumerator
+    already builds protonated pieces, so a labile adduct adds its own
+    intact precursor and nothing else — and that ion is the base peak of
+    the EAD infusions."""
+    from openquant.explain import structure_ions
+
+    molecule = cholic.molecule()
+    plain = structure_ions(molecule, adduct="[M+H]+", max_cuts=1, max_losses=1)
+    ammonium = structure_ions(molecule, adduct="[M+NH4]+", max_cuts=1,
+                              max_losses=1)
+
+    assert len(ammonium) == len(plain) + 1
+    added = ({round(i.mz, 4) for i in ammonium}
+             - {round(i.mz, 4) for i in plain})
+    assert added == {round(408.2876 + 18.0338, 4)}
+    forms = {i.description for i in ammonium}
+    assert "[M+NH4]+" in forms and "[M+H]+ (-NH3)" in forms
+    assert "[M+H-H2O]+" in forms
+
+
+def test_a_piece_keeps_the_formula_it_is_and_the_precursor_keeps_its_form(cholic):
+    from openquant.explain import structure_ions
+
+    ions = structure_ions(cholic.molecule(), adduct="[M+NH4]+", max_cuts=1,
+                          max_losses=1)
+    pieces = [i for i in ions if i.fragment.cuts]
+
+    assert pieces and all(not i.form for i in pieces)
+    assert all(i.formula in i.description for i in pieces)
+
+
+# --------------------------------------------------------------------------- #
+# a name of one's own
+# --------------------------------------------------------------------------- #
+def test_a_standard_is_resolved_by_the_name_on_the_bottle():
+    from openquant.explain import resolve_name
+    from openquant.lipidmaps import LipidDatabase
+
+    database = LipidDatabase([
+        record("LMST04010001", "Cholic acid", "C24H40O5", "LMST04010001",
+               408.287574)])
+    resolved = resolve_name("cholic acid-d4", database=database)
+
+    assert resolved is not None
+    assert resolved.formula == "C24H40O5" and resolved.labels == 4
+    assert resolved.source == "the standards table"
+    assert resolved.molecule() is not None       # the drawing came from LMSD
+
+
+def test_a_standard_resolves_without_a_database_too():
+    """The table carries the formula for a machine with no LMSD installed;
+    what is lost is the drawing, not the answer."""
+    from openquant.explain import resolve_name
+
+    resolved = resolve_name("TDCA-d4", database=None, use_installed=False)
+
+    assert resolved.formula == "C26H45NO6S" and resolved.labels == 4
+    assert resolved.molecule() is None
+
+
+def test_a_name_nothing_knows_is_not_guessed_at():
+    from openquant.explain import resolve_name
+
+    assert resolve_name("frobnicic acid", use_installed=False) is None
+    assert resolve_name("", use_installed=False) is None
+
+
+def test_a_lipid_shorthand_name_still_gives_its_formula():
+    from openquant.explain import resolve_name
+
+    resolved = resolve_name("SM(d18:1/16:0)", database=None,
+                            use_installed=False)
+    assert resolved.formula == "C39H79N2O6P"
+    assert resolved.source == "the lipid shorthand"
+
+
+# --------------------------------------------------------------------------- #
+# the panel: the adduct read off the precursor, and the refusal
+# --------------------------------------------------------------------------- #
+def _panel(precursor=None, polarity="Positive", peaks=((430.3465, 1000.0),)):
+    from PyQt6 import QtWidgets
+
+    from openquant.ui.lipid_panel import LipidPanel
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = LipidPanel()
+    mz = np.array([m for m, _h in peaks])
+    intensity = np.array([h for _m, h in peaks])
+    panel.set_spectrum(mz, intensity, precursor, polarity)
+    return app, panel
+
+
+def test_the_panel_reads_the_adduct_off_the_written_precursor():
+    """The user's own case: a channel written 430.35, a formula typed by
+    hand, and no idea that the difference is an ammonium."""
+    app, panel = _panel(precursor=430.35, peaks=[(430.3465, 1000.0),
+                                                 (359.2882, 800.0)])
+    panel.own_formula.setText(CA_D4)
+    panel.own_name.setText("Cholic acid-d4")
+    panel.explain_own()
+
+    assert panel.explain_tree.topLevelItemCount() == 1
+    assert "[M+NH4]+" in panel.explanation_basis
+    assert "430.3465" in panel.explanation_basis
+    assert "[M+H]+ would be 413.3200" in panel.explanation_basis
+    routes = {panel.match_tree.topLevelItem(i).text(2)
+              for i in range(panel.match_tree.topLevelItemCount())}
+    assert routes == {"[M+NH4]+ +4D", "[M+H-3H2O]+ +4D"}
+    panel.deleteLater()
+    app.processEvents()
+
+
+def test_the_panel_takes_a_name_and_finds_its_labels_and_its_drawing():
+    app, panel = _panel(precursor=430.35, peaks=[(430.3465, 1000.0)])
+    panel.own_name.setText("cholic acid-d4")
+    panel.explain_own()
+
+    assert "read as C24H40O5" in panel.status.text()
+    assert "4 unplaced label(s)" in panel.status.text()
+    assert "the standards table" in panel.status.text()
+    panel.deleteLater()
+    app.processEvents()
+
+
+def test_the_panel_explains_nothing_when_no_adduct_fits():
+    """The refusal. Cholic acid unlabelled cannot reach 430.35 under any
+    adduct, and explaining it anyway would predict every fragment from a
+    molecule the quadrupole never isolated."""
+    app, panel = _panel(precursor=430.35, peaks=[(430.3465, 1000.0)])
+    panel.own_formula.setText("C24H40O5")
+    panel.explain_own()
+
+    assert panel.explain_tree.topLevelItemCount() == 0
+    assert panel.explanation_basis == ""
+    assert "Nothing explained" in panel.status.text()
+    assert "none of the adducts of C24H40O5" in panel.status.text()
+    panel.deleteLater()
+    app.processEvents()
+
+
+def test_the_panel_lets_the_adduct_be_overridden_by_hand():
+    app, panel = _panel(precursor=430.35, peaks=[(413.3200, 1000.0)])
+    panel.own_formula.setText(CA_D4)
+    panel.own_adduct.setCurrentText("[M+H]+")
+    panel.explain_own()
+
+    assert "chosen by hand" in panel.explanation_basis
+    assert panel.explain_tree.topLevelItemCount() == 1
+    panel.deleteLater()
+    app.processEvents()
+
+
+def test_the_panel_never_offers_a_negative_adduct_to_a_positive_channel():
+    from openquant.chemistry import adducts_matching
+
+    app, panel = _panel(precursor=407.28, polarity="Positive")
+    signs = {m.name[-1] for m in adducts_matching("C24H40O5", 407.28,
+                                                  panel._polarity)}
+    assert signs == {"+"}
     panel.deleteLater()
     app.processEvents()

@@ -43,8 +43,15 @@ def qapp():
 
 
 def _ions(max_losses: int = 2) -> list[float]:
-    return [ion.mz for ion in formula_ions(FORMULA, ADDUCT,
-                                           max_losses=max_losses)]
+    """The formula's ions, the intact one first — which is the precursor.
+
+    Sorted rather than taken in the order they are generated: `formula_ions`
+    returns them by mass, so `ions[0]` meant the smallest loss ion and every
+    fixture built on it was isolating a fragment.
+    """
+    ions = formula_ions(FORMULA, ADDUCT, max_losses=max_losses)
+    ions.sort(key=lambda ion: (len(ion.losses), -ion.mz))
+    return [ion.mz for ion in ions]
 
 
 def _grid(centres, width: float = 0.05, step: float = 0.005) -> np.ndarray:

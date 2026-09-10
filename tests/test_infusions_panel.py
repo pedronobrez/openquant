@@ -183,12 +183,42 @@ def test_a_component_without_a_formula_says_that_instead(qapp):
     assert row.explanation_note == "TESTOL carries no formula"
 
 
-def test_a_component_without_an_adduct_says_that_instead(qapp):
+def test_a_component_without_an_adduct_has_it_read_off_the_precursor(qapp):
+    """The channel's written precursor and the formula name the adduct
+    between them, so a component that declares none is still explained —
+    and the basis says the number was read rather than declared."""
     entry, _channel = _entry()
     session = _with_component(_session(entry), adduct="")
     row = ir.summarise(session).rows[0]
 
-    assert row.explanation_note == "TESTOL carries no adduct"
+    assert row.explanation_note == ""
+    assert row.report.explanation is not None
+    assert "read off the written precursor" in row.report.basis
+    assert "[M+H]+" in row.report.basis
+
+
+def test_a_precursor_no_adduct_of_the_formula_reaches_is_not_explained(qapp):
+    """A formula that cannot make the written precursor under any adduct is
+    the one case where nothing is the right answer: explaining it would
+    predict every fragment from a molecule the quadrupole never isolated."""
+    entry, _channel = _entry()
+    session = _with_component(_session(entry), formula="C6H12O6", adduct="")
+    row = ir.summarise(session).rows[0]
+
+    assert row.report.explanation is None
+    assert "none of the adducts of C6H12O6" in row.explanation_note
+
+
+def test_an_adduct_the_precursor_contradicts_is_overruled_and_said_so(qapp):
+    """The component table says [M+Na]+ and the channel's own number is the
+    protonated molecule. The precursor wins, because it is what the
+    instrument was given, and the basis carries both."""
+    entry, _channel = _entry()
+    session = _with_component(_session(entry), adduct="[M+Na]+")
+    row = ir.summarise(session).rows[0]
+
+    assert row.report.explanation is not None
+    assert "not the [M+Na]+ the component table carries" in row.report.basis
 
 
 # --------------------------------------------------------------------------- #

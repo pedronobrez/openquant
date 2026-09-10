@@ -1785,10 +1785,15 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             # centroiding what is already sticks merges neighbours and moves
             # the masses, which is worse than not centroiding at all
             mz, intensity = centroid_spectrum(mz, intensity)
-        precursor = None
+        precursor, polarity = None, ""
         if self.active_ref is not None and self.active_ref.channel is not None:
-            precursor = self.active_ref.channel.info.precursor
-        self.lipid_panel.set_spectrum(mz, intensity, precursor)
+            info = self.active_ref.channel.info
+            precursor = info.precursor
+            # the polarity goes with the precursor: which adduct that number
+            # is depends on the sign the channel was acquired at, and the
+            # sign is a fact about the acquisition rather than a choice
+            polarity = str(getattr(info, "polarity", "") or "")
+        self.lipid_panel.set_spectrum(mz, intensity, precursor, polarity)
         self.show_panel_named("LIPID MAPS")
         self.lipid_panel.explain_spectrum()
 

@@ -82,6 +82,10 @@ the ladder. The unexplained peaks are reported too: several candidates
 usually explain the same peaks, because isomers fragment alike, and the
 unexplained ones are the honest part of the answer.
 
+The **Adduct** box beside the precursor is used twice: to look the mass up in
+the database, and to say what each candidate's own precursor ion is and what
+its fragments carry — see *Adducts*, below.
+
 **Explain spectrum** on the Processing toolbar does the same from the
 chromatogram: it takes the spectrum of the current scan and its channel's
 precursor.
@@ -109,6 +113,16 @@ the Explain button takes one of two things:
   losses it could shed — water, ammonia, carbon monoxide and dioxide,
   formic acid, up to three at once, each only where the formula has the
   atoms for it. Less than a structure gives, and said to be.
+- **A name**, when there is neither. It is looked up in a table of
+  standards, then in LIPID MAPS, then in the lipid shorthand, and brings
+  back a formula, the database's drawing where there is one, and the label
+  count a `-d4` on the end declares. See *A name of your own*, below.
+
+Whichever of the three it is, the **Adduct** box says how the precursor was
+ionised, and on automatic reads that off the channel's own written
+precursor. It is not a detail: an ammoniated precursor scored as a
+protonated one predicts every fragment 17 Da away from anything in the
+spectrum. See *Adducts*, below.
 
 **Deuterium, unplaced** is for a drawing or formula of the *unlabelled*
 compound and a standard whose labels sit somewhere unknown. Each fragment
@@ -231,6 +245,190 @@ one grows as the hydroxyls leave: 5.2% at the precursor, 5.0% after one
 water, 8.0% after two, and 104% after three — the ion that lost a label is
 then larger than the one that kept them all. Which hydroxyl left at which
 rung would place the labels; the enumeration does not track that yet.
+
+## Adducts
+
+A precursor is a molecule plus whatever charged it, and which one decides
+every mass underneath. The ZenoTOF infusion this was built against writes
+its product-ion channel **430.35**, and cholic acid-d4 weighs 412.31: the
+number is the *ammonium* adduct, `[M+NH4]+`, and its protonated form is
+413.32 — seventeen daltons lower. Scored as `[M+H]+`, a drawing predicts a
+precursor that is not in the spectrum and a water ladder shifted off every
+rung that is; scored as `[M+NH4]+` by an arithmetic that simply adds 18.03
+to everything, it predicts `[M+NH4-H2O]+`, which is not a species at all.
+Both fail, and neither says why.
+
+So an adduct here carries what it does when the ion breaks up, and the three
+kinds behave differently:
+
+- **A proton adduct** — `[M+H]+`, `[M-H]-`, `[M+2H]2+` — keeps its charge on
+  whichever piece holds it. The fragments are the protonated, or
+  deprotonated, pieces.
+- **A labile adduct** — `[M+NH4]+`, and in negative mode `[M+HCOO]-`,
+  `[M+CH3COO]-`, `[M+Cl]-` — is held by hydrogen bonds and nothing stronger.
+  It leaves as a neutral (ammonia, formic acid, acetic acid, hydrogen
+  chloride) and hands over a proton on the way, so the ion that fragments is
+  `[M+H]+` or `[M-H]-`. The precursor is seen intact, then as the proton
+  form, and the loss ladder hangs off *that*: `[M+NH4]+`, `[M+H]+ (-NH3)`,
+  `[M+H-H2O]+`, `[M+H-2H2O]+`, `[M+H-3H2O]+`. Nothing keeps the ammonium
+  while shedding a hydroxyl, because the ammonia is long gone by then.
+- **A metal adduct** — `[M+Na]+`, `[M+K]+` — is a coordinate bond, and the
+  metal stays on the piece that keeps the coordinating site, which the
+  arithmetic cannot know. Both are offered, `[piece+Na]+` and `[piece+H]+`,
+  and every ion says which was assumed.
+
+Ions of the precursor are written as the form they are — `[M+NH4]+`,
+`[M+H]+ (-NH3)`, `[M+H-3H2O]+`, with `+3D` after it when the piece kept
+three of four labels. A *piece* is still written as what is left and how it
+got there, `C23H37O3 -H2O`, because that is the only description a cleavage
+has.
+
+### Which adduct the precursor is
+
+Left on **from the precursor**, the Adduct box under *Explain with this*
+works it out: every adduct of the formula is measured against the channel's
+written precursor, the polarity of the channel rules out the other sign, and
+the line under the button says which one it is and how far off —
+
+> 430.35 is [M+NH4]+ of C24H36D4O5 (430.3465, +8.1 ppm); [M+H]+ would be
+> 413.3200
+
+An adduct has to land within **0.05 Da**, widened to the precision the
+precursor was written with when that is coarser. 0.05 is measured rather
+than chosen: over the nine bile-acid infusions the worst gap between a
+written precursor and its true adduct mass is 0.0117 Da — DCA-d4, written
+`414.34` for an ammonium adduct of 414.3516 — because an instrument method
+carries two decimals and does not always round them the same way; the same
+compound is written `430.35` in one of these files and `430.34` in another.
+0.05 covers that with room, and is still a fiftieth of the smallest gap
+between two adducts of one molecule that could be confused for each other
+(ammonium and sodium, 4.955 Da apart).
+
+Where **nothing** lands within it, nothing is explained. The line names the
+closest misses and their Δ, and the tables stay empty:
+
+> Nothing explained: 430.35 is none of the adducts of C24H40O5 within
+> ±0.05 Da — closest [M+Na]+ at 431.2768 (-0.9268 Da), [M+NH4]+ at 426.3214
+> (+4.0286 Da).
+
+That is the right answer and not a failure. The formula there is cholic acid
+without its four labels, and explaining it anyway would predict every
+fragment from a molecule the quadrupole never isolated — a table of
+confident wrong routes, which is harder to disbelieve than an empty one.
+Type the labels, or pick the adduct by hand from the same box, which then
+says *chosen by hand* rather than pretending it was derived.
+
+The polarity comes from the channel and is not typed anywhere: a positive
+channel is never offered a negative adduct. With no precursor written at all
+there is nothing to read it off, and the Adduct box at the top of the tab —
+the one the database search uses — stands in, said out loud.
+
+### What it did on the real infusions
+
+Three bile-acid standards infused on a ZenoTOF 7600 in **positive** mode,
+the whole run averaged and centroided, scored at ±10 ppm. *Before* is the
+same files through the same button with the adduct the channel declares,
+which was as much as could be asked of it:
+
+| infusion | written | read as | before | now |
+|---|---|---|---|---|
+| CA-d4, CID 45 eV | 430.35 | [M+NH4]+, +8.1 ppm | 0 of 31, 0.0% | 2 of 56, 24.2% |
+| CA-d4, EAD 22 eV | 430.34 | [M+NH4]+, −15.1 ppm | 1 of 31, 21.7% | 8 of 56, 63.6% |
+| CA-d4, EAD 12 eV | 430.34 | [M+NH4]+, −15.1 ppm | 1 of 31, 82.3% | 3 of 56, 85.0% |
+| DCA-d4, CID 40 eV | 414.34 | [M+NH4]+, −28.0 ppm | 0 of 25, 0.0% | 3 of 41, 17.1% |
+| DCA-d4, EAD 22 eV | 414.34 | [M+NH4]+, −28.0 ppm | 1 of 25, 15.8% | 7 of 41, 44.4% |
+| TDCA-d4, CID 30 eV | 504.32 | [M+H]+, −18.1 ppm | 3 of 50, 66.5% | 4 of 104, 72.1% |
+| TDCA-d4, EAD 22 eV | 504.32 | [M+H]+, −18.1 ppm | 3 of 50, 71.3% | 5 of 104, 78.4% |
+
+Guessing right did not rescue it either: the same CA-d4 EAD spectrum scored
+as `[M+H]+` gave 4 of 31 and 34.2%, because the ladder was then predicted
+and the precursor — 98% of the base peak — was not. TDCA-d4 *is* a
+protonated molecule, and it improves for the other reason on this page:
+labels spelt into the formula now shed with the water, as unplaced ones
+always did.
+
+On CA-d4 under EAD at 22 eV the whole ladder is accounted for, each rung
+twice:
+
+| | measured | route |
+|---|---|---|
+| precursor | 430.3489 | `[M+NH4]+ +4D` |
+| loses the ammonia | 413.3217 | `[M+H]+ (-NH3) +4D` |
+| one water | 395.3118 | `[M+H-H2O]+ +4D` |
+| two waters | 377.3015 | `[M+H-2H2O]+ +4D` |
+| three waters | 359.2897 | `[M+H-3H2O]+ +4D` |
+| one water, a label gone with it | 394.3035 | `[M+H-H2O]+ +3D` |
+| two waters, a label gone | 376.2935 | `[M+H-2H2O]+ +3D` |
+| three waters, a label gone | 358.2836 | `[M+H-3H2O]+ +3D` |
+
+Under CID at 45 eV the ladder has already run to completion: only 359.2870
+and 358.2808 are there above 1% of the base peak, and both are explained.
+
+**A structure gains exactly one ion, and it can be the base peak.** The
+cleavage enumeration already builds protonated pieces, which is what a
+labile adduct's fragments are, so the only thing it could not reach was the
+intact ammonium — and that ion is 98% of the base peak at 22 eV and the base
+peak itself at 12 eV. PubChem's cholic acid-d4 (CID 16217616, whose
+`M  ISO` block places the four labels), two cuts, three losses:
+
+| | before | now |
+|---|---|---|
+| CID, 45 eV | 25 of 1080, 56.5% | 25 of 1081, 56.5% |
+| EAD, 22 eV | 21 of 1080, 60.3% | 22 of 1081, 82.0% |
+| EAD, 12 eV | 8 of 1080, 9.7% | 9 of 1081, 92.0% |
+
+**The tolerance is the other half of it.** These spectra sit 4.1 to
+7.1 ppm high on their own mass axis — the matched precursor's error in the
+table above says so — and at the ±5 ppm this box defaults to, most of the
+ladder falls outside the window: CA-d4 under EAD 22 eV gives 5 of 56 and
+14.0% at 5 ppm against 8 of 56 and 63.6% at 10. The default is 5 because a
+label is only 1.55 mDa from the hydrogen it replaced — *Where the labels
+are*, above — so the two
+questions pull opposite ways: widen it to read the ladder, tighten it to
+count labels, and read the ppm the panel prints on the precursor to know
+which side you are on.
+
+## A name of your own
+
+The **Name** box resolves a compound when there is no drawing and no formula
+typed. Three places are asked, in order:
+
+1. **A table of standards** bought by their trivial names: the bile acids
+   and their glycine and taurine conjugates — cholic, deoxycholic,
+   chenodeoxycholic, ursodeoxycholic, hyodeoxycholic and lithocholic acid,
+   and the glyco- and tauro- forms of each — by name or by the abbreviation
+   on the bottle (`TDCA`, `GCDCA`), because nothing in LIPID MAPS answers to
+   `TDCA` and a `.wiff` is named after the bottle. The table gives the LIPID
+   MAPS spelling, so the *drawing* still comes from the database; the
+   formula it also carries is the fallback on a machine with no database
+   installed. It stops at bile acids on purpose — every entry was checked
+   against LMSD, and a table that grew by guesswork would be a list of
+   formulas nobody measured.
+2. **LIPID MAPS itself**, by name or LM_ID.
+3. **The lipid shorthand**, which gives a formula and no structure.
+
+A `-d4`, `_d5` or `(d4)` on the end is read as that many labels the name
+does not place — the same number the *Deuterium, unplaced* box takes — and
+is stripped before any of the three are asked. The `d` inside `SM(d18:1/16:0)`
+and the `d` of `DCA` are not label counts, because the suffix is anchored to
+the end of the name. A name none of the three knows is said to be unknown
+rather than guessed at.
+
+So `cholic acid-d4` typed into an infusion of CA-d4 becomes cholic acid,
+C24H40O5, drawn as `LMST04010001`, with four unplaced labels, ionised as
+`[M+NH4]+` because that is what 430.35 is. On the three compounds, at
+±10 ppm:
+
+| | CID | EAD, 22 eV |
+|---|---|---|
+| `cholic acid-d4` | 48 of 3,837, 85.7% | 33 of 3,837, 87.3% |
+| `DCA-d4` | 48 of 3,282, 82.2% | 29 of 3,282, 88.6% |
+| `TDCA-d4` | 17 of 8,463, 91.6% | 21 of 8,463, 91.2% |
+
+Those shares are the highest on this page and mean the least, for the reason
+*Where the labels are* gives above: four unplaced labels multiply the masses on offer
+fivefold, and a long enough list of possible masses covers a spectrum by
+accident. Read them beside the placed drawing's, not instead of it.
 
 ## Against a library
 

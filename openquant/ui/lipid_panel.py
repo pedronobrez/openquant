@@ -7,7 +7,7 @@ import os
 from PyQt6 import QtCore, QtWidgets
 
 from .. import lipidmaps
-from ..chemistry import ADDUCTS
+from ..chemistry import ADDUCTS, NEUTRAL
 from ..explain import rank_candidates, significant_peaks
 from ..matching import PRECURSOR_MATCH_DA
 from ..structure import predict
@@ -18,6 +18,9 @@ ROLE_MZ = QtCore.Qt.ItemDataRole.UserRole + 1
 ROLE_ADDUCT = QtCore.Qt.ItemDataRole.UserRole + 2
 ROLE_ION = QtCore.Qt.ItemDataRole.UserRole + 3
 ROLE_EXPLANATION = QtCore.Qt.ItemDataRole.UserRole + 4
+
+#: the adduct combo's first entry: work it out from the written precursor
+AUTO_ADDUCT = "from the precursor"
 
 
 class LipidPanel(QtWidgets.QWidget):
@@ -43,6 +46,11 @@ class LipidPanel(QtWidgets.QWidget):
         #: prints it under the fragment table, because "12 of 34 ions found"
         #: says nothing until the reader knows what offered the 34.
         self.explanation_basis = ""
+        #: the adduct that explanation was actually run as, which is not
+        #: always the one in the box above it: the own-structure path reads
+        #: it off the written precursor, and a report that printed the box
+        #: instead would name an ion nothing was scored against
+        self.explanation_adduct = ""
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
@@ -238,7 +246,25 @@ class LipidPanel(QtWidgets.QWidget):
         own_layout.addRow("Formula:", self.own_formula)
         self.own_name = QtWidgets.QLineEdit()
         self.own_name.setPlaceholderText("Cholic acid-d4")
+        self.own_name.setToolTip(
+            "A name is looked up in the table of standards (bile acids and "
+            "their conjugates, by name or by the abbreviation on the bottle, "
+            "with a -d4 read as four unplaced labels), then in LIPID MAPS, "
+            "then in the lipid shorthand. It is used only when no structure "
+            "is loaded and no formula is typed")
         own_layout.addRow("Name:", self.own_name)
+        self.own_adduct = QtWidgets.QComboBox()
+        self.own_adduct.addItem(AUTO_ADDUCT)
+        # the neutral entry is in the list above because a neutral mass can be
+        # searched for; it cannot be fragmented, so it is not offered here
+        self.own_adduct.addItems([a.name for a in ADDUCTS if a.name != NEUTRAL])
+        self.own_adduct.setToolTip(
+            "How the precursor was ionised. Left on automatic, the written "
+            "precursor and the formula decide it and the line under the "
+            "button says which and how far off — a channel written 430.35 "
+            "is the ammonium adduct, and scoring it as [M+H]+ predicts "
+            "every fragment 17 Da too high")
+        own_layout.addRow("Adduct:", self.own_adduct)
         self.own_deuterium = QtWidgets.QSpinBox()
         self.own_deuterium.setRange(0, 30)
         self.own_deuterium.setToolTip(
@@ -284,6 +310,7 @@ class LipidPanel(QtWidgets.QWidget):
         self._own_molecule = None
         self._label_inputs = None
         self._inference = None
+        self._polarity = ""
 
         self.explain_tree = QtWidgets.QTreeWidget()
         self.explain_tree.setHeaderLabels(["Candidate", "Explains", "Peaks",
@@ -689,11 +716,22 @@ class LipidPanel(QtWidgets.QWidget):
                      "the simplest arithmetic, not a mechanism.")
 
     # -- explaining a measured spectrum --------------------------------------- #
-    def set_spectrum(self, mz, intensity, precursor: float | None = None) -> None:
-        """Hand the panel the spectrum on screen, ready to be explained."""
+    def set_spectrum(self, mz, intensity, precursor: float | None = None,
+                     polarity: str = "") -> None:
+        """
+        Hand the panel the spectrum on screen, ready to be explained.
+
+        The precursor is written with the digits the method carried and no
+        more: `430.35` says the number is known to ±0.005, and printing it
+        as `430.3500` invents two decimals the instrument was never given —
+        which then decides how tight an adduct has to fit. The polarity is
+        a fact about the acquisition, not a choice, and is what stops a
+        negative adduct being offered for a positive channel.
+        """
         self._peaks = significant_peaks(mz, intensity)
+        self._polarity = str(polarity or "")
         if precursor:
-            self.explain_precursor.setText(f"{precursor:.4f}")
+            self.explain_precursor.setText(f"{precursor:g}")
         self.modes.setCurrentIndex(3)
         self.explain_header.setText(
             f"{len(self._peaks)} peak(s) above 1% of the base peak are on "
@@ -727,6 +765,7 @@ class LipidPanel(QtWidgets.QWidget):
         self.explanation_basis = (
             f"the curated structure, one bond cut and up to two neutral "
             f"losses, as {adduct}")
+        self.explanation_adduct = adduct
         self._show_ranked(ranked, precursor, adduct)
 
     def _load_own_structure(self) -> None:
@@ -755,8 +794,86 @@ class LipidPanel(QtWidgets.QWidget):
         if not self.own_formula.text():
             self.own_formula.setText(molecule.formula)
 
+    def _own_subject(self):
+        """
+        What the analyst gave to explain with: a drawing, a formula, a name.
+
+        In that order, because that is the order of how much each says. A
+        name is resolved through `explain.resolve_name` — the standards
+        table, then LIPID MAPS, then the lipid shorthand — and brings its
+        own structure when the database holds one and its own label count
+        when it is written `-d4`. Anything typed in the boxes above it wins,
+        since the analyst who typed it meant it.
+        """
+        from ..explain import resolve_name
+
+        molecule = self._own_molecule
+        formula = self.own_formula.text().strip()
+        name = self.own_name.text().strip()
+        deuterium = self.own_deuterium.value()
+        note = ""
+        if molecule is None and not formula and name:
+            resolved = resolve_name(name)
+            if resolved is None:
+                return None, "", name, 0, (
+                    f"\u201c{name}\u201d is not in the standards table, in LIPID MAPS "
+                    f"or in the lipid shorthand — load a structure or type a "
+                    f"formula")
+            molecule = resolved.molecule()
+            formula = resolved.formula
+            if not deuterium:
+                deuterium = resolved.labels
+            where = resolved.source
+            if molecule is not None and resolved.record is not None:
+                where += f", drawn as {resolved.record.lm_id}"
+            labels = f" with {resolved.labels} unplaced label(s)" if resolved.labels else ""
+            note = f"{name} read as {formula}{labels} from {where}"
+        if molecule is None and not formula:
+            return None, "", name, 0, "Load a structure, or type a formula or a name"
+        if not formula and molecule is not None:
+            formula = molecule.formula
+        return molecule, formula, name, deuterium, note
+
+    def _own_adduct(self, formula: str, deuterium: int):
+        """
+        The adduct to explain with, and the sentence that says why.
+
+        Left on automatic it is read off the written precursor: the channel
+        says 430.35, the molecule weighs 412.31, and the only adduct that
+        joins the two is the ammonium. Where nothing fits, no adduct comes
+        back and the sentence names the closest misses — a spectrum
+        explained as the wrong ion is worse than one not explained at all.
+        """
+        from ..chemistry import (adduct_from_name, format_formula,
+                                 identify_adduct, parse_formula)
+
+        chosen = self.own_adduct.currentText()
+        counts = dict(parse_formula(formula))
+        if deuterium:
+            counts["D"] = counts.get("D", 0) + deuterium
+            counts["H"] = counts.get("H", 0) - deuterium
+        labelled = format_formula(counts)
+        if chosen != AUTO_ADDUCT:
+            adduct = adduct_from_name(chosen)
+            return adduct, (f"{chosen}, chosen by hand" if adduct is not None
+                            else f"{chosen} is not an adduct this program knows")
+        text = self.explain_precursor.text().strip().replace(",", ".")
+        try:
+            precursor = float(text)
+        except ValueError:
+            # nothing to read the adduct off. The Adduct box above is the one
+            # the analyst already chose for this spectrum, so it stands in —
+            # said out loud, since it was not derived from anything
+            fallback = self.explain_adduct.currentText()
+            return adduct_from_name(fallback), (
+                f"no precursor is written, so {fallback} was taken from the "
+                f"Adduct box above")
+        choice = identify_adduct(labelled, precursor, self._polarity or None)
+        return choice.adduct, choice.reason
+
     def explain_own(self) -> None:
-        """Score a structure or formula the database does not hold."""
+        """Score a structure, formula or name the database does not hold."""
+        from ..chemistry import FormulaError
         from ..explain import explain_formula, explain_structure
 
         peaks = getattr(self, "_peaks", None)
@@ -764,38 +881,65 @@ class LipidPanel(QtWidgets.QWidget):
             self._report("Show a spectrum first — Process ▸ Explain spectrum "
                          "takes the one on screen.")
             return
-        adduct = self.explain_adduct.currentText()
-        charge = 1 if "+" in adduct else -1
-        name = self.own_name.text().strip()
-        deuterium = self.own_deuterium.value()
-        if self._own_molecule is not None:
+        molecule, formula, name, deuterium, note = self._own_subject()
+        if molecule is None and not formula:
+            self._report(f"{note}.")
+            return
+        try:
+            adduct, reason = self._own_adduct(formula, deuterium)
+        except (FormulaError, ValueError):
+            self._report(f"\u201c{formula}\u201d is not a formula this can read.")
+            return
+        if adduct is None:
+            self._explain_nothing(reason)
+            return
+        self.own_adduct.setToolTip(reason)
+        if molecule is not None:
             explanation = explain_structure(
-                self._own_molecule, peaks, name=name, charge=charge,
+                molecule, peaks, name=name or formula, adduct=adduct,
                 deuterium=deuterium, max_cuts=self.own_cuts.value(),
                 max_losses=self.own_losses.value(),
                 tolerance_ppm=self.own_tolerance.value())
             basis = (f"cleavages and losses of the drawing "
-                     f"({self._own_molecule.formula}) as {adduct}")
+                     f"({molecule.formula}) as {adduct.name}")
         else:
-            formula = self.own_formula.text().strip()
-            if not formula:
-                self._report("Load a structure or type a formula.")
-                return
             explanation = explain_formula(
-                formula, adduct, peaks, name=name, deuterium=deuterium,
+                formula, adduct.name, peaks, name=name, deuterium=deuterium,
                 tolerance_ppm=self.own_tolerance.value())
             if not explanation.record.exact_mass:
                 self._report(f"\u201c{formula}\u201d is not a formula this can read.")
                 return
-            basis = (f"the precursor {formula} as {adduct} and its neutral "
+            basis = (f"the precursor {formula} as {adduct.name} and its neutral "
                      f"losses — a formula has no bonds to cut")
-        self.explanation_basis = basis
-        self._show_ranked([explanation], None, adduct)
+        self.explanation_basis = f"{basis}; {reason}"
+        self.explanation_adduct = adduct.name
+        self._show_ranked([explanation], None, adduct.name)
         self._place_labels(explanation, peaks, deuterium)
         labelled = f", {deuterium} unplaced label(s)" if deuterium else ""
-        self._report(f"{explanation.name}: {explanation.share * 100:.1f}% of the "
-                     f"spectrum from {basis}{labelled}; {explanation.matched} "
-                     f"peak(s) matched, {len(explanation.unexplained(peaks))} not.")
+        lead = f"{note}. " if note else ""
+        self._report(f"{lead}{explanation.name}: {explanation.share * 100:.1f}% of "
+                     f"the spectrum from {basis}{labelled}; "
+                     f"{explanation.matched} of {explanation.predicted} "
+                     f"predicted ion(s) matched, "
+                     f"{len(explanation.unexplained(peaks))} peak(s) not.")
+
+    def _explain_nothing(self, reason: str) -> None:
+        """
+        Clear the tables and say why, rather than explain the wrong ion.
+
+        An adduct that does not fit the written precursor is the one case
+        where the right answer is nothing at all: every fragment would be
+        predicted from a molecule the quadrupole did not isolate, and a
+        table of confident wrong routes is harder to disbelieve than an
+        empty one.
+        """
+        self.explain_tree.clear()
+        self.match_tree.clear()
+        self.sigMatches.emit([])
+        self.labels_box.setVisible(False)
+        self.explanation_basis = ""
+        self.explanation_adduct = ""
+        self._report(f"Nothing explained: {reason}.")
 
     def current_explanation(self):
         """

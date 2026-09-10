@@ -1058,6 +1058,22 @@ UV detector, is not implemented there) — untested on real Windows.
   four queries have no hit with neither side corrected. Matching is a
   diagnosis, not a repair (61.0 → no hit onto an uncorrected record);
   *Rewrite from files…* is the repair.
+- **A fragment's own isotope satellite is evidence, and usually there is
+  none to have.** `explain.isotope_evidence` asks of every matched ion what
+  `adduct_evidence` asks of the precursor: is the M+1 in proportion to the
+  ion's own composition (`ion_counts`, each reading kept only where it
+  reproduces the ion's m/z). A disagreement is printed beside the match
+  and never removes it. On the seven ZenoTOF bile-acid infusions the
+  precursor transmits 0.00–0.26% of the 26–30% M+1 its composition
+  demands, so all 34 matched ions read *none expected* — fragments of a
+  monoisotopically isolated precursor cannot carry a 13C. A survey-bearing
+  TripleTOF injection answered whether any window passes the M+1: 0.8% in
+  the 647.5 product-ion channel against 73.7% in the survey, where both
+  matched ions agree at 0.70 and 0.99. Two gates: a satellite window must
+  not hold another predicted ion (a `+3D` rung's "M+1" is its `+4D`
+  neighbour 2.9 mDa away — 12 of 34 read 0.96–40× their own peak), and a
+  predicted M+1 under `SATELLITE_DETECTABLE` × the median height is
+  unmeasurable, not a disagreement.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

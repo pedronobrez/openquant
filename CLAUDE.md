@@ -82,6 +82,8 @@ openquant/
   infusion.py     is this sample a direct infusion (two flatness
                   figures, chromatograms only)
   audit.py        the trail of hand edits saved with the project
+  labels.py       which peaks get a label: a budget per region of the
+                  visible axis, shared by the pane and the print
   folder.py       what a folder holds and what would go wrong in it,
                   from the names alone
   xlsx.py         a dependency-free .xlsx writer; report.build_workbook
@@ -495,6 +497,20 @@ UV detector, is not implemented there) — untested on real Windows.
   the report section and `audit-trail.md` say so: no accounts, no
   signatures, no tamper evidence — it records what was done and when,
   never who.
+- **Peak labels are budgeted by region, not just thinned by collision.**
+  On a real TOF MS scan 268 maxima sit above 2% of the base peak, 105 of
+  them in the first eighth of the axis, and the twelve tallest inside a
+  stretch 118 Da wide — 50 px apart with 55 px of text — so eleven collided
+  and the spectrum was drawn with one label. `labels.choose` cuts the
+  visible axis into `LABEL_REGIONS` (8) windows with `LABEL_BUDGET` (3)
+  labels each, claimed as a round of every region's tallest before any
+  region asks for a second; the collision rule then runs unchanged.
+  Measured, offered/drawn: survey 12/1 → 18/6, zoomed 12/4 → 23/7, a
+  product-ion scan 12/6 → 20/7, the printed comparison 12/12 → 23/20.
+  Past eight regions the extra label names the first point of the scan;
+  past three per region the fourth peak does not fit. The pane chooses
+  again on every range change over a pool the peak finder fills once, and
+  the floor is 2% of the tallest peak *in view*.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

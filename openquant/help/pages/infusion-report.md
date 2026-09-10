@@ -62,7 +62,7 @@ gets no sentence:
   …"** with the reason. A window that holds less than a hundred counts is not
   a mass: it is reported as too little to measure, with the height that was
   found, rather than as a centroid taken over noise.
-- **"7 of the 97 ions predicted for … were found"** — the denominator is how
+- **"8 of the 56 ions predicted for … were found"** — the denominator is how
   many ions the prediction offered, so the reader can see what the count is a
   share of, and the strongest unexplained peak is named beside it.
 - **"Best library record … at score 29, reverse 39"**, with the precursors'
@@ -106,10 +106,18 @@ person:
 
 - **the explanation.** Where the [[lipid-maps]] tab has already explained the
   spectrum on screen, that explanation is used. Otherwise the compound is
-  looked up in the component table by name, and where the component carries a
-  formula and an adduct it is explained from those —
-  [[annotate-from-lipid-maps]]'s formula path, run with nobody at the tab. A
-  compound the method does not hold is not guessed at: the cell says so.
+  looked up in the component table by name and explained from its formula —
+  [[annotate-from-lipid-maps]]'s formula path, run with nobody at the tab. Two
+  things are read rather than taken as written, both for the same reason —
+  a component table has no column for either. The **labels**: a component
+  named `CA-d4` whose formula is the unlabelled `C24H40O5` is explained as
+  `C24H36D4O5`, because the name says four and the arithmetic is otherwise
+  out by 4.025 Da. And the **adduct**: the component's own is used where it
+  agrees with the channel's written precursor, and where it does not, the
+  precursor wins and the basis line says so — see *Adducts* in
+  [[lipid-maps]]. A compound the method does not hold is not guessed at, and
+  a precursor no adduct of the formula reaches is not explained at all: the
+  cell says which.
 - **the library.** The library of your own — the MSP that *Add spectrum to
   library…* appends to, see [[spectral-library]] — searched at the written
   precursor's own precision. A record made from one of these very infusions
@@ -136,7 +144,7 @@ left out is not the thing it claims to be.
 
 The summary line under the table is the one sentence the table adds up to —
 *3 compound(s) in 9 infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm;
-10 of 305 predicted ion(s) found across 9; 4 with an own record above 60 in
+34 of 458 predicted ion(s) found across 7; 4 with an own record above 60 in
 own-bileomics.msp* — counts only, each with what it was counted against. The
 batch report prints the table and that line as its *Infusions* section, while
 the measurement stands: see [[report]].
@@ -144,14 +152,16 @@ the measurement stands: see [[report]].
 ## Measured
 
 Cholic acid-d4 infused into a ZenoTOF 7600, the same vial under two
-activations, explained from the formula `C24H40O5` as `[M+H]+` with four
-unplaced deuterium and searched against a record made from the CID run:
+activations, explained from the component table's `C24H40O5` — read as
+`C24H36D4O5` from the four labels the name declares, and as `[M+NH4]+`
+because that is what the channel's 430.35 is — and searched against a record
+made from the CID run:
 
 | | CID, 45 eV, 473 scans | EAD, 22 eV, 146 scans |
 |---|---|---|
 | base peak | 359.2870 | 377.3015 |
 | precursor 430.35 in the product-ion spectrum | 84 counts, 1.49% — too little | 430.3489 at 9,415 counts, **+20.7 ppm** |
-| ions found, of 97 predicted | 2 — 24.2% of the intensity | 7 — 41.9% |
+| ions found, of 56 predicted | 2 — 24.2% of the intensity | 8 — 63.6% |
 | against the CID record | 100 / 100, its own record | **29 / 39**, 22 of 200 peaks |
 | collision energy against the record | same | **22 against 45 eV** |
 | against the same compound at 12 eV | 7 / 29 | 67 / 81 |
@@ -167,9 +177,11 @@ in one document came to eight pages in two seconds.
 The two rows worth reading twice are the last two of the CID column. Its
 library score of 100 is a record matched against the spectrum it was made
 from, which proves the file was written and read back and nothing else; and
-2 of 97 ions is what a formula with three neutral losses can say about a
-spectrum whose base peak needs four. Neither is a failure of the compound,
-and the report is built so that the page says which is which.
+2 of 56 ions is what a formula with three neutral losses can say about a CID
+spectrum whose ladder has already run to completion — the two it finds are
+the three-water loss and the same ion with a label gone. Neither is a
+failure of the compound, and the report is built so that the page says which
+is which.
 
 ### The tab, on the same nine files
 
@@ -181,27 +193,32 @@ head-to-tail pictures that five infusions of one compound make.
 
 | | precursor found | ions of predicted | own record |
 |---|---|---|---|
-| CA-d4 CID 45 eV | 84 counts — too little | 0 of 31 | 100, its own |
-| CA-d4 EAD 22 eV | 430.3489, **+20.7 ppm** | 1 of 31 | **29** at 45 eV |
-| CA-d4 EAD 12 eV | 430.3488, +20.4 ppm | 1 of 31 | **6** at 45 eV |
-| DCA-d4 CID 40 eV | 33 counts — too little | 0 of 25 | 99, its own |
-| DCA-d4 EAD 22 eV | 414.3525, +30.3 ppm | 1 of 25 | **33** at 40 eV |
-| TDCA-d4 CID 30 eV | 504.3273, +14.6 ppm, 124 counts | 4 of 50 | 100, its own |
-| TDCA-d4 EAD 22 eV | 504.3325, +24.9 ppm | 3 of 50 | **61** at 30 eV |
+| CA-d4 CID 45 eV | 84 counts — too little | 2 of 56 | 100, its own |
+| CA-d4 EAD 22 eV | 430.3489, **+20.7 ppm** | 8 of 56 | **29** at 45 eV |
+| CA-d4 EAD 12 eV | 430.3488, +20.4 ppm | 3 of 56 | **6** at 45 eV |
+| DCA-d4 CID 40 eV | 33 counts — too little | 3 of 41 | 99, its own |
+| DCA-d4 EAD 22 eV | 414.3525, +30.3 ppm | 8 of 41 | **33** at 40 eV |
+| TDCA-d4 CID 30 eV | 504.3273, +14.6 ppm, 124 counts | 5 of 104 | 100, its own |
+| TDCA-d4 EAD 22 eV | 504.3325, +24.9 ppm | 5 of 104 | **61** at 30 eV |
 
 *3 compound(s) in 9 infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm;
-10 of 305 predicted ion(s) found across 9; 4 with an own record above 60.*
+34 of 458 predicted ion(s) found across 7; 4 with an own record above 60.*
 
 Four things in that table are worth reading rather than skipping:
 
 - **the two rows not in it.** `CA-d4_TOFMSMS_EAD_12CE_…_TESTEARTIGO` and its
   22 eV twin carry the CA-d4 name and are not CA-d4 acquisitions: their method
   targets **839.56** over 100–1000, their base peak is 839.23, nine and
-  seventeen counts sit in the precursor window, no record of the library comes
-  within ±0.02 Da of 839.56, and the formula accounts for none of 31. They
-  score **73** against each other and **5 to 10** against the three real
-  CA-d4 files. The name prefix said one compound and the method said another,
-  and the row is where that shows — which is the whole reason the compound is
+  seventeen counts sit in the precursor window, and no record of the library
+  comes within ±0.02 Da of 839.56. Their explanation cell now says the thing
+  outright — *839.56 is none of the adducts of C24H36D4O5 within ±0.05 Da —
+  closest [M+K]+ at 451.2758* — rather than reporting nought ions of
+  thirty-one, which was true and left the reader to work out why. The
+  *across 7* in the line above is those two rows: an infusion nothing was
+  explained for is not counted as one that found nothing. They score
+  **73** against each other and **5 to 10** against the three real CA-d4
+  files. The name prefix said one compound and the method said another, and
+  the row is where that shows — which is the whole reason the compound is
   never anything but a proposal.
 - **the precursor survives the soft activations and not the hard ones.** Every
   EAD run measured its precursor; two of the three CID runs had too little
@@ -211,11 +228,16 @@ Four things in that table are worth reading rather than skipping:
 - **the errors are all the same sign**, +14.6 to +30.3 ppm. One of them,
   DCA-d4 at +30.3, is past the 25 ppm the line counts and is on the page all
   the same: the count is a sentence, not a verdict.
-- **a formula finds one ion in thirty-one.** A formula offers the precursor
-  and its neutral losses and nothing else; these spectra are made of ring
-  cleavages. That is what the denominator is for. The row to compare it
-  against is the [[lipid-maps]] tab's, where a structure offered 97 ions and
-  found 7.
+- **a formula finds two to eight ions, and which ones depends on the
+  activation.** A formula offers the precursor, the form its fragments carry
+  and their neutral losses, and nothing else; the rest of these spectra is
+  ring cleavages. That is what the denominator is for. Over the seven real
+  acquisitions: **34 of 458** predicted ions found, 2 of 56 on CA-d4 under
+  CID against 8 of 56 under EAD at 22 eV, 3 of 41 and 8 of 41 for DCA-d4, 5
+  of 104 both ways for TDCA-d4 — the soft activations keep the ladder and the
+  hard ones have finished it. The row to compare against is the
+  [[lipid-maps]] tab's, where the same compound as a *drawing* is scored
+  against thousands of masses instead of dozens.
 
 The library column is the one that says something the rest does not. A record
 made from a run matches that run at 100, which proves the file was written and

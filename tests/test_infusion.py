@@ -527,7 +527,9 @@ def test_what_explain_and_the_library_read_is_that_average():
 
     # Explain is handed the same spectrum and the channel's precursor
     explorer.explain_spectrum()
-    assert explorer.lipid_panel.explain_precursor.text() == "430.3400"
+    # written with the digits the method carried and no more: 430.34 is
+    # known to +/-0.005, and 430.3400 claims two decimals nobody measured
+    assert explorer.lipid_panel.explain_precursor.text() == "430.34"
     assert len(explorer.lipid_panel._peaks) > 0
 
     explorer.deleteLater()

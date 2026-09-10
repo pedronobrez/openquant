@@ -467,6 +467,15 @@ class PredictedIon:
     #: deuterium labels this piece is assumed to carry, when the structure
     #: was drawn unlabelled and the labels' positions are not known
     labels: int = 0
+    #: the element whose cation carries the charge, when it is not a proton.
+    #: A sodiated fragment is the neutral piece plus Na+, not the piece plus
+    #: a hydrogen, and the two are 21.98 apart.
+    carrier: str = ""
+    #: the ion written as a form of the precursor — `[M+NH4]+`,
+    #: `[M+H]+ (-NH3)`, `[M+H-3H2O]+` — for the ions that are one. A piece
+    #: is not: it is written as what is left and how it got there, which is
+    #: the only description a cleavage has. Set, this replaces that.
+    form: str = ""
 
     @property
     def formula(self) -> str:
@@ -474,10 +483,15 @@ class PredictedIon:
 
     @property
     def description(self) -> str:
-        parts = [self.fragment.formula]
-        if self.hydrogens:
-            parts.append(f"{self.hydrogens:+d}H")
-        parts.extend(f"-{loss}" for loss in self.losses)
+        if self.form:
+            parts = [self.form]
+        else:
+            parts = [self.fragment.formula]
+            if self.hydrogens:
+                parts.append(f"{self.hydrogens:+d}H")
+            parts.extend(f"-{loss}" for loss in self.losses)
+            if self.carrier:
+                parts.append(f"+{self.carrier}")
         if self.labels:
             parts.append(f"+{self.labels}D")
         return " ".join(parts)
@@ -490,7 +504,8 @@ class PredictedIon:
 
 def predict(structure: Structure, charge: int = 1, max_cuts: int = MAX_CUTS,
             hydrogen_shifts: tuple[int, ...] = (-2, -1, 0, 1, 2),
-            max_losses: int = 2, min_mz: float = 50.0) -> list[PredictedIon]:
+            max_losses: int = 2, min_mz: float = 50.0,
+            carrier: str = "") -> list[PredictedIon]:
     """
     Masses worth looking for, from cleavages plus small neutral losses.
 
@@ -498,6 +513,13 @@ def predict(structure: Structure, charge: int = 1, max_cuts: int = MAX_CUTS,
     list is read to decide what to extract, not to enumerate mechanisms. This
     says nothing about which cleavages are likely — confirm against a measured
     product spectrum.
+
+    The charge is a proton by default and the hydrogen shifts are what carry
+    it: a piece written `+1H` is the protonated piece, one written `-1H` in
+    negative mode the deprotonated one. `carrier` names an element whose
+    cation carries it instead — `Na`, `K` — for a metal adduct, whose pieces
+    keep the metal rather than a proton; the hydrogen shifts then say only
+    what the cleavage itself moved.
     """
     losses = _loss_combinations(max_losses)
     # the composition each combination takes away, worked out once: doing it
@@ -505,6 +527,7 @@ def predict(structure: Structure, charge: int = 1, max_cuts: int = MAX_CUTS,
     taken = {combination: _combined_loss(combination) for combination in losses}
     needs = {combination: _required_groups(combination)
              for combination in losses}
+    added = monoisotopic_mass({carrier: 1}) if carrier else 0.0
     routes: dict[int, list[PredictedIon]] = {}
     for fragment in fragments(structure, max_cuts):
         counts = parse_formula(fragment.formula)
@@ -517,13 +540,14 @@ def predict(structure: Structure, charge: int = 1, max_cuts: int = MAX_CUTS,
                 remainder = _after_losses(counts, shift, taken[combination])
                 if remainder is None:
                     continue
-                mass = monoisotopic_mass(remainder)
+                mass = monoisotopic_mass(remainder) + added
                 mz = (mass - charge * ELECTRON_MASS) / abs(charge or 1)
                 if mz < min_mz:
                     continue
                 routes.setdefault(round(mz, 4), []).append(
                     PredictedIon(fragment=fragment, mz=mz, charge=charge,
-                                 hydrogens=shift, losses=combination))
+                                 hydrogens=shift, losses=combination,
+                                 carrier=carrier))
 
     out: list[PredictedIon] = []
     for candidates in routes.values():
@@ -537,7 +561,8 @@ def predict(structure: Structure, charge: int = 1, max_cuts: int = MAX_CUTS,
                        if name != head.description)
         out.append(PredictedIon(
             fragment=head.fragment, mz=head.mz, charge=head.charge,
-            hydrogens=head.hydrogens, losses=head.losses, alternatives=others))
+            hydrogens=head.hydrogens, losses=head.losses, alternatives=others,
+            carrier=head.carrier))
     return sorted(out, key=lambda i: i.mz)
 
 

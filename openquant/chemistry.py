@@ -6,6 +6,31 @@ carry it (`names_for_mass`).
 
 Masses are monoisotopic unless stated otherwise. Abundances come from the
 IUPAC 2013 representative isotopic compositions.
+
+An adduct here is more than an offset. It also says what becomes of the
+charge when the ion breaks up, because that is what decides which masses a
+product spectrum can hold, and getting it wrong is not a rounding error — it
+moves every predicted fragment by 17 Da:
+
+- **A proton adduct** (`[M+H]+`, `[M-H]-`, `[M+2H]2+`) keeps its charge on
+  whichever piece holds it. The fragments are the protonated — or
+  deprotonated — pieces, which is what the enumerator already assumes.
+- **A labile adduct** (`[M+NH4]+`, and in negative mode `[M+HCOO]-`,
+  `[M+CH3COO]-`, `[M+Cl]-`) is held by hydrogen bonds and nothing stronger.
+  It leaves as a neutral — ammonia, formic acid, acetic acid, hydrogen
+  chloride — and hands over a proton on the way, so the ion that fragments
+  is `[M+H]+` (or `[M-H]-`) and every fragment carries that, not the adduct.
+  This is why an ammoniated precursor at 430.35 shows a ladder starting at
+  413.32 and nothing at all 17 Da higher: `[M+NH4-H2O]+` is not a species,
+  because the ammonia is long gone before a hydroxyl leaves.
+- **A metal adduct** (`[M+Na]+`, `[M+K]+`) is a coordinate bond, and the
+  metal stays on the piece that keeps the coordinating site — which the
+  arithmetic cannot know. Both are therefore offered, `[piece+Na]+` and
+  `[piece+H]+`, and each ion says which was assumed.
+
+`identify_adduct` runs this backwards: given a formula and the precursor the
+method was written with, it says which adduct that number *is*, with the
+error, and refuses rather than guessing when nothing fits.
 """
 
 from __future__ import annotations
@@ -605,13 +630,35 @@ def _readings(name: str) -> list[str]:
 # --------------------------------------------------------------------------- #
 # adducts
 # --------------------------------------------------------------------------- #
+#: an adduct whose charge is a proton the pieces keep or lose between them
+PROTON = "proton"
+#: an adduct held by hydrogen bonds, which leaves as a neutral and hands the
+#: fragmenting ion a proton — see the rule in the module docstring
+LABILE = "labile"
+#: an adduct that is a coordinated metal, which stays on one piece
+METAL = "metal"
+
+
 @dataclass(frozen=True)
 class Adduct:
-    """An ionisation form: m/z = (M + delta) / |charge|."""
+    """
+    An ionisation form: m/z = (M + delta) / |charge|, and what happens to
+    the charge when the ion fragments.
+
+    `behaviour` is one of `PROTON`, `LABILE` or `METAL`; `leaves` is the
+    neutral a labile adduct departs as; `carrier` is the element a metal
+    adduct leaves on the fragment. The fields are what `fragment_adducts`
+    reads, and the chemistry behind them is in the module docstring.
+    """
 
     name: str
     charge: int
     delta: float
+    #: what the adduct adds, as a formula, for a name that has to be built
+    added: str = ""
+    behaviour: str = PROTON
+    leaves: str = ""
+    carrier: str = ""
 
     def mz(self, neutral_mass: float) -> float:
         return (neutral_mass + self.delta) / abs(self.charge)
@@ -619,21 +666,31 @@ class Adduct:
     def neutral_mass(self, mz: float) -> float:
         return mz * abs(self.charge) - self.delta
 
+    @property
+    def polarity(self) -> int:
+        return 1 if self.charge > 0 else -1
+
 
 #: not an ion: the entry that lets a neutral mass be searched as if it were one
 NEUTRAL = "M (neutral)"
 
 ADDUCTS: list[Adduct] = [
     Adduct("[M-H]-", -1, -PROTON_MASS),
-    Adduct("[M+Cl]-", -1, 34.96885268 + ELECTRON_MASS),
-    Adduct("[M+HCOO]-", -1, 44.99765396),
-    Adduct("[M+CH3COO]-", -1, 59.01330402),
+    Adduct("[M+Cl]-", -1, 34.96885268 + ELECTRON_MASS, added="Cl",
+           behaviour=LABILE, leaves="HCl"),
+    Adduct("[M+HCOO]-", -1, 44.99765396, added="CHO2",
+           behaviour=LABILE, leaves="HCOOH"),
+    Adduct("[M+CH3COO]-", -1, 59.01330402, added="C2H3O2",
+           behaviour=LABILE, leaves="CH3COOH"),
     Adduct("[M-2H]2-", -2, -2 * PROTON_MASS),
-    Adduct("[M+H]+", 1, PROTON_MASS),
-    Adduct("[M+NH4]+", 1, 18.03382555),
-    Adduct("[M+Na]+", 1, 22.98922421),
-    Adduct("[M+K]+", 1, 38.96315810),
-    Adduct("[M+2H]2+", 2, 2 * PROTON_MASS),
+    Adduct("[M+H]+", 1, PROTON_MASS, added="H"),
+    Adduct("[M+NH4]+", 1, 18.03382555, added="NH4",
+           behaviour=LABILE, leaves="NH3"),
+    Adduct("[M+Na]+", 1, 22.98922421, added="Na",
+           behaviour=METAL, carrier="Na"),
+    Adduct("[M+K]+", 1, 38.96315810, added="K",
+           behaviour=METAL, carrier="K"),
+    Adduct("[M+2H]2+", 2, 2 * PROTON_MASS, added="H2"),
     Adduct(NEUTRAL, 1, 0.0),
 ]
 
@@ -758,6 +815,269 @@ def mass_error_ppm(measured: float, theoretical: float) -> float:
 def mass_error_mda(measured: float, theoretical: float) -> float:
     """Absolute mass error in millidaltons."""
     return (measured - theoretical) * 1000.0
+
+
+# --------------------------------------------------------------------------- #
+# what the fragments of an adduct carry
+# --------------------------------------------------------------------------- #
+def core_adduct(adduct: Adduct) -> Adduct:
+    """
+    The singly-charged form the pieces of this ion actually carry.
+
+    A labile adduct has left by the time anything breaks, so the ion that
+    fragments is the protonated or deprotonated molecule; a doubly charged
+    precursor gives singly charged fragments. A metal adduct is its own
+    core — and its other possibility is the proton form, which is why
+    `fragment_adducts` and not this is what a predictor should ask.
+    """
+    if adduct.behaviour == METAL:
+        return adduct
+    return ADDUCTS_BY_NAME["[M+H]+" if adduct.charge > 0 else "[M-H]-"]
+
+
+def fragment_adducts(adduct: Adduct) -> tuple[Adduct, ...]:
+    """
+    Every charge form the fragments of this ion may carry, likeliest first.
+
+    One form for a proton or a labile adduct; two for a metal, because
+    whether the sodium stays with the piece or the piece keeps a proton
+    instead depends on where the coordinating oxygens ended up, and the
+    arithmetic cannot know. Offering both and saying which was assumed is
+    the honest version of a rule nobody can derive.
+    """
+    proton = ADDUCTS_BY_NAME["[M+H]+" if adduct.charge > 0 else "[M-H]-"]
+    if adduct.behaviour == METAL:
+        return (adduct, proton)
+    return (proton,)
+
+
+# --------------------------------------------------------------------------- #
+# which adduct a written precursor is
+# --------------------------------------------------------------------------- #
+#: how far a written method precursor may sit from an adduct's exact mass and
+#: still be that adduct. Measured on nine bile-acid infusions: the worst gap
+#: is 0.0117 Da — DCA-d4, written `414.34` for an [M+NH4]+ of 414.3517, the
+#: instrument method carrying two decimals and not always rounding them the
+#: same way (`430.35` in one file and `430.34` in another for the same
+#: 430.3465). 0.05 covers that with room to spare and is still a fiftieth of
+#: the smallest gap between two adducts of one molecule that could be
+#: confused for each other — ammonium and sodium, 4.955 Da apart.
+ADDUCT_MATCH_DA = 0.05
+
+
+@dataclass(frozen=True)
+class AdductMatch:
+    """One adduct measured against a written precursor."""
+
+    adduct: Adduct
+    mz: float
+    error_da: float
+    error_ppm: float
+    within: bool
+
+    @property
+    def name(self) -> str:
+        return self.adduct.name
+
+
+def adducts_matching(formula: str, precursor: float, polarity=None,
+                     tolerance: float | None = None) -> list[AdductMatch]:
+    """
+    Every adduct of `formula`, ranked by how near it sits to `precursor`.
+
+    The list is complete — a miss is as informative as a hit, since a
+    precursor that is none of them means the formula is wrong — and each
+    entry says whether it is `within` the tolerance. `polarity` is the sign
+    the channel was acquired at (+1/-1, or a word the file writes such as
+    `Positive`); adducts of the other sign are left out, because a positive
+    channel cannot have produced `[M-H]-` and offering it would be inviting
+    a mistake, not a choice. The neutral entry is never an answer.
+
+    The tolerance defaults to `ADDUCT_MATCH_DA`, widened to the precision
+    the precursor was actually written with when that is coarser: `647.5`
+    is known to ±0.05 and nothing closer can be asked of it.
+    """
+    from .lipidmaps import mass_precision
+
+    try:
+        counts = parse_formula(formula)
+    except (FormulaError, ValueError):
+        return []
+    if not counts:
+        return []
+    mass = monoisotopic_mass(counts)
+    sign = polarity_sign(polarity) if polarity is not None else None
+    if tolerance is None:
+        tolerance = max(ADDUCT_MATCH_DA, mass_precision(float(precursor)))
+    out = []
+    for adduct in ADDUCTS:
+        if adduct.name == NEUTRAL:
+            continue
+        if sign is not None and adduct.polarity != sign:
+            continue
+        mz = adduct.mz(mass)
+        error = float(precursor) - mz
+        out.append(AdductMatch(adduct=adduct, mz=mz, error_da=error,
+                               error_ppm=mass_error_ppm(float(precursor), mz),
+                               within=abs(error) <= tolerance))
+    out.sort(key=lambda m: abs(m.error_da))
+    return out
+
+
+@dataclass(frozen=True)
+class AdductChoice:
+    """The adduct a written precursor is, and the sentence that says so."""
+
+    adduct: Adduct | None
+    reason: str
+    matches: tuple[AdductMatch, ...] = ()
+
+    def __bool__(self) -> bool:
+        return self.adduct is not None
+
+
+def identify_adduct(formula: str, precursor: float, polarity=None,
+                    tolerance: float | None = None) -> AdductChoice:
+    """
+    Which adduct a method's written precursor is, for this formula, in words.
+
+    The sentence is the point. A user who types a formula and gets back a
+    spectrum explaining nothing has been told the arithmetic failed but not
+    where, and the answer is nearly always that the channel is an ammonium
+    adduct and the drawing was scored as a protonated one. So this says
+    which it is, how far off the written number sits, and what the obvious
+    alternative would have been — and where nothing fits, it names the
+    closest and returns no adduct, so that nothing is explained rather than
+    the wrong ion being explained well.
+    """
+    from .lipidmaps import mass_precision
+
+    matches = adducts_matching(formula, precursor, polarity, tolerance)
+    if not matches:
+        return AdductChoice(None, f"{formula!r} is not a formula this can read")
+    written = f"{float(precursor):g}"
+    inside = [m for m in matches if m.within]
+    if not inside:
+        window = (tolerance if tolerance is not None
+                  else max(ADDUCT_MATCH_DA, mass_precision(float(precursor))))
+        closest = ", ".join(
+            f"{m.name} at {m.mz:.4f} ({m.error_da:+.4f} Da)"
+            for m in matches[:2])
+        return AdductChoice(
+            None,
+            f"{written} is none of the adducts of {format_formula(parse_formula(formula))}"
+            f" within ±{window:g} Da — closest {closest}",
+            tuple(matches))
+    best = inside[0]
+    # the alternative worth printing is the form the *fragments* carry, not
+    # the next nearest number: a user who expected a protonated molecule and
+    # got an ammoniated one needs to see 413.3199 beside 430.3465, and being
+    # shown the sodium adduct instead answers a question nobody asked
+    core = core_adduct(best.adduct)
+    others = [m for m in matches if m.adduct.name == core.name
+              and m.adduct.name != best.name]
+    if not others:
+        others = [m for m in matches if m is not best][:1]
+    tail = ("; " + ", ".join(f"{m.name} would be {m.mz:.4f}" for m in others)
+            if others else "")
+    return AdductChoice(
+        best.adduct,
+        f"{written} is {best.name} of "
+        f"{format_formula(parse_formula(formula))} "
+        f"({best.mz:.4f}, {best.error_ppm:+.1f} ppm){tail}",
+        tuple(matches))
+
+
+# --------------------------------------------------------------------------- #
+# standards that are bought by their trivial names
+# --------------------------------------------------------------------------- #
+#: bile acids and their conjugates, by the abbreviation and the trivial name a
+#: vendor's bottle carries, to the neutral formula and the name LIPID MAPS
+#: files them under. LMSD holds every one of these — with a structure — but
+#: under its own spelling, and nothing in it answers to `TDCA`. The table is
+#: therefore an index into LIPID MAPS rather than a second database: the
+#: formula here is the fallback for a machine with no LMSD installed, and the
+#: `lipidmaps` name is what fetches the drawing when there is one.
+#:
+#: It stops at bile acids on purpose. These are the compounds this was built
+#: against and every entry was checked against LMSD; a table that grew by
+#: guesswork would be a list of formulas nobody measured.
+STANDARDS: dict[str, tuple[str, str]] = {
+    "cholic acid": ("C24H40O5", "Cholic acid"),
+    "deoxycholic acid": ("C24H40O4", "Deoxycholic acid"),
+    "chenodeoxycholic acid": ("C24H40O4", "Chenodeoxycholic Acid"),
+    "ursodeoxycholic acid": ("C24H40O4", "Ursodeoxycholic acid"),
+    "hyodeoxycholic acid": ("C24H40O4", "Hyodeoxycholic acid"),
+    "lithocholic acid": ("C24H40O3", "Lithocholic acid"),
+    "glycocholic acid": ("C26H43NO6", "Glycocholic Acid"),
+    "glycodeoxycholic acid": ("C26H43NO5", "glycodeoxycholic acid"),
+    "glycochenodeoxycholic acid": ("C26H43NO5", "Glycochenodeoxycholic acid"),
+    "glycoursodeoxycholic acid": ("C26H43NO5", "Glycoursodeoxycholic acid"),
+    "glycolithocholic acid": ("C26H43NO4", "Glycolithocholic Acid"),
+    "taurocholic acid": ("C26H45NO7S", "Taurocholic acid"),
+    "taurodeoxycholic acid": ("C26H45NO6S", "Taurodeoxycholic acid"),
+    "taurochenodeoxycholic acid": ("C26H45NO6S", "Taurochenodeoxycholic acid"),
+    "tauroursodeoxycholic acid": ("C26H45NO6S", "Tauroursodeoxycholic acid"),
+    "taurolithocholic acid": ("C26H45NO5S", "Taurolithocholic acid"),
+}
+
+#: what the bottle is actually labelled. `CA-d4` is what the sample is called
+#: and `cholic acid-d4` is what it is; both have to resolve to the same thing.
+STANDARD_ALIASES: dict[str, str] = {
+    "ca": "cholic acid",
+    "dca": "deoxycholic acid",
+    "cdca": "chenodeoxycholic acid",
+    "udca": "ursodeoxycholic acid",
+    "hdca": "hyodeoxycholic acid",
+    "lca": "lithocholic acid",
+    "gca": "glycocholic acid",
+    "gdca": "glycodeoxycholic acid",
+    "gcdca": "glycochenodeoxycholic acid",
+    "gudca": "glycoursodeoxycholic acid",
+    "glca": "glycolithocholic acid",
+    "tca": "taurocholic acid",
+    "tdca": "taurodeoxycholic acid",
+    "tcdca": "taurochenodeoxycholic acid",
+    "tudca": "tauroursodeoxycholic acid",
+    "tlca": "taurolithocholic acid",
+}
+
+#: a label count written on the end of a name: `-d4`, `_d5`, ` d4`, `(d4)`.
+#: Anchored to the end so that the `d18:1` inside a sphingoid shorthand — or
+#: the `d` of `DCA` — cannot be read as one.
+_STANDARD_LABEL = re.compile(r"[-_ (]?d(\d{1,2})\)?\s*$", re.IGNORECASE)
+
+
+def split_labels(name: str) -> tuple[str, int]:
+    """
+    A written name split into the compound and the deuterium count on it.
+
+    `cholic acid-d4` is cholic acid with four labels the name does not
+    place, which is exactly what `explain.with_labels` enumerates. A name
+    with no such suffix comes back with a count of zero.
+    """
+    text = str(name or "").strip()
+    match = _STANDARD_LABEL.search(text)
+    if match is None:
+        return text, 0
+    return text[:match.start()].strip(), int(match.group(1))
+
+
+def standard_named(name: str) -> tuple[str, str] | None:
+    """
+    The (formula, LIPID MAPS name) of a standard written by name or
+    abbreviation, or None when the table does not hold it. The label suffix
+    is `split_labels`'s business, not this one's.
+    """
+    key = " ".join(str(name or "").strip().lower().split())
+    if not key:
+        return None
+    key = STANDARD_ALIASES.get(key.replace(" ", ""), key)
+    if key in STANDARDS:
+        return STANDARDS[key]
+    if not key.endswith(" acid") and f"{key} acid" in STANDARDS:
+        return STANDARDS[f"{key} acid"]
+    return None
 
 
 # --------------------------------------------------------------------------- #

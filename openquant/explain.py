@@ -15,6 +15,16 @@ What this cannot do is prove a structure. Several candidates usually explain
 the same peaks, because isomers fragment alike and because a long enough list
 of possible masses will cover a spectrum by accident. The unexplained peaks are
 the honest part of the answer, so they are reported too.
+
+Everything here is scored *as an adduct*, and which one is not a detail: a
+channel written 430.35 is the ammonium adduct of cholic acid-d4, and the same
+spectrum scored as a protonated molecule predicts every fragment 17 Da away
+from anything in it. `chemistry` holds the model — what each kind of adduct
+does when the ion breaks up — and `chemistry.identify_adduct` reads the
+adduct off the written precursor and refuses rather than guessing. This
+module turns that into ions: `precursor_ions` for what a formula alone can
+say, `structure_ions` for a drawing, `resolve_name` for a compound written
+by name.
 """
 
 from __future__ import annotations
@@ -124,7 +134,13 @@ def companion_masses(structure: Structure, ion: PredictedIon,
     one whose whole ladder is in the spectrum, and the spectrum is the only
     thing that can tell them apart.
     """
-    losses = _losses_of(description) if description is not None else ion.losses
+    if description is None or description == ion.description:
+        # the ion's own route is on the ion; only a rival route has to be read
+        # back out of the words, and an ion written as a form of the
+        # precursor — `[M+H-3H2O]+` — has no words to read it out of
+        losses = ion.losses
+    else:
+        losses = _losses_of(description)
     if not losses:
         return []
     charge = ion.charge or 1
@@ -213,13 +229,21 @@ def match_peaks(peaks, ions: list[PredictedIon],
 
 def explain(record: LipidRecord, peaks, charge: int = 1,
             tolerance_ppm: float = TOLERANCE_PPM,
-            max_cuts: int = 1, max_losses: int = 2) -> Explanation | None:
-    """How much of a spectrum one candidate structure accounts for."""
+            max_cuts: int = 1, max_losses: int = 2,
+            adduct=None) -> Explanation | None:
+    """
+    How much of a spectrum one candidate structure accounts for.
+
+    `adduct` is how the precursor was ionised; a database candidate found at
+    an ammonium precursor is scored with the ammonium ion on the list, which
+    the cleavages alone cannot reach. Without one the charge is a proton,
+    which is what `charge` alone can say.
+    """
     molecule = record.molecule()
     if molecule is None:
         return None
-    ions = predict(molecule, charge=charge, max_cuts=max_cuts,
-                   max_losses=max_losses)
+    ions = structure_ions(molecule, adduct=adduct, charge=charge,
+                          max_cuts=max_cuts, max_losses=max_losses)
     matches = match_peaks(peaks, ions, tolerance_ppm)
     # where a mass has rival routes, let the spectrum pick between them: the
     # route whose own intermediates are present is the better explanation
@@ -296,10 +320,183 @@ def custom_record(name: str, formula: str, molecule: Structure | None = None
                        structure=molecule.to_compact() if molecule else None)
 
 
+@dataclass(frozen=True)
+class NamedCompound:
+    """What a written name resolved to, and where it came from."""
+
+    written: str
+    #: the name with any label suffix taken off
+    compound: str
+    formula: str
+    #: deuterium the name declares but does not place — the `4` of `-d4`
+    labels: int = 0
+    #: in words, for the basis line: a name resolved from a table is not the
+    #: same evidence as one the analyst typed a formula for
+    source: str = ""
+    record: LipidRecord | None = None
+
+    def molecule(self) -> Structure | None:
+        return self.record.molecule() if self.record is not None else None
+
+
+def resolve_name(text: str, database: "LipidDatabase | None" = None,
+                 use_installed: bool = True) -> NamedCompound | None:
+    """
+    A compound written by name, resolved to a formula and — where there is
+    one — a drawing.
+
+    Three places are asked, in order. A **table of standards** the analyst
+    buys by their trivial names: bile acids and their conjugates, by name or
+    by the abbreviation on the bottle, because nothing in LIPID MAPS answers
+    to `TDCA` and a `.wiff` is named after the bottle. What that table gives
+    is the LIPID MAPS spelling, so the drawing still comes from the database
+    when it is installed and the formula it also carries is the fallback for
+    a machine without one. Then **LIPID MAPS itself**, by name or LM_ID.
+    Then the **lipid shorthand**, which is a formula and no structure.
+
+    A `-d4` on the end is read as four labels the name does not place — the
+    number `explain.with_labels` enumerates — and is stripped before any of
+    the three are asked. `None` means none of them knew the name, which the
+    caller should say rather than guess at.
+    """
+    from . import lipidmaps
+    from .chemistry import formula_from_name, split_labels, standard_named
+
+    written = str(text or "").strip()
+    if not written:
+        return None
+    compound, labels = split_labels(written)
+    if database is None and use_installed:
+        database = lipidmaps.database()
+
+    def with_record(name: str, formula: str, source: str) -> NamedCompound:
+        found = database.find_by_name(name, limit=1) if database else []
+        record = found[0] if found else None
+        if record is not None and record.formula:
+            formula = record.formula
+        return NamedCompound(written=written, compound=compound,
+                             formula=formula, labels=labels, source=source,
+                             record=record)
+
+    known = standard_named(compound)
+    if known is not None:
+        formula, lm_name = known
+        return with_record(lm_name, formula, "the standards table")
+    if database is not None:
+        found = database.find_by_name(compound, limit=1)
+        if found and found[0].formula:
+            return NamedCompound(written=written, compound=compound,
+                                 formula=found[0].formula, labels=labels,
+                                 source="LIPID MAPS", record=found[0])
+    shorthand = formula_from_name(compound)
+    if shorthand:
+        return NamedCompound(written=written, compound=compound,
+                             formula=shorthand, labels=labels,
+                             source="the lipid shorthand")
+    return None
+
+
+def structure_ions(molecule: Structure, adduct=None, charge: int = 1,
+                   max_cuts: int = 1, max_losses: int = 2,
+                   deuterium: int = 0) -> list[PredictedIon]:
+    """
+    Everything a drawing plus an adduct can produce: the precursor as it was
+    ionised, and every cleavage under the charge form its fragments carry.
+
+    The enumerator's own arithmetic is already the protonated — or
+    deprotonated — piece, which is exactly right for a proton adduct and for
+    a labile one, whose adduct has left before anything breaks. So a
+    labile adduct adds one ion the cleavages cannot reach, the intact
+    [M+NH4]+ itself, and changes nothing else. A metal adduct runs the
+    enumeration twice, once with the metal carrying the charge and once with
+    a proton, because which piece keeps the metal is not something
+    arithmetic can decide.
+
+    The whole molecule's own ions are then relabelled as forms of the
+    precursor — `[M+H-3H2O]+` rather than `C24H31D4O2` — since that is the
+    name they are read by; a piece keeps the formula it is.
+
+    That one ion is worth measuring. PubChem's cholic acid-d4 against its own
+    infusions, two cuts and three losses at 10 ppm: 1,080 ions before and
+    1,081 after, and what the extra one buys is 60.3% to 82.0% of the
+    intensity under EAD at 22 eV and 9.7% to 92.0% at 12 eV, where the
+    ammonium adduct *is* the base peak. Under CID at 45 eV it buys nothing —
+    25 of 1,081 and 56.5% either way — because by then the precursor is
+    gone.
+    """
+    from .chemistry import LABILE, adduct_from_name, fragment_adducts
+
+    if isinstance(adduct, str):
+        adduct = adduct_from_name(adduct)
+    sign = adduct.polarity if adduct is not None else (1 if charge >= 0 else -1)
+    carriers = fragment_adducts(adduct) if adduct is not None else (None,)
+    ions: list[PredictedIon] = []
+    for carrier in carriers:
+        ions.extend(predict(molecule, charge=sign, max_cuts=max_cuts,
+                            max_losses=max_losses,
+                            carrier=carrier.carrier if carrier else ""))
+    ions = [_as_precursor_form(ion, adduct, len(molecule.atoms))
+            for ion in ions]
+    # a metal adduct's own precursor is the uncut molecule the enumeration
+    # already produced, carrying the metal; a labile one's is not reachable
+    # from a cleavage at all, since the adduct has left by then
+    if adduct is not None and adduct.behaviour == LABILE:
+        intact = _intact_ion(molecule, adduct)
+        if intact is not None:
+            ions.append(intact)
+    return with_labels(ions, deuterium)
+
+
+def _intact_ion(molecule: Structure, adduct) -> PredictedIon | None:
+    """The precursor as it was ionised — the one ion no cleavage reaches."""
+    from .chemistry import FormulaError, monoisotopic_mass, parse_formula
+    from .structure import Fragment
+
+    try:
+        counts = parse_formula(molecule.formula)
+    except (FormulaError, ValueError):
+        return None
+    mass = monoisotopic_mass(counts)
+    piece = Fragment(atoms=frozenset(range(len(molecule.atoms))),
+                     formula=molecule.formula, mass=mass, cuts=())
+    return PredictedIon(fragment=piece, mz=adduct.mz(mass),
+                        charge=adduct.charge, hydrogens=0,
+                        carrier=adduct.carrier, form=adduct.name)
+
+
+def _as_precursor_form(ion: PredictedIon, adduct, atoms: int) -> PredictedIon:
+    """
+    An uncut molecule carrying the expected charge, renamed as the form of
+    the precursor it is. A piece is left alone, and so is a whole molecule
+    that reached its mass by moving hydrogens the charge cannot account
+    for — `[M-H]+` is not a form anybody writes, and pretending it is would
+    hide an assumption inside a tidy name.
+    """
+    from .chemistry import ADDUCTS_BY_NAME
+
+    if ion.fragment.cuts or len(ion.fragment.atoms) != atoms:
+        return ion
+    if ion.carrier:
+        carrier = next((a for a in ADDUCTS_BY_NAME.values()
+                        if a.carrier == ion.carrier
+                        and (a.charge > 0) == (ion.charge > 0)), None)
+        if carrier is None or ion.hydrogens:
+            return ion
+    else:
+        if ion.hydrogens != (1 if ion.charge > 0 else -1):
+            return ion
+        carrier = ADDUCTS_BY_NAME["[M+H]+" if ion.charge > 0 else "[M-H]-"]
+    form = ion_form(carrier, ion.losses)
+    if (adduct is not None and not ion.losses
+            and adduct.name != carrier.name and adduct.leaves):
+        form = f"{carrier.name} (-{adduct.leaves})"
+    return replace(ion, form=form)
+
+
 def explain_structure(molecule: Structure, peaks, name: str = "",
                       charge: int = 1, tolerance_ppm: float = TOLERANCE_PPM,
                       max_cuts: int = 1, max_losses: int = 2,
-                      deuterium: int = 0) -> Explanation:
+                      deuterium: int = 0, adduct=None) -> Explanation:
     """
     What a structure of one's own accounts for — a molfile from PubChem, a
     vendor's drawing, anything the database lacks.
@@ -307,10 +504,13 @@ def explain_structure(molecule: Structure, peaks, name: str = "",
     `deuterium` is the number of labels the drawing does not place; a
     drawing that places them (an `M  ISO` block, or explicit D atoms) needs
     none, and its fragments come out with the right masses by themselves.
+    `adduct` is how the precursor was ionised; without one the charge is
+    taken to be a proton, which is what `charge` alone can say.
     """
     record = custom_record(name, molecule.formula, molecule)
-    ions = with_labels(predict(molecule, charge=charge, max_cuts=max_cuts,
-                               max_losses=max_losses), deuterium)
+    ions = structure_ions(molecule, adduct=adduct, charge=charge,
+                          max_cuts=max_cuts, max_losses=max_losses,
+                          deuterium=deuterium)
     matches = match_peaks(peaks, ions, tolerance_ppm)
     matches = [
         PeakMatch(mz=m.mz, intensity=m.intensity, ion=m.ion,
@@ -323,71 +523,186 @@ def explain_structure(molecule: Structure, peaks, name: str = "",
                        total=total, considered=len(peaks), predicted=len(ions), ions=ions)
 
 
-def formula_ions(formula: str, adduct_name: str, deuterium: int = 0,
-                 max_losses: int = FORMULA_LOSSES) -> list[PredictedIon]:
-    """
-    The ions a formula alone allows: the intact ion and its small neutral
-    losses, up to `max_losses` at once, each loss only where the formula has
-    the atoms for it.
+def loss_text(losses: tuple[str, ...]) -> str:
+    """`("H2O", "H2O", "H2O")` written as `-3H2O`, keeping the loss order."""
+    out, seen = [], {}
+    for loss in losses:
+        if loss not in seen:
+            seen[loss] = 0
+            out.append(loss)
+        seen[loss] += 1
+    return "".join(f"-{seen[loss]}{loss}" if seen[loss] > 1 else f"-{loss}"
+                   for loss in out)
 
-    A formula has no bonds to cut, so this is what can be said without a
-    drawing: the precursor, and the ladder of waters, ammonias and carbon
-    dioxides it could shed. The intact ion carries every label; a loss ion
-    may have shed some of them with the leaving group.
+
+def ion_form(adduct, losses: tuple[str, ...] = ()) -> str:
     """
-    from .chemistry import (ADDUCTS_BY_NAME, FormulaError, format_formula,
+    An adduct and what it then shed, written the way a method writes it:
+    `[M+NH4]+`, `[M+H-3H2O]+`, `[M-H-CO2]-`.
+
+    The losses go inside the bracket because that is where they belong: the
+    thing that lost the water is the ion, not the charge.
+    """
+    name = adduct.name
+    if "]" not in name:
+        return name
+    body, sign = name[1:].split("]", 1)
+    return f"[{body}{loss_text(losses)}]{sign}"
+
+
+def _with_losses(counts: dict[str, int], losses: tuple[str, ...]
+                 ) -> dict[str, int] | None:
+    """What is left of a composition after a combination of losses."""
+    from .chemistry import parse_formula
+
+    remaining = dict(counts)
+    for loss in losses:
+        for element, n in parse_formula(NEUTRAL_LOSSES[loss]).items():
+            remaining[element] = remaining.get(element, 0) - n
+            if remaining[element] < 0:
+                return None
+    return {element: n for element, n in remaining.items() if n > 0}
+
+
+def precursor_ions(formula: str, adduct, deuterium: int = 0,
+                   max_losses: int = FORMULA_LOSSES) -> list[PredictedIon]:
+    """
+    Every ion a precursor of this composition can give without cutting a
+    bond: the intact adduct, the form its fragments carry, and the ladder of
+    small neutrals that form can shed.
+
+    Which ions those are is the adduct's business rather than arithmetic's,
+    and the rule is in `chemistry`'s docstring. An ammoniated precursor is
+    seen intact at [M+NH4]+ and then as [M+H]+, because the ammonia leaves
+    as a neutral and hands over a proton; the ladder hangs off the [M+H]+,
+    not off the ammonium, so `[M+NH4-H2O]+` is never offered. A sodiated one
+    keeps its sodium, and the ladder is offered twice — once on the sodium
+    and once on a proton — each ion saying which was assumed.
+
+    The intact ion carries every label; a loss ion may have shed some of
+    them with the leaving group, and `LOSS_TAKES` says how many each loss
+    could take. The residual formula is corrected for the ones that left, so
+    a rung written `+3D` is the composition it claims to be. Labels spelt
+    into the formula (`C24H36D4O5`) count the same as labels declared as
+    unplaced (`C24H40O5` with `deuterium=4`); before that they did not, and
+    writing them out quietly switched the -1D rungs off.
+
+    Measured on the ZenoTOF cholic acid-d4 infusions, whole run averaged and
+    centroided, at 10 ppm: under EAD at 22 eV this finds 8 of the 56 ions it
+    offers and 63.6% of the intensity — the whole ladder, 430.3489,
+    413.3217, 395.3118, 377.3015, 359.2897, and 394.3035, 376.2935, 358.2836
+    beside them, each having lost a label with a water. Scored as the
+    ammonium adduct without this rule it found 1 of 31 and 21.7%, and as
+    `[M+H]+` 4 of 31 and 34.2% — the ladder but not the precursor, which is
+    98% of the base peak.
+    """
+    from .chemistry import (LABILE, FormulaError, adduct_from_name,
+                            format_formula, fragment_adducts,
                             monoisotopic_mass, parse_formula)
     from .structure import Fragment, _loss_combinations
 
-    adduct = ADDUCTS_BY_NAME.get(adduct_name)
+    if isinstance(adduct, str):
+        adduct = adduct_from_name(adduct)
     if adduct is None:
         return []
     try:
-        counts = parse_formula(formula)
-    except FormulaError:
+        counts = dict(parse_formula(formula))
+    except (FormulaError, ValueError):
         return []
-    counts = dict(counts)
+    if not counts:
+        return []
     if deuterium:
         counts["D"] = counts.get("D", 0) + deuterium
         counts["H"] = counts.get("H", 0) - deuterium
         if counts["H"] < 0:
             return []
-    charge = adduct.charge
-    ions: list[PredictedIon] = []
-    whole = Fragment(atoms=frozenset(), formula=format_formula(counts),
-                     mass=monoisotopic_mass(counts), cuts=())
-    ions.append(PredictedIon(fragment=whole, mz=adduct.mz(whole.mass),
-                             charge=charge, hydrogens=0, labels=deuterium))
-    for combo in _loss_combinations(max_losses):
-        if not combo:
-            continue
-        remaining = dict(counts)
-        possible = True
-        for loss in combo:
-            for element, n in parse_formula(NEUTRAL_LOSSES[loss]).items():
-                remaining[element] = remaining.get(element, 0) - n
-                if remaining[element] < 0:
-                    possible = False
-        if not possible:
-            continue
-        piece = Fragment(atoms=frozenset(), formula=format_formula(
-            {k: v for k, v in remaining.items() if v > 0}),
-            mass=monoisotopic_mass({k: v for k, v in remaining.items() if v > 0}),
-            cuts=())
-        base = PredictedIon(fragment=piece, mz=adduct.mz(piece.mass),
-                            charge=charge, hydrogens=0, losses=tuple(combo))
-        if deuterium:
-            # the labels are already in the formula; a loss may have taken
-            # some with it, so the ion is offered with the full count down
-            # to the count minus the hydrogens the losses could carry
-            shed = sum(_hydrogen_count(NEUTRAL_LOSSES[loss]) for loss in combo)
-            for kept in range(max(deuterium - shed, 0), deuterium + 1):
-                lost = deuterium - kept
-                ions.append(replace(base, mz=base.mz - lost * D_MINUS_H / abs(charge),
-                                    labels=kept))
-        else:
-            ions.append(base)
-    return ions
+    # a label is a label however it was written. `C24H36D4O5` typed out and
+    # `C24H40O5` with four unplaced labels are the same four deuteriums, and
+    # a dehydration can take one either way; before this, spelling them into
+    # the formula quietly switched the -1D rungs off
+    labelled = counts.get("D", 0)
+
+    def ion(composition, carrier_adduct, losses, kept, form) -> PredictedIon:
+        mass = monoisotopic_mass(composition)
+        piece = Fragment(atoms=frozenset(), formula=format_formula(composition),
+                         mass=mass, cuts=())
+        return PredictedIon(
+            fragment=piece, mz=carrier_adduct.mz(mass),
+            charge=carrier_adduct.charge, hydrogens=0, losses=losses,
+            labels=kept, carrier=carrier_adduct.carrier, form=form)
+
+    ions = [ion(counts, adduct, (), labelled, adduct.name)]
+    seen = {adduct.name}
+    for carrier in fragment_adducts(adduct):
+        if carrier.name not in seen:
+            # the intact molecule under the fragments' own charge form. It is
+            # a real ion when the adduct simply left — an ammonium hands over
+            # its proton — and not one for a metal, where [M+H]+ would be a
+            # different precursor rather than a product of this one.
+            if adduct.behaviour == LABILE:
+                ions.append(ion(counts, carrier, (), labelled,
+                                f"{carrier.name} (-{adduct.leaves})"))
+            seen.add(carrier.name)
+        for combo in _loss_combinations(max_losses):
+            if not combo:
+                continue
+            remaining = _with_losses(counts, combo)
+            if remaining is None:
+                continue
+            shed = min(sum(LOSS_TAKES.get(loss, 0) for loss in combo), labelled)
+            taken = sum(_hydrogen_count(NEUTRAL_LOSSES[loss]) for loss in combo)
+            for kept in range(labelled - shed, labelled + 1):
+                lost = labelled - kept
+                composition = dict(remaining)
+                if lost:
+                    # a label that left went with the neutral, so the piece
+                    # has one fewer D and one more ordinary H than it would
+                    if composition.get("D", 0) < lost or taken < lost:
+                        continue
+                    composition["D"] -= lost
+                    composition["H"] = composition.get("H", 0) + lost
+                    composition = {k: v for k, v in composition.items() if v > 0}
+                ions.append(ion(composition, carrier, tuple(combo), kept,
+                                ion_form(carrier, tuple(combo))))
+    return _collapse(ions)
+
+
+def _collapse(ions: list[PredictedIon]) -> list[PredictedIon]:
+    """
+    One ion per mass, the simplest route first and the rivals kept beside it.
+
+    Losing formic acid and losing water then carbon monoxide reach the same
+    number to the fourth decimal, and offering both would count one ion
+    twice: the denominator of "n of m found" would grow while nothing new
+    became findable. `predict` collapses the cleavage routes for the same
+    reason; this is that rule for the precursor's own.
+    """
+    routes: dict[int, list[PredictedIon]] = {}
+    for candidate in ions:
+        routes.setdefault(round(candidate.mz, 4), []).append(candidate)
+    out = []
+    for candidates in routes.values():
+        candidates.sort(key=lambda i: (len(i.losses), i.description))
+        head = candidates[0]
+        others = tuple(name for name in
+                       dict.fromkeys(i.description for i in candidates[1:])
+                       if name != head.description)
+        out.append(replace(head, alternatives=others))
+    return sorted(out, key=lambda i: i.mz)
+
+
+def formula_ions(formula: str, adduct_name: str, deuterium: int = 0,
+                 max_losses: int = FORMULA_LOSSES) -> list[PredictedIon]:
+    """
+    The ions a formula alone allows — `precursor_ions` under the name the
+    formula route has always called it by.
+
+    A formula has no bonds to cut, so this is the whole of what can be said
+    without a drawing: the precursor as it was ionised, the form its
+    fragments carry, and the ladder of waters, ammonias and carbon dioxides
+    that form could shed.
+    """
+    return precursor_ions(formula, adduct_name, deuterium, max_losses)
 
 
 def explain_formula(formula: str, adduct_name: str, peaks, name: str = "",
@@ -1168,11 +1483,14 @@ def rank_candidates(database: LipidDatabase, precursor: float, peaks,
     This is the whole point of the exercise: the enumerator cannot say which
     cleavage happens, and the spectrum can.
     """
+    from .chemistry import adduct_from_name
+
+    ionised = adduct_from_name(adduct)
     found = []
     for record in candidates_for(database, precursor, adduct, tolerance, unit,
                                  limit):
         explanation = explain(record, peaks, charge, TOLERANCE_PPM,
-                              max_cuts, max_losses)
+                              max_cuts, max_losses, adduct=ionised)
         if explanation is not None:
             found.append(explanation)
     found.sort(key=lambda e: (-e.share, -e.matched))

@@ -91,6 +91,44 @@ Espectros em perfil e em centroide são ambos lidos, e os pontos de
 intensidade zero que um fabricante removeu de um perfil são restaurados —
 ver [[chromatograms-and-spectra]] para por que isso importa.
 
+O que o arquivo declara sobre cada scan é lido e mostrado, e nada disso é
+adivinhado: a polaridade a partir de `positive scan` ou `negative scan`, o
+precursor a partir de `selected ion m/z` — ou, onde um conversor escreveu
+apenas uma janela de isolamento, do centro dela — a carga a partir de
+`charge state`, a energia de colisão, e **como o precursor foi quebrado** a
+partir do elemento `activation`. Esta última é a coisa que um `.wiff` não
+carrega: a biblioteca da SCIEX expõe a energia e nada que nomeie o método,
+de modo que a ativação de um canal de `.wiff` fica vazia enquanto a de um
+arquivo Thermo convertido diz *beam-type collision-induced dissociation*.
+Vinte e dois elétron-volts disso e vinte e dois de transferência de elétrons
+são experimentos diferentes sobre o mesmo precursor, então a ativação separa
+dois canais que nada mais no scan distingue. Tudo isso aparece sob o canal
+no [[explorer]].
+
+O nome do instrumento é lido de três maneiras, porque os fabricantes o
+escrevem de três maneiras: como termo próprio do vocabulário controlado com
+valor vazio, como o termo genérico *instrument model* com o modelo no valor
+e — que é como o ProteoWizard escreve todo arquivo Thermo — em um
+`referenceableParamGroup` para o qual cada configuração de instrumento
+apenas aponta. Dois arquivos Thermo reais, um LTQ Orbitrap Elite e o próprio
+exemplo LTQ FT do ProteoWizard, diziam *unknown* até que essa referência
+passasse a ser seguida.
+
+Fazer a média de uma faixa de scans **soma cada scan nas massas em que ele
+mediu**, e não põe nada em nenhum outro lugar. Vale dizê-lo porque a
+alternativa óbvia está errada: dois scans de um tempo de voo não
+compartilham um eixo de massas, então a média é sobre a união dos dois, e
+interpolar cada scan sobre essa união traça uma reta através de todo trecho
+em que um espectro de perfil sem os seus zeros não tem ponto nenhum — sinal
+em massas onde o instrumento não reportou nada. Medido contra a própria
+média da SCIEX dos mesmos 146 scans sobre as mesmas 221.847 massas, a
+interpolação pôs 220.222 delas mais altas e totalizou **3,31 vezes** o
+espectro do fabricante; centroidá-lo deu 670 picos onde a média do
+fabricante dá 424. Somar os scans onde eles foram medidos reproduz o
+espectro médio do fabricante exatamente — maior diferença em qualquer massa
+0,0 — e está certo também para um arquivo centroidado, onde interpolar entre
+dois bastões é ainda pior.
+
 mzML não tem noção de *canal* de aquisição. Os canais são inferidos, e
 inferidos a partir da ordem de aquisição em vez de apenas das propriedades
 dos scans: um método pode ter dois experimentos que concordam em nível de
@@ -102,6 +140,61 @@ repete os seus experimentos em um ciclo fixo, de modo que a posição no ciclo
 44 + 37 = 81 canais, 44 × 339 + 37 × 238 = 23,722 espectros. Um ciclo tem de
 se repetir pelo menos quatro vezes para ser acreditado; a aquisição
 dependente de dados não tem ciclo e recai sobre as propriedades dos scans.
+
+O cromatograma de íons totais **da corrida** segue a mesma resposta. Onde há
+um ciclo, os experimentos de um período são somados ciclo a ciclo, porque é
+isso que o instrumento reporta — 577 pontos para aqueles 23.722 espectros, e
+não 23.722. Onde não há ciclo, é um ponto por espectro, que é o que o
+próprio programa de uma corrida dependente de dados desenha. Nada mais
+serve: uma infusão direta real da Thermo que caminha a janela de isolamento
+sobre o precursor em incrementos de 0,02 Da tem 164 espectros e 82 canais
+inferidos de um, dois e cinco scans, e agrupá-los por quantos scans cada um
+tinha — a regra que valia antes — dava à corrida **oito pontos para 164
+espectros**. O total estava certo e a forma era ficção, e a forma é
+exatamente o que [[direct-infusion]] lê para decidir o que uma amostra é.
+
+## Infusões a partir de mzML
+
+Uma infusão de outro instrumento passa por todo o [[direct-infusion]] —
+detecção, a média da corrida, [[lipid-maps]], a [[spectral-library]], o
+[[infusion-report]] — igual a um `.wiff`. O veredito lê cromatogramas e
+nunca um espectro, de modo que não pode depender do formato.
+
+Verificado ponta a ponta em uma infusão real de ácido cólico-d4 num ZenoTOF
+7600, lida de três maneiras: do `.wiff`, do mzML que este programa exporta
+dele, e desse mzML reescrito do jeito que o ProteoWizard escreve um `.raw`
+da Thermo — identificadores de scan Thermo, tempos em segundos, uma janela
+de isolamento, um estado de carga, `beam-type collision-induced
+dissociation`, e nada dizendo a que experimento um scan pertence. As três
+dão **um canal de íons produto**, precursor 430,34 a 22 eV, 146 scans ao
+longo de 0,61 min, ambas as figuras de planura **1,0000**, um espectro médio
+cujo pico base é 377,3018 a 9.618,10 contagens e cujo total é 360.596,6986,
+**424** centroides, **42** picos acima da fração de ruído, o precursor
+sobrevivendo a 430,3489 com 9.415 contagens, e a fórmula explicando **8 de
+56 íons previstos e 63,63%** do espectro. Três diferenças, todas do arquivo
+e não do leitor:
+
+| | `.wiff` | o mzML dele | mzML no formato Thermo |
+|---|---|---|---|
+| nome do canal | `TOF PI` | `TOF PI` | `MS2` |
+| ativação | *(não carregada)* | collision-induced dissociation | beam-type collision-induced dissociation |
+| pontos no espectro médio | 289.103 | 221.847 | 221.847 |
+
+O nome é o do método de aquisição, que o mzML não tem onde guardar — então a
+exportação deste programa o mantém em um parâmetro próprio e o arquivo de
+qualquer outra pessoa é descrito pelo seu nível de MS. A contagem de pontos
+são os zeros removidos: as mesmas massas onde quer que algo tenha sido
+medido, e os zeros repostos quando o espectro é desenhado.
+
+Duas coisas pelas quais uma infusão convertida ainda pode ser recusada, e as
+duas são a aquisição e não o formato. Uma corrida de menos de 120 scans é
+*too short to tell* — uma infusão real de Orbitrap com 108 scans de um
+segundo e meio fica abaixo disso. E as figuras de [[direct-infusion]]
+perguntam se a corrente iônica se mantém, então uma aquisição que varre de
+propósito — caminhando a janela de isolamento sobre o precursor — é lida
+como cromatográfica, porque a sua corrente iônica de fato sobe e desce: a
+real medida acima dá **0,0123** onde 0,75 seria preciso. **Average whole
+run** dá a mesma visão à mão em qualquer amostra.
 
 ## Escrever mzML
 

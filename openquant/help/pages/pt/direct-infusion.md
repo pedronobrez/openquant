@@ -168,6 +168,58 @@ Nada mais muda. O painel do cromatograma continua desenhando a corrente
 iônica total ao longo do tempo, os controles de scan continuam avançando scan
 a scan, e o [[contour-view]] continua sendo construído.
 
+## Uma infusão de outro instrumento
+
+Tudo nesta página é lido de cromatogramas, de modo que nada disso depende de
+onde o arquivo veio. Uma infusão convertida para mzML — um `.raw` da Thermo,
+um `.d` da Agilent, um `.tdf` da Bruker pelo `msconvert` — passa pela mesma
+detecção, pela mesma média, pela mesma explicação do [[lipid-maps]], pela
+mesma busca na [[spectral-library]] e pelo mesmo [[infusion-report]]. Ver
+[[formats]] para o que um arquivo convertido declara sobre cada scan e o que
+ele não pode declarar.
+
+Isso foi verificado, não suposto. Uma infusão real de ácido cólico-d4 num
+ZenoTOF 7600 foi lida de três maneiras — do `.wiff`, do mzML exportado dele,
+e desse mzML reescrito como o ProteoWizard escreve um arquivo Thermo, com
+identificadores de scan Thermo, tempos em segundos, uma janela de
+isolamento, um estado de carga, HCD nomeado em `activation`, e nada dizendo
+a que experimento um scan pertence. As três leram **um canal de íons
+produto**, precursor 430,34 a 22 eV, 146 scans ao longo de 0,61 minuto,
+**1,0000 nas duas figuras**, e o mesmo espectro médio: pico base 377,3018 a
+9.618,10 contagens, 424 centroides, 42 picos acima da fração de ruído, o
+precursor sobrevivendo a 430,3489 com 9.415 contagens, e a fórmula
+explicando 8 de 56 íons previstos e 63,63% do espectro. O arquivo no formato
+Thermo nomeia além disso o seu instrumento, a sua carga e a sua ativação,
+que um `.wiff` não carrega.
+
+Duas infusões reais de Orbitrap da Thermo, de um repositório público, também
+foram lidas, e nenhuma das duas é chamada de infusão. As duas recusas são a
+aquisição e não o formato, e as duas vale conhecer:
+
+- **Uma corrida curta demais para que a planura signifique algo.** Um LTQ
+  Orbitrap Elite pulverizando por três minutos dá 108 scans de cerca de 1,7
+  segundo cada, o que fica abaixo do piso de 120 scans acima. Ela também lê
+  **0,5943** em vez de 1,0000, porque o spray decai ao longo dos primeiros
+  dez segundos e só um segundo é posto de lado: a 1,7 segundo por scan, essa
+  rampa são seis scans e a janela de acomodação alcança dois deles. Lida a
+  mesma corrida com dez segundos postos de lado, dá 0,8812. A janela de
+  acomodação é de um segundo porque foi medida em um ciclo de um quarto de
+  segundo, onde o transiente é um único scan meio segundo adentro; num
+  instrumento mais lento ela é curta.
+- **Uma corrida que varre de propósito.** Uma infusão de precursor em passos
+  — a janela de isolamento caminhada sobre o precursor em incrementos de
+  0,02 Da enquanto a amostra é pulverizada — tem uma corrente iônica que
+  sobe e desce com onde a janela está, e não com a eluição. Ela lê
+  **0,0123** contra os 0,75 necessários, em toda janela de acomodação
+  tentada, e as duas figuras não podem dizer outra coisa: elas perguntam se
+  o sinal se mantém, e este não se mantém. Os seus 164 espectros também são
+  inferidos como 82 canais de um ou dois scans cada, de modo que nenhum
+  canal isolado tem cromatograma suficiente para julgar.
+
+Nos dois casos **Average whole run** dá exatamente a visão que o caminho
+automático teria dado, em qualquer canal que se queira; nada fica fora de
+alcance.
+
 ## Fazer à mão, e sobrepor a escolha
 
 **Average whole run** (promediar a corrida inteira), na barra de ferramentas

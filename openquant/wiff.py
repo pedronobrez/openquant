@@ -73,6 +73,17 @@ class ChannelInfo:
     end_mass: float
     n_scans: int
     collision_energy: float | None
+    #: how the precursor was fragmented, in the words the file uses —
+    #: "beam-type collision-induced dissociation" for a Thermo HCD scan,
+    #: "electron transfer dissociation", and so on. Empty when the file does
+    #: not say, which is every `.wiff`: Clearcore2 exposes the energy but not
+    #: the method, and an activation invented from a collision energy would
+    #: be an invention. Last in the field order, with a default, so the nine
+    #: positional constructions in the tests keep working.
+    activation: str = ""
+    #: the precursor's charge, where the file states one. mzML records it in
+    #: `selectedIon`; a `.wiff` does not carry it at all.
+    charge: int | None = None
 
     @property
     def is_ms1(self) -> bool:

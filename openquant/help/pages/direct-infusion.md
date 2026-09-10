@@ -164,6 +164,54 @@ Nothing else changes. The chromatogram pane still draws the total ion
 current over time, the scan controls still step scan by scan, and the
 [[contour-view]] still builds.
 
+## An infusion from another instrument
+
+Everything on this page is read off chromatograms, so none of it depends on
+where the file came from. An infusion converted to mzML — a Thermo `.raw`,
+an Agilent `.d`, a Bruker `.tdf` through `msconvert` — goes through the same
+detection, the same average, the same [[lipid-maps]] explanation, the same
+[[spectral-library]] search and the same [[infusion-report]]. See
+[[formats]] for what a converted file states about each scan and what it
+cannot.
+
+It was checked rather than assumed. One real ZenoTOF 7600 infusion of cholic
+acid-d4 was read three ways — from the `.wiff`, from the mzML exported from
+it, and from that mzML re-written as ProteoWizard writes a Thermo file, with
+Thermo scan ids, times in seconds, an isolation window, a charge state, HCD
+named in `activation`, and nothing saying which experiment a scan came from.
+All three read **one product-ion channel**, precursor 430.34 at 22 eV, 146
+scans over 0.61 minutes, **1.0000 on both figures**, and the same averaged
+spectrum: base peak 377.3018 at 9,618.10 counts, 424 centroids, 42 peaks
+above the noise share, the precursor surviving at 430.3489 and 9,415 counts,
+and the formula explaining 8 of 56 predicted ions and 63.63% of the
+spectrum. The Thermo-shaped file additionally names its instrument, its
+charge and its activation, which a `.wiff` does not carry.
+
+Two real Thermo Orbitrap infusions from a public repository were read as
+well, and neither is called an infusion. Both refusals are the acquisition
+and not the format, and both are worth knowing about:
+
+- **A run too short for flatness to mean anything.** An LTQ Orbitrap Elite
+  spraying for three minutes gives 108 scans at about 1.7 seconds each,
+  which is under the 120-scan floor above. It also reads **0.5943** rather
+  than 1.0000, because the spray ramps down over the first ten seconds and
+  only one second is set aside: at 1.7 seconds a scan, that ramp is six
+  scans and the settling window reaches two of them. Reading the same run
+  with ten seconds set aside gives 0.8812. The settling window is one second
+  because it was measured on a quarter-second cycle, where the transient is
+  a single scan half a second in; on a slower instrument it is short.
+- **A run that sweeps on purpose.** A stepped-precursor infusion — the
+  isolation window walked across the precursor in 0.02 Da increments while
+  the sample sprays — has an ion current that rises and falls with where the
+  window sits, not with elution. It reads **0.0123** against the 0.75
+  needed, at every settling window tried, and the two figures cannot say
+  otherwise: they ask whether the signal stays up, and this one does not.
+  Its 164 spectra also infer as 82 channels of one or two scans each, so no
+  single channel has enough of a chromatogram to judge either.
+
+In both cases **Average whole run** gives exactly the view the automatic
+path would have, on whichever channel is wanted; nothing is out of reach.
+
 ## Doing it by hand, and overriding
 
 **Average whole run** in the Processing toolbar does the same thing on any

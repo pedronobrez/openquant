@@ -641,6 +641,25 @@ UV detector, is not implemented there) — untested on real Windows.
   DCA-d4's flattering +0.0 ppm became −28.0: record and query carried the
   same mistyped `414.34`, and its own scan measures 414.3525. `format_msp`
   writes `430.35`, not `430.3500`.
+- **A fragment says how many labels it kept; it does not say which.**
+  `explain.infer_labels` turns every matched ion into a constraint — a
+  piece that kept *k* of *n* contains *k* — and enumerates placements over
+  the positions no ion separates. Three gates came out of measuring it on
+  a real CA-d4 infusion against PubChem's own 2,2,4,4-d4 drawing: a peak
+  counts only when nothing else in its window carries a different count (a
+  deuterium is 1.55 mDa from the hydrogen it replaced, so 48 of 53 matched
+  ions are undecided at 20 ppm, 4 of 26 at 5, none of 19 at 3 — the
+  own-structure path defaults to 5 ppm); a dehydration may take a label
+  (359.2870 and 358.2808 are 1.0062 apart, D−H and not H); and a hydrogen
+  lost on cleavage may be one too (assuming otherwise dropped the true
+  placement from 78% of the evidence to 43%). **It still does not recover
+  the answer**: 580 of 8,391 placements tie at 93% under CID and 2,625 at
+  100% under EAD, no position is in all of them, and the vendor's own is
+  beaten by 79% and 74% of the possibilities — a tie is the spectrum
+  bounding the labels, not placing them. Handed the placed drawing both
+  spectra agree at 100%. `structure.suppress_hydrogens` folds a molfile's
+  explicit hydrogens into their atoms; that alone took what the drawing
+  explains from 21% to 59%.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

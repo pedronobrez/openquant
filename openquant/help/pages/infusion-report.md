@@ -245,6 +245,98 @@ read back; the figures that mean anything are 6, 29, 33 and 61 — the same
 compound, the same vial, under another activation, and a record does not
 travel between them.
 
+## From the infusion to the method
+
+A verified vial is worth something only if what was learnt about it reaches
+the method. **Use in method…** on the Infusions tab writes the selected rows
+— every row when none is selected — into the [[method-workspace]]'s
+component table, one component per infusion, and says where each of them
+came from.
+
+What a component gets:
+
+| Field | From |
+|---|---|
+| Name | the compound the file name starts with — the same prefix the table groups on |
+| Formula | whatever the infusion was actually explained with, carrying the deuteriums the name declares: `CA-d4` is `C24H36D4O5`, not `C24H40O5` |
+| Adduct | read off the channel's own written precursor, gated on the polarity — see [[lipid-maps]] on why an adduct is not an offset |
+| Precursor | the **exact** mass of that adduct and of that formula |
+| Fragment | the base peak of the averaged product-ion spectrum, or a peak you pick from the strongest few |
+| IS | ticked, unless you untick it on the row |
+| Group | `standards` |
+| RT | **nothing.** An infusion is not a separation and has no retention time to give |
+| Provenance | the sample, the channel, the collision energy, the file, the acquisition time and the record of your own that the spectrum matched |
+
+The precursor is the one to be careful about. The channel says `430.35` and
+the component gets `430.3465`, and those are two different claims. The
+written value is what the instrument was given: it picked the channel, the
+acquisition is on it, and it is good only to the decimals somebody typed —
+±0.005 here, which is 12 ppm. The exact mass is what the compound weighs as
+that adduct, and it is what a mass window, a lock mass
+([[mass-recalibration]]) and a mass-accuracy check have to be built from.
+Writing the rounded one into the method would put 12 ppm of error into all
+three on purpose. So the exact mass is what is written and **both are shown**
+— in the dialog's Note column, in the tooltip and in the [[audit-trail]] —
+because nothing should silently replace a number you can no longer see.
+
+Nothing typed is overwritten. A compound the method already carries is
+*completed*: only its empty cells are filled, and where a value that is
+already there disagrees with the infusion, the Note says so and the typed
+value stays — `Precursor 430.3500 written, 430.3465 from the infusion —
+kept as written`. Each row ticked is one entry in the [[audit-trail]] under
+*Component from infusion*, with the provenance in the note.
+
+Two things the dialog will refuse or decline to do, both worth knowing:
+
+- **a precursor no adduct fits is not written at all.** The row says why
+  instead: *839.56 is none of the adducts of C24H36D4O5 within ±0.05 Da —
+  closest [M+K]+ at 451.2758*. A component with an invented mass is worse
+  than no component.
+- **a second infusion of the same compound has nothing left to write.** Two
+  collision energies of one vial are one component, and the first of them
+  fills the cells the second would have. The status line says which
+  compounds those were rather than adding a second row under the same name.
+
+### Measured, on the nine bile-acid infusions
+
+The same nine ZenoTOF acquisitions as the rest of this page, with the three
+CID runs written into a library of one's own first, so every row had a
+record to name.
+
+| Compound | Formula | Adduct | Written | Exact | Δ |
+|---|---|---|---|---|---|
+| CA-d4 | C24H36D4O5 | [M+NH4]+ | 430.35 (CID), 430.34 (EAD) | 430.3465 | +8.1, −15.1 ppm |
+| DCA-d4 | C24H36D4O4 | [M+NH4]+ | 414.34 | 414.3516 | −28.0 ppm |
+| TDCA-d4 | C26H41D4NO6S | [M+H]+ | 504.32 | 504.3291 | −18.1 ppm |
+
+Every formula came from the standards table through the name, with the four
+labels the `-d4` declares put in — without them nothing weighs 430 and no
+adduct fits at all. Two of the three adducts are ammonium and the third is
+not, which is exactly the kind of thing that cannot be assumed.
+
+The fragments are the base peaks, and they are not the same peak at every
+energy: CA-d4 gives **359.2870** at CID 45 eV and **377.3015** at EAD 22 eV,
+TDCA-d4 gives **468.3072** at CID 30 eV. At EAD 12 eV CA-d4's tallest peak is
+**430.3488** — the precursor that survived — and the row says so: *the base
+peak is the precursor that survived, not a fragment*. It is a legitimate
+transition and a poor one, and the fragment box is where you pick another.
+
+**Seven of the nine were offered.** The two `_TESTEARTIGO` acquisitions were
+refused, and for the reason this page already gives: they are named CA-d4 and
+target 839.56, which is none of that formula's adducts. Ticking all seven
+wrote **three** components, one per compound, because the second and third
+infusion of each compound had nothing left to fill.
+
+Then *Check method* on those three: **one finding** — `3 of 3 components have
+no retention time`, which is the expected and correct answer for standards
+that have only ever been infused, and the reason to run one of them up the
+column next. The survey check was skipped, since these acquisitions have no
+survey scan at all. Written the other way — all seven infusions as seven
+separate rows, which this refuses to do — `check_method` also called the two
+DCA-d4 rows a shared transition: both are 414.3516 → 361.30 within tolerance,
+one at 22 eV and one at 40, and nothing but a retention time could tell them
+apart.
+
 ## The same standard, next month
 
 This report is one verification. The record it names is written into your

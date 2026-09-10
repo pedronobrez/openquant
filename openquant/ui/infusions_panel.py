@@ -91,6 +91,16 @@ class InfusionsPanel(QtWidgets.QWidget):
             "row when none is selected — one section per compound")
         self.btn_report.setEnabled(False)
         bar.addWidget(self.btn_report)
+        self.btn_method = QtWidgets.QPushButton("Use in method…")
+        self.btn_method.setToolTip(
+            "Write the selected infusions into the component table — every "
+            "row when none is selected. One component each: the formula, the "
+            "adduct read off the channel, the exact mass of that adduct as "
+            "the precursor and a peak of the averaged spectrum as the "
+            "fragment, with where it all came from. Nothing typed is "
+            "overwritten and nothing is written until it is ticked")
+        self.btn_method.setEnabled(False)
+        bar.addWidget(self.btn_method)
         self.btn_csv = QtWidgets.QPushButton("Export CSV…")
         self.btn_csv.setToolTip("The table as it stands, every column")
         self.btn_csv.setEnabled(False)
@@ -121,6 +131,7 @@ class InfusionsPanel(QtWidgets.QWidget):
         self.btn_measure.clicked.connect(self.measure)
         self.btn_report.clicked.connect(self.write_report)
         self.btn_csv.clicked.connect(self.export_csv)
+        self.btn_method.clicked.connect(self.use_in_method)
         session.sigSamplesChanged.connect(self._invalidate)
 
         from .help_window import describe
@@ -211,6 +222,7 @@ class InfusionsPanel(QtWidgets.QWidget):
         self.table.resizeColumnsToContents()
         self.btn_report.setEnabled(bool(rows))
         self.btn_csv.setEnabled(bool(rows))
+        self.btn_method.setEnabled(bool(rows))
         self._describe()
         self.sigRowsChanged.emit(len(rows))
 
@@ -304,6 +316,35 @@ class InfusionsPanel(QtWidgets.QWidget):
         self._report(f"{len(rows)} infusion(s) written to "
                      f"{os.path.basename(path)}.")
         return path
+
+    def use_in_method(self) -> int:
+        """
+        Offer the chosen infusions to the component table.
+
+        The dialog does the writing and the recording; this only says which
+        rows, and reports what came of it. Returns how many components were
+        written, so a test does not have to look at the label.
+        """
+        from .standards_dialog import StandardsDialog
+
+        rows = self.chosen()
+        if not rows:
+            self.status.setText("Measure first; there is nothing to offer the "
+                                "method.")
+            return 0
+        dialog = StandardsDialog(self.session, rows, self)
+        dialog.exec()
+        if dialog.applied or dialog.skipped:
+            said = (f"{dialog.applied} component(s) written into the method "
+                    f"from {len(rows)} infusion(s).")
+            if dialog.skipped:
+                said += (f" {len(dialog.skipped)} left nothing to write — the "
+                         f"method already carries "
+                         f"{', '.join(dict.fromkeys(dialog.skipped))}, and a "
+                         f"second infusion of a compound can only fill what "
+                         f"the first left empty.")
+            self._report(said)
+        return dialog.applied
 
     def export_csv(self, path: str = "") -> str:
         """The whole table, not the selection: a summary with rows left out

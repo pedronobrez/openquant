@@ -20,6 +20,14 @@ COLUMNS = ["Name", "Group", "Precursor", "Fragment", "RT", "± RT", "Tol.",
            "Min. response"]
 COL = {name: i for i, name in enumerate(COLUMNS)}
 
+#: where a row's provenance is kept while it is in the table. It has no
+#: column of its own — it is a sentence, and a column of sentences is a
+#: table nobody can read — so it rides on the Name cell and is shown in that
+#: cell's tooltip. It has to be kept *somewhere* in the widget: the table is
+#: committed whole on every keystroke (`_commit`), so a component field the
+#: table does not carry is a field the next edit erases.
+PROVENANCE_ROLE = QtCore.Qt.ItemDataRole.UserRole + 1
+
 #: widest a column is made when fitted to its contents; past this the
 #: analyst widens it themselves rather than losing the rest of the table
 MAX_AUTO_WIDTH = 320
@@ -240,6 +248,13 @@ class MethodWorkspace(QtWidgets.QWidget):
                 item.setToolTip(text)
             self.table.setItem(row, column, item)
 
+        name_item = self.table.item(row, COL["Name"])
+        if name_item is not None:
+            name_item.setData(PROVENANCE_ROLE, c.provenance)
+            if c.provenance:
+                name_item.setToolTip(
+                    f"{c.name}\n\n{c.provenance}" if c.name else c.provenance)
+
         check = QtWidgets.QTableWidgetItem()
         check.setFlags(QtCore.Qt.ItemFlag.ItemIsUserCheckable
                        | QtCore.Qt.ItemFlag.ItemIsEnabled)
@@ -348,6 +363,9 @@ class MethodWorkspace(QtWidgets.QWidget):
                 numbers[field] = None
 
         is_item = self.table.item(row, COL["IS"])
+        name_item = self.table.item(row, COL["Name"])
+        provenance = ("" if name_item is None
+                      else str(name_item.data(PROVENANCE_ROLE) or ""))
         component = Component(
             name=name,
             precursor=numbers.get("precursor") or 0.0,
@@ -369,6 +387,7 @@ class MethodWorkspace(QtWidgets.QWidget):
             ion_ratio=numbers.get("ion_ratio"),
             ion_ratio_tolerance=numbers.get("ion_ratio_tolerance") or 0.0,
             min_response=numbers.get("min_response"),
+            provenance=provenance,
         )
         return component if component.is_valid else None
 

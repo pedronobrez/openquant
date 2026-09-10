@@ -40,6 +40,9 @@ CALIBRATION_OUTLIERS = "Calibration outliers"
 COMPONENT_ADDED = "Component added"
 COMPONENT_EDITED = "Component edited"
 COMPONENT_REMOVED = "Component removed"
+#: a component written from an infused standard, with the infusion it came
+#: from in the note — see standards.py
+COMPONENT_FROM_INFUSION = "Component from infusion"
 PRECURSOR_REPAIRED = "Precursor repaired"
 #: the other half of a precursor that disagrees with its name: where the
 #: mass is what the instrument acquired, the name is the thing corrected
@@ -55,7 +58,8 @@ PROJECT_SAVED = "Project saved"
 EVENTS: tuple[str, ...] = (
     MANUAL_INTEGRATION, AUTOMATIC_INTEGRATION, ROW_USED, CALIBRATION_POINT,
     CALIBRATION_OUTLIERS, COMPONENT_ADDED, COMPONENT_EDITED,
-    COMPONENT_REMOVED, PRECURSOR_REPAIRED, NAME_RENAMED, METHOD_DEFAULT,
+    COMPONENT_REMOVED, COMPONENT_FROM_INFUSION, PRECURSOR_REPAIRED,
+    NAME_RENAMED, METHOD_DEFAULT,
     SAMPLE_EDITED,
     PROCESSED, REPROCESSED,
     RECALIBRATION, INFUSION_REPORT, PROJECT_SAVED,
@@ -93,6 +97,7 @@ COMPONENT_FIELDS: dict[str, str] = {
     "weighting": "weighting",
     "min_response": "min. response",
     "lm_id": "LIPID MAPS id",
+    "provenance": "provenance",
 }
 
 

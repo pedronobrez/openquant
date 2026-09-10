@@ -251,6 +251,100 @@ escrito e lido de volta; os números que significam alguma coisa são 6, 29, 33
 e 61 — o mesmo composto, o mesmo frasco, sob outra ativação, e um registro não
 viaja entre elas.
 
+## Da infusão para o método
+
+Um frasco verificado só vale alguma coisa se o que se aprendeu sobre ele
+chegar ao método. **Use in method…**, na aba Infusions, escreve as linhas
+selecionadas — todas, quando nenhuma está selecionada — na tabela de
+componentes do [[method-workspace]], um componente por infusão, e diz de
+onde veio cada coisa.
+
+O que o componente recebe:
+
+| Campo | De onde |
+|---|---|
+| Name | o composto com que o nome do arquivo começa — o mesmo prefixo pelo qual a tabela agrupa |
+| Formula | aquilo com que a infusão foi de fato explicada, carregando os deutérios que o nome declara: `CA-d4` é `C24H36D4O5`, não `C24H40O5` |
+| Adduct | lido do precursor escrito no próprio canal, com a polaridade como filtro — veja [[lipid-maps]] sobre por que um aduto não é um deslocamento |
+| Precursor | a massa **exata** desse aduto e dessa fórmula |
+| Fragment | o pico base do espectro de produtos médio, ou um pico que você escolhe entre os mais altos |
+| IS | marcado, a não ser que você desmarque na linha |
+| Group | `standards` |
+| RT | **nada.** Uma infusão não é uma separação e não tem tempo de retenção para dar |
+| Provenance | a amostra, o canal, a energia de colisão, o arquivo, a hora de aquisição e o registro da sua própria biblioteca com que o espectro bateu |
+
+O precursor é o ponto em que é preciso ter cuidado. O canal diz `430.35` e o
+componente recebe `430.3465`, e as duas coisas são afirmações diferentes. O
+valor escrito é o que o instrumento recebeu: foi ele que escolheu o canal, a
+aquisição está sobre ele, e ele só é bom até as casas decimais que alguém
+digitou — ±0,005 aqui, o que dá 12 ppm. A massa exata é quanto o composto
+pesa como aquele aduto, e é dela que uma janela de massa, uma massa de
+travamento ([[mass-recalibration]]) e uma verificação de exatidão de massa
+têm de ser feitas. Escrever a arredondada no método colocaria 12 ppm de erro
+nas três de propósito. Então o que é escrito é a massa exata e **as duas são
+mostradas** — na coluna Note do diálogo, na dica de tela e na
+[[audit-trail]] — porque nada deve substituir em silêncio um número que você
+já não pode ver.
+
+Nada digitado é sobrescrito. Um composto que o método já carrega é
+*completado*: só as células vazias são preenchidas, e onde um valor que já
+está lá discorda da infusão, a Note diz isso e o valor digitado fica —
+`Precursor 430.3500 written, 430.3465 from the infusion — kept as written`.
+Cada linha marcada é uma entrada na [[audit-trail]] sob *Component from
+infusion*, com a procedência na nota.
+
+Duas coisas que o diálogo recusa fazer, ambas dignas de nota:
+
+- **um precursor em que nenhum aduto encaixa não é escrito.** A linha diz o
+  porquê no lugar: *839.56 is none of the adducts of C24H36D4O5 within
+  ±0.05 Da — closest [M+K]+ at 451.2758*. Um componente com uma massa
+  inventada é pior do que nenhum componente.
+- **uma segunda infusão do mesmo composto não tem mais o que escrever.** Duas
+  energias de colisão de um frasco são um componente, e a primeira delas
+  preenche as células que a segunda preencheria. A linha de estado diz quais
+  compostos foram esses, em vez de acrescentar uma segunda linha com o mesmo
+  nome.
+
+### Medido, nas nove infusões de ácidos biliares
+
+As mesmas nove aquisições no ZenoTOF do resto desta página, com as três
+corridas em CID escritas antes numa biblioteca própria, para que toda linha
+tivesse um registro a nomear.
+
+| Composto | Fórmula | Aduto | Escrito | Exato | Δ |
+|---|---|---|---|---|---|
+| CA-d4 | C24H36D4O5 | [M+NH4]+ | 430,35 (CID), 430,34 (EAD) | 430,3465 | +8,1 e −15,1 ppm |
+| DCA-d4 | C24H36D4O4 | [M+NH4]+ | 414,34 | 414,3516 | −28,0 ppm |
+| TDCA-d4 | C26H41D4NO6S | [M+H]+ | 504,32 | 504,3291 | −18,1 ppm |
+
+Toda fórmula veio da tabela de padrões através do nome, com os quatro rótulos
+que o `-d4` declara colocados — sem eles nada pesa 430 e nenhum aduto encaixa.
+Dois dos três adutos são amônio e o terceiro não é, que é exatamente o tipo
+de coisa que não se pode supor.
+
+Os fragmentos são os picos base, e não são o mesmo pico em toda energia: o
+CA-d4 dá **359,2870** em CID 45 eV e **377,3015** em EAD 22 eV; o TDCA-d4 dá
+**468,3072** em CID 30 eV. Em EAD 12 eV o pico mais alto do CA-d4 é
+**430,3488** — o precursor que sobreviveu — e a linha diz isso: *the base peak
+is the precursor that survived, not a fragment*. É uma transição legítima e
+ruim, e a caixa de fragmento é onde se escolhe outro.
+
+**Sete das nove foram oferecidas.** As duas aquisições `_TESTEARTIGO` foram
+recusadas, e pelo motivo que esta página já dá: elas se chamam CA-d4 e miram
+839,56, que não é nenhum dos adutos daquela fórmula. Marcar as sete escreveu
+**três** componentes, um por composto, porque a segunda e a terceira infusão
+de cada composto não tinham mais nada a preencher.
+
+Depois, *Check method* sobre esses três: **um achado** — `3 of 3 components
+have no retention time`, que é a resposta esperada e correta para padrões que
+só foram infundidos, e o motivo para passar um deles pela coluna em seguida.
+A verificação do scan de varredura foi pulada, já que estas aquisições não têm
+varredura nenhuma. Escrito do outro jeito — as sete infusões como sete linhas
+separadas, o que isto se recusa a fazer — o `check_method` ainda chamou as
+duas linhas de DCA-d4 de transição compartilhada: as duas são 414,3516 →
+361,30 dentro da tolerância, uma a 22 eV e outra a 40, e nada além de um tempo
+de retenção poderia distingui-las.
+
 ## O mesmo padrão, no mês que vem
 
 Este relatório é uma verificação. O registro que ele nomeia é escrito na sua

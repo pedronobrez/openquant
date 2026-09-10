@@ -72,3 +72,7 @@ pausa. No Analyst a janela de detecção é uma única configuração válida pa
 todo o método, em vez de uma coluna: a janela mais larga aqui é a que se deve
 digitar. Os [[design-principles]] dizem por que uma diferença declarada é
 melhor que um formato de importação inventado.
+
+As figuras — transições com tempo, o momento mais cheio, o dwell que o ciclo
+alvo deixa — são também uma seção do [[method-report]], ao lado de tudo o
+mais que se pode ler do método antes de ele ser executado.

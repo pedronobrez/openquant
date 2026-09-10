@@ -82,4 +82,6 @@ que "passa" com metade das verificações não executadas não passou.
 
 A verificação corre sobre o método tal como está, de modo que pode ser executada
 de novo após cada correção. Os mesmos achados aparecem no início da seção de
-método do [[report]], de modo que um relatório carrega seus próprios avisos.
+método do [[report]], de modo que um relatório carrega seus próprios avisos, e
+tudo o que está aqui — agrupado por severidade, com cada linha marcada na
+tabela de componentes — é a segunda seção do [[method-report]].

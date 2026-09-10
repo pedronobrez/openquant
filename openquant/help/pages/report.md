@@ -93,4 +93,6 @@ Skyline transition list.
 
 This report is of a batch. One compound sprayed on its own has no batch to
 be part of, and gets a document of its own instead: [[infusion-report]],
-written from the Explorer and printed through the same machinery.
+written from the Explorer and printed through the same machinery. And the
+method a batch was run under, read before anything is acquired at all, is
+the [[method-report]] — same printer, same page, a different question.

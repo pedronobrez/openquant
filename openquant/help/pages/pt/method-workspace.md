@@ -46,6 +46,9 @@ As colunas de padrão interno e de qualificador são explicadas em
   partir das injeções abertas, ver [[suggest-from-data]].
 - **Check method** lê o método contra si mesmo e contra os arquivos abertos,
   ver [[check-method]].
+- **Method report…** escreve tudo isso, mais as fórmulas, os candidatos a
+  lock mass, o canal que serve cada componente e o agendamento que o método
+  implica, como um só documento PDF ou HTML: [[method-report]].
 - **Annotate from LIPID MAPS…** propõe nomes de espécie, ver
   [[annotate-from-lipid-maps]].
 - **Fill formulas from names** lê a notação abreviada de lipídios que os

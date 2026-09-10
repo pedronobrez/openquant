@@ -274,6 +274,20 @@ def check_method(method: ProcessingMethod,
     return health
 
 
+def survey_coverage(components: list[Component],
+                    entries: list[SampleEntry] | None
+                    ) -> tuple[list[str], list[str]]:
+    """
+    The finding above without the finding, for a caller with its own words.
+
+    `method_report` prints both halves — the ranges the surveys cover and
+    the precursors outside them — as a sentence rather than as a warning,
+    and reaching into `_outside_survey` for that would be reaching into
+    another module's private.
+    """
+    return _outside_survey(components, list(entries or []))
+
+
 def _outside_survey(components: list[Component],
                     entries: list[SampleEntry]) -> tuple[list[str], list[str]]:
     """

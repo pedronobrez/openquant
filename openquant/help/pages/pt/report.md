@@ -93,4 +93,6 @@ também a lista de transições para o Skyline.
 
 Este relatório é de um lote. Um composto pulverizado sozinho não tem lote do
 qual fazer parte, e ganha um documento próprio: o [[infusion-report]],
-escrito a partir do Explorer e impresso pela mesma maquinaria.
+escrito a partir do Explorer e impresso pela mesma maquinaria. E o método sob
+o qual um lote foi executado, lido antes de qualquer coisa ser adquirida, é o
+[[method-report]] — mesma impressora, mesma página, outra pergunta.

@@ -81,6 +81,8 @@ openquant/
                   SVG, and the report's picture
   infusion.py     is this sample a direct infusion (two flatness
                   figures, chromatograms only)
+  infusion_report.py  one infused standard on two to four pages: the
+                  checks summed, never a badge
   audit.py        the trail of hand edits saved with the project
   labels.py       which peaks get a label: a budget per region of the
                   visible axis, shared by the pane and the print
@@ -597,6 +599,29 @@ UV detector, is not implemented there) — untested on real Windows.
   peak, is unnamed at 2% and named at 0.5%; on a full-range survey the
   floor changes nothing, because the region budget runs out first.
   `SpectrumComparison.label_floor` carries it to the print.
+- **A report of one infused standard sums the checks and refuses the
+  badge.** `infusion_report.py` builds a two-to-four-page document from
+  what the Explorer holds — the averaged spectrum at the pane's label floor
+  with its top 25 peaks, the LIPID MAPS explanation with its *unexplained*
+  peaks beside it, the library hit with the record's fields as written,
+  other infusions of the same name prefix head to tail — and a verdict of
+  one sentence per check, never a pass or fail. Three things came out of
+  measuring it on the nine ZenoTOF bile-acid infusions, which are
+  **positive mode** (CA-d4's 430.35 is `[M+NH4]+` of C24H36D4O5; 359.2870
+  is `[M+H−3H2O]+`) and **have no survey scan at all**, so
+  `precursor.measure` says nothing about them: the precursor is read from
+  the averaged product-ion spectrum through `precursor.in_spectrum`, which
+  now returns the height beside the mass, because without a floor the
+  ±0.25 Da window at 45 eV holds 84 counts of nothing and centroids 70 ppm
+  out. A library record is centroids — fed to `spectra_compare` as a
+  profile trace it drew as one spike labelled 359.6428 — so the average is
+  centroided for that figure. And Qt lays a block holding a picture out as
+  though it fitted and draws it on the next page, so `_orphan_headings`
+  also flags a following block carrying `OBJECT_CHARACTER` that straddles
+  a boundary, and `_sub` puts the break class on an h3, which `_heading`
+  never did. Measured on CA-d4: 7 of 97 predicted ions at 22 eV against 2
+  of 97 at 45 eV, 29/39 against the CID record with the energy difference
+  stated, 2→4 pages, 0.3–1.0 s each.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

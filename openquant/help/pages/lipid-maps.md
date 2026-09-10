@@ -27,8 +27,18 @@ LIPID MAPS**. Results are grouped **by species, then by structure**: a
 species — `PC 34:1`, say — with the isomers that share its formula listed
 underneath, because a mass cannot separate them and a list that pretended
 otherwise would be claiming more than was measured. Each row carries the
-formula, the error in mDa and ppm, and the LM_ID; the tooltip gives the
-systematic name.
+formula, the error in mDa and ppm, the LM_ID and the **adduct** it was found
+at; the tooltip on the species gives the systematic name, and the one on the
+adduct says what that adduct does when the ion breaks up.
+
+The Adduct box starts on **every adduct**, its first entry: the mass is then
+searched at each adduct the channel's polarity allows. That is the honest
+default for a measured mass, because which ion the number *is* is the
+question — 876.8015
+out of a liver DIA run answers one species, `TG 52:2`, C55H102O6, as
+`[M+NH4]+` at +0.0 ppm and 51 structures, and the same number searched as
+`[M+H]+` answers nothing at all. A product spectrum then ranks what a mass
+alone cannot separate: see *Explain*, below.
 
 Right-clicking a spectrum peak and choosing **Find formula for this peak**
 sends its mass here as well as to the [[formula-finder]].
@@ -82,9 +92,25 @@ the ladder. The unexplained peaks are reported too: several candidates
 usually explain the same peaks, because isomers fragment alike, and the
 unexplained ones are the honest part of the answer.
 
-The **Adduct** box beside the precursor is used twice: to look the mass up in
-the database, and to say what each candidate's own precursor ion is and what
-its fragments carry — see *Adducts*, below.
+The **Adduct** box beside the precursor says which ion the precursor is, and
+is used twice: to look the mass up in the database, and to say what each
+candidate's own precursor ion is and what its fragments carry.
+
+Left on **from the precursor**, where it starts, the database is searched at
+every adduct the channel's polarity allows and each candidate carries the one
+that found it — the **Adduct** column, with that adduct's behaviour in its
+tooltip, and **ppm**, how far the written precursor sits from that candidate
+through that adduct. The line under the table says it in words, the same
+sentence the own-structure path writes from the same code:
+
+> 703.6 is [M+H]+ of C39H79N2O6P (703.5749, +35.7 ppm); [M+NH4]+ would be
+> 720.6014
+
+Selecting another candidate rewrites it, because on this path each row may
+have been found at a different adduct. Picking an adduct by hand searches
+that one only. See *Adducts*, below: it is not a detail, since an ammoniated
+precursor scored as a protonated one predicts every fragment 17 Da away from
+anything in the spectrum.
 
 **Explain spectrum** on the Processing toolbar does the same from the
 chromatogram: it takes the spectrum of the current scan and its channel's
@@ -322,6 +348,54 @@ The polarity comes from the channel and is not typed anywhere: a positive
 channel is never offered a negative adduct. With no precursor written at all
 there is nothing to read it off, and the Adduct box at the top of the tab —
 the one the database search uses — stands in, said out loud.
+
+### A database candidate says which adduct found it
+
+The same model runs on the database route, so a triacylglycerol annotated
+`[M+NH4]+` is scored with the intact ammonium, the `[M+H]+` it hands over,
+and the ladder off *that*, its diacylglycerol ions carrying a proton; a
+`[M+Na]+` candidate offers both carriers. It is the own-structure path with
+the drawing taken out of LMSD rather than off the disk — one enumeration, one
+scoring, one sentence.
+
+What the record route needs and the own route does not is a **gate**. A
+product-ion channel is looked up over the isolation window, half a dalton,
+because a method writes its precursor rounded — 538.6 for a ceramide whose
+precursor is 538.52. At 700 Da half a dalton is 700 ppm and holds hundreds of
+species, so running five adducts over it multiplies the candidates that
+explain a noisy spectrum by accident. An adduct other than the proton one
+therefore has to *name* the precursor — the same ±0.05 Da above — while the
+proton adduct keeps the whole window, because it is the reading the method
+wrote down and needs no identifying.
+
+Measured on the sphingolipid batch's four named compounds, whole run
+averaged and centroided, and on the ZenoTOF DIA window holding TG 52:2:
+
+| channel | compound | as [M+H]+ | every adduct, gated |
+|---|---|---|---|
+| 703.6 | SM(d18:1/16:0) | rank 1, 31.9%, 6 of 885 | rank 1, 31.9%, 6 of 885 |
+| 538.6 | Cer(d18:1/16:0) | rank 4, 9.5%, 6 of 779 | rank 4, 9.5%, 6 of 779 |
+| 648.8 | Cer(d18:1/24:1) | rank 1, 9.2%, 6 of 1,153 | rank 1, 9.2%, 6 of 1,153 |
+| 731.7 | SM(d18:1/18:0) | rank 1, 19.4%, 4 of 968 | rank 1, 19.4%, 4 of 968 |
+| 876.80 | TG 52:2 | not listed | rank 2, 24.0%, 9 of 1,123 |
+
+The four sphingolipids do not move, which is the point of the gate: their
+written precursors sit 36 to 264 ppm from the compounds themselves, so no
+mass rule can promote them and none should demote them either. Ungated they
+went to ranks 1, 5, 5, 3, the new top rows being a doubly charged
+glycosphingolipid at −171 ppm and a potassiated ceramide at +356 ppm, each
+offering two to three times as many predicted ions.
+
+The triacylglycerol is what the gate is for. A DIA window at 876.80 searched
+as `[M+H]+` does not list `TG 52:2` at all — it is not a lipid at that
+adduct, and the best candidate is a phosphatidylserine explaining 7.7%.
+Searched at every adduct it comes back at −1.7 ppm explaining 24.0% of the
+spectrum, with the intact `[M+NH4]+` at 876.8051 (+4.2 ppm) and the
+diacylglycerol ions carrying protons: 577.5219 (+4.9), 603.5363 (+2.6),
+605.5520 (+2.8). Above it sits a potassiated ceramide with 3,291 predicted
+ions explaining 43.2% at +25.0 ppm — the long-list-by-accident caveat this
+page keeps making, and the ppm column is what separates the two by a factor
+of fifteen. A search takes 0.2 to 0.8 s either way.
 
 ### What it did on the real infusions
 

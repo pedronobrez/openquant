@@ -22,6 +22,10 @@ ROLE_EXPLANATION = QtCore.Qt.ItemDataRole.UserRole + 4
 #: the adduct combo's first entry: work it out from the written precursor
 AUTO_ADDUCT = "from the precursor"
 
+#: the mass search's first entry: every adduct the channel's polarity allows,
+#: each candidate saying which one found it
+EVERY_ADDUCT = "every adduct"
+
 
 class LipidPanel(QtWidgets.QWidget):
     """
@@ -69,8 +73,16 @@ class LipidPanel(QtWidgets.QWidget):
         form.addRow("Measured m/z:", self.mz_edit)
 
         self.adduct_combo = QtWidgets.QComboBox()
+        self.adduct_combo.addItem(EVERY_ADDUCT)
         self.adduct_combo.addItems([a.name for a in ADDUCTS])
-        self.adduct_combo.setCurrentText("[M-H]-")
+        self.adduct_combo.setCurrentText(EVERY_ADDUCT)
+        self.adduct_combo.setToolTip(
+            "Which ion the measured mass is — which is the question, so the "
+            "box starts on “every adduct”: the search is then run at each of "
+            "them the channel's polarity allows and every row says which "
+            "found it and what that adduct does when the ion breaks up. A "
+            "triacylglycerol is not a lipid at all as [M+H]+, and a search "
+            "fixed to one adduct can only come back empty")
         form.addRow("Adduct:", self.adduct_combo)
 
         tolerance = QtWidgets.QHBoxLayout()
@@ -217,8 +229,16 @@ class LipidPanel(QtWidgets.QWidget):
         self.explain_precursor.setPlaceholderText("703.5749")
         explain_form.addRow("Precursor:", self.explain_precursor)
         self.explain_adduct = QtWidgets.QComboBox()
-        self.explain_adduct.addItems([a.name for a in ADDUCTS])
-        self.explain_adduct.setCurrentText("[M+H]+")
+        self.explain_adduct.addItem(AUTO_ADDUCT)
+        self.explain_adduct.addItems([a.name for a in ADDUCTS if a.name != NEUTRAL])
+        self.explain_adduct.setCurrentText(AUTO_ADDUCT)
+        self.explain_adduct.setToolTip(
+            "How the precursor was ionised. Left on automatic every adduct "
+            "the channel's polarity allows is searched, and each candidate "
+            "says which one found it and how far the written precursor sits "
+            "from it — a triacylglycerol acquired at 876.80 is the ammonium "
+            "adduct, and asking the database for [M+H]+ there answers nothing "
+            "at all")
         explain_form.addRow("Adduct:", self.explain_adduct)
         explain_layout.addLayout(explain_form)
 
@@ -311,15 +331,21 @@ class LipidPanel(QtWidgets.QWidget):
         self._label_inputs = None
         self._inference = None
         self._polarity = ""
+        #: the precursor the ranked database candidates were found at, or
+        #: None when the table is holding a structure of one's own — which
+        #: writes its own basis line and must not have it written over
+        self._record_context = None
 
         self.explain_tree = QtWidgets.QTreeWidget()
         self.explain_tree.setHeaderLabels(["Candidate", "Explains", "Peaks",
-                                           "Formula"])
+                                           "Formula", "Adduct", "ppm"])
         self.explain_tree.setColumnWidth(0, 190)
         self.explain_tree.setAlternatingRowColors(True)
         self.explain_tree.setToolTip(
             "Select a candidate to mark the peaks it accounts for on the "
-            "spectrum")
+            "spectrum. Adduct is the ion the precursor was taken to be — the "
+            "row says what that adduct does when it breaks up, and ppm is how "
+            "far the written precursor sits from that candidate through it")
         explain_layout.addWidget(self.explain_tree, 2)
 
         self.match_tree = QtWidgets.QTreeWidget()
@@ -373,12 +399,15 @@ class LipidPanel(QtWidgets.QWidget):
 
         self.tree = QtWidgets.QTreeWidget()
         self.tree.setHeaderLabels(["Species / structure", "Formula", "mDa",
-                                   "ppm", "n"])
+                                   "ppm", "n", "Adduct"])
         self.tree.setColumnWidth(0, 210)
         self.tree.setColumnWidth(1, 120)
         self.tree.setAlternatingRowColors(True)
         self.tree.setToolTip(
-            "Double-click a structure to name the component after it")
+            "Double-click a structure to name the component after it. Adduct "
+            "is the ion this species would have to be to weigh what was "
+            "measured; hover it for what that adduct does when the ion breaks "
+            "up, which is what decides the masses a product spectrum can hold")
         mass_layout.addWidget(self.tree, 1)
 
         self.status = QtWidgets.QLabel("")
@@ -469,37 +498,64 @@ class LipidPanel(QtWidgets.QWidget):
             self._report("Type a measured m/z first.")
             return
 
-        matches = database.search_mz(mz, self.adduct_combo.currentText(),
-                                     self.tol_spin.value(),
-                                     self.unit_combo.currentText())
+        chosen = self.adduct_combo.currentText()
+        matches = []
+        for name in self._search_adducts(chosen):
+            matches.extend(database.search_mz(mz, name, self.tol_spin.value(),
+                                              self.unit_combo.currentText()))
         groups = lipidmaps.group_by_species(matches)
+        groups.sort(key=lambda g: (abs(g.error_mda), -len(g.records)))
         self._fill(groups)
         unit = self.unit_combo.currentText()
         if groups:
+            forms = list(dict.fromkeys(g.adduct for g in groups if g.adduct))
+            over = (f" as {', '.join(forms)}" if len(forms) > 1 else "")
             self._report(f"{len(groups)} species, {len(matches)} structure(s) "
-                         f"within ±{self.tol_spin.value():g} {unit}. "
-                         "A mass cannot separate isomers — confirm before using.")
+                         f"within ±{self.tol_spin.value():g} {unit}{over}. "
+                         "A mass cannot separate isomers — confirm before "
+                         "using; a product spectrum ranks them, in Explain.")
         else:
             self._report(
                 f"Nothing within ±{self.tol_spin.value():g} {unit}. The curated "
                 "database has no structure at that mass; a theoretical species "
                 "may still exist in LIPID MAPS' computed set.")
 
+    def _search_adducts(self, chosen: str) -> list[str]:
+        """
+        The adducts a mass search is run at.
+
+        One when the analyst named it. Otherwise every adduct the channel's
+        polarity allows, because which ion a measured mass is *is* the
+        question — a triacylglycerol searched as [M+H]+ answers nothing, and
+        nothing is not the same as "no such lipid".
+        """
+        from ..chemistry import adducts_of_polarity
+
+        if chosen != EVERY_ADDUCT:
+            return [chosen]
+        return [a.name for a in adducts_of_polarity(self._polarity or None)]
+
     def _fill(self, groups) -> None:
+        from ..chemistry import adduct_from_name, behaviour_text
+
         self.tree.clear()
         for group in groups:
             parent = QtWidgets.QTreeWidgetItem(self.tree, [
                 group.species, group.formula, f"{group.error_mda:+.2f}",
                 f"{group.error_ppm:+.1f}", str(len(group.records)),
+                group.adduct,
             ])
             font = parent.font(0)
             font.setBold(True)
             parent.setFont(0, font)
             parent.setToolTip(0, group.main_class)
+            form = adduct_from_name(group.adduct)
+            if form is not None:
+                parent.setToolTip(5, behaviour_text(form))
             for record in group.records:
                 child = QtWidgets.QTreeWidgetItem(
                     parent, [record.name or record.systematic_name,
-                             record.lm_id, "", "", ""])
+                             record.lm_id, "", "", "", ""])
                 child.setToolTip(1, record.lm_id)
                 child.setData(0, ROLE_RECORD, record.lm_id)
                 child.setToolTip(0, record.systematic_name or record.name)
@@ -754,19 +810,22 @@ class LipidPanel(QtWidgets.QWidget):
             self._report("Type the precursor m/z of this spectrum.")
             return
 
-        adduct = self.explain_adduct.currentText()
-        charge = 1 if "+" in adduct else -1
+        chosen = self.explain_adduct.currentText()
+        auto = chosen == AUTO_ADDUCT
         # the quadrupole passed a window, not a mass, and the method's own
         # figure is rounded besides — 538.6 for a ceramide whose precursor is
         # 538.52. Anything the isolation let through is a candidate.
-        ranked = rank_candidates(database, precursor, peaks, adduct=adduct,
+        ranked = rank_candidates(database, precursor, peaks,
+                                 adduct=None if auto else chosen,
                                  tolerance=PRECURSOR_MATCH_DA, unit="Da",
-                                 charge=charge)
-        self.explanation_basis = (
-            f"the curated structure, one bond cut and up to two neutral "
-            f"losses, as {adduct}")
-        self.explanation_adduct = adduct
-        self._show_ranked(ranked, precursor, adduct)
+                                 polarity=self._polarity or None)
+        # the basis follows the selection, because on this path each candidate
+        # may have been found at a different adduct and a report that printed
+        # the box would name an ion nothing was scored against
+        self._record_context = precursor
+        self.explanation_basis = ""
+        self.explanation_adduct = ""
+        self._show_ranked(ranked, precursor, EVERY_ADDUCT if auto else chosen)
 
     def _load_own_structure(self) -> None:
         from ..explain import read_molfile
@@ -865,6 +924,11 @@ class LipidPanel(QtWidgets.QWidget):
             # the analyst already chose for this spectrum, so it stands in —
             # said out loud, since it was not derived from anything
             fallback = self.explain_adduct.currentText()
+            if fallback == AUTO_ADDUCT:
+                return None, ("no precursor is written and the Adduct box "
+                              "above is on automatic, so there is nothing to "
+                              "read the adduct off — type the precursor, or "
+                              "choose an adduct")
             return adduct_from_name(fallback), (
                 f"no precursor is written, so {fallback} was taken from the "
                 f"Adduct box above")
@@ -911,6 +975,7 @@ class LipidPanel(QtWidgets.QWidget):
                 return
             basis = (f"the precursor {formula} as {adduct.name} and its neutral "
                      f"losses — a formula has no bonds to cut")
+        self._record_context = None
         self.explanation_basis = f"{basis}; {reason}"
         self.explanation_adduct = adduct.name
         self._show_ranked([explanation], None, adduct.name)
@@ -933,6 +998,7 @@ class LipidPanel(QtWidgets.QWidget):
         table of confident wrong routes is harder to disbelieve than an
         empty one.
         """
+        self._record_context = None
         self.explain_tree.clear()
         self.match_tree.clear()
         self.sigMatches.emit([])
@@ -993,11 +1059,20 @@ class LipidPanel(QtWidgets.QWidget):
                 f"{explanation.share * 100:.1f}%",
                 str(explanation.matched),
                 explanation.record.formula,
+                explanation.adduct,
+                "" if explanation.precursor_ppm is None
+                else f"{explanation.precursor_ppm:+.1f}",
             ])
             row.setData(0, ROLE_EXPLANATION, explanation)
+            # what the adduct does when the ion breaks up decides which masses
+            # the spectrum can hold, so it belongs on the row rather than in
+            # the reader's memory
+            row.setToolTip(4, explanation.behaviour)
             row.setTextAlignment(1, QtCore.Qt.AlignmentFlag.AlignRight
                                  | QtCore.Qt.AlignmentFlag.AlignVCenter)
             row.setTextAlignment(2, QtCore.Qt.AlignmentFlag.AlignRight
+                                 | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            row.setTextAlignment(5, QtCore.Qt.AlignmentFlag.AlignRight
                                  | QtCore.Qt.AlignmentFlag.AlignVCenter)
         if ranked:
             self.explain_tree.setCurrentItem(self.explain_tree.topLevelItem(0))
@@ -1007,18 +1082,45 @@ class LipidPanel(QtWidgets.QWidget):
             close = [e for e in ranked[1:] if top.share - e.share < 0.05]
             tie = (f" {len(close)} other(s) explain it about as well."
                    if close else "")
+            forms = list(dict.fromkeys(e.adduct for e in ranked if e.adduct))
+            over = (f" Found as {', '.join(forms)}." if len(forms) > 1
+                    else f" Found as {forms[0]}." if forms else "")
             self._report(f"{len(ranked)} candidate(s) at that precursor."
-                         + tie)
+                         + over + tie)
         else:
             self.sigMatches.emit([])
+            where = ("as any adduct of this channel's polarity"
+                     if adduct == EVERY_ADDUCT else f"as {adduct}")
             self._report(
                 f"No structure in the curated database sits within "
-                f"±{PRECURSOR_MATCH_DA:g} Da of {precursor:.4f} as {adduct}. "
+                f"±{PRECURSOR_MATCH_DA:g} Da of {precursor:.4f} {where}. "
                 "A theoretical species may still exist in the computed set.")
+
+    def _record_basis(self, explanation) -> None:
+        """
+        What the selected database candidate was predicted from, in words.
+
+        The same sentence the own-structure path prints, from the same code in
+        `chemistry`: the row was found at one adduct and the reader needs to
+        see how far the written precursor sits from *that* one, with the form
+        its fragments carry beside it.
+        """
+        from ..chemistry import adduct_reason
+
+        precursor = getattr(self, "_record_context", None)
+        if precursor is None or explanation is None:
+            return
+        reason = adduct_reason(explanation.record.formula, precursor,
+                               explanation.adduct, self._polarity or None)
+        basis = (f"the curated structure, one bond cut and up to two neutral "
+                 f"losses, as {explanation.adduct}")
+        self.explanation_basis = f"{basis}; {reason}" if reason else basis
+        self.explanation_adduct = explanation.adduct
 
     def _show_explanation(self, item, _previous=None) -> None:
         explanation = item.data(0, ROLE_EXPLANATION) if item is not None else None
         self.match_tree.clear()
+        self._record_basis(explanation)
         if explanation is None:
             self.sigMatches.emit([])
             return

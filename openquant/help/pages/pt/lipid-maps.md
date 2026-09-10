@@ -27,8 +27,18 @@ Digite um m/z, escolha o aduto, defina uma tolerância em ppm ou Da e
 estrutura**: uma espécie — `PC 34:1`, digamos — com os isômeros que
 compartilham a sua fórmula listados abaixo, porque uma massa não consegue
 separá-los e uma lista que fingisse o contrário estaria afirmando mais do
-que foi medido. Cada linha carrega a fórmula, o erro em mDa e em ppm e o
-LM_ID; a dica de contexto dá o nome sistemático.
+que foi medido. Cada linha carrega a fórmula, o erro em mDa e em ppm, o
+LM_ID e o **aduto** em que foi encontrada; a dica de contexto sobre a espécie
+dá o nome sistemático, e a que fica sobre o aduto diz o que aquele aduto faz
+quando o íon se quebra.
+
+A caixa Adduct começa em **every adduct**, a sua primeira entrada: a massa
+é então buscada em cada aduto que a polaridade do canal permite. É o padrão honesto
+para uma massa medida, porque qual íon o número *é* é justamente a pergunta —
+876,8015 de uma corrida DIA de fígado responde uma espécie, `TG 52:2`,
+C55H102O6, como `[M+NH4]+` a +0,0 ppm e 51 estruturas, e o mesmo número
+buscado como `[M+H]+` não responde nada. Um espectro de produtos então
+ordena o que a massa sozinha não separa: ver *Explain*, abaixo.
 
 Clicar com o botão direito em um pico do espectro e escolher **Find formula
 for this peak** manda a sua massa para cá tanto quanto para o
@@ -87,9 +97,26 @@ vários candidatos costumam explicar os mesmos picos, porque isômeros
 fragmentam de modo parecido, e os não explicados são a parte honesta da
 resposta.
 
-A caixa **Adduct** ao lado do precursor é usada duas vezes: para procurar a
-massa no banco de dados, e para dizer qual é o íon precursor de cada
-candidato e o que os seus fragmentos carregam — ver *Adutos*, abaixo.
+A caixa **Adduct** ao lado do precursor diz qual íon o precursor é, e é usada
+duas vezes: para procurar a massa no banco de dados, e para dizer qual é o
+íon precursor de cada candidato e o que os seus fragmentos carregam.
+
+Deixada em **from the precursor**, como ela começa, o banco de dados é
+buscado em cada aduto que a polaridade do canal permite e cada candidato
+carrega aquele que o encontrou — a coluna **Adduct**, com o comportamento
+daquele aduto na sua dica de contexto, e **ppm**, a que distância o precursor
+escrito fica daquele candidato através daquele aduto. A linha abaixo da
+tabela diz isso em palavras, a mesma frase que o caminho da estrutura
+própria escreve, vinda do mesmo código:
+
+> 703.6 is [M+H]+ of C39H79N2O6P (703.5749, +35.7 ppm); [M+NH4]+ would be
+> 720.6014
+
+Selecionar outro candidato reescreve a linha, porque neste caminho cada
+linha pode ter sido encontrada em um aduto diferente. Escolher um aduto à
+mão busca apenas aquele. Ver *Adutos*, abaixo: não é um detalhe, já que um
+precursor amoniado pontuado como protonado prevê cada fragmento a 17 Da de
+qualquer coisa no espectro.
 
 **Explain spectrum** na barra de ferramentas Processing faz o mesmo a partir
 do cromatograma: toma o espectro do scan atual e o precursor do seu canal.
@@ -334,6 +361,57 @@ A polaridade vem do canal e não é digitada em lugar nenhum: um canal
 positivo nunca recebe a oferta de um aduto negativo. Sem nenhum precursor
 escrito não há de onde lê-lo, e a caixa Adduct no topo da aba — a que a
 busca do banco de dados usa — entra no lugar, dito em voz alta.
+
+### Um registro do banco diz qual aduto o encontrou
+
+O mesmo modelo roda no caminho do banco de dados, de modo que um
+triacilglicerol anotado como `[M+NH4]+` é pontuado com o amônio intacto, o
+`[M+H]+` que ele entrega e a escada pendurada n*esse*, com os seus íons de
+diacilglicerol carregando um próton; um candidato `[M+Na]+` oferece os dois
+carregadores. É o caminho da estrutura própria com o desenho tirado do LMSD
+em vez do disco — uma enumeração, uma pontuação, uma frase.
+
+O que o caminho do registro precisa e o da estrutura própria não é um
+**portão**. Um canal de íons-produto é procurado sobre a janela de
+isolamento, meio dalton, porque um método escreve o seu precursor
+arredondado — 538,6 para uma ceramida cujo precursor é 538,52. A 700 Da meio
+dalton são 700 ppm e cabem centenas de espécies, então rodar cinco adutos
+sobre ela multiplica os candidatos que explicam um espectro ruidoso por
+acaso. Um aduto que não seja o do próton precisa portanto *nomear* o
+precursor — os mesmos ±0,05 Da acima — enquanto o aduto do próton fica com a
+janela inteira, porque é a leitura que o método escreveu e não precisa ser
+identificada.
+
+Medido nos quatro compostos nomeados do lote de esfingolipídios, corrida
+inteira média e centroidada, e na janela DIA do ZenoTOF que contém o
+TG 52:2:
+
+| canal | composto | como [M+H]+ | todo aduto, com portão |
+|---|---|---|---|
+| 703,6 | SM(d18:1/16:0) | posição 1, 31,9%, 6 de 885 | posição 1, 31,9%, 6 de 885 |
+| 538,6 | Cer(d18:1/16:0) | posição 4, 9,5%, 6 de 779 | posição 4, 9,5%, 6 de 779 |
+| 648,8 | Cer(d18:1/24:1) | posição 1, 9,2%, 6 de 1.153 | posição 1, 9,2%, 6 de 1.153 |
+| 731,7 | SM(d18:1/18:0) | posição 1, 19,4%, 4 de 968 | posição 1, 19,4%, 4 de 968 |
+| 876,80 | TG 52:2 | não listado | posição 2, 24,0%, 9 de 1.123 |
+
+Os quatro esfingolipídios não se movem, e é para isso que o portão serve: os
+seus precursores escritos ficam de 36 a 264 ppm dos próprios compostos, de
+modo que nenhuma regra de massa consegue promovê-los — e nenhuma deveria
+rebaixá-los. Sem portão eles foram para as posições 1, 5, 5 e 3, com as
+novas primeiras linhas sendo um glicoesfingolipídio de carga dupla a
+−171 ppm e uma ceramida potassiada a +356 ppm, cada uma oferecendo de duas a
+três vezes mais íons previstos.
+
+O triacilglicerol é a razão do portão existir. Uma janela DIA em 876,80
+buscada como `[M+H]+` não lista o `TG 52:2` de jeito nenhum — ele não é um
+lipídio naquele aduto, e o melhor candidato é uma fosfatidilserina que
+explica 7,7%. Buscada em todos os adutos, ele volta a −1,7 ppm explicando
+24,0% do espectro, com o `[M+NH4]+` intacto em 876,8051 (+4,2 ppm) e os íons
+de diacilglicerol carregando prótons: 577,5219 (+4,9), 603,5363 (+2,6),
+605,5520 (+2,8). Acima dele fica uma ceramida potassiada com 3.291 íons
+previstos explicando 43,2% a +25,0 ppm — a ressalva da lista-longa-por-acaso
+que esta página não para de fazer, e a coluna ppm é o que separa as duas por
+um fator de quinze. Uma busca leva de 0,2 a 0,8 s de qualquer modo.
 
 ### O que fez nas infusões reais
 

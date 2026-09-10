@@ -78,6 +78,121 @@ massas que vale a pena procurar.
 
 ## Explain
 
+### Explicar, de uma vez
+
+**Explain**, no topo da aba, não pergunta qual rota tentar. Ele roda todas —
+o nome do composto, o LIPID MAPS neste precursor, a fórmula, e um desenho se
+houver um carregado — e mostra aquela que explica a maior parte do espectro,
+com todas as outras rotas listadas abaixo. As três rotas abaixo dele
+continuam ali para quem quiser escolher à mão.
+
+Ele se preenche sozinho. O precursor, a polaridade e o survey vêm do canal de
+onde o espectro veio; o nome e a fórmula vêm do componente cujo precursor
+este canal isola, de modo que o espectro de um padrão que o método declara
+não precisa de nada digitado. O que estiver digitado nas caixas abaixo
+prevalece, já que quem digitou quis dizer aquilo. Um `-d4` no nome é lido
+como quatro marcações que o nome não posiciona, e cada rota recebe a
+contagem que se aplica a *ela*: o ácido cólico-d4 do PubChem posiciona as
+suas quatro no desenho e não precisa de nenhuma adicionada, enquanto o
+`C24H40O5` ao lado dele na tabela de componentes precisa das quatro, e uma
+contagem única para o espectro inteiro pula a rota da fórmula com a
+afirmação verdadeira e inútil de que 430.35 não é aduto nenhum da molécula
+não marcada.
+
+A **tabela de rotas** abaixo dos candidatos é a resposta:
+
+| Coluna | |
+|---|---|
+| Route | nome, LIPID MAPS, fórmula, desenho |
+| Adduct | o íon que aquela rota leu no precursor |
+| Explains | a parcela da intensidade do espectro que ela explica |
+| Ions | quantos dos íons que ela previu foram encontrados, de quantos ofereceu |
+| ppm | a que distância o precursor escrito fica dela através daquele aduto |
+
+Clique em uma linha e a tabela de candidatos acima passa a mostrar a
+resposta daquela rota. Uma rota sem nada com que trabalhar também é uma
+linha, acinzentada, com o motivo na dica de contexto — *o banco LIPID MAPS
+não está instalado* e *nenhuma estrutura curada fica a ±0,7 Da daquela
+massa* são respostas diferentes, e uma rota simplesmente ausente da tabela
+não diz nenhuma das duas.
+
+A linha abaixo dos candidatos nomeia a rota de onde ele veio:
+
+> from the name CA-d4 → LMST04010001 as [M+NH4]+; 430.35 is [M+NH4]+ of
+> C24H36D4O5 (430.3465, +8.1 ppm); [M+H]+ would be 413.3200
+
+**O melhor é a maior parcela, e os desempates estão declarados.** Com a mesma
+parcela, um desenho ganha de uma fórmula, porque uma fórmula não tem ligações
+para cortar e chegou àquela parcela com uma lista menor de previsões; depois,
+um candidato cujo precursor fica dentro da precisão com que o precursor foi
+escrito ganha de um que fica fora; depois, a ordem em que as rotas são
+perguntadas. Nada mais decide, e nada é calculado duas vezes — a
+identificação do aduto, que é onde o survey é lido e o padrão isotópico
+pontuado, é feita uma vez por composição e entregue a toda rota que a pedir.
+
+Toda rota estrutural é enumerada com os mesmos limites, até duas ligações
+cortadas e até três perdas neutras, e toda rota é pontuada a 20 ppm. Ambos
+são deliberados: a parcela é uma fração do mesmo espectro de qualquer modo,
+então uma rota com mais cortes, ou com uma janela mais larga, ganharia uma
+comparação que lhe foi dada em vez de uma que ela conquistou. Os 5 ppm na
+caixa abaixo são para outra pergunta — posicionar marcações, onde um deutério
+está a 1,55 mDa do hidrogênio que ele substituiu — e continuam valendo para
+*Onde estão as marcações*.
+
+#### O que ele fez em quatro infusões reais
+
+Quatro infusões em ZenoTOF de padrões de ácidos biliares deuterados, cada
+corrida inteira promediada e centroidada, o nome e a fórmula como uma tabela
+de componentes os carregaria (`CA-d4`, `C24H40O5`), e um desenho só onde
+havia um: o ácido cólico-d4 do PubChem, CID 16217616. Um **Explain** levou
+2,6–4,7 s, contados a partir do botão.
+
+| | Rota | Aduto | Explica | Íons | ppm |
+|---|---|---|---|---|---|
+| **CA-d4, CID** | **name → LMST04010001** | [M+NH4]+ | **92,0%** | 53 de 3.837 | +8,1 |
+| | LIPID MAPS | [M+NH4]+ | 78,1% | 41 de 3.274 | −32,4 |
+| | drawing | [M+NH4]+ | 69,7% | 35 de 1.081 | +8,1 |
+| | formula | [M+NH4]+ | 24,2% | 2 de 56 | +8,1 |
+| **CA-d4, EAD 22 eV** | **LIPID MAPS → LMGL03013010** | [M+2H]2+ | **95,0%** | 34 de 4.030 | −9,6 |
+| | name → LMST04010001 | [M+NH4]+ | 87,3% | 33 de 3.837 | −15,1 |
+| | drawing | [M+NH4]+ | 82,4% | 23 de 1.081 | −15,1 |
+| | formula | [M+NH4]+ | 63,6% | 8 de 56 | −15,1 |
+| **DCA-d4, CID** | **name → LMST04010040** | [M+NH4]+ | **90,6%** | 54 de 3.282 | −28,0 |
+| | LIPID MAPS | [M+Na]+ | 64,3% | 35 de 2.330 | +13,9 |
+| | formula | [M+NH4]+ | 17,0% | 3 de 41 | −28,0 |
+| | drawing | *nenhuma estrutura carregada* | | | |
+| **TDCA-d4, CID** | **name → LMST05040013** | [M+H]+ | **92,2%** | 18 de 8.463 | −18,1 |
+| | LIPID MAPS | [M+Na]+ | 79,9% | 12 de 7.244 | +27,6 |
+| | formula | [M+H]+ | 72,7% | 5 de 104 | −18,1 |
+| | drawing | *nenhuma estrutura carregada* | | | |
+
+A rota do nome acerta o composto nas quatro e vence em três delas: ácido
+cólico, ácido desoxicólico e ácido taurodesoxicólico, cada um alcançado pela
+tabela de padrões a partir da abreviação do frasco e depois desenhado a
+partir do LIPID MAPS.
+
+**A que ela perde é para o que serve a coluna Ions.** No CA-d4 sob EAD a
+primeira linha é um triacilglicerol lido como um íon duplamente carregado, e
+ele explica 95,0% do espectro com **4.030** massas previstas contra as 3.837
+do composto certo — uma lista suficientemente longa de massas possíveis cobre
+um espectro por acidente, que é a mesma coisa que esta página diz sobre
+isômeros e sobre picos não explicados. Leia a parcela ao lado da contagem que
+a produziu. Uma rota que ofereceu cinquenta massas e explicou a maior parte
+do espectro disse alguma coisa; uma que ofereceu quatro mil não
+necessariamente.
+
+Dois dos ajustes foram escolhidos contra estes arquivos, e não argumentados.
+Pontuar a 5 ppm em vez de 20 leva a rota que nomeia o composto certo de três
+de quatro para uma de quatro: estes eixos ficam 4–7 ppm altos, então apertar
+a janela derruba os íons do composto verdadeiro enquanto o candidato de
+quatro mil íons continua cobrindo o espectro. E com uma ligação cortada em
+vez de duas — o limite que a busca manual no banco usa — o composto certo
+vence duas das quatro em vez de três, com a pontuação levando 0,2–0,9 s em
+vez de 2,6–3,9. O segundo corte compra uma destas quatro respostas e custa
+cerca de três segundos.
+
+### Uma rota de cada vez
+
 **Explain this spectrum** toma o espectro em tela e o precursor (preenchido
 a partir do canal ativo, ou digitado), procura o precursor no LIPID MAPS,
 prevê os fragmentos de cada estrutura candidata e pontua cada uma por **a

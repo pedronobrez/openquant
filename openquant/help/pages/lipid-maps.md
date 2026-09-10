@@ -75,6 +75,116 @@ the set of masses worth looking for.
 
 ## Explain
 
+### Explain, once
+
+**Explain**, at the top of the tab, does not ask which route to try. It runs
+all of them — the compound's name, LIPID MAPS at this precursor, the formula,
+and a drawing if one is loaded — and shows the one that explains the most of
+the spectrum, with every other route listed under it. The three routes below
+it are still there for anyone who wants to pick one by hand.
+
+It fills itself in. The precursor, the polarity and the survey come from the
+channel the spectrum came off; the name and the formula come from the
+component whose precursor this channel isolates, so a spectrum of a standard
+the method declares needs nothing typed at all. Anything typed in the boxes
+below wins, since whoever typed it meant it. A `-d4` on the name is read as
+four labels the name does not place, and each route is given the count that
+applies to *it*: PubChem's cholic acid-d4 places its four in the drawing and
+needs none added, while the `C24H40O5` beside it in the component table needs
+all four, and a single count for the whole spectrum skips the formula route
+with the true and useless statement that 430.35 is no adduct of the
+unlabelled molecule.
+
+The **route table** under the candidates is the answer:
+
+| Column | |
+|---|---|
+| Route | name, LIPID MAPS, formula, drawing |
+| Adduct | the ion that route read the precursor as |
+| Explains | the share of the spectrum's intensity it accounts for |
+| Ions | how many of the ions it predicted were found, of how many it offered |
+| ppm | how far the written precursor sits from it through that adduct |
+
+Click a row and the candidate table above shows that route's answer instead.
+A route with nothing to work from is a row too, greyed, with the reason in
+its tooltip — *the LIPID MAPS database is not installed* and *no curated
+structure sits within ±0.7 Da of that mass* are different answers, and a
+route simply missing from the table says neither.
+
+The line under the candidates names the route it came from:
+
+> from the name CA-d4 → LMST04010001 as [M+NH4]+; 430.35 is [M+NH4]+ of
+> C24H36D4O5 (430.3465, +8.1 ppm); [M+H]+ would be 413.3200
+
+**The best is the largest share, and the ties are stated.** At the same share
+a drawing beats a formula, because a formula has no bonds to cut and reached
+that share with a shorter list of predictions; then a candidate whose
+precursor sits inside the precision the precursor was written with beats one
+outside; then the order the routes are asked in. Nothing else decides, and
+nothing is worked out twice — the adduct identification, which is where the
+survey is read and the isotope pattern scored, is done once per composition
+and handed to every route that asks for it.
+
+Every structure route is enumerated to the same limits, up to two bonds cut
+and up to three neutral losses, and every route is scored at 20 ppm. Both are
+deliberate: a share is a fraction of the same spectrum either way, so a route
+allowed more cuts, or a wider window, would win a comparison it was handed
+rather than one it earned. The 5 ppm in the box below is for a different
+question — placing labels, where a deuterium is 1.55 mDa from the hydrogen it
+replaced — and it still governs *Where the labels are*.
+
+#### What it did on four real infusions
+
+Four ZenoTOF infusions of deuterated bile-acid standards, each whole run
+averaged and centroided, the name and formula as a component table would
+carry them (`CA-d4`, `C24H40O5`), and a drawing only where there was one:
+PubChem's cholic acid-d4, CID 16217616. One **Explain** took 2.6–4.7 s,
+counted from the button.
+
+| | Route | Adduct | Explains | Ions | ppm |
+|---|---|---|---|---|---|
+| **CA-d4, CID** | **name → LMST04010001** | [M+NH4]+ | **92.0%** | 53 of 3,837 | +8.1 |
+| | LIPID MAPS | [M+NH4]+ | 78.1% | 41 of 3,274 | −32.4 |
+| | drawing | [M+NH4]+ | 69.7% | 35 of 1,081 | +8.1 |
+| | formula | [M+NH4]+ | 24.2% | 2 of 56 | +8.1 |
+| **CA-d4, EAD 22 eV** | **LIPID MAPS → LMGL03013010** | [M+2H]2+ | **95.0%** | 34 of 4,030 | −9.6 |
+| | name → LMST04010001 | [M+NH4]+ | 87.3% | 33 of 3,837 | −15.1 |
+| | drawing | [M+NH4]+ | 82.4% | 23 of 1,081 | −15.1 |
+| | formula | [M+NH4]+ | 63.6% | 8 of 56 | −15.1 |
+| **DCA-d4, CID** | **name → LMST04010040** | [M+NH4]+ | **90.6%** | 54 of 3,282 | −28.0 |
+| | LIPID MAPS | [M+Na]+ | 64.3% | 35 of 2,330 | +13.9 |
+| | formula | [M+NH4]+ | 17.0% | 3 of 41 | −28.0 |
+| | drawing | *no structure was loaded* | | | |
+| **TDCA-d4, CID** | **name → LMST05040013** | [M+H]+ | **92.2%** | 18 of 8,463 | −18.1 |
+| | LIPID MAPS | [M+Na]+ | 79.9% | 12 of 7,244 | +27.6 |
+| | formula | [M+H]+ | 72.7% | 5 of 104 | −18.1 |
+| | drawing | *no structure was loaded* | | | |
+
+The name route names the right compound in all four and wins three of them:
+cholic acid, deoxycholic acid and taurodeoxycholic acid, each reached through
+the standards table from the abbreviation on the bottle and then drawn from
+LIPID MAPS.
+
+**The one it loses is what the Ions column is for.** On CA-d4 under EAD the
+top row is a triacylglycerol read as a doubly-charged ion, and it explains
+95.0% of the spectrum with **4,030** predicted masses against the right
+compound's 3,837 — a long enough list of possible masses covers a spectrum by
+accident, which is the same thing this page says about isomers and about
+unexplained peaks. Read the share beside the count that produced it. A route
+that offered fifty masses and explained most of the spectrum has said
+something; one that offered four thousand has not necessarily.
+
+Two of the settings were chosen against these files rather than argued.
+Scoring at 5 ppm instead of 20 takes the route naming the right compound from
+three of four down to one of four: these axes sit 4–7 ppm high, so tightening
+drops the true compound's ions while the four-thousand-ion candidate still
+covers the spectrum. And at one bond cut instead of two — the limit the
+by-hand database search uses — the right compound wins two of the four
+instead of three, with the scoring taking 0.2–0.9 s instead of 2.6–3.9.
+The second cut buys one of these four answers and costs about three seconds.
+
+### One route at a time
+
 **Explain this spectrum** takes the spectrum on screen and the precursor
 (filled in from the active channel, or typed), looks the precursor up in
 LIPID MAPS, predicts the fragments of every candidate structure, and scores

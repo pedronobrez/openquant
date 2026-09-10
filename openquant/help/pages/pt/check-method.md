@@ -14,7 +14,7 @@ que é mais tarde e mais difícil.
 | missing internal standard | serious | um componente nomeia um padrão que nenhum componente carrega, ou um que não está marcado como IS |
 | internal standard without a time | serious | um padrão sem tempo de retenção é buscado ao longo de toda a corrida, e toma o maior pico em qualquer lugar dela; cada componente que ele normaliza herda isso. A contagem de componentes que ele carrega é dada |
 | internal standard without a response floor | warning | um padrão que serve componentes não declara nenhuma **Min. response**, de modo que as cartas de qualidade e a aceitação recaem sobre um sinal/ruído de dez — o que, numa aquisição agendada, é uma altura absoluta contra uma constante arbitrária. Veja [[internal-standards-and-qualifiers]] |
-| formula against precursor | serious | a **Formula** de um componente e o seu **Precursor** estão mais distantes do que a última casa decimal escrita desse precursor permite. Um dos dois está errado, e eles fazem trabalhos diferentes: o precursor escolhe o canal de aquisição e, onde nenhum fragmento está escrito, constrói a janela de extração; a fórmula é a massa verdadeira em direção à qual a [[mass-recalibration|recalibração]] corrige. O *Repair precursors…* da [[method-workspace]] lista esses casos com as duas massas e escreve a da fórmula onde uma linha for marcada |
+| formula against precursor | serious | a **Formula** de um componente e o seu **Precursor** estão mais distantes do que a última casa decimal escrita desse precursor permite. Um dos dois está errado, e eles fazem trabalhos diferentes: o precursor escolhe o canal de aquisição e, onde nenhum fragmento está escrito, constrói a janela de extração; a fórmula é a massa verdadeira em direção à qual a [[mass-recalibration|recalibração]] corrige. O *Repair precursors…* da [[method-workspace]] lista esses casos com as duas massas e escreve a da fórmula onde uma linha for marcada. Uma linha a um dalton inteiro ou mais é o caso em que a massa é provavelmente a certa — é o que o instrumento foi posto a adquirir — e ali o *nome* é o erro, então o diálogo oferece os nomes cuja fórmula corresponde à massa escrita |
 | internal standard without a formula | warning | o padrão não pode ser uma lock mass. Sem uma fórmula e um aduto nada diz onde a massa dele deveria estar, e o precursor escrito não pode substituí-la — um digitado com uma única casa decimal é bom até algumas centenas de partes por milhão, cem vezes o erro que está sendo corrigido. O *Fill formulas from names* no [[method-workspace]] deriva uma onde quer que o nome seja notação abreviada de lipídios |
 | no retention time | warning | a janela do componente é a corrida inteira, de modo que o maior pico da corrida é o componente, seja ele qual for |
 | precursor outside the survey scan | warning | com arquivos abertos: componentes cujo precursor nenhuma varredura de survey cobre, e as faixas que os surveys de fato cobrem. A massa exata, a anotação do LIPID MAPS e a [[mass-drift]] não podem ser medidas para eles; a transição em si não é afetada. Uma aquisição sem nenhuma varredura de survey é reportada sob as verificações puladas |
@@ -65,7 +65,20 @@ que "passa" com metade das verificações não executadas não passou.
   por um dalton inteiro ou mais, e repará-los tirou dois deles de todo canal
   adquirido e os pôs sobre a varredura de survey; a [[method-workspace]] tem
   os números. Uma discordância de um dalton inteiro é uma pergunta sobre o
-  *nome* tantas vezes quanto sobre a massa.
+  *nome* tantas vezes quanto sobre a massa, e onde ela é, o achado diz isso e
+  a coluna *Rename to* do diálogo a responde: os nomes cuja fórmula
+  corresponde à massa que foi escrita, primeiro os da própria classe da linha
+  e depois os do [[lipid-maps|LIPID MAPS]]. Nas três linhas de um dalton
+  inteiro daquele método ela oferece o `LacCER(d18:1/18:2)` para o
+  `LacCER(d18:1/18:1(9Z))` escrito 886,6407, a −17,7 ppm — e nada para as
+  outras duas, que é a metade mais útil da resposta. O `LacCER(d18:0/18:1)`
+  erra por um dalton ímpar, e uma cadeia é 14 Da, uma dupla ligação 2 e uma
+  hidroxila 16: nenhum nome daquela classe pode ficar a um dalton, então o
+  engano é o dígito e não o composto. O `C18:1 Cer` erra por cem, além do que
+  uma cadeia mal nomeada pode ser. Uma renomeação não move número nenhum —
+  mesmo precursor, mesmo fragmento, mesma janela, mesmo canal — e reprocessar
+  o lote depois dela deixou 78 de 78 linhas idênticas; o que ela compra é uma
+  linha cuja fórmula concorda com a sua própria massa.
 
 A verificação corre sobre o método tal como está, de modo que pode ser executada
 de novo após cada correção. Os mesmos achados aparecem no início da seção de

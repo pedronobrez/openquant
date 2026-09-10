@@ -53,7 +53,9 @@ As colunas de padrão interno e de qualificador são explicadas em
   abaixo.
 - **Repair precursors…** é a saída daquilo que aquele recusa: onde uma
   fórmula e o precursor escrito ao lado dela discordam, ele oferece a massa
-  da fórmula para o precursor, linha por linha, ver abaixo.
+  da fórmula para o precursor, linha por linha — e, onde os dois estão a um
+  dalton inteiro e a massa é a que o instrumento adquiriu, ele oferece em vez
+  disso os nomes cuja fórmula corresponde àquela massa, ver abaixo.
 - **Export schedule…** escreve a aquisição agendada que o método implica, com
   o dwell time que um ciclo alvo deixa a cada transição, ver
   [[acquisition-schedule]].
@@ -188,6 +190,68 @@ Cada uma delas diz a mesma coisa: o instrumento adquiriu a massa como ela
 estava escrita, então a massa escrita é aquela sob a qual estão os dados e o
 *nome* é o que pede correção. Nenhuma aritmética poderia saber disso, e é
 por isso que nada ali vem marcado.
+
+### Quando o engano é o nome: renomeie a linha
+
+Uma linha de um dalton inteiro tem três respostas, e não duas — manter,
+reparar a massa ou **renomear** — e a coluna *Rename to* é a terceira. Ela
+oferece os nomes cuja fórmula *de fato* corresponde à massa que foi escrita:
+primeiro os da própria classe do nome escrito, com as cadeias movidas em até
+quatro carbonos e três duplas ligações, uma hidroxila acílica posta ou tirada
+e o `d`/`t`/`m` de uma base esfingoide variado; depois o que o
+[[lipid-maps|LIPID MAPS]] tiver naquela massa, marcado como de outra classe.
+Nada vem pré-selecionado. A lista é ordenada por quão pouco cada entrada muda
+o nome escrito, e cada entrada carrega a sua fórmula e a que distância a massa
+dessa fórmula fica da massa escrita, em ppm.
+
+Escolher uma escreve o nome e a sua fórmula e **não move número nenhum** — o
+precursor, o fragmento, a janela e portanto o canal ficam intocados — e
+registra `Name renamed` na [[audit-trail|auditoria]] com a razão:
+`formula C48H87NO13 matches the written 886.6407 to −17.7 ppm`.
+
+A busca casa a massa *nominal*, meio dalton para cada lado, e não as quatro
+casas decimais com que o precursor foi digitado. É esse o ponto: uma linha só
+recebe a oferta de renomeação porque a sua massa escrita já discorda do seu
+próprio nome por um dalton inteiro, o que diz de onde vieram aquelas casas —
+foram calculadas para o composto que o nome errou. O
+`LacCER(d18:1/18:1(9Z))` está escrito 886,6407 contra uma fórmula de
+888,6407, e a diferença é exatamente 2,0000 onde uma dupla ligação de verdade
+é 2,0157. Casar aquela fração até a última casa não responde nada; casar a
+massa nominal responde o isômero, e o ppm na linha é o que diz que a resposta
+é nominal.
+
+### Medido, nas três linhas de um dalton inteiro
+
+| Escrito | O que é oferecido | O topo da lista |
+|---|---|---|
+| `LacCER(d18:1/18:1(9Z))`, 886,6407 | 204 nomes na classe, sobre **quatro** fórmulas; 25 mostrados | `LacCER(d18:1/18:2)` e `LacCER(d18:2/18:1)`, ambos C48H87NO13 em 886,6250, −17,7 ppm |
+| `LacCER(d18:0/18:1)`, 889,6563 | nada, nem da classe nem do banco | uma cadeia move um lipídio em 14 Da, uma dupla ligação em 2, uma hidroxila em 16 — nada que essa classe possa ser fica a um dalton |
+| `C18:1 Cer`, 464,4 | nada na classe; uma espécie do LIPID MAPS, `CAR 20:4;O` a −136 ppm | o nome se lê como 564,5350, cem daltons fora; a busca alcança quatro carbonos, não onze |
+
+Duas das três são respondidas com um silêncio, e as duas recusas valem mais do
+que valeria um palpite. Um **dalton inteiro ímpar não é uma cadeia**: todo
+movimento que a busca pode fazer é um número par de daltons nominais, de modo
+que metade dos inteiros é inalcançável e o `LacCER(d18:0/18:1)` é um dígito
+digitado errado e não um composto mal nomeado. E 204 nomes sobre quatro
+fórmulas é a outra metade do mesmo fato — uma massa fixa a composição e nunca
+a divisão entre as cadeias, e é por isso que a lista é longa, que ela é
+ordenada por quão pouco muda, e que nada nela vem marcado por você.
+
+Renomeando o `LacCER(d18:1/18:1(9Z))` para `LacCER(d18:1/18:2)` e processando
+o lote de novo: **78 de 78 linhas idênticas** — os três componentes de um
+dalton inteiro nas 26 injeções, com toda área, altura, tempo de retenção,
+limite, contagem de pontos, canal e nota iguais. Essa é a alegação inteira. Uma
+renomeação é escrituração: o que ela compra é uma linha cuja fórmula concorda
+com a sua própria massa, que é do que se faz uma lock mass para a
+[[mass-recalibration]], e um nome que significa o composto sob o qual os dados
+de fato estão.
+
+Depois disso a linha volta a este mesmo diálogo, agora 15,7 mDa fora e
+marcada, porque os 886,6407 escritos nunca foram a massa exata de coisa
+alguma: agora o nome está certo e o número é o que foi digitado. Aplicar
+também esse reparo deixa outra vez 78 de 78 linhas idênticas — 16 mDa está
+bem dentro dos 0,7 Da que escolhem o canal — e a linha termina com o nome, a
+fórmula e a massa dizendo todos o mesmo composto.
 
 ## Padrões do método
 

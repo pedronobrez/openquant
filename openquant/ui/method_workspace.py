@@ -629,6 +629,11 @@ class MethodWorkspace(QtWidgets.QWidget):
         one of those refusals is one of two mistakes and only one of them can
         be fixed by arithmetic; the dialog says which is which, ticks the
         ones that are arithmetic, and applies nothing that is not ticked.
+
+        The database is handed over for the third answer the dialog offers on
+        a whole-dalton row: the mass there is the one the instrument acquired,
+        so the name is what is in question, and the names that do match that
+        mass come from the component's own class and from LIPID MAPS.
         """
         from .repair_dialog import RepairPrecursorsDialog
 
@@ -645,7 +650,8 @@ class MethodWorkspace(QtWidgets.QWidget):
             self._report("No precursor contradicts its formula.")
             return
 
-        dialog = RepairPrecursorsDialog(self.session, repairs, components, self)
+        dialog = RepairPrecursorsDialog(self.session, repairs, components, self,
+                                        database=lipidmaps.database)
         dialog.exec()
         self._report(dialog.summary())
         dialog.deleteLater()

@@ -14,7 +14,7 @@ results, which is later and harder.
 | missing internal standard | serious | a component names a standard that no component carries, or one that is not ticked IS |
 | internal standard without a time | serious | a standard with no retention time is searched over the whole run, and takes the largest peak anywhere in it; every component it normalises inherits that. The count of components it carries is given |
 | internal standard without a response floor | warning | a standard that serves components declares no **Min. response**, so the quality charts and the acceptance fall back to a signal-to-noise of ten — which on a scheduled acquisition is an absolute height against an arbitrary constant. See [[internal-standards-and-qualifiers]] |
-| formula against precursor | serious | a component's **Formula** and its **Precursor** are further apart than that precursor's own last written decimal allows. One of the two is wrong, and they do different work: the precursor picks the acquisition channel and, where no fragment is written, builds the extraction window; the formula is the true mass the [[mass-recalibration|recalibration]] corrects towards. *Repair precursors…* in the [[method-workspace]] lists them with both masses and writes the formula's where a row is ticked |
+| formula against precursor | serious | a component's **Formula** and its **Precursor** are further apart than that precursor's own last written decimal allows. One of the two is wrong, and they do different work: the precursor picks the acquisition channel and, where no fragment is written, builds the extraction window; the formula is the true mass the [[mass-recalibration|recalibration]] corrects towards. *Repair precursors…* in the [[method-workspace]] lists them with both masses and writes the formula's where a row is ticked. A row a whole dalton or more out is the case where the mass is likely to be the right one — it is what the instrument was set to acquire — so there the *name* is the error, and the dialog offers the names whose formula does match the written mass |
 | internal standard without a formula | warning | the standard cannot be a lock mass. Without a formula and an adduct nothing says where its mass belongs, and the written precursor cannot stand in — one typed to a single decimal is good to a few hundred parts per million, a hundred times the error being corrected. *Fill formulas from names* in the [[method-workspace]] derives one wherever the name is lipid shorthand |
 | no retention time | warning | the component's window is the whole run, so the largest peak in the run is the component whatever it is |
 | precursor outside the survey scan | warning | with files open: components whose precursor no survey scan covers, and the ranges the surveys do cover. The accurate mass, the LIPID MAPS annotation and the [[mass-drift]] cannot be measured for them; the transition itself is unaffected. An acquisition with no survey scan at all is reported under the skipped checks instead |
@@ -64,7 +64,19 @@ with half the checks unrun has not passed.
   were a whole dalton or more out, and repairing them took two of them off
   every acquired channel and onto the survey scan; the [[method-workspace]]
   has the figures. A whole-dalton disagreement is a question about the *name*
-  as often as about the mass.
+  as often as about the mass, and where it is, the finding says so and the
+  dialog's *Rename to* column answers it: the names whose formula matches the
+  mass that was written, the row's own class first and [[lipid-maps|LIPID
+  MAPS]] after it. On the three whole-dalton rows of that method it offers
+  `LacCER(d18:1/18:2)` for the `LacCER(d18:1/18:1(9Z))` written 886.6407,
+  −17.7 ppm — and nothing at all for the other two, which is the more useful
+  half of the answer. `LacCER(d18:0/18:1)` is out by one odd dalton, and a
+  chain is 14 Da, a double bond 2 and a hydroxyl 16: no name in that class
+  can be one dalton away, so the digit is the mistake rather than the
+  compound. `C18:1 Cer` is out by a hundred, past what a misnamed chain can
+  be. A rename moves no number — same precursor, same fragment, same window,
+  same channel — and reprocessing the batch after it left 78 of 78 rows
+  identical; what it buys is a row whose formula agrees with its own mass.
 
 The check runs on the method as it is, so it can be run again after each
 correction. The same findings appear at the head of the [[report]]'s

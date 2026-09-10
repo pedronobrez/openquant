@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .components import Component, formula_disagreement
+from .components import WHOLE_DALTON, Component, formula_disagreement
 from .method import ProcessingMethod
 from .samples import SampleEntry
 
@@ -176,6 +176,22 @@ def check_method(method: ProcessingMethod,
     disagreeing = [formula_disagreement(c) for c in components]
     disagreeing = [d for d in disagreeing if d is not None]
     if disagreeing:
+        # a whole dalton is the case where repairing the mass is the wrong
+        # repair: the instrument acquired what was written — that number is
+        # the channel the data is on — so it is the name that is in question
+        apart = [d for d in disagreeing
+                 if d.difference is not None
+                 and abs(d.difference) >= WHOLE_DALTON]
+        whole_dalton = ""
+        if apart:
+            whole_dalton = (
+                f"{len(apart)} of them are a whole dalton or more apart, and "
+                f"there the mass is likely to be the right one — it is what "
+                f"the instrument was set to acquire — which makes the *name* "
+                f"the error. The dialog offers a third answer for those rows, "
+                f"Rename to: the names, in the same class and from LIPID MAPS, "
+                f"whose formula does match the written mass. Renaming moves no "
+                f"number, so nothing needs reprocessing. ")
         detail = "; ".join(
             f"{d.component.name} {d.formula} is {d.theoretical:.4f} and the "
             f"method says {d.written:.4f}" for d in disagreeing[:4])
@@ -195,7 +211,7 @@ def check_method(method: ProcessingMethod,
             f"already where the two are under half a dalton apart, which is "
             f"one compound written to fewer places, and left for the person "
             f"to decide where they are a whole dalton or more apart, which is "
-            f"two different compounds. {detail}."))
+            f"two different compounds. {whole_dalton}{detail}."))
 
     unlocked = sorted(name for name in internal
                       if not next((c for c in components if c.name == name),

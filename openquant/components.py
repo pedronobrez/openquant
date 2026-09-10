@@ -34,8 +34,9 @@ import csv
 import os
 from dataclasses import asdict, dataclass, field, fields, replace
 
-from .chemistry import (ADDUCTS_BY_NAME, FormulaError, formulas_from_name,
-                        monoisotopic_mass, parse_formula)
+from .chemistry import (ADDUCTS_BY_NAME, FormulaError, NameSuggestion,
+                        formulas_from_name, monoisotopic_mass, names_for_mass,
+                        parse_formula)
 from .processing import (ALGORITHM_VALLEY, ALGORITHMS, PEAK_CHOICES,
                          PEAK_LARGEST, SNR_MODES, SNR_PEAK_TO_PEAK)
 
@@ -644,6 +645,56 @@ class PrecursorRepair:
         self.component.formula = self.formula
         self.component.precursor = self.theoretical
         return self.component
+
+    # -- the other repair: the mass is right and the name is wrong ------------ #
+    def suggestions(self, database=None) -> list[NameSuggestion]:
+        """
+        Names whose formula matches the *written* mass, best first.
+
+        Only ever for a whole-dalton row. Under half a dalton the two masses
+        are one compound written twice and there is nothing to rename; at a
+        whole dalton the instrument acquired what was written — that mass
+        is the channel — and the question turns round: which compound weighs
+        what the method says, given that this one does not?
+
+        The list is `chemistry.names_for_mass`: the written name's own class
+        first, with the chains moved, then what LIPID MAPS holds at the same
+        mass. Both are proposals about a name and neither touches a number.
+        """
+        if not self.whole_dalton:
+            return []
+        found = (database() if callable(database) else database) if database else None
+        return names_for_mass(self.written, self.component.adduct,
+                              like=self.component.name, database=found)
+
+    def rename_note(self, suggestion: NameSuggestion) -> str:
+        """The note the audit entry carries for a rename."""
+        said = (f"formula {suggestion.formula} matches the written "
+                f"{self.written:.4f} to {suggestion.error_ppm:+,.1f} ppm")
+        if not suggestion.in_class:
+            said += f", from {suggestion.source}"
+        said += (f"; the name said {self.formula} at {self.theoretical:.4f}, "
+                 f"{abs(self.difference):.4f} Da away, and the mass is what "
+                 f"the instrument acquired")
+        return said
+
+    def apply_rename(self, suggestion: NameSuggestion) -> Component:
+        """
+        Write the offered name and its formula; leave the precursor alone.
+
+        The mirror of `apply`, and the reason it exists: there the formula was
+        believed and the mass corrected, here the mass is believed and the
+        name corrected. Nothing in the extraction moves — same precursor, same
+        fragment, same window, same channel — so no result goes stale. What
+        changes is that the row now carries a formula that agrees with its own
+        mass, which is what a lock mass is made of.
+        """
+        component = self.component
+        component.name = suggestion.name
+        component.formula = suggestion.formula
+        if not suggestion.in_class and suggestion.source.startswith("LIPID MAPS "):
+            component.lm_id = suggestion.source.split()[-1]
+        return component
 
 
 def precursor_repairs(components: list[Component],

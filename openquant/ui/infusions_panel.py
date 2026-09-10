@@ -272,8 +272,54 @@ class InfusionsPanel(QtWidgets.QWidget):
                 picked.append(row)
         return picked
 
+    def batch_result(self, rows):
+        """
+        This table as the run `infusion_cover` describes, for the cover.
+
+        The cover is written from a `BatchResult` because that is what the
+        headless run makes, and the tab is the same measurement taken through
+        a window: the files are the ones the rows came from, and what was
+        left out is every open sample that did not read as an infusion, with
+        `infusion.verdict_for`'s own figures — the reason the command line
+        prints for the same sample. A cover that said "nothing was left out"
+        while three open acquisitions had been passed over would be the one
+        thing this document must not do.
+        """
+        from ..infusion import verdict_for
+        from ..infusion_batch import NOT_INFUSION, BatchResult, Skipped
+
+        entries = list(getattr(self.session, "entries", []))
+        wanted = {row.report.file for row in rows}
+        reported = {row.sample for row in rows}
+        paths, skipped = [], []
+        for entry in entries:
+            path = str(getattr(entry, "path", "") or "")
+            if entry.filename in wanted and path not in paths:
+                paths.append(path)
+            if entry.name in reported:
+                continue
+            try:
+                verdict = verdict_for(entry.sample)
+                reason = (f"{verdict.reason} ({verdict.n_scans:,} scans over "
+                          f"{verdict.length_min:.2f} min)")
+            except Exception as exc:                 # a reader that cannot say
+                reason = f"{type(exc).__name__}: {exc}"
+            skipped.append(Skipped(path, NOT_INFUSION,
+                                   f"{entry.name}: {reason}"))
+        return BatchResult(requested=paths, read=paths, skipped=skipped,
+                           summary=self.summary)
+
     def write_report(self, path: str = "") -> str:
-        """Write the per-compound document for the chosen rows."""
+        """
+        Write the per-compound document for the chosen rows.
+
+        The whole table gets `infusion_cover`'s cover in front of the pages:
+        what was read, the rows summed sentence by sentence, what was left
+        out, and where each compound is. A selection does not, because every
+        count on that cover is a count of the folder and a cover that
+        counted four of nine rows would be a summary of something nobody
+        chose.
+        """
         rows = self.chosen()
         if not rows:
             self.status.setText("Measure first; there is nothing to report.")
@@ -289,9 +335,16 @@ class InfusionsPanel(QtWidgets.QWidget):
             self.settings.setValue("io/last_dir", os.path.dirname(path))
         QtWidgets.QApplication.setOverrideCursor(
             QtCore.Qt.CursorShape.WaitCursor)
+        whole = len(rows) == len(self.summary.rows)
         try:
             reports = prepare_documents(rows)
-            write_pdf(reports, path)
+            if whole:
+                from ..infusion_cover import write_pdf as write_with_cover
+
+                write_with_cover(self.batch_result(rows), self.summary,
+                                 reports, path)
+            else:
+                write_pdf(reports, path)
         except (OSError, ValueError) as exc:
             self.status.setText(f"Could not write {path}: {exc}")
             return ""
@@ -300,7 +353,8 @@ class InfusionsPanel(QtWidgets.QWidget):
         names = ", ".join(dict.fromkeys(row.compound for row in rows))
         self.session.record(
             audit.INFUSION_REPORT, names, after=os.path.basename(path),
-            note=f"{len(rows)} infusion(s) from the Infusions tab")
+            note=f"{len(rows)} infusion(s) from the Infusions tab"
+                 f"{'' if whole else ', a selection, with no cover'}")
         self._report(f"{len(rows)} infusion(s) written to "
                      f"{os.path.basename(path)}.")
         return path

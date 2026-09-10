@@ -285,11 +285,25 @@ def test_one_document_per_compound_and_the_csv(qapp, two_compounds, tmp_path):
                        fmt="html", per_compound=True, csv=str(csv_path))
 
     names = sorted(os.path.basename(p) for p in result.documents)
-    assert names == ["each-OTHEROL.html", "each-TESTOL.html"]
+    # the cover as a file of its own: the pages it introduces are in the
+    # others, so it cannot be printed in front of them
+    assert names == ["each-OTHEROL.html", "each-TESTOL.html",
+                     "each-cover.html"]
     for path in result.documents:
+        if path.endswith("-cover.html"):
+            continue
         compound = os.path.basename(path).split("-")[1].split(".")[0]
         with open(path, encoding="utf-8") as handle:
             assert f"<title>{compound} — direct infusion" in handle.read()
+
+    with open(str(two_compounds / "each-cover.html"), encoding="utf-8") as it:
+        cover = it.read()
+    assert "The infusions" in cover and "What they add up to" in cover
+    for row in result.summary.rows:
+        assert row.sample in cover
+    # it lists no pages: they are in eight other files and it has no numbers
+    # for them
+    assert "The pages that follow" not in cover
 
     assert result.csv == str(csv_path)
     lines = csv_path.read_text(encoding="utf-8").strip().splitlines()

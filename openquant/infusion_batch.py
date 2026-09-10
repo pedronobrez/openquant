@@ -32,6 +32,10 @@ What it does, in order
    sessions of one row each, and each would call itself the only infusion of
    its compound. `_cross_score` puts that back over the merged rows, with the
    same `score_against` `summarise` uses.
+5. `infusion_cover` puts the cover in front of those pages, in the same
+   document: what was read, the table of every infusion, what the rows add up
+   to in sentences, what was left out, and where each compound is. A folder's
+   report opens on the folder and not on its first compound.
 
 The component table and the library are the two things a headless run cannot
 ask a person for. Both are optional and both are named on the command line:
@@ -48,6 +52,7 @@ import time
 from dataclasses import dataclass, field
 
 from . import folder as _folder
+from . import infusion_cover
 from .infusion import verdict_for
 from .infusion_report import (InfusionSummary, prepare_documents,
                               score_against, summarise, write_html, write_pdf,
@@ -284,17 +289,28 @@ def _cross_score(rows) -> None:
                 row.others_note = "the only infusion of this compound"
 
 
-def _write(reports, rows, out: str, fmt: str,
-           per_compound: bool) -> list[str]:
-    """The document, or one document per compound, and their paths."""
+def _write(reports, rows, out: str, fmt: str, per_compound: bool,
+           result: "BatchResult") -> list[str]:
+    """
+    The document, or one per compound and a cover, and their paths.
+
+    One folder is one document: the cover — what was read, what it adds up
+    to, what was left out and where each compound is — and then the pages,
+    laid out together so the page numbers in its contents are the pages the
+    sections actually landed on. `per_compound` is the one case where they
+    are separated, and there the cover is written on its own, since the pages
+    it introduces are in files of their own.
+    """
     fmt = str(fmt or "pdf").lower()
     if fmt not in FORMATS:
         raise ValueError(f"{fmt}: the formats are {', '.join(sorted(FORMATS))}")
     write = write_pdf if fmt == "pdf" else write_html
+    cover = (infusion_cover.write_pdf if fmt == "pdf"
+             else infusion_cover.write_html)
 
-    def writer(made, path: str, **kwargs) -> str:
+    def check(path: str) -> str:
         """
-        Write it, and check something is there afterwards.
+        Check something is there after writing it.
 
         `QPdfWriter` reports nothing at all when it cannot open its file: a
         run pointed at a folder that does not exist read all nine
@@ -302,25 +318,26 @@ def _write(reports, rows, out: str, fmt: str,
         nothing on disk. The HTML path raises like any other `open`, so this
         is for the PDF — and it is checked for both rather than for one.
         """
-        written = write(made, path, **kwargs)
-        if not os.path.exists(written):
-            raise OSError(f"{written} was not written — check the folder "
+        if not os.path.exists(path):
+            raise OSError(f"{path} was not written — check the folder "
                           f"exists and can be written to")
-        return written
+        return path
 
     stem, extension = os.path.splitext(str(out))
     if extension.lower() != FORMATS[fmt]:
         stem, extension = str(out), FORMATS[fmt]
     if not per_compound:
-        return [writer(reports, stem + extension)]
+        return [check(cover(result, result.summary, reports,
+                            stem + extension))]
 
     groups: dict[str, list] = {}
     for row, report in zip(rows, reports, strict=True):
         groups.setdefault(row.compound, []).append(report)
-    written = []
+    written = [check(cover(result, result.summary, (),
+                           f"{stem}-cover{extension}"))]
     for compound, made in groups.items():
-        written.append(writer(made, f"{stem}-{_safe(compound)}{extension}",
-                              title=f"{compound} — direct infusion"))
+        written.append(check(write(made, f"{stem}-{_safe(compound)}{extension}",
+                                   title=f"{compound} — direct infusion")))
     return written
 
 
@@ -334,7 +351,9 @@ def run(paths, out, library=None, components=None, fmt: str = "pdf",
     document is written for each. `library` is a path to an MSP or MGF of
     one's own, or a `SpectralLibrary` already loaded; `components` a path to a
     project or a components CSV, or a `ProcessingMethod`. `csv` writes the
-    summary table beside the document.
+    summary table beside the document. The document opens with
+    `infusion_cover`'s cover; with `per_compound` that cover is a file of its
+    own, named `-cover`.
 
     `progress(done, total, name)` is called once as each file is reached —
     `done` files behind it — and once more when the last is finished, and
@@ -401,7 +420,8 @@ def run(paths, out, library=None, components=None, fmt: str = "pdf",
         seconds=time.perf_counter() - started)
     if rows:
         reports = prepare_documents(rows)
-        result.documents = _write(reports, rows, out, fmt, per_compound)
+        result.documents = _write(reports, rows, out, fmt,
+                                  per_compound, result)
         if str(fmt).lower() == "pdf":
             result.pages = sum(_page_count(p) for p in result.documents)
         if csv:

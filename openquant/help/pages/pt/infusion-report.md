@@ -143,7 +143,10 @@ ou a pior pontuação está a um clique.
 this infusion…* escreve — para as linhas selecionadas, ou para todas quando
 nenhuma está selecionada, uma seção por composto. Linhas do mesmo composto
 escolhidas juntas são desenhadas cabeça-cauda umas contra as outras nele; uma
-linha deixada de fora fica de fora também da comparação. **Export CSV…**
+linha deixada de fora fica de fora também da comparação. **A tabela inteira
+recebe a capa** descrita adiante e uma seleção não, porque cada contagem
+dessa capa é uma contagem da tabela inteira; a linha do [[audit-trail]] diz
+qual dos dois foi escrito. **Export CSV…**
 escreve a tabela inteira, todas as colunas, com ou sem seleção: um resumo com
 linhas faltando não é a coisa que ele diz ser.
 
@@ -287,8 +290,12 @@ OpenQuant --infusion-report ~/dados/acidos --out ~/relatorios/acidos.pdf \
 
 A pasta inteira pela linha de comando, com as três corridas CID como
 biblioteca própria e as três fórmulas como CSV de componentes: **9 arquivos
-lidos, nada excluído, um PDF de 48 páginas em 32 s** numa máquina ociosa, com
-890 MB de pico de memória; `--per-compound` dá três documentos, 46 páginas, 28,0 s. Cada linha é
+lidos, nada excluído, um PDF de 49 páginas** — duas de capa e 47 de seções —
+em **27 s** numa máquina ociosa, com 883 MB de pico de memória;
+`--per-compound` dá quatro documentos, a capa e um por composto, 48 páginas
+em 26 s. Os segundos são o único número aqui que não é do programa: a mesma
+execução numa máquina ocupada levou 32 s. O que é estável é o que ela fez.
+Cada linha é
 a que a aba Infusions mediu com os nove arquivos abertos — 2 de 56 íons sob
 CID e 8 de 56 sob EAD para o CA-d4, 29 e 6 e 61 contra os registros próprios,
 +14,6 a +30,3 ppm onde o precursor sobreviveu — que é justamente o ponto: o
@@ -303,6 +310,75 @@ dezessete contagens estão na janela do precursor, e sua célula de explicação
 diz *839.56 is none of the adducts of C24H36D4O5 within ±0.05 Da — closest
 [M+K]+ at 451.2758*. Uma regra que as descartasse teria de saber disso de
 antemão; o relatório é onde isso se descobre.
+
+## A capa de um relatório de pasta
+
+Um relatório de pasta abre na pasta, e não no seu primeiro composto. Diante
+das páginas por composto, no mesmo PDF, há uma capa de cinco blocos — e ela
+está no mesmo PDF porque uma capa em arquivo próprio é um arquivo que se
+separa daquilo que apresenta.
+
+**O que isto é.** A pasta, o dia, a versão que escreveu, quantos arquivos
+foram lidos e quantos ficaram de fora, quantas infusões em quantos compostos,
+a biblioteca própria quando alguma foi pesquisada, e a linha-resumo que a aba
+Infusions mostra, dígito por dígito. Um documento é lido de volta uma semana
+depois, separado de tudo o que o produziu.
+
+**As infusões.** Cada infusão em uma linha, nas colunas que a aba e a seção
+*Infusions* do [[report]] do lote usam — uma definição só, para que as três
+não possam discordar — com as aquisições de um composto juntas mesmo quando a
+pasta saiu do instrumento com elas intercaladas. Uma célula que não pôde ser
+preenchida continua dizendo por quê em vez de ficar em branco, cortada numa
+palavra quando a razão é uma frase inteira; ela está por extenso na página do
+próprio composto, que é para onde o sumário aponta.
+
+**No que elas dão.** A tabela acima somada, uma frase por coluna que pode ser
+somada, cada uma delas uma contagem e aquilo contra o que foi contada. Não há
+uma frase final que as reúna nem aprovação ou reprovação da pasta, pela mesma
+razão que não há para um composto: o que um espectro vale depende do que o
+frasco deveria conter.
+
+**O que ficou de fora.** Os arquivos excluídos com as suas razões, impressos
+haja ou não algum — *nada ficou de fora* também é uma medida — e depois o que
+[[checking-files]] achou nos nomes da própria pasta antes de qualquer
+abertura.
+
+**As páginas que vêm a seguir.** Cada seção com a página em que caiu. O
+título carrega a amostra além do composto, porque uma pasta é onde um
+composto é infundido cinco vezes e um sumário de cinco linhas idênticas manda
+o leitor à página 3 para descobrir se a página 3 é a que ele queria. Os
+números são as páginas em que as seções realmente caíram: o documento é
+paginado uma vez para descobri-los e outra para imprimi-los, que é a
+maquinaria que o [[report]] já usa.
+
+Com `--per-compound` a capa é escrita como arquivo próprio, chamado
+`-cover`, já que as páginas que ela apresenta estão nos outros; ali ela não
+lista número de página nenhum, porque não os tem.
+
+### Medido, nos nove
+
+O parágrafo que as nove infusões reais produzem, por inteiro:
+
+> 4 of 9 precursor(s) confirmed within 25 ppm; 5 not: 2 whose method isolates
+> 839.56, 2 with too little precursor surviving fragmentation, 1 at
+> +30.3 ppm. Own records: 4 above 60, 3 below — all across a collision-energy
+> change; 2 matched no record at all. Predicted ions: 34 of 458 found across 7
+> spectrum(s); 2 had nothing to predict from — no formula in the component
+> table for that compound.
+
+Cada número dele está na página acima dele, e três valem a leitura. As **2
+whose method isolates 839.56** são as aquisições `_TESTEARTIGO`: uma massa
+que nenhuma outra corrida de CA-d4 da pasta isola, de modo que elas não são
+duas falhas de um íon e sim duas medidas de outro, e a frase diz isso com a
+massa em vez de chamá-las de não medidas. As **4 above 60** são os três
+registros comparados com as corridas de que foram feitos, mais um; é por isso
+que a frase as conta em vez de concluir a partir delas. E **2 had nothing to
+predict from** é o denominador mantido honesto: uma infusão para a qual nada
+foi previsto não é contada como uma que não achou nada.
+
+A capa deu **duas páginas** das 49 da pasta — a tabela de nove linhas ocupa a
+primeira — e não levou tempo mensurável: ela é escrita a partir das linhas
+que a execução já fez, e não lê arquivo nenhum.
 
 ## O mesmo padrão, no mês que vem
 

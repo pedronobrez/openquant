@@ -72,25 +72,38 @@ aba Infusions mostra, depois o que foi escrito. O código de saída é 0 quando
 ao menos um documento foi escrito e 1 caso contrário, de modo que um script
 distingue uma pasta vazia de uma pasta relatada.
 
+O documento **abre na pasta, e não no seu primeiro composto**: a capa diante
+das páginas por composto nomeia a pasta, o dia e a versão, imprime cada
+infusão em uma linha, soma essas linhas frase a frase, lista o que ficou de
+fora e onde está cada composto — veja *A capa de um relatório de pasta* em
+[[infusion-report]]. Ela está no mesmo PDF das páginas que apresenta.
+`--per-compound` é a exceção: ali as páginas estão em um arquivo por
+composto, então a capa é escrita sozinha como `<out>-cover`, e não lista
+números de página porque não os tem.
+
 Em uma máquina sem tela — um servidor de build, uma sessão por ssh — defina
 `QT_QPA_PLATFORM=offscreen`: o documento é desenhado e paginado pelo Qt haja
 ou não algo a mostrar.
 
 Medido em nove infusões de ácidos biliares em um ZenoTOF, a partir do código
 no macOS, com as três corridas CID como biblioteca própria e as três fórmulas
-como CSV de componentes: **32 s** para a pasta inteira — nove arquivos lidos
-e um PDF de 48 páginas escrito — com **890 MB** de pico de memória residente
-(duas execuções: 32,0 e 32,4 s, 886 e 896 MB), e `--per-compound` três
-documentos de 46 páginas em 28,0 s com 704 MB. Os segundos são o único número
+como CSV de componentes: **27 s** para a pasta inteira — nove arquivos lidos
+e um PDF de 49 páginas escrito, duas de capa e 47 de seções — com **883 MB**
+de pico de memória residente (duas execuções: 26,9 e 29,4 s, 883 e 888 MB), e
+`--per-compound` quatro documentos de 48 páginas em 26 s, duas delas a capa e
+as outras 46 um documento por composto. Os segundos são o único número
 aqui que não é do programa: a mesma execução sobre os mesmos arquivos, com a
-máquina ocupada com outro trabalho, levou 81 e 255 s. O que é estável é o que
-ela fez — nove arquivos lidos, nenhum excluído, 48 páginas — e o que ela
+máquina ocupada com outro trabalho, levou 32, 81 e 255 s. O que é estável é o
+que ela fez — nove arquivos lidos, nenhum excluído, 49 páginas — e o que ela
 manteve na memória. Nada foi excluído:
 todos os nove leem como infusões, inclusive as duas aquisições `_TESTEARTIGO`,
 cujas linhas dizem o que há de errado com elas em vez de deixá-las de fora. A
 linha-resumo é a da aba Infusions, dígito por dígito: *3 compound(s) in 9
 infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm; 34 of 458 predicted
-ion(s) found across 7; 4 with an own record above 60*.
+ion(s) found across 7; 4 with an own record above 60*, e o parágrafo da capa
+soma as mesmas linhas uma frase por vez — *4 of 9 precursor(s) confirmed
+within 25 ppm; 5 not: 2 whose method isolates 839.56, 2 with too little
+precursor surviving fragmentation, 1 at +30.3 ppm.* e mais duas como essa.
 
 ## O bootstrap
 

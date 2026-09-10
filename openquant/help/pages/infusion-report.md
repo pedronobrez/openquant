@@ -138,7 +138,10 @@ weakest precursor or the worst score is one click away.
 this infusion…* writes — for the rows selected, or for every row when none is
 selected, one section per compound. Rows of the same compound chosen together
 are drawn head to tail against each other in it; a row left unselected is left
-out of the comparison as well as out of the document. **Export CSV…** writes
+out of the comparison as well as out of the document. **The whole table gets
+the cover** described below and a selection does not, because every count on
+that cover is a count of the whole table; the [[audit-trail]] line says which
+of the two was written. **Export CSV…** writes
 the whole table, every column, selection or no selection: a summary with rows
 left out is not the thing it claims to be.
 
@@ -281,8 +284,12 @@ OpenQuant --infusion-report ~/data/bile-acids --out ~/reports/bile.pdf \
 
 The whole folder from the command line, with the three CID runs as the own
 library and the three formulas as a components CSV: **9 files read, nothing
-skipped, one 48-page PDF in 32 s** on an otherwise idle machine at 890 MB
-peak memory; `--per-compound` gives three documents, 46 pages, 28.0 s. Every row is the one the Infusions
+skipped, one 49-page PDF** — a two-page cover and 47 pages of sections — in
+**27 s** at 883 MB peak memory on an otherwise idle machine;
+`--per-compound` gives four documents, the cover and one per compound, 48
+pages in 26 s. The seconds are the one figure here that is not the
+program's: the same run on a busy machine took 32 s. What is stable is what
+it did. Every row is the one the Infusions
 tab measured with the nine files open — 2 of 56 ions under CID and 8 of 56
 under EAD for CA-d4, 29 and 6 and 61 against the own records, +14.6 to
 +30.3 ppm where the precursor survived — which is the point: the folder route
@@ -297,6 +304,75 @@ base peak is 839.23, nine and seventeen counts sit in the precursor window,
 and their explanation cell says *839.56 is none of the adducts of C24H36D4O5
 within ±0.05 Da — closest [M+K]+ at 451.2758*. A rule that dropped them would
 have to have known that in advance; the report is where it is found.
+
+## The cover of a folder report
+
+A folder report opens on the folder and not on its first compound. In front
+of the per-compound pages, in the same PDF, is a cover of five blocks — and
+it is in the same PDF because a cover in a file of its own is a file that
+gets separated from what it covers.
+
+**What this is.** The folder, the day, the version that wrote it, how many
+files were read and how many were left out, how many infusions in how many
+compounds, the library of your own where one was searched, and the summary
+line the Infusions tab shows, to the digit. A document is read back a week
+later detached from whatever made it.
+
+**The infusions.** Every infusion on one row, in the columns the tab and the
+batch [[report]]'s *Infusions* section use — one definition, so the three
+cannot disagree — with a compound's acquisitions kept together even where the
+folder came off the instrument with them interleaved. A cell that could not
+be filled still says why rather than being blank, cut at a word where the
+reason is a whole sentence; the whole of it is on that compound's own page,
+which is what the contents list points at.
+
+**What they add up to.** The table above summed, one sentence per column that
+can be summed, each of them a count and what it was counted against. There is
+no sentence at the end drawing them together and no pass or fail for the
+folder, for the same reason there is none for a compound: what a spectrum is
+worth depends on what the vial was supposed to hold.
+
+**What was left out.** The skipped files with their reasons, printed whether
+or not there are any — *nothing was left out* is a measurement too — and then
+what [[checking-files]] found about the folder's own names before anything
+was opened.
+
+**The pages that follow.** Each section with the page it landed on. The
+heading carries the sample as well as the compound, because a folder is where
+one compound is infused five times and a contents list of five identical
+lines sends the reader to page 3 to find out whether page 3 is the one they
+wanted. The numbers are the pages the sections actually landed on: the
+document is laid out once to find them and again to print them, which is the
+machinery [[report]] already uses.
+
+With `--per-compound` the cover is written as a file of its own, named
+`-cover`, since the pages it introduces are in the others; it lists no page
+numbers there, because it has none for them.
+
+### Measured, on the nine
+
+The paragraph the nine real infusions produce, in full:
+
+> 4 of 9 precursor(s) confirmed within 25 ppm; 5 not: 2 whose method isolates
+> 839.56, 2 with too little precursor surviving fragmentation, 1 at
+> +30.3 ppm. Own records: 4 above 60, 3 below — all across a collision-energy
+> change; 2 matched no record at all. Predicted ions: 34 of 458 found across 7
+> spectrum(s); 2 had nothing to predict from — no formula in the component
+> table for that compound.
+
+Every figure in it is on the page above it, and three of them are the ones
+worth reading. The **2 whose method isolates 839.56** are the `_TESTEARTIGO`
+acquisitions: a mass no other CA-d4 run in the folder isolates, so they are
+not two failures of one ion but two measurements of another, and the sentence
+says so with the mass rather than calling them unmeasured. The **4 above 60**
+are the three records matched against the runs they were made from and one
+more, which is why the sentence counts them rather than concluding from them.
+And **2 had nothing to predict from** is the denominator kept honest: an
+infusion nothing was predicted for is not counted as one that found nothing.
+
+The cover came to **two pages** of the folder's 49 — the table of nine rows
+fills the first — and took no measurable time of its own: it is written from
+the rows the run has already made, and reads no file.
 
 ## The same standard, next month
 

@@ -99,6 +99,8 @@ openquant/
                   ranked alike, every route listed
   energy.py       which collision energy for identification, for
                   quantitation, for a record — three answers with reasons
+  unexplained.py  a hypothesis for every strong peak nothing explained:
+                  contaminant, satellite, or a sub-formula of the precursor
   audit.py        the trail of hand edits saved with the project
   labels.py       which peaks get a label: a budget per region of the
                   visible axis, shared by the pane and the print
@@ -1023,6 +1025,23 @@ UV detector, is not implemented there) — untested on real Windows.
   (85.0% at EAD 12 eV against 63.6% at 22, the surviving precursor being
   82% of that spectrum). Nothing between two measured energies is offered;
   a row the method contradicts is shown, greyed, never recommended.
+- **A peak nobody explained is worth a hypothesis, and the precursor is
+  what makes it a short one.** `unexplained.annotate` offers each strong
+  unmatched peak the best of a tabulated contaminant (Keller et al. 2008),
+  a satellite of an ion that *was* matched (13C, +Na−H at 21.982 and +K−H
+  at 37.956 — an exchange, not an addition — a water or ammonia loss, an
+  adduct or dimer of the precursor), or a composition constrained to a
+  sub-formula of the precursor ion. Two constants came out of the four
+  bile-acid infusions, both of which had been hiding real answers: the
+  Seven Golden Rules are not applied under `GOLDEN_RULE_MASS` (150),
+  because they cap H/C at 3.1 and protonated taurine — `[C2H8NO3S]+`,
+  126.0211 at −6.3 ppm on TDCA-d4 — is 4.0; and odd-electron compositions
+  are offered, marked and ranked last, because 78.0465 is the strongest
+  unexplained peak of the CA-d4 EAD run at 22.5% of the base peak and it is
+  `[C6H6]+` at +0.8 ppm. On 79 peaks: 1 satellite, 0 contaminants, 78
+  compositions at 0.2–16.6 ppm, 0.02–0.07 s a file; every row carries how
+  many other sub-formulas reach the same mass. The report carries the
+  table; the Explain tab still shows bare masses.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

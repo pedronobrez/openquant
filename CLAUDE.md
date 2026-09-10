@@ -81,6 +81,7 @@ openquant/
                   SVG, and the report's picture
   infusion.py     is this sample a direct infusion (two flatness
                   figures, chromatograms only)
+  audit.py        the trail of hand edits saved with the project
   folder.py       what a folder holds and what would go wrong in it,
                   from the names alone
   xlsx.py         a dependency-free .xlsx writer; report.build_workbook
@@ -482,6 +483,18 @@ UV detector, is not implemented there) — untested on real Windows.
   `OFX.Core.Contracts`, neither redistributed; and loading every sciex DLL
   breaks the working `.wiff` path with a `MarshalDirectiveException` —
   `bootstrap`'s three-assembly set is deliberate.
+- **A trail of hand edits is only worth having if it says what it is not.**
+  `audit.py` records one line per user action — when, what, target,
+  before → after — appended where the change is made, never edited or
+  deleted, saved under `audit` in the project (format 4; an older project
+  opens with an empty trail). The method table is committed whole on every
+  edit, so `component_changes` pairs by position when the lengths agree,
+  which makes a rename read as a name changed rather than a removal plus
+  an addition; a spin box emits per digit, so the method defaults record on
+  `editingFinished`. It is **not** a regulated audit trail and the panel,
+  the report section and `audit-trail.md` say so: no accounts, no
+  signatures, no tamper evidence — it records what was done and when,
+  never who.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

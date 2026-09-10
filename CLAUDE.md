@@ -520,9 +520,9 @@ UV detector, is not implemented there) — untested on real Windows.
   precursor to a whole unit in its last decimal (methods truncate: `286.2`
   for 286.2741) and a disagreement is reported rather than filled — a
   wrong formula is a wrong lock mass. On the real method: 125 of 141
-  components and 10 of 11 standards, and all 16 refusals were the written
-  precursor being wrong (`dHCer(d18:0/12:0)` 15 ppm out, two `LacCER` rows
-  exactly 1 and 2 Da out); `check_method` reports both cases. The lock
+  components and 10 of 11 standards, and 13 of the 16 refusals were the written
+  precursor typed to fewer places (`dHCer(d18:0/12:0)` 15 ppm out), three
+  a whole 1, 2 or 100 Da out; `check_method` reports both cases. The lock
   masses did not multiply: of 60 formula-bearing components inside the
   50–700 survey exactly one measures the same ion across the run, so the
   fit is still one lock mass at +4.8 ppm — the survey measurement is the
@@ -559,6 +559,22 @@ UV detector, is not implemented there) — untested on real Windows.
   10 on the ink → 30 drawn, 13 lifted, 1 dropped, none on the ink; two
   surveys 21 with 13 on the ink → 17, 8 lifted, 8 dropped (the isotopes of
   a base peak that reaches the top), none on the ink.
+- **A written precursor can be repaired from its formula, and on this batch
+  that changes no number.** `components.precursor_repairs` lists every
+  component whose formula contradicts its precursor; *Repair precursors…*
+  writes both fields for the ticked rows, one audit entry each. Ticked
+  under `WHOLE_DALTON` (0.5), unticked past it: the real method's 16
+  refusals are either under 0.27 Da or a whole 1, 2 or 100 Da, nothing
+  between. Applying the 13 sub-dalton ones and reprocessing left 338 of
+  338 rows identical: every row carries a fragment, so `mass_window()` is
+  the fragment's, and every repaired mass stayed inside
+  `matching.PRECURSOR_MATCH_DA`, so no channel changed. A precursor's first
+  job is picking the channel, not building the window — which is why the
+  three whole-dalton repairs are the destructive ones: two left every
+  product-ion channel for the survey and one landed on its isomer's
+  channel; the instrument acquired the masses as written, so there the
+  name is the mistake. What the 13 bought was formulas: 125 → 138 of 141,
+  11 of 11 standards with a lock-mass candidate.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

@@ -176,6 +176,26 @@ pre-ticked.
 The first version printed at a twelfth of its size. A hundred-page report
 is laid out three times and takes about seventeen seconds.
 
+## These figures are tested
+
+A number written on a page cannot fail. Since the acquisitions themselves are
+never in the source repository — they belong to other people, and one of them
+is unpublished — every figure above used to be prose that nothing checked.
+
+The repository now carries `tests/real/`: one test per figure, run against the
+same acquisitions, which fails when a number moves beyond the tolerance the
+figure was written to. It is skipped unless the data is asked for and present
+— `OPENQUANT_REAL_DATA=1 pytest tests/real`, or `pytest -m real` — so it never
+runs in continuous integration, where there is nothing to read. Each test
+skips itself, naming the path it looked for, when its own files are elsewhere,
+and each says in its own words which figure on this page or in `CLAUDE.md` it
+is asserting.
+
+Where a figure had already moved by the time it was covered, the test asserts
+what the program does **now** and records the older figure beside it with what
+is known about the difference. Six on this page and in `CLAUDE.md` are in that
+position; `tests/real/README.md` lists them.
+
 ## Where the rest is written down
 
 The source repository's `CLAUDE.md` records the same facts for whoever

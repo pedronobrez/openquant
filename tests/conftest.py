@@ -57,3 +57,43 @@ def _settle_qt():
     gc.collect()
     application.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
     application.processEvents()
+
+
+# --------------------------------------------------------------------------- #
+# tests/real: asserted against acquisitions that are not in the repository
+# --------------------------------------------------------------------------- #
+#: Everything under `tests/real` is a regression over data that lives outside
+#: the repository — five sets of real acquisitions, none of which can ever be
+#: committed. Those tests are marked here rather than in each file, so that a
+#: new one cannot forget and start failing CI, where there is no data at all.
+#: They run when asked for, by either route:
+#:
+#:     OPENQUANT_REAL_DATA=1 pytest -q tests/real
+#:     pytest -q -m real
+#:
+#: and are skipped otherwise. Each one also skips itself, naming the path it
+#: looked for, when its own files are absent — see tests/real/data.py.
+REAL_DATA = "OPENQUANT_REAL_DATA"
+REAL_DIRECTORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "real")
+
+
+def _real_data_wanted(config) -> bool:
+    if os.environ.get(REAL_DATA, "").strip() not in ("", "0", "no", "false"):
+        return True
+    # `-m real`, `-m "real and infusions"`, and equally `-m "not real"`, which
+    # is a caller saying they know the marker exists
+    return "real" in (getattr(config.option, "markexpr", "") or "")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Mark everything under `tests/real`, and skip it unless it was asked for."""
+    wanted = _real_data_wanted(config)
+    skip = pytest.mark.skip(
+        reason=f"real data: run with {REAL_DATA}=1 or -m real "
+               "(the files are not in the repository; see tests/real/README.md)")
+    for item in items:
+        if not str(item.path).startswith(REAL_DIRECTORY):
+            continue
+        item.add_marker(pytest.mark.real)
+        if not wanted:
+            item.add_marker(skip)

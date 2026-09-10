@@ -184,6 +184,26 @@ foi pré-marcado.
 A primeira versão imprimia a um doze avos do seu tamanho. Um relatório de cem
 páginas é diagramado três vezes e leva cerca de dezessete segundos.
 
+## Estes números são testados
+
+Um número escrito numa página não tem como falhar. Como as aquisições nunca
+estão no repositório de código — pertencem a outras pessoas, e uma delas é
+inédita —, cada número acima era prosa que nada verificava.
+
+O repositório passou a levar `tests/real/`: um teste por número, executado
+contra as mesmas aquisições, que falha quando um número sai da tolerância com
+que foi escrito. Fica ignorado a menos que os dados sejam pedidos e estejam
+presentes — `OPENQUANT_REAL_DATA=1 pytest tests/real`, ou `pytest -m real` —,
+de modo que nunca roda na integração contínua, onde não há o que ler. Cada
+teste se ignora sozinho, dizendo qual caminho procurou, quando os seus
+arquivos estão noutro lugar, e cada um diz com as próprias palavras qual
+número desta página ou do `CLAUDE.md` está assegurando.
+
+Onde um número já havia mudado quando passou a ser coberto, o teste assegura o
+que o programa faz **hoje** e registra ao lado o número antigo com o que se
+sabe da diferença. Seis deles, nesta página e no `CLAUDE.md`, estão nessa
+situação; `tests/real/README.md` os lista.
+
 ## Onde o resto está escrito
 
 O `CLAUDE.md` do repositório de código registra os mesmos fatos para quem

@@ -139,3 +139,10 @@ injeção?
 A seção *Batch quality* do [[report]] carrega os vereditos das cartas, o índice,
 a deriva e a tabela de precisão, com as regras enunciadas nas palavras da própria
 seção.
+
+A mesma aritmética responde a uma pergunta mais lenta em outro lugar. Um
+padrão infundido para verificar um frasco deixa um registro na sua própria
+biblioteca a cada vez, e o [[standard-history]] traça esses registros ao
+longo dos dias em que foram adquiridos — o mesmo centro, as mesmas duas
+condições antes de um ponto estar fora, e a mesma regra de tendência, sobre
+registros em vez de injeções.

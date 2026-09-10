@@ -243,3 +243,10 @@ correspondência é evidência de que o espectro medido se parece com aquele
 registro; quanta semelhança basta é decisão do analista, e o
 [[accurate-precursor]] e o [[formula-finder]] são as verificações independentes
 sobre o precursor que uma correspondência de biblioteca não faz.
+
+## Ler de volta a sua própria biblioteca
+
+Uma biblioteca própria acumula um registro por verificação do mesmo padrão.
+**History…**, ao lado da contagem de registros, lê esses registros de volta
+como um gráfico de controle do padrão ao longo do tempo — veja
+[[standard-history]].

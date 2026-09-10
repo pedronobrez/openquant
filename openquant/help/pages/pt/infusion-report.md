@@ -112,3 +112,11 @@ feito, o que prova que o arquivo foi escrito e lido de volta e mais nada; e
 2 de 97 íons é o que uma fórmula com três perdas neutras consegue dizer sobre
 um espectro cujo pico base precisa de quatro. Nenhuma das duas é uma falha do
 composto, e o relatório é construído de modo que a página diga qual é qual.
+
+## O mesmo padrão, no mês que vem
+
+Este relatório é uma verificação. O registro que ele nomeia é escrito na sua
+própria biblioteca, e o [[standard-history]] lê os registros acumulados de
+um composto como um gráfico de controle: o cosseno contra o primeiro
+registro, o pico base em ppm a partir dele, e a altura do pico base, ao
+longo dos dias em que foram adquiridos.

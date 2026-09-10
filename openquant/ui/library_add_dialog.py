@@ -78,6 +78,16 @@ class AddToLibraryDialog(QtWidgets.QDialog):
         self.energy_edit.setPlaceholderText("from the channel, where it records one")
         form.addRow("Collision energy", self.energy_edit)
 
+        self.acquired_edit = QtWidgets.QLineEdit(str(prefill.get("acquired", "")))
+        self.acquired_edit.setReadOnly(True)
+        self.acquired_edit.setPlaceholderText("the file records no acquisition time")
+        self.acquired_edit.setToolTip(
+            "When the instrument measured this, as the file records it — not "
+            "when the record was made. Written as the record's Acquired "
+            "field, which is what orders a standard's history. Read from the "
+            "file, so it is not typed here")
+        form.addRow("Acquired", self.acquired_edit)
+
         self.comment_edit = QtWidgets.QLineEdit(str(prefill.get("comment", "")))
         self.comment_edit.setToolTip(
             "Where the record came from: the file, the sample, the scans "
@@ -120,6 +130,7 @@ class AddToLibraryDialog(QtWidgets.QDialog):
             "formula": self.formula_edit.text().strip(),
             "collision_energy": self._number(self.energy_edit.text()),
             "comment": self.comment_edit.text().strip(),
+            "acquired": self.acquired_edit.text().strip(),
         }
 
 

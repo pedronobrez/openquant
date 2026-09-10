@@ -108,3 +108,11 @@ from, which proves the file was written and read back and nothing else; and
 2 of 97 ions is what a formula with three neutral losses can say about a
 spectrum whose base peak needs four. Neither is a failure of the compound,
 and the report is built so that the page says which is which.
+
+## The same standard, next month
+
+This report is one verification. The record it names is written into your
+own library, and [[standard-history]] reads the accumulated records of one
+compound back as a control chart: the cosine against the first record, the
+base peak's ppm from it, and the base peak's height, over the days they
+were acquired.

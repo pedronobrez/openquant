@@ -237,3 +237,9 @@ evidence that the measured spectrum resembles that record; how much
 resemblance is enough is the analyst's call, and the [[accurate-precursor]]
 and the [[formula-finder]] are the independent checks on the precursor that
 a library match does not make.
+
+## Reading your own library back
+
+A library of your own accumulates one record per verification of the same
+standard. **History…**, beside the record count, reads those records back as
+a control chart of the standard over time — see [[standard-history]].

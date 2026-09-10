@@ -71,6 +71,13 @@ class LibraryPanel(QtWidgets.QWidget):
             "MSP file chosen once and appended to. An infused standard is in "
             "no public library, and this is the only record of it there is")
         own.addWidget(self.btn_add)
+        self.btn_history = QtWidgets.QPushButton("History…")
+        self.btn_history.setToolTip(
+            "Read your own library back as a control chart: every record of "
+            "one compound, in the order it was acquired, scored against the "
+            "first of them — the standard checked against itself over the "
+            "days it was verified")
+        own.addWidget(self.btn_history)
         self.own_label = QtWidgets.QLabel("")
         self.own_label.setProperty("role", "caption")
         own.addWidget(self.own_label, 1)
@@ -149,6 +156,7 @@ class LibraryPanel(QtWidgets.QWidget):
 
         self.btn_load.clicked.connect(self._choose_library)
         self.btn_add.clicked.connect(self.add_spectrum)
+        self.btn_history.clicked.connect(self.show_history)
         self.btn_search.clicked.connect(self.search)
         self.hits.currentItemChanged.connect(self._show_pairs)
         self.btn_overlay.clicked.connect(self._overlay)
@@ -307,13 +315,35 @@ class LibraryPanel(QtWidgets.QWidget):
         path = self.own_path
         if not path:
             self.own_label.setText("No library of your own yet.")
+            self.btn_history.setEnabled(False)
             return
         name = os.path.basename(path)
         if not os.path.exists(path):
             self.own_label.setText(f"Your library: {name}, not written yet")
+            self.btn_history.setEnabled(False)
             return
         records = count_records(path)
         self.own_label.setText(f"Your library: {records:,} record(s) in {name}")
+        self.btn_history.setEnabled(records > 0)
+
+    def show_history(self):
+        """
+        The records already written, read back as one standard over time.
+
+        Read from the file rather than from anything held here: the library
+        of one's own is appended to over months and by more than one window,
+        and what is on disk is the history.
+        """
+        from .standard_history_dialog import StandardHistoryDialog
+
+        path = self.own_path
+        if not path or not os.path.exists(path):
+            self.status.setText("Write a record of your own first.")
+            return None
+        dialog = StandardHistoryDialog(path, parent=self)
+        dialog.exec()
+        dialog.deleteLater()
+        return dialog
 
     def _choose_own_path(self) -> str:
         """
@@ -354,6 +384,12 @@ class LibraryPanel(QtWidgets.QWidget):
             "formula": str(context.get("formula", "")),
             "collision_energy": context.get("collision_energy"),
             "comment": " · ".join(parts),
+            # the day the instrument measured on, which is not the day the
+            # record was made: a folder acquired over three months, written
+            # into a library in one afternoon, is three months of history
+            # and "added" says nothing about it. `standard_history` orders
+            # by this
+            "acquired": str(context.get("acquired", "") or ""),
         }
 
     def add_spectrum(self) -> None:
@@ -380,7 +416,8 @@ class LibraryPanel(QtWidgets.QWidget):
     def add_to_own_library(self, name: str, precursor: float | None = None,
                            precursor_type: str = "", formula: str = "",
                            collision_energy: float | None = None,
-                           comment: str = "", path: str = "") -> LibraryEntry | None:
+                           comment: str = "", acquired: str = "",
+                           path: str = "") -> LibraryEntry | None:
         """
         Append the spectrum on screen to the analyst's own MSP, and say so.
 
@@ -402,7 +439,8 @@ class LibraryPanel(QtWidgets.QWidget):
             entry = entry_from_spectrum(
                 name, mz, intensity, precursor=precursor,
                 precursor_type=precursor_type, formula=formula,
-                collision_energy=collision_energy, comment=comment)
+                collision_energy=collision_energy, comment=comment,
+                acquired=acquired)
             write_msp([entry], path, append=True)
         except (ValueError, OSError) as exc:
             self.status.setText(f"Could not write the record: {exc}")

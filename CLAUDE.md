@@ -452,8 +452,9 @@ UV detector, is not implemented there) — untested on real Windows.
   `_styles`. An omitted cell means position in the row does not identify a
   column; the `r` reference does, which is what `tests/test_xlsx.py`'s
   reader resolves. Verified by reading back in the suite, by `openpyxl` out
-  of repo and by macOS Quick Look; **never opened in Excel or LibreOffice**,
-  and the `export` page says so — as it says no Skyline transition list has
+  of repo, by macOS Quick Look, and by Microsoft Excel for Mac itself
+  (driven by AppleScript: the batch's five sheets, the header, a row and a
+  numeric cell read back); LibreOffice untried, and the `export` page says so — as it says no Skyline transition list has
   been imported into Skyline, only that its headers were read off the
   reader that consumes them in the ProteoWizard source.
 - **The Dock icon is whoever spoke last.** The bundle carries a layered

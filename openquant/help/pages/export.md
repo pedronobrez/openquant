@@ -40,8 +40,13 @@ heading row, the frozen headings and the escaping of `<`, `&` and `>` —
 rather than trusting that a zip of plausible XML is a workbook. Beyond the
 suite, a workbook of a batch was read by two readers that had nothing to do
 with writing it: `openpyxl`, which returned every value with its type and
-format intact, and macOS's own Quick Look, which rendered it. Neither is
-Excel: it has not been opened in Excel or in LibreOffice here.
+format intact, and macOS's own Quick Look, which rendered it. And then
+Excel itself: the workbook of the 26-injection batch (3,666 result rows,
+398 kB) opened in Microsoft Excel for Mac, driven by AppleScript, which
+read back the five sheets it holds — Results, Statistics, Batch QC,
+Method, Samples; the batch has no calibration — the header row, the
+first result row as written, and an area cell as a number rather than
+text. LibreOffice has not been tried.
 
 ## The Skyline transition list
 

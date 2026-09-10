@@ -43,8 +43,13 @@ escape de `<`, `&` e `>` — em vez de confiar em que um zip de XML plausível
 seja uma pasta de trabalho. Além da suíte, uma pasta de trabalho de um lote
 foi lida por dois leitores que nada tiveram a ver com escrevê-la: o
 `openpyxl`, que devolveu cada valor com o seu tipo e o seu formato intactos,
-e o próprio Quick Look do macOS, que a renderizou. Nenhum dos dois é o Excel:
-ela não foi aberta no Excel nem no LibreOffice aqui.
+e o próprio Quick Look do macOS, que a renderizou. E depois o próprio
+Excel: a pasta de trabalho do lote de 26 injeções (3.666 linhas de
+resultados, 398 kB) foi aberta no Microsoft Excel para Mac, comandado por
+AppleScript, que leu de volta as cinco planilhas que ela contém — Results,
+Statistics, Batch QC, Method, Samples; o lote não tem calibração —, a linha
+de cabeçalho, a primeira linha de resultados tal como escrita, e uma célula
+de área como número e não como texto. O LibreOffice não foi experimentado.
 
 ## A lista de transições para o Skyline
 

@@ -200,9 +200,12 @@ the Explorer averages the whole run, and the pane's title then reads
 ### The rules
 
 - a rung is matched to the **strongest peak within 20 ppm** of where the
-  formula puts it, and only above 100 counts — the same floor the
+  formula puts it, and only above 100 counts — the fixed floor the
   [[accurate-precursor|accurate precursor]] holds a survey scan to, because
-  below it a window is a stretch of axis whose tallest point is noise;
+  below it a window is a stretch of axis whose tallest point is noise. It
+  is the one place on an infusion where the fixed hundred still stands
+  rather than the floor measured off the acquisition ([[signal-to-noise]]),
+  and the page says so rather than leaving two floors to be confused;
 - the correction is the **intensity-weighted median** of the rungs' errors,
   sign flipped. Weighted, because a peak of twelve thousand counts locates
   its centroid better than one of a hundred; a median, because one rung

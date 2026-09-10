@@ -66,8 +66,9 @@ aquisição ainda está em disco e escreve todos a partir do eixo em vigor
 agora. O botão é oferecido nesta janela quando é isso que está errado, e faz
 a escrita de volta na aba [[spectral-library]], que é dona do arquivo.
 
-Nas infusões reais nada se parte: as correções que as próprias escadas de
-precursor dão são de **+2.0 a −8.6 ppm**, todas dentro dos 20 ppm, de modo
+Nas infusões reais nada se parte: toda correção que as próprias escadas de
+precursor dão está dentro dos 20 ppm — as cifras por aquisição estão em
+[[mass-recalibration|Uma infusão recalibra no próprio precursor]] —, de modo
 que um registro corrigido e um não corrigido do mesmo padrão continuam sendo
 uma série e dizem isso no nome da série — *axis corrected +6.6 ppm for 1 of
 2, the rest on the instrument's own*. Esse é o resultado pretendido. A
@@ -85,26 +86,15 @@ um composto sem cruzar série alguma, e é o que permite à aba
 [[spectral-library]] dizer **compatible with CA-d4 EAD at ~18 eV** em vez de
 listar três registros que parecem todos errados.
 
-O do ácido cólico-d4, em frações do total do próprio perfil — as mesmas nove
-infusões de onde vêm os números desta página:
-
-| Íon | m/z | EAD 12 eV | EAD 22 eV | 45 eV, não declarada |
-|---|---|---|---|---|
-| `[M+NH4]+ +4D` | 430,3465 | 83,5% | 24,6% | 0,0% |
-| `[M+H]+ (-NH3) +4D` | 413,3200 | 0,0% | 0,9% | 0,0% |
-| `[M+H-H2O]+ +4D` | 395,3094 | 0,0% | 6,5% | 0,0% |
-| `[M+H-H2O]+ +3D` | 394,3031 | 0,0% | 0,3% | 0,0% |
-| `[M+H-2H2O]+ +4D` | 377,2988 | 1,5% | 25,2% | 1,7% |
-| `[M+H-2H2O]+ +3D` | 376,2926 | 1,3% | 2,0% | 0,0% |
-| `[M+H-3H2O]+ +4D` | 359,2883 | 0,0% | 6,2% | 54,2% |
-| `[M+H-3H2O]+ +3D` | 358,2820 | 0,0% | 6,5% | 6,8% |
-| doze fragmentos compartilhados abaixo de m/z 150, juntos | | 13,7% | 27,8% | 37,2% |
-
-O pico-base é um íon diferente em cada um dos três arquivos — o precursor,
-depois `[M+H-2H2O]+`, depois `[M+H-3H2O]+` — que é por que o perfil é mantido
-em frações do próprio total, e não em relação a um pico-base que se muda. É
-também por que o gráfico de *intensidade do pico-base* abaixo é traçado dentro
-de uma série e nunca através de uma.
+O perfil do ácido cólico-d4, degrau por degrau, está impresso em
+[[spectral-library|Fragmentação ao longo das energias]], nas mesmas nove
+infusões de onde vêm os números desta página. A única linha dele que decide
+como esta página é traçada: **o pico base é um íon diferente em cada um dos
+três arquivos** — o precursor amoniado a 12 eV, `[M+H-2H2O]+` a 22,
+`[M+H-3H2O]+` a 45 — que é por que um perfil é mantido em frações do próprio
+total, e não em relação a um pico base que se muda, e por que o gráfico de
+*intensidade do pico base* abaixo é traçado dentro de uma série e nunca
+através de uma.
 
 O perfil é calculado a partir dos registros presentes e nunca é escrito neles,
 de modo que acrescentar mais uma verificação o altera sem deixar nada
@@ -207,7 +197,7 @@ Ler uma biblioteca de nove registros como histórico completo leva cerca de
 
 ## O que ele não é
 
-É um gráfico de controle de um padrão contra si mesmo, e tem o mesmo limite
+É uma carta de controle de um padrão contra si mesmo, e tem o mesmo limite
 que o [[batch-qc]] declara: não distingue um instrumento que mudou de um
 frasco que mudou. Vários padrões caindo juntos em uma verificação é o que
 diz qual dos dois, e esse julgamento é do analista — isto desenha os

@@ -20,7 +20,7 @@ with the measured gap written down — the extraction rule on [[formats]] is
 the example. A number that is 0.58% low and says so is worth more than one
 that is sometimes right for reasons nobody can state.
 
-## Never substitute our arithmetic for the instrument's
+## Never substitute this program's arithmetic for the instrument's
 
 Totals, retention times and areas come from the vendor where the vendor
 reports them. Summing the stored points instead moved every area by 2%.
@@ -57,4 +57,5 @@ what it did and what it passed over.
 
 Every new setting defaults to what the program did before it existed:
 *largest* peak, *valley* integration. A batch reopened in a newer version
-reports what it reported.
+reports what it reported, and [[version-history]] says which version
+brought each of them in.

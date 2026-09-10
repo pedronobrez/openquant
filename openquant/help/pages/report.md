@@ -21,9 +21,10 @@ leaving a hole.
 | Detection and quantitation limits | LOD and LOQ per component, with the notes of [[detection-limits-and-carryover]] |
 | Carryover | the blank after the top standard, or why it was not measured |
 | Batch quality | the control charts' verdicts, the injection response index, drift, and the precision of the QCs — [[batch-qc]] |
-| Mass drift | only when the [[mass-drift]] tab has measured: each standard's mass through the run and whether the axis held |
 | Sampling | points per peak for every component, the cycle times the peaks would need, and how many peaks were narrower than a cycle — the *Sampling* tab of [[batch-qc]] |
-| Infusions | only while the *Infusions* tab of the [[analytics-workspace]] has measured: one row per infused sample — the precursor measured back off the acquisition, the ions found of those predicted, the best record of your own library, and each infusion scored against the others of the same compound |
+| Mass drift | only when the [[mass-drift]] tab has measured: each standard's mass through the run and whether the axis held, and the per-injection corrections where [[mass-recalibration]] is on |
+| Infusions | only while the *Infusions* tab of the [[analytics-workspace]] has measured: one row per infused sample — the precursor measured back off the acquisition, the ions found of those predicted, the best record of your own library, and each infusion scored against the others of the same compound — [[infusion-report]] |
+| Infusion comparison | only while [[compare-infusions]] has been run: this day's tray against a reference project's, compound by compound and condition by condition |
 | Compared spectra | only while the Explorer is holding spectra together: the head-to-tail picture, a table of the traces, and the masses they share within 10 ppm — [[chromatograms-and-spectra]] |
 | Integration algorithms | only when [[compare-algorithms]] has been run: the totals per algorithm and the components that moved most |
 | Batch comparison | only when [[compare-batches]] has been run: the totals side by side and the components in the order of how much they moved |

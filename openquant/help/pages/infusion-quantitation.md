@@ -100,7 +100,10 @@ infusions the predicted M+1 is **26.4 – 29.6%** of the monoisotopic peak and
 the measured one is **0.000 – 0.426%** — a transmission of **0.00 – 1.44%**.
 Below ten per cent of the prediction the envelope is treated as absent, the
 correction is reported as zero, and the reason is in the *Cross-talk*
-column's tooltip and on the row's note.
+column's tooltip and on the row's note. The same reading refuses the
+isotopic purity solve and the satellite check on every matched fragment;
+[[lipid-maps]] carries it per acquisition, with the one survey-bearing
+injection that says an isolation window really does keep the M+1 out.
 
 Where it does apply is a **survey-scan** infusion, or any acquisition whose
 isolation window spans both compounds. There every isotopologue is

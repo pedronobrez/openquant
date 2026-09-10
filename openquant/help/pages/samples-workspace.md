@@ -25,6 +25,10 @@ Select rows and use **Set type of selected rows**, **Set group** or
 **Apply concentration to selection** to edit several at once. **Add data
 files…** and **Close all** are the same actions as in the File menu.
 
+The columns the file *does* record — the vial, the injection volume, the
+acquisition method, the declustering potential — are read-only and shown in
+the Explorer instead: see [[sample-information]].
+
 ## Sample types and what uses them
 
 | Type | Used by |

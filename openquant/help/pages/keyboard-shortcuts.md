@@ -26,7 +26,7 @@ On macOS, Ctrl is ⌘.
 | Delete, in the Active XICs list | remove the selected XIC |
 | Ctrl+Shift+S | show or hide the Samples and channels dock |
 | Ctrl+Shift+P | show or hide the side panels |
-| Ctrl+Shift+1 … 8 | bring a side panel to the front, in the order of its tabs — see [[explorer]] |
+| Ctrl+Shift+1 … 9 | bring a side panel to the front, in the order of its tabs — see [[explorer]] |
 
 ## Analytics
 

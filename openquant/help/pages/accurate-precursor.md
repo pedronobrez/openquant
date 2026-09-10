@@ -21,7 +21,11 @@ uses the mass the instrument measured.
    value, well inside the roughly 1 Da that Q1 isolates, so a neighbouring
    nominal mass can never be picked up.
 3. The peak found is centroided; a peak weaker than 100 counts is not
-   trusted as a mass measurement.
+   trusted as a mass measurement. That hundred is a fixed floor written for
+   a TripleTOF survey scan, and it is fixed only here: where the spectrum
+   is the average of a whole [[direct-infusion]], the floor is measured off
+   that acquisition instead and comes out far lower — see
+   [[signal-to-noise]].
 4. The same is done in every open sample. The samples have to agree to
    within 25 ppm to be measuring the same ion; the consensus is the median.
 5. The **surviving precursor** in the product-ion scan — the unfragmented ion

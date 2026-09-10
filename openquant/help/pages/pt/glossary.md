@@ -7,7 +7,7 @@ title: Glossário
 | **Ápice** | o ponto mais alto de um pico; o seu tempo é o tempo de retenção reportado |
 | **Razão de áreas** | a área de um componente dividida pela do seu padrão interno na mesma amostra |
 | **Linha de base** | o sinal sob um pico que não é o pico; desenhada como uma reta entre os limites na integração, ou estimada como um envelope inferior pelo parâmetro *Baseline (min)* |
-| **BPC** | cromatograma de pico-base: o pico mais alto de cada scan contra o tempo |
+| **BPC** | cromatograma de pico base: o pico mais alto de cada scan contra o tempo |
 | **Carryover (arraste)** | analito de uma injeção aparecendo na seguinte; medido no branco após o padrão mais alto — [[detection-limits-and-carryover]] |
 | **Centroide** | um pico em perfil reduzido a um só bastão no seu centro de massa |
 | **Componente** | um alvo do método: o que extrair, onde, e como reportá-lo — [[method-workspace]] |

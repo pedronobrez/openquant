@@ -27,6 +27,9 @@ está vazia quando está.
 | Used | desmarque para deixar uma linha fora das estatísticas e da curva sem apagá-la |
 | Note | por que uma linha está vazia, ou o que a integração decidiu — as notas estão listadas em [[integration-parameters]] |
 
+Os nomes das colunas são os do ofício: o que cada um deles quer dizer, em uma
+linha, está no [[glossary]].
+
 ## Controles
 
 | Controle | Efeito |

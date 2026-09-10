@@ -99,9 +99,14 @@ M+1 estaria. Nas sete infusões legíveis de ácidos biliares o M+1 previsto é
 **26,4 – 29,6%** do pico monoisotópico e o medido é **0,000 – 0,426%** — uma
 transmissão de **0,00 – 1,44%**. Abaixo de dez por cento da previsão o
 envelope é tratado como ausente, a correção é informada como zero, e a razão
-disso está na dica da coluna *Cross-talk* e na nota da linha.
+disso está na dica da coluna *Cross-talk* e na nota da linha. A mesma
+leitura recusa a solução da pureza isotópica e a verificação de satélite em
+cada fragmento casado; o [[lipid-maps]] a traz por aquisição, com a única
+injeção com survey que diz que uma janela de isolamento de fato mantém o
+M+1 do lado de fora.
 
-Onde ela se aplica é numa infusão de **varredura**, ou em qualquer aquisição
+Onde ela se aplica é numa infusão de **varredura de survey**, ou em qualquer
+aquisição
 cuja janela de isolamento abranja os dois compostos. Ali cada isotopólogo é
 transmitido e a tabela acima é toda a resposta.
 

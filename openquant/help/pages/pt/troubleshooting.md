@@ -2,7 +2,8 @@
 title: Solução de problemas
 ---
 A barra de status costuma dizer por que algo não aconteceu. Quando não diz,
-esta tabela é o próximo lugar a olhar.
+esta tabela é o próximo lugar a olhar; uma palavra dela que não lhe diga
+nada está no [[glossary]].
 
 ## Abrir arquivos
 

@@ -40,7 +40,7 @@ cada uma alcançável por Ctrl+Shift+1 em diante ou pelo menu **Panels**:
 O centro contém o painel do cromatograma e, sob ele, o painel do espectro;
 **View** no alto alterna o painel superior entre o cromatograma e o
 [[contour-view]]. **TIC / BPC** escolhe o que os canais marcados desenham: a
-corrente iônica total de cada scan ou o seu pico-base.
+corrente iônica total de cada scan ou o seu pico base.
 
 ## Barras de ferramentas
 

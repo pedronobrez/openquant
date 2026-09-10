@@ -10,7 +10,7 @@ instaladores. Cada versão abaixo traz os três instaladores descritos em
 | Versão | Data | O que entrou |
 |---|---|---|
 | 0.8.1 | 2026-09-10 | o aduto que o precursor de fato é — lido do precursor escrito e da fórmula em todas as vias de explicação, com a razão impressa; um aduto lábil entrega o seu próton aos fragmentos e a escada de perdas pendura-se de `[M+H]+`; nomes de padrões de ácidos biliares resolvidos com a sua contagem de marcações — [[lipid-maps]]; o piso de etiquetas, os espectros fixados e o estado do painel salvos com o projeto como receitas — [[projects-and-files]] |
-| 0.8.0 | 2026-09-10 | o piso de etiquetas — o triângulo do PeakView ao lado do eixo Y do espectro, **Label floor (%)**, levado à impressão — ver [[chromatograms-and-spectra]]; etiquetas impressas nunca sobre um traço; o [[infusion-report]] por composto com o seu veredito de verificações somadas, a aba *Infusions* da [[analytics-workspace]] e a sua seção no relatório; [[standard-history]], a biblioteca própria lida de volta como gráfico de controle; **Repair precursors…** com o nome sugerido onde a massa está certa — [[method-workspace]]; a porta de lock mass a 50 ppm e o precursor do registro medido contra a sua fórmula — [[mass-recalibration]], [[spectral-library]]; onde está o deutério, inferido dos fragmentos — [[lipid-maps]]; a regra de [[direct-infusion]] após o primeiro segundo e o veredito *too short to tell*; a pasta de trabalho aberta no Excel — [[export]] |
+| 0.8.0 | 2026-09-10 | o piso de etiquetas — o triângulo do PeakView ao lado do eixo Y do espectro, **Label floor (%)**, levado à impressão — ver [[chromatograms-and-spectra]]; etiquetas impressas nunca sobre um traço; o [[infusion-report]] por composto com o seu veredito de verificações somadas, a aba *Infusions* da [[analytics-workspace]] e a sua seção no relatório; [[standard-history]], a biblioteca própria lida de volta como carta de controle; **Repair precursors…** com o nome sugerido onde a massa está certa — [[method-workspace]]; a porta de lock mass a 50 ppm e o precursor do registro medido contra a sua fórmula — [[mass-recalibration]], [[spectral-library]]; onde está o deutério, inferido dos fragmentos — [[lipid-maps]]; a regra de [[direct-infusion]] após o primeiro segundo e o veredito *too short to tell*; a pasta de trabalho aberta no Excel — [[export]] |
 | 0.7.9 | 2026-09-10 | o Dock mostra o ícone em camadas enquanto a aplicação corre (o bundle já não define ícone de janela); a regra de [[direct-infusion]] medida nas infusões de ácidos biliares e corrigida — o scan do percentil 99 como referência, 48 de 48 classificados; a biblioteca própria medida nos mesmos padrões — [[spectral-library]]; **Fill formulas from names** na [[method-workspace]] com a verificação do precursor, e o [[check-method]] nomeando um padrão sem lock mass; a [[mass-recalibration]] medida com fórmulas em dez padrões; o `.wiff2` medido como não contendo dados de scan — [[formats]]; etiquetas de picos com orçamento por região — [[chromatograms-and-spectra]]; a [[audit-trail]] salva com o projeto, em aba própria, no [[report]] e em CSV |
 | 0.7.8 | 2026-09-10 | o ícone Liquid Glass para o macOS 26 — um documento do Icon Composer em camadas compilado na máquina de build, o `.icns` mantido para sistemas anteriores — e o ícone no atalho e na lista de programas do instalador do Windows, ver [[installation]] |
 | 0.7.7 | 2026-09-09 | o manual em português do Brasil, comutado na sua barra de ferramentas, com busca e PDF por idioma; **Add spectrum to library…** — o espectro em tela escrito num MSP próprio e pesquisável de imediato — ver [[spectral-library]]; **Export comparison…** e a seção *Compared spectra* do [[report]], desenhada para papel — ver [[chromatograms-and-spectra]]; uma [[direct-infusion]] reconhecida ao abrir e mostrada como a média de todos os scans, e **Average whole run** em qualquer canal; **Check a folder…** antes de os arquivos serem abertos, com o rename de um `.scan` órfão oferecido — [[checking-files]]; **Export workbook (Excel)…** e **Export for Skyline…** — [[export]]; [[mass-recalibration]] a partir dos padrões que carregam uma fórmula, desligada por padrão e medida no lote; o ícone na entrada do menu Iniciar e na lista de programas do Windows, e uma entrada de lançador no Linux com `install.sh` — [[installation]] |
@@ -33,6 +33,21 @@ instaladores. Cada versão abaixo traz os três instaladores descritos em
 | 0.6.0 | 2026-09-06 | os instaladores de Windows e de Linux ao lado da imagem de disco de macOS; o shim ICU para Wine documentado |
 | 0.5.x | 2026-09-06 | a área de trabalho Analytics — revisão de picos, resultados, calibração, aceitação, estatística; as áreas de trabalho Method e Samples; projetos; anotação pelo LIPID MAPS, explicação de estruturas e a medição de precursor exato; leitura e escrita de mzML com as medições de fidelidade em [[measured-facts]] |
 
-O manual faz parte de cada versão: uma versão que muda o que a aplicação faz
+## Ainda não em uma versão publicada
+
+Um manual lido da árvore de código descreve o que a árvore de código faz, e
+ela corre à frente da última tag. Estas páginas descrevem trabalho que está
+no ramo principal e ainda não entrou em uma versão: o caminho da infusão
+direta de ponta a ponta — a máscara de pulverização da [[direct-infusion]] e
+o seu filme na [[contour-view]], o [[infusion-report]] de uma pasta com a
+sua capa, a [[infusion-quantitation]], a [[compare-infusions]], a
+[[collision-energy]] e o [[new-standard]] —, o [[method-report]], a
+[[python-api]], o piso de ruído medido numa infusão ([[signal-to-noise]]), a
+margem e as hipóteses para picos não explicados do [[lipid-maps]], o eixo de
+massa próprio do registro ([[spectral-library]]) e o processamento
+incremental ([[analytics-workspace]]). Cada uma será nomeada na linha da
+versão que a publicar.
+
+O manual faz parte de cada versão: uma versão que muda o que o aplicativo faz
 muda a página que a descreve, e a cópia impressa é regerada a partir das mesmas
 páginas.

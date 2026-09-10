@@ -26,7 +26,7 @@ No macOS, Ctrl é ⌘.
 | Delete, na lista Active XICs | remover o XIC selecionado |
 | Ctrl+Shift+S | mostrar ou ocultar a doca Samples and channels |
 | Ctrl+Shift+P | mostrar ou ocultar os painéis laterais |
-| Ctrl+Shift+1 … 8 | trazer um painel lateral para a frente, na ordem das suas abas — ver [[explorer]] |
+| Ctrl+Shift+1 … 9 | trazer um painel lateral para a frente, na ordem das suas abas — ver [[explorer]] |
 
 ## Analytics
 

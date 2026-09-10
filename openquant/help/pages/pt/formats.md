@@ -11,7 +11,7 @@ espectros. O `.wiff` sozinho abre: a lista de amostras, o método, o
 cromatograma de íons totais de cada canal e os parâmetros de aquisição estão
 nele, e a árvore se preenche como se nada estivesse errado. O que não está
 nele são os dados de scan, de modo que o primeiro espectro pedido falha — e
-com ele todo cromatograma de íon extraído, o cromatograma de pico-base, o
+com ele todo cromatograma de íon extraído, o cromatograma de pico base, o
 contorno e a quantificação, que todos leem os scans. O OpenQuant tenta um
 espectro quando o arquivo é aberto e, se falhar, diz isso de imediato: um
 aviso quando o arquivo é acrescentado, um *⚠* diante da amostra na árvore,

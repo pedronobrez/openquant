@@ -10,7 +10,8 @@ load". See [[how-wiff-is-read]].
 
 ## Installers
 
-Every release on GitHub carries three files:
+Every release on GitHub carries three files; what came in each one is in
+[[version-history]]:
 
 | File | Platform | Notes |
 |---|---|---|

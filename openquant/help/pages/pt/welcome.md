@@ -20,11 +20,11 @@ aplicativo e da cópia impressa que **Help ▸ Export manual as PDF…** gera.
 | Seção | O que cobre |
 |---|---|
 | Primeiros passos | [[installation]], [[formats]], [[starting-a-project]] e [[workspaces]] |
-| Explorer | revisão qualitativa: [[chromatograms-and-spectra]], a [[contour-view]], [[manual-xic]] |
-| Química e anotação | a [[mass-calculator]], o [[formula-finder]], o [[lipid-maps]], a [[spectral-library]] e o [[accurate-precursor]] |
+| Explorer | revisão qualitativa: [[chromatograms-and-spectra]], a [[contour-view]], [[manual-xic]], e um padrão infundido de ponta a ponta — [[direct-infusion]], o [[infusion-report]], [[new-standard]], a [[infusion-quantitation]] |
+| Química e anotação | a [[mass-calculator]], o [[formula-finder]], o [[lipid-maps]], a [[spectral-library]], o [[standard-history]] e o [[accurate-precursor]] |
 | Amostras | o lote: [[samples-workspace]] |
-| Método | a tabela de componentes: [[method-workspace]], [[internal-standards-and-qualifiers]], [[check-method]], [[suggest-from-data]] |
-| Análise | quantificação: [[peak-review]], [[integration-parameters]], [[integration-algorithms]], [[calibration]], [[batch-qc]], o [[report]] |
+| Método | a tabela de componentes: [[method-workspace]], [[internal-standards-and-qualifiers]], [[check-method]], [[method-report]], [[suggest-from-data]], [[acquisition-schedule]], [[collision-energy]] |
+| Análise | quantificação: [[peak-review]], [[integration-parameters]], [[integration-algorithms]], [[calibration]], [[batch-qc]], [[mass-drift]], [[audit-trail]], o [[report]] |
 | Referência | [[projects-and-files]], a [[command-line]], os [[keyboard-shortcuts]], o [[troubleshooting]], o [[glossary]] e o [[version-history]] |
 
 ## Como chegar até ele
@@ -32,7 +32,7 @@ aplicativo e da cópia impressa que **Help ▸ Export manual as PDF…** gera.
 **F1** (⌘? no macOS) abre o manual na página correspondente a onde você
 está: o painel que está com o foco — o painel Integration, a tabela de
 resultados, a aba Batch QC, uma aba lateral do Explorer — ou, na falta
-disso, o espaço de trabalho exibido. As caixas de diálogo trazem um botão
+disso, a área de trabalho exibida. As caixas de diálogo trazem um botão
 **Help** que faz o mesmo para a página delas. **Help ▸ Manual** abre o
 manual pela mesma regra, e **Contents**, na barra de ferramentas do manual,
 volta para esta página.
@@ -78,17 +78,21 @@ deste manual o descreve.
 ## O que o OpenQuant não é
 
 Não é um substituto certificado pelo fabricante para o MultiQuant em um
-laboratório regulamentado: não há trilha de auditoria nem assinatura
-eletrônica. Não é uma busca em biblioteca espectral. E não reproduz
-exatamente a regra de extração da própria SCIEX — veja [[measured-facts]]
-para o único ponto em que os dois discordam, em quanto discordam e por que a
-regra simples é a que foi distribuída. Todo o resto das listas de recursos
-dos dois programas do fabricante está aqui, e os [[design-principles]] dizem
-o que foi escolhido quando os dois não podiam coexistir.
+laboratório regulamentado. Existe uma [[audit-trail|trilha de auditoria]] —
+cada edição feita à mão, com o valor antes e depois —, mas ela não carrega
+assinatura eletrônica nem contas de usuário: registra o que foi feito e
+quando, nunca quem o fez. E não reproduz exatamente a regra de extração da
+própria SCIEX — veja [[measured-facts]] para o único ponto em que os dois
+discordam, em quanto discordam e por que a regra simples é a que foi
+distribuída. Todo o resto das listas de recursos dos dois programas do
+fabricante está aqui, incluindo a [[spectral-library|busca em biblioteca
+espectral]] e a [[mass-recalibration|recalibração de massa]], e os
+[[design-principles]] dizem o que foi escolhido quando os dois não podiam
+coexistir.
 
 ## Sem a janela
 
-Tudo o que a aplicação faz pode ser escrito em script: veja a [[python-api]]
+Tudo o que o aplicativo faz pode ser escrito em script: veja a [[python-api]]
 para as versões de dez linhas de um lote reprocessado e exportado, de um
 espectro explicado e de uma biblioteca buscada, e a [[command-line]] para o
-que a própria aplicação responde na linha de comando.
+que o próprio aplicativo responde na linha de comando.

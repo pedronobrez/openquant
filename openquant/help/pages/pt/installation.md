@@ -10,7 +10,8 @@ carregam". Ver [[how-wiff-is-read]].
 
 ## Instaladores
 
-Cada versão publicada no GitHub traz três arquivos:
+Cada versão publicada no GitHub traz três arquivos; o que entrou em cada uma
+delas está no [[version-history]]:
 
 | Arquivo | Plataforma | Observações |
 |---|---|---|

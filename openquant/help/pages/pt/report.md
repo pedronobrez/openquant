@@ -21,9 +21,10 @@ vez de deixar um buraco.
 | Detection and quantitation limits | LOD e LOQ por componente, com as notas de [[detection-limits-and-carryover]] |
 | Carryover | o branco depois do padrão mais alto, ou por que não foi medido |
 | Batch quality | os vereditos das cartas de controle, o índice de resposta da injeção, a deriva e a precisão dos QCs — [[batch-qc]] |
-| Mass drift | apenas quando a aba [[mass-drift]] mediu: a massa de cada padrão ao longo da corrida e se o eixo se manteve |
 | Sampling | pontos por pico para cada componente, os tempos de ciclo de que os picos precisariam e quantos picos foram mais estreitos que um ciclo — a aba *Sampling* de [[batch-qc]] |
-| Infusions | apenas enquanto a aba *Infusions* do [[analytics-workspace]] tiver medido: uma linha por amostra infundida — o precursor medido de volta na própria aquisição, os íons encontrados dentre os previstos, o melhor registro da sua própria biblioteca e cada infusão pontuada contra as outras do mesmo composto |
+| Mass drift | apenas quando a aba [[mass-drift]] mediu: a massa de cada padrão ao longo da corrida e se o eixo se manteve, e as correções por injeção quando a [[mass-recalibration]] está ligada |
+| Infusions | apenas enquanto a aba *Infusions* do [[analytics-workspace]] tiver medido: uma linha por amostra infundida — o precursor medido de volta na própria aquisição, os íons encontrados dentre os previstos, o melhor registro da sua própria biblioteca e cada infusão pontuada contra as outras do mesmo composto — [[infusion-report]] |
+| Infusion comparison | apenas enquanto a [[compare-infusions]] tiver sido executada: a bandeja deste dia contra a de um projeto de referência, composto a composto e condição a condição |
 | Compared spectra | apenas enquanto o Explorer estiver mantendo espectros juntos: a figura cabeça-cauda, uma tabela dos traços e as massas que eles compartilham dentro de 10 ppm — [[chromatograms-and-spectra]] |
 | Integration algorithms | apenas quando [[compare-algorithms]] foi executado: os totais por algoritmo e os componentes que mais se moveram |
 | Batch comparison | apenas quando [[compare-batches]] foi executado: os totais lado a lado e os componentes na ordem do quanto se moveram |
@@ -53,9 +54,9 @@ papel: cada um acima do pico que nomeia e nunca sobre um traço ou sobre outro
 rótulo, subindo uma linha com um fio até o seu ápice onde o espaço está
 tomado, e deixados de fora onde não há espaço dentro de seis linhas — veja
 [[chromatograms-and-spectra]]. Sob ela estão os traços, cada um com o seu
-pico-base e quantos picos ele contém, e as massas que todos os espectros
+pico base e quantos picos ele contém, e as massas que todos os espectros
 carregam dentro de 10 ppm, com a altura de cada uma como fração do seu
-próprio pico-base — que é o único modo como dois espectros de tamanhos
+próprio pico base — que é o único modo como dois espectros de tamanhos
 diferentes se comparam numa tabela. Uma massa presente em um e ausente no
 outro é uma diferença, e uma diferença se lê na figura.
 

@@ -430,11 +430,11 @@ abertos.
 
 ## O piso de ruído da média
 
-O espectro de uma infusão é a média de todas as varreduras da corrida, e
+O espectro de uma infusão é a média de todos os scans da corrida, e
 quanto disso é fundo é uma propriedade daquela aquisição e não uma constante.
 Ele é medido, do arquivo, assim que uma infusão é aberta: as regiões vazias do
-eixo de massa da média de um lado, e a dispersão entre varreduras de uma janela
-silenciosa de meio dalton escalada para o número de varreduras promediadas do
+eixo de massa da média de um lado, e a dispersão entre scans de uma janela
+silenciosa de meio dalton escalada para o número de scans promediados do
 outro, adotando-se o maior dos dois. Nas nove infusões de ácidos biliares ele
 sai entre **0,068 e 3,53 contagens**, onde o piso fixo que ele substitui era de
 cem; numa delas cem contagens eram quase o espectro inteiro, cujo pico base é

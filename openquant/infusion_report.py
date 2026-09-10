@@ -73,6 +73,7 @@ from . import infusion as _infusion
 from . import precursor as _precursor
 from . import purity as _purity
 from . import spectra_compare
+from . import unexplained as _unexplained
 from .components import Component
 from .explain import Explanation
 from .infusion import (InfusionVerdict, ScanMask, average_stable, mask_for,
@@ -109,6 +110,19 @@ REFLOWS = 8
 #: at most this many unexplained peaks are named. They are listed strongest
 #: first, so the ones that matter are the ones printed.
 UNEXPLAINED_LISTED = 10
+
+#: how much further down than the printed label floor the peak list handed to
+#: `unexplained.annotate` reaches. The floor decides what is *annotated*; the
+#: pool is the evidence, and the carbon-13 satellite that separates one
+#: composition from another is about a hundredth of the peak it belongs to
+#: while the floor is a fiftieth of the base peak. Ten is the same ratio the
+#: spectrum pane already uses between its label floor and its own peak pool.
+ANNOTATION_POOL = 10
+
+#: at most this many peaks go into that pool. Reading further costs nothing
+#: to find and everything to search against, and a satellite below the
+#: thousandth-strongest peak of an averaged infusion is noise.
+ANNOTATION_POOL_PEAKS = 1000
 
 #: at most this many matched fragments are tabulated, strongest first.
 FRAGMENTS_LISTED = 40
@@ -804,6 +818,41 @@ class InfusionReport:
             return []
         return self.explanation.unexplained(self.peaks(most=PEAKS_LISTED))[:most]
 
+    def annotations(self, most: int = UNEXPLAINED_LISTED) -> list:
+        """
+        The same peaks with what each of them might be — `unexplained.annotate`.
+
+        The evidence is a peak list reaching `ANNOTATION_POOL` times further
+        down than the printed floor, because the carbon-13 satellite that
+        decides a composition is a hundredth of the peak it belongs to and
+        the printed table starts at two per cent. Only the peaks above the
+        floor are annotated; everything under it is there to be looked at.
+
+        Cached: the sentence and the table both ask, and a constrained
+        formula search is not free.
+        """
+        held = getattr(self, "_annotations", None)
+        if held is not None and len(held) >= most:
+            return held[:most]
+        if self.explanation is None or self.spectrum is None:
+            return []
+        trace = self.trace
+        if trace is None:
+            return []
+        pool = self.spectrum.peaks(
+            trace, most=ANNOTATION_POOL_PEAKS,
+            min_relative=max(self.label_floor / ANNOTATION_POOL, 1e-5))
+        if not pool:
+            return []
+        formula = self.formula or getattr(self.explanation.record, "formula", "")
+        rows = _unexplained.annotate(
+            [mz for mz, _height in pool], [h for _mz, h in pool],
+            self.explanation, formula,
+            self.explanation.adduct or self.adduct, self.polarity,
+            floor=self.label_floor, most=most)
+        self._annotations = rows
+        return rows
+
     def error_ppm(self) -> float | None:
         """How far the accurate precursor sits from the written one."""
         if self.written_precursor in (None, 0):
@@ -1008,6 +1057,17 @@ class InfusionReport:
             said[-1] += (f" {len(left)} of the {len(listed)} strongest peaks "
                          f"above the label floor are not accounted for, the "
                          f"strongest at {left[0][0]:.4f}.")
+            # what those peaks might be, where the module that says so is
+            # present. Read defensively: a report built by an older caller,
+            # or one whose spectrum is not held, has nothing to annotate.
+            try:
+                rows = self.annotations()
+            except Exception:                   # a search that would not run
+                rows = []
+            if rows:
+                counted = _unexplained.tally(rows).sentence()
+                if counted:
+                    said[-1] += f" {counted}"
         return said
 
     def _purity_sentences(self) -> list[str]:
@@ -2903,18 +2963,56 @@ def _explanation_block(report: InfusionReport,
         '<p class="meta">The honest half of the answer. An explanation that '
         'accounts for part of a spectrum has said nothing about the rest, and '
         'a strong peak here is where a co-infused impurity, an adduct nobody '
-        'predicted, or the wrong compound shows itself.</p>')
+        'predicted, or the wrong compound shows itself. Each is offered the '
+        'best of three hypotheses — a known contaminant, a satellite of an '
+        'ion that was matched, or a composition built from the precursor '
+        'ion’s own atoms — with how far it sits from the measured mass. '
+        'A row is a suggestion carrying its error, never an assignment.</p>')
     total = report.base_peak()
     top = total[1] if total else 0.0
+    # the annotations, where the module that makes them is present and the
+    # search would run; without them the table is the masses alone, as it was
+    try:
+        rows = report.annotations(most=len(left)) if left else []
+    except Exception:                           # a search that would not run
+        rows = []
+    guesses = {round(row.mz, 4): row for row in rows}
     parts.append(_table(
-        ["m/z", "Intensity", "Relative %"],
-        [[_number(mz, 4), _number(height, 0),
-          f"{height / top * 100:,.2f}" if top else "—"]
+        ["m/z", "Relative %", "What it might be", "Δ ppm"],
+        [[_number(mz, 4),
+          f"{height / top * 100:,.2f}" if top else "—",
+          _escape(_guess_text(guesses.get(round(mz, 4)))),
+          _guess_ppm(guesses.get(round(mz, 4)))]
          for mz, height in left],
-        right={0, 1, 2},
+        right={0, 1, 3},
         empty="Every peak above the label floor is accounted for.",
-        widths=["34%", "33%", "33%"]))
+        widths=["16%", "14%", "56%", "14%"]))
+    if rows:
+        counted = _unexplained.tally(rows)
+        parts.append(
+            f'<p class="foot">{counted.accounted} of {counted.peaks} listed '
+            f'peak(s) are accounted for by a satellite of something already '
+            f'matched or by a known contaminant, {counted.formulas} by a '
+            f'composition within the precursor’s own atoms, and '
+            f'{counted.nothing} by nothing at all — a peak with no '
+            f'sub-formula of the precursor is not a piece of this compound, '
+            f'whatever else it is. Matched within '
+            f'±{_unexplained.TOLERANCE_PPM:g} ppm.</p>')
     return "".join(parts)
+
+
+def _guess_text(row) -> str:
+    """What one unexplained peak might be, for the table's cell."""
+    if row is None:
+        return "—"
+    said = row.label
+    if getattr(row, "rivals", 0):
+        said += f" ({row.rivals} other composition(s) reach it)"
+    return said
+
+
+def _guess_ppm(row) -> str:
+    return "—" if row is None or row.error_ppm is None else f"{row.error_ppm:+.1f}"
 
 
 def _purity_block(report: InfusionReport,

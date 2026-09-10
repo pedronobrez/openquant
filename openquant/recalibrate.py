@@ -15,6 +15,13 @@ recalibrate the instrument onto somebody's rounding.
 through the adduct, which is what `MassTrend.exact` carries — is the only
 number worth correcting towards.
 
+And a lock mass has to be near that number. `mass_drift`'s `same_ion` asks
+whether the injections agree with *each other*; it cannot ask whether they
+agree with the compound, so a standard whose search window holds the same
+wrong ion in every injection passes it. `MAX_LOCK_ERROR_PPM` is the other
+half of that test — see the histogram against the constant, and
+`lock_mass_refusal`.
+
 What is fitted, per injection:
 
 * an **offset** in ppm, the median of the lock masses' errors, sign flipped;
@@ -53,10 +60,23 @@ Measured on the 26-injection sphingolipid batch this was written against
   injection: `SM(d18:1/12:0)`, C35H71N2O6P, [M+H]+ = 647.5123. `mass_drift`
   puts the other ten standards between 98 and 534 ppm of spread, which fails
   `same_ion`, one has no survey covering it, and `C17:0_Ceramide` was found
-  in five injections with a median 238 ppm from its own formula — a
+  in five injections with a median 237 ppm from its own formula — a
   different ion, not a badly measured one. So the fit is **one lock mass,
   offset only, in 25 of 26 injections**, every row says so, and several lock
   masses are not available on this batch at any formula coverage.
+* **The formula gate names five of them and costs the fit nothing.**
+  `MAX_LOCK_ERROR_PPM` refuses a standard measured past 50 ppm from its own
+  formula in most of its injections: `Sphingosine C17:0` (383 ppm),
+  `C17:0_Ceramide` (237), `C12:0 _Ceramide` (204), `Cer1P (12:0)` (91) and
+  `Sphingosine-1-P C17:0` (82, its injections straddling the formula from
+  either side). All five had already failed `same_ion` or the injection
+  count, so `SM(d18:1/12:0)`'s figures below are unchanged to the last
+  decimal and not one injection lost a point — measured both ways. The gate
+  is a guard rather than a finding **on this batch**, and the near miss says
+  why it is worth having: `Sphingosine C14:0` holds its measurement to
+  52 ppm across 25 injections — twice the `same_ion` limit and no more — at
+  a median 156 ppm from its formula. That is one ion, measured steadily,
+  and it is not the compound. Nothing but the formula can say so.
 * Those offsets: median **+4.8 ppm**, from −4.4 to +11.7, a spread of
   16.1 ppm — which is the same 16 ppm this batch's one standard scatters by
   between injections. **The correction is the size of its own uncertainty.**
@@ -96,7 +116,40 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .mass_drift import MassDrift, mass_drift
+from .mass_drift import MassDrift, MassTrend, mass_drift
+
+#: how far a lock mass may sit from its own formula before it is not the ion
+#: the formula names. `same_ion` asks the injections whether they agree with
+#: each other; a standard whose ±0.25 Da window holds the same *wrong* ion in
+#: every injection agrees with itself perfectly and passes it.
+#:
+#: Measured: |measured − formula| over the 1,439 survey measurements the real
+#: batch supplies — all 60 formula-bearing components inside its 50–700
+#: survey, in every injection —
+#:
+#:       0– 10 ppm   203  14.1%  ##############
+#:      10– 20        77   5.4%  #####
+#:      20– 30        31   2.2%  ##
+#:      30– 40        15   1.0%  #
+#:      40– 50        20   1.4%  #
+#:      50– 60        29   2.0%  ##
+#:      60– 80        53   3.7%  ####
+#:      80–100        35   2.4%  ##
+#:     100–200       206  14.3%  ##############
+#:        ≥ 200      770  53.5%  ######################################…
+#:
+#: — which is bimodal: a lobe of measurements of the compound under 20 ppm
+#: (19.5% of them), a lobe of interferences that starts at 50 and runs to
+#: 800, and the floor of the trough between the two at 30–50 ppm, where a
+#: 10 ppm bin holds 1.0–1.4%. Fifty is that trough's far edge, and it is
+#: twice `precursor.CONSENSUS_SPREAD_PPM` — the disagreement between
+#: injections `same_ion` already tolerates. An ion allowed to wander a
+#: spread's worth may sit a spread's worth from the truth, and no further.
+#: The margins either side are both about a factor of five: this batch's one
+#: honest lock mass is 11.7 ppm out in its worst injection, and the impostor
+#: `C17:0_Ceramide` 237 ppm (measured 237.5; the 238 in earlier notes was
+#: that rounded the wrong way).
+MAX_LOCK_ERROR_PPM = 50.0
 
 #: fewest lock masses before a linear term is even considered. Four, not
 #: three, because the slope is only kept when leave-one-out prediction says
@@ -347,14 +400,56 @@ def fit_correction(sample_key: str, sample_name: str,
     return correction
 
 
+def _error_ppm(measured: float, exact: float) -> float:
+    """One measurement against the formula, in ppm."""
+    return (measured - exact) / exact * 1e6
+
+
+def lock_mass_refusal(trend: MassTrend) -> str | None:
+    """
+    Why this trend is not a lock mass for the run at all, or None.
+
+    The sanity gate `same_ion` cannot supply: a standard measured past
+    `MAX_LOCK_ERROR_PPM` from its own formula in *most* of its injections is
+    not that compound being read badly, it is a different ion being read
+    well, and a fit pulled towards it would recalibrate the batch onto an
+    interference. Most rather than any, because one injection catching a
+    neighbour is a bad injection — that one measurement is dropped where it
+    happens, and the standard stands.
+
+    Reported for any trend carrying a formula, whatever else it failed:
+    `C17:0_Ceramide` on the real batch is one injection short of the count a
+    trend needs *and* 237 ppm from its formula, and only the second of those
+    says the number is not the compound.
+    """
+    if trend.exact is None or not trend.points:
+        return None
+    errors = [abs(_error_ppm(point.mz, trend.exact)) for point in trend.points]
+    past = sum(1 for error in errors if error > MAX_LOCK_ERROR_PPM)
+    if past * 2 <= len(errors):
+        return None
+    # the median of the distances rather than the distance of the median: the
+    # figure quoted has to be one that justifies the refusal, and a trend
+    # whose injections straddle the formula can have a small median error and
+    # not one measurement near it. Most injections being past the limit makes
+    # this median past it too, whatever the count is.
+    return (f"measures {float(np.median(errors)):,.0f} ppm from its formula: "
+            f"not the ion the formula names")
+
+
 def lock_masses_from_drift(drift: MassDrift | None) -> dict[str, list[LockMass]]:
     """
     Reuse the mass-drift measurement: every trend that measured the same ion
-    throughout and knows what mass it should have been.
+    throughout, knows what mass it should have been, and measured it near
+    that mass.
 
     A trend that failed `same_ion` is left out entirely. Its points are not
     one ion measured badly, they are different ions measured well, and
-    averaging them would recalibrate onto whatever happened to be nearest.
+    averaging them would recalibrate onto whatever happened to be nearest. A
+    trend `lock_mass_refusal` names is left out for the opposite reason: its
+    injections agree, and agree about the wrong ion. What survives both is
+    then filtered a third time, injection by injection, since a standard that
+    is honest across the run can still have one measurement past the limit.
     """
     out: dict[str, list[LockMass]] = {}
     if drift is None:
@@ -362,10 +457,41 @@ def lock_masses_from_drift(drift: MassDrift | None) -> dict[str, list[LockMass]]
     for trend in drift.trends:
         if trend.exact is None or trend.median is None or not trend.same_ion:
             continue
+        if lock_mass_refusal(trend):
+            continue
         for point in trend.points:
+            if abs(_error_ppm(point.mz, trend.exact)) > MAX_LOCK_ERROR_PPM:
+                continue
             out.setdefault(point.key or point.sample, []).append(LockMass(
                 component=trend.component, theoretical=trend.exact,
                 measured=point.mz, intensity=point.intensity))
+    return out
+
+
+def dropped_lock_masses(drift: MassDrift | None
+                        ) -> dict[str, list[tuple[str, float]]]:
+    """
+    Per injection, the lock masses left out of *that* injection alone.
+
+    A standard the run keeps but this injection's window read past
+    `MAX_LOCK_ERROR_PPM`. The injection's correction says so rather than
+    silently being fitted from fewer lock masses than the table above it
+    shows — or, where it was the only one, rather than reading as an
+    injection nothing was measured in.
+    """
+    out: dict[str, list[tuple[str, float]]] = {}
+    if drift is None:
+        return out
+    for trend in drift.trends:
+        if trend.exact is None or trend.median is None or not trend.same_ion:
+            continue
+        if lock_mass_refusal(trend):
+            continue
+        for point in trend.points:
+            error = _error_ppm(point.mz, trend.exact)
+            if abs(error) > MAX_LOCK_ERROR_PPM:
+                out.setdefault(point.key or point.sample, []).append(
+                    (trend.component, error))
     return out
 
 
@@ -389,12 +515,22 @@ def fit_batch(session, drift: MassDrift | None = None,
     if drift is None:                       # the operator cancelled
         return {}
     by_key = lock_masses_from_drift(drift)
+    dropped = dropped_lock_masses(drift)
     out: dict[str, MassCorrection] = {}
     for entry in session.entries:
         if not entry.is_loaded:
             continue
-        out[entry.key] = fit_correction(entry.key, entry.name,
-                                        by_key.get(entry.key, []))
+        correction = fit_correction(entry.key, entry.name,
+                                    by_key.get(entry.key, []))
+        left_out = dropped.get(entry.key)
+        if left_out:
+            said = "; ".join(f"{name} {error:+,.0f} ppm"
+                             for name, error in left_out)
+            correction.note = " \u00b7 ".join(part for part in (
+                correction.note,
+                f"left out of this injection, past {MAX_LOCK_ERROR_PPM:g} ppm "
+                f"from its own formula here: {said}") if part)
+        out[entry.key] = correction
     return out
 
 
@@ -406,7 +542,9 @@ def describe(corrections: dict[str, MassCorrection]) -> str:
     if not usable:
         return (f"No lock mass in any of {len(corrections)} injection(s). A "
                 f"lock mass is an internal standard carrying a formula and an "
-                f"adduct, measuring the same ion throughout the run; nothing "
+                f"adduct, measuring the same ion throughout the run and "
+                f"measuring it within {MAX_LOCK_ERROR_PPM:g} ppm of what that "
+                f"formula weighs; nothing "
                 f"here does, so nothing is corrected. Method workspace ▸ "
                 f"Fill formulas from names supplies the formula where the "
                 f"name is lipid shorthand; where the ion is what fails, no "

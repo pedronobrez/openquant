@@ -660,6 +660,7 @@ def _mass(title: str, drift, breaks: set[str] | None = None,
     was measured, since measuring is a minute of reading survey spectra."""
     from .mass_drift import DRIFT_PPM, MIN_INJECTIONS
     from .precursor import CONSENSUS_SPREAD_PPM
+    from .recalibrate import MAX_LOCK_ERROR_PPM, lock_mass_refusal
 
     parts = [_heading(title, breaks)]
     if drift.note:
@@ -676,7 +677,11 @@ def _mass(title: str, drift, breaks: set[str] | None = None,
         f"one way (Spearman\u2019s &#961; beyond 0.5); fewer than "
         f"{MIN_INJECTIONS} injections cannot show a trend, and a spread over "
         f"{CONSENSUS_SPREAD_PPM:g} ppm between injections means they did not "
-        f"measure the same ion, so no trend is fitted. The index is the "
+        f"measure the same ion, so no trend is fitted. Injections agreeing "
+        f"with each other say nothing about agreeing with the compound, so a "
+        f"component measured more than {MAX_LOCK_ERROR_PPM:g} ppm from its "
+        f"own formula in most of them is named as measuring a different ion "
+        f"and is not used as a lock mass. The index is the "
         f"median over the standards, per injection, of each one\u2019s "
         f"deviation \u2014 what the instrument did rather than any one "
         f"compound.</p>")
@@ -687,6 +692,10 @@ def _mass(title: str, drift, breaks: set[str] | None = None,
         verdict = _escape(trend.note) if trend.note else "steady"
         if trend.drifted:
             verdict = f'<span class="bad">drift {trend.change:+.1f} ppm</span>'
+        refusal = lock_mass_refusal(trend)
+        if refusal:
+            verdict = (f'{verdict} \u00b7 <span class="bad">'
+                       f'{_escape(refusal)}</span>')
         rows.append([
             _escape(trend.component), f"{len(trend.points)}",
             "—" if is_index else _number(trend.median, 4),
@@ -710,8 +719,8 @@ def _corrections(corrections: dict | None, applied: bool) -> str:
     different question, and left out entirely when nothing has been fitted:
     a table of dashes says less than no table at all.
     """
-    from .recalibrate import (MIN_MASS_SPAN, MIN_SLOPE_LOCK_MASSES,
-                              describe)
+    from .recalibrate import (MAX_LOCK_ERROR_PPM, MIN_MASS_SPAN,
+                              MIN_SLOPE_LOCK_MASSES, describe)
 
     if not corrections:
         return ""
@@ -719,7 +728,10 @@ def _corrections(corrections: dict | None, applied: bool) -> str:
              f"A lock mass is an internal standard carrying a formula and an "
              f"adduct \u2014 the written precursor is not accurate enough to "
              f"correct towards \u2014 whose measured ion held together across "
-             f"the run. Each injection gets the median of its lock masses\u2019 "
+             f"the run and sat within {MAX_LOCK_ERROR_PPM:g} ppm of what that "
+             f"formula weighs; a standard further out than that is a "
+             f"different ion, however steadily it was measured, and is named "
+             f"in the table above. Each injection gets the median of its lock masses\u2019 "
              f"errors, sign flipped; a linear term is fitted only where "
              f"{MIN_SLOPE_LOCK_MASSES} or more of them span "
              f"{MIN_MASS_SPAN:,.0f} Da and leave-one-out prediction of a "

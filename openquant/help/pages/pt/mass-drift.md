@@ -74,7 +74,12 @@ clicar em um seleciona aquela amostra na grade de [[peak-review]].
 Esta página reporta; por si só ela não muda massa nenhuma. O que fazer com
 o que ela mostra é [[mass-recalibration]], cujo interruptor fica nesta mesma
 aba: ela reutiliza exatamente estas medidas, de modo que um padrão que
-falhou o teste de mesmo íon aqui também não é lock mass lá. Uma medida que a
+falhou o teste de mesmo íon aqui também não é lock mass lá. E o caminho
+inverso também vale: um padrão cujas medidas ficam a mais de 50 ppm da sua
+própria fórmula na maioria das injeções não é o íon que a fórmula nomeia, e a
+coluna Verdict aqui diz isso — uma verificação que o teste de mesmo íon não
+consegue fazer, já que ele só pergunta às injeções se elas concordam entre
+si. Uma medida que a
 varredura de íons produto não confirmou é mantida e contada — uma deriva é
 uma deriva quer o scan confirmatório fosse forte o bastante quer não — e a
 contagem está na linha.

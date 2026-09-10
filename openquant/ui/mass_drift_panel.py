@@ -16,7 +16,7 @@ from PyQt6 import QtCore, QtWidgets
 from . import theme
 from ..mass_drift import DRIFT_PPM, MassDrift, MassTrend, mass_drift
 from ..recalibrate import describe as describe_corrections
-from ..recalibrate import fit_batch
+from ..recalibrate import MAX_LOCK_ERROR_PPM, fit_batch, lock_mass_refusal
 from ..session import Session
 
 TREND_PEN = "#e08a1e"
@@ -56,8 +56,11 @@ class MassDriftPanel(QtWidgets.QWidget):
             "injection. A lock mass is an internal standard carrying a "
             "formula and an adduct — the written precursor is not accurate "
             "enough to correct towards — whose measured ion held together "
-            "across the run. The correction moves the extraction window, "
-            "never the instrument's own arithmetic.")
+            "across the run and sat within "
+            f"{MAX_LOCK_ERROR_PPM:g} ppm of what that formula weighs. A "
+            "standard further out than that is a different ion, however "
+            "steadily it was measured. The correction moves the extraction "
+            "window, never the instrument's own arithmetic.")
         bar.addWidget(self.recalibrate)
         bar.addStretch(1)
         layout.addLayout(bar)
@@ -236,6 +239,9 @@ class MassDriftPanel(QtWidgets.QWidget):
             said.append(f"the axis held: {drift.index.change:+.1f} ppm across the run")
         if measured and not drift.drifted:
             said.append("nothing drifted")
+        refused = sum(1 for trend in drift.trends if lock_mass_refusal(trend))
+        if refused:
+            said.append(f"{refused} measuring an ion its formula does not name")
         self.status.setText(" · ".join(said))
 
     def _fill_table(self) -> None:
@@ -250,6 +256,11 @@ class MassDriftPanel(QtWidgets.QWidget):
             verdict = trend.note or "steady"
             if trend.drifted:
                 verdict = f"drift {trend.change:+.1f} ppm"
+            # not a lock mass, and for a reason the drift itself cannot see:
+            # the injections agree with each other about the wrong ion
+            refusal = lock_mass_refusal(trend)
+            if refusal:
+                verdict = f"{verdict} \u00b7 {refusal}"
             cells = [trend.component, f"{len(trend.points)}",
                      "—" if is_index else number(trend.median, 4),
                      number(trend.exact, 4), number(trend.error_ppm),
@@ -260,8 +271,11 @@ class MassDriftPanel(QtWidgets.QWidget):
                 if column:
                     item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight
                                           | QtCore.Qt.AlignmentFlag.AlignVCenter)
-                if column == 8 and trend.drifted:
-                    item.setForeground(pg.mkColor(theme.danger()))
+                if column == 8:
+                    # the cell elides; the whole sentence is worth reading
+                    item.setToolTip(text)
+                    if trend.drifted or refusal:
+                        item.setForeground(pg.mkColor(theme.danger()))
                 self.table.setItem(row, column, item)
         self.table.setColumnWidth(0, 180)
 

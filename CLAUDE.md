@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.7.9 released. 1066 tests. Public repository.**
+**Version 0.7.9 released; 0.8.0 in progress on main. 1117 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -386,29 +386,34 @@ UV detector, is not implemented there) — untested on real Windows.
   02 put the right record first 14 of 14 times at reverse 45–96, every
   other record at most 42. The bile-acid infusions were on an unmounted
   drive; that measurement is still owed.
-- **An infusion is flat twice, against its 99th-percentile scan, not its
-  largest.** `infusion.is_infusion` needs the fraction of the sample's TIC
-  at or above half its reference *and* the same on the strongest
-  product-ion channel both at `FLAT_FRACTION` (0.75), from chromatograms
-  only. The infusion side was reasoned before it was measured, and when
-  the nine ZenoTOF bile-acid infusions were read three came back at
-  0.0021–0.0063 on both figures — below every one of 39 chromatographic
-  runs: one spray transient at 0.0084 min, 2.8–4.4× the run's median, and
-  half of a spike is above everything else in a flat run. So the reference
-  is the 99th-percentile scan (`REFERENCE_PERCENTILE`): infusions
-  0.9937–1.0000, the chromatographic smaller figure never past 0.1148, a
-  gap of 0.879 and 48 of 48 called correctly; 99.5 fails (three spiked
-  scans are 0.63% of 473) and below 99 real apices are set aside. Below
-  about a hundred scans the percentile is the largest scan again — a
-  stated gap; the default on doubt is "not an infusion". Three rules were
-  measured and dropped earlier: the scan-to-scan cosine (0.85–0.99 on
-  product channels of gradients), the TIC's CV, and `detect_peaks` on a
-  flat trace. The own library on the same files: records from the CID
+- **An infusion is flat twice, after the first second, against its
+  99th-percentile scan.** `infusion.is_infusion` needs the fraction of the
+  sample's TIC at or above half its reference *and* the same on the
+  strongest product-ion channel both at `FLAT_FRACTION` (0.75), from
+  chromatograms only. The infusion side was reasoned before it was
+  measured: three of nine ZenoTOF bile-acid infusions came back at
+  0.0021–0.0063 — below every one of 39 chromatographic runs — because of
+  one spray transient at 0.0084 min, 2.8–4.4× the median; half of a spike
+  is above everything else in a flat run. Two fixes, both measured:
+  `REFERENCE_PERCENTILE` (99) instead of the largest scan, and
+  `SETTLING_SECONDS` (1 s) dropped off the front, since truncating all 48
+  acquisitions to 20–100 scans showed the percentile interpolating back
+  towards the transient out to 80 scans. With both: infusions 1.0000 at
+  every truncation from 20 to 250 scans and 0.9936 whole, chromatographic
+  never past 0.1148, 48 of 48. Settling alone fails (DCA-d4's bursts at
+  1.08 and 1.10 min give 0.0043) and a length-tied top-k median survives
+  one spike but not three. The other half nothing fixes: a gradient cut
+  off before anything elutes is flat too (`260904_EICs_Isabela_S001` is
+  empty until 8.9 min and its first 100 scans read 1.0000 / 0.9388), so
+  `MIN_JUDGED_SCANS` (120, between the 35 past which nothing else
+  chromatographic reads flat and the shortest real infusion at 146) gates
+  the *flat* answer only — a run showing structure is chromatographic at
+  any length — and a shorter flat run is "too short to tell", not an
+  infusion. The own library on the same files: records from the CID
   infusions of CA-d4, DCA-d4 and TDCA-d4 searched by the same compounds
   under EAD 22 eV put their own record first at 29.2, 33.3 and 61.5
   against a best wrong record of 14.1; a record does not travel between
-  activations — CA-d4 at 12 eV scores 6.4 against the CID record. The
-  ranking survives; the number beside it does not.
+  activations (CA-d4 at 12 eV scores 6.4 against the CID record).
 - **A correction the size of its own uncertainty is still worth having, and
   still has to say so.** `recalibrate.py` fits a per-injection offset from
   the standards' measured precursors against their formula masses, reusing
@@ -801,7 +806,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-1066 tests, two skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+1117 tests, two skipped. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `ui/settings.py` is the one place a settings object is made, and
 `tests/conftest.py` sets `OPENQUANT_SETTINGS` before any widget exists so

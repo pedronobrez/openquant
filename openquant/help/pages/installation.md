@@ -26,6 +26,20 @@ and the Start menu entry and *Add or remove programs* name it, and the Linux
 tarball ships `openquant.png` with a `.desktop` entry. The window itself
 takes its icon from the same drawing on every platform.
 
+### macOS 26 and the Liquid Glass icon
+
+On macOS 26 a classic `.icns` is only set inside the system's glass frame
+and keeps its colours whatever appearance is chosen — which is why, with the
+*Clear* or *Tinted* icon style on, every icon turned translucent and this
+one stayed blue. From 0.7.8 the bundle also carries a layered icon: the
+Icon Composer document `packaging/icons/OpenQuant.icon` (a blue fill, the
+white peak and its neighbour as glass layers) compiled by Xcode 26's
+`actool` into `Assets.car` and named by `CFBundleIconName`, so the Dock and
+the Finder render it in the chosen style. The `.icns` stays for macOS 15
+and earlier, which ignore the newer key. The build says on its log whether
+the layered icon was compiled; a machine without Xcode 26 ships the
+`.icns` alone.
+
 ### Linux: a launcher entry, for one user
 
 The tarball is the application folder as PyInstaller built it, and Linux has

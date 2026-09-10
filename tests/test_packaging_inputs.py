@@ -101,3 +101,33 @@ def test_the_linux_launcher_entry_is_complete_and_travels_with_the_tarball():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
     assert "packaging/linux/openquant.desktop" in workflow
     assert "icon_256x256.png dist/OpenQuant/openquant.png" in workflow
+
+
+# -- the layered icon for macOS 26 ----------------------------------------- #
+ICON_DOCUMENT = ICONS / "OpenQuant.icon"
+
+
+def test_the_icon_composer_document_is_complete():
+    import json
+    manifest = json.loads((ICON_DOCUMENT / "icon.json").read_text())
+    assert manifest["supported-platforms"] == {"squares": "shared"}
+    assert manifest["fill"]["solid"].startswith("srgb:")
+    layers = [layer for group in manifest["groups"] for layer in group["layers"]]
+    assert [layer["name"] for layer in layers] == ["neighbour", "peak"]
+    for layer in layers:
+        assert (ICON_DOCUMENT / "Assets" / layer["image-name"]).is_file()
+        assert layer["glass"] is True
+    for image in (ICON_DOCUMENT / "Assets").glob("*.svg"):
+        ET.parse(image)   # an SVG actool cannot read fails the whole compile
+
+
+def test_the_liquid_icon_step_runs_on_the_mac_build_and_never_fails_it():
+    script = (ROOT / "packaging" / "make_liquid_icon.sh").read_text()
+    assert "actool" in script and "CFBundleIconName" in script
+    assert script.count("exit 0") >= 3, "a missing Xcode must not fail the build"
+    assert "codesign --force --deep --sign -" in script
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    build = workflow.index("name: Build\n")
+    icon = workflow.index("name: Liquid Glass icon")
+    works = workflow.index("name: The bundle works")
+    assert build < icon < works, "the re-signed bundle is what the self-test must run"

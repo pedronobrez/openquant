@@ -225,6 +225,12 @@ jobs:
       - name: Build
         run: python -m PyInstaller packaging/openquant.spec --noconfirm
 
+      # a layered icon for macOS 26, compiled by Xcode 26's actool; the
+      # .icns stays for older systems, and a runner without Xcode 26 says so
+      - name: Liquid Glass icon
+        if: runner.os == 'macOS'
+        run: bash packaging/make_liquid_icon.sh "$PWD/dist/OpenQuant.app"
+
       # the bundle either reads a .wiff or it does not, and this is the only
       # way to find out without a person and a mouse
       - name: The bundle works

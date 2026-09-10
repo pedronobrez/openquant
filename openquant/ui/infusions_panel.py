@@ -24,8 +24,10 @@ from PyQt6 import QtCore, QtWidgets
 
 from .. import audit
 from ..infusion_report import (SUMMARY_COLUMNS, InfusionRow, InfusionSummary,
-                               prepare_documents, summarise, write_pdf,
-                               write_summary_csv)
+                               component_for, prepare_documents, summarise,
+                               write_pdf, write_summary_csv)
+from ..library import (identity_of, provenance_keys, records_from_summary,
+                       write_msp)
 from ..session import Session
 from .settings import settings
 
@@ -95,6 +97,16 @@ class InfusionsPanel(QtWidgets.QWidget):
         self.btn_csv.setToolTip("The table as it stands, every column")
         self.btn_csv.setEnabled(False)
         bar.addWidget(self.btn_csv)
+        self.btn_library = QtWidgets.QPushButton("Add all to library")
+        self.btn_library.setToolTip(
+            "Write one record per row into your own library — the averaged "
+            "spectrum the table was measured from, named for the compound, "
+            "with the file and channel it came from in its comment. A row "
+            "whose compound could not be proposed is skipped and named, and "
+            "a row already in the file from the same file and channel is not "
+            "written twice")
+        self.btn_library.setEnabled(False)
+        bar.addWidget(self.btn_library)
         bar.addStretch(1)
         layout.addLayout(bar)
 
@@ -121,6 +133,7 @@ class InfusionsPanel(QtWidgets.QWidget):
         self.btn_measure.clicked.connect(self.measure)
         self.btn_report.clicked.connect(self.write_report)
         self.btn_csv.clicked.connect(self.export_csv)
+        self.btn_library.clicked.connect(self.add_all_to_library)
         session.sigSamplesChanged.connect(self._invalidate)
 
         from .help_window import describe
@@ -211,6 +224,7 @@ class InfusionsPanel(QtWidgets.QWidget):
         self.table.resizeColumnsToContents()
         self.btn_report.setEnabled(bool(rows))
         self.btn_csv.setEnabled(bool(rows))
+        self.btn_library.setEnabled(bool(rows))
         self._describe()
         self.sigRowsChanged.emit(len(rows))
 
@@ -329,6 +343,115 @@ class InfusionsPanel(QtWidgets.QWidget):
         self._report(f"{len(summary.rows)} row(s) written to "
                      f"{os.path.basename(written)}.")
         return written
+
+    # -- a record of every row ------------------------------------------------ #
+    def _own_path(self) -> str:
+        """
+        The MSP the analyst's own records go into, asked for once.
+
+        The same setting the Explorer's library panel writes: there is one
+        library of one's own and both places mean the same file. A save
+        dialog, since it usually does not exist yet, with the overwrite
+        warning off — picking the library that is already there is the
+        ordinary case and the records are appended, not written over.
+        """
+        path = self.settings.value(SETTING_OWN_PATH, "", type=str)
+        if path:
+            return path
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Your own spectral library",
+            os.path.expanduser("~/my-library.msp"),
+            "MSP (*.msp);;All files (*)",
+            options=QtWidgets.QFileDialog.Option.DontConfirmOverwrite)
+        if not path:
+            return ""
+        if not os.path.splitext(path)[1]:
+            path += ".msp"
+        self.settings.setValue(SETTING_OWN_PATH, path)
+        return path
+
+    def _acquired_times(self) -> dict:
+        """
+        When each open acquisition was measured, by file name.
+
+        The report holds the file it came from and the session holds the
+        sample, and only the sample knows the day the instrument measured
+        on — which is the day a record's history is ordered by, and is not
+        the day the record is being written.
+        """
+        found = {}
+        for entry in getattr(self.session, "entries", []) or []:
+            when = str(getattr(getattr(entry, "sample", None),
+                               "acquisition_time", "") or "")
+            name = os.path.basename(str(getattr(entry, "path", "") or ""))
+            if when and name:
+                found[name] = when
+        return found
+
+    def _identify(self, row):
+        """
+        The formula and the adduct to write into one row's record.
+
+        What the report already worked out first — it identified the adduct
+        against the channel's written precursor and put the compound's
+        labels back into the formula — and the method's component table for
+        whatever that leaves empty, which is the case where an infusion was
+        measured without anything being explained.
+
+        The component table's two are taken **together or not at all**. A
+        formula on its own gives the record no mass to check itself against,
+        and where the report identified no adduct the reason is usually that
+        no adduct of that formula reaches the precursor the channel
+        isolated — so writing the formula anyway would put the compound the
+        file is named after on a record of a different ion.
+        """
+        formula, adduct = identity_of(row.report)
+        if formula and adduct:
+            return formula, adduct
+        component = component_for(getattr(self.session, "method", None),
+                                  getattr(row, "compound", ""))
+        declared = (str(getattr(component, "formula", "") or ""),
+                    str(getattr(component, "adduct", "") or ""))
+        return declared if all(declared) else (formula, adduct)
+
+    def add_all_to_library(self, path: str = ""):
+        """
+        One record per measured row, appended to the library of one's own.
+
+        A folder of infusions is written in one go rather than a spectrum at
+        a time from the Explorer: the table has already averaged, centroided
+        and identified every one of them, and a record is those numbers with
+        a name and a provenance on them.
+
+        A row that proposed no compound is skipped and named, and so is one
+        whose acquisition and channel are already in the file — the
+        provenance in a record's comment is the key, so pressing this twice
+        adds nothing the second time.
+        """
+        summary = self.summary
+        if summary is None or not summary.rows:
+            self.status.setText("Measure first; there is nothing to write.")
+            return None
+        path = path or self._own_path()
+        if not path:
+            return None
+        made = records_from_summary(
+            summary.rows, existing=provenance_keys(path),
+            identify=self._identify, acquired=self._acquired_times())
+        written = 0
+        if made.entries:
+            try:
+                written = write_msp(made.entries, path, append=True)
+            except OSError as exc:
+                self.status.setText(f"Could not write {path}: {exc}")
+                return None
+            names = ", ".join(dict.fromkeys(e.name for e in made.entries))
+            self.session.record(
+                audit.OWN_LIBRARY, target=names,
+                after=os.path.basename(path),
+                note=f"{written} record(s) from the Infusions tab")
+        self._report(f"{made.line(written)} → {os.path.basename(path)}")
+        return made
 
     def _report(self, text: str) -> None:
         self.status.setText(text)

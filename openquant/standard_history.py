@@ -149,6 +149,23 @@ RECORD = "record"
 # --------------------------------------------------------------------------- #
 # reading a record
 # --------------------------------------------------------------------------- #
+def activation_in(*texts) -> str:
+    """
+    The activation one of these pieces of text names, upper case, or `""`.
+
+    Taken as a whole word: a name is `CA-d4_TOFMSMS_EAD_22CE`, and matching
+    on what a name *contains* finds `EAD` inside a compound called
+    `head group`. Shared with `library.py`, which writes the activation into
+    a record it makes from a channel rather than leaving the file name to
+    say it.
+    """
+    for text in texts:
+        found = _WORD.search(str(text or ""))
+        if found:
+            return found.group(1).upper()
+    return ""
+
+
 def activation_of(entry: LibraryEntry) -> str:
     """
     How the compound was fragmented: a field where one was written, and the
@@ -159,13 +176,9 @@ def activation_of(entry: LibraryEntry) -> str:
     says nothing into the same series as one that says CID, which is the
     comparison this exists to prevent.
     """
-    written = field_value(entry, _ACTIVATION_KEYS)
-    for text in (written, getattr(entry, "name", "") or "",
-                 field_value(entry, {"comment"})):
-        found = _WORD.search(str(text))
-        if found:
-            return found.group(1).upper()
-    return ""
+    return activation_in(field_value(entry, _ACTIVATION_KEYS),
+                         getattr(entry, "name", "") or "",
+                         field_value(entry, {"comment"}))
 
 
 def file_of(entry: LibraryEntry) -> str:

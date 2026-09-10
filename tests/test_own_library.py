@@ -342,3 +342,427 @@ def test_the_dialog_names_a_page_the_manual_has():
     from openquant.manual import manual
     from openquant.ui.library_add_dialog import HELP_PAGE
     assert HELP_PAGE in manual().pages
+
+
+# --------------------------------------------------------------------------- #
+# a whole batch of infusions in one go
+# --------------------------------------------------------------------------- #
+# The Explorer writes one record at a time; a folder of infusions is nine of
+# them, and the tab that measured them already holds every number a record
+# needs. What is tested here is what a batch adds that one spectrum does not:
+# the provenance a record carries, the duplicate that provenance prevents, the
+# reason a row that produced nothing gives — and then reading the files again
+# and finding the same peaks.
+from openquant import infusion_report as ir  # noqa: E402
+from openquant.library import (Provenance, identity_of,  # noqa: E402
+                               own_peaks, provenance_comment, provenance_keys,
+                               provenance_of, records_from_summary,
+                               rewrite_records)
+from openquant.session import Session  # noqa: E402
+
+
+def _batch(qapp_module, *names):
+    """A session of infused standards the method knows the formula of."""
+    from openquant.components import Component
+    from tests.test_infusion_report import ADDUCT, FORMULA, _entry, _ions
+
+    session = Session()
+    channels = []
+    for name in names:
+        entry, channel = _entry(name=name)
+        session.entries.append(entry)
+        channels.append(channel)
+    session.method.replace_all([
+        Component(name="TESTOL", precursor=_ions()[0], formula=FORMULA,
+                  adduct=ADDUCT)])
+    return session, channels
+
+
+class _FakeFile:
+    """Enough of a reader for `rewrite_records`: one sample, its channels."""
+
+    def __init__(self, sample):
+        self._sample = sample
+        self.sample_names = [sample.name]
+        self.closed = False
+
+    def sample(self, index: int = 0):
+        return self._sample
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _reader_for(session):
+    """A reader that hands back the fixtures' samples by file name."""
+    samples = {os.path.basename(e.path): e.sample for e in session.entries}
+
+    def reader(path):
+        return _FakeFile(samples[os.path.basename(path)])
+
+    return reader
+
+
+def _on_disk(folder, session):
+    """The acquisitions as empty files, so `rewrite_records` finds them.
+
+    The reader is a fake; what has to be real is only that a file of that
+    name exists, which is the question the rewrite actually asks of a disk.
+    """
+    for entry in session.entries:
+        (folder / os.path.basename(entry.path)).write_bytes(b"")
+    return str(folder)
+
+
+class _Correction:
+    """A mass correction of a fixed number of ppm, as `recalibrate` gives."""
+
+    usable = True
+
+    def __init__(self, ppm: float):
+        self.ppm = float(ppm)
+
+    def ppm_at(self, mz):
+        return np.full(np.asarray(mz, dtype=float).shape, self.ppm)
+
+    def apply(self, mz):
+        return np.asarray(mz, dtype=float) * (1.0 + self.ppm * 1e-6)
+
+
+def test_a_record_is_made_of_every_measured_row(qapp_module):
+    session, _channels = _batch(qapp_module, "TESTOL_infusion_A",
+                                "TESTOL_infusion_B")
+    summary = ir.summarise(session)
+    made = records_from_summary(
+        summary, added="2026-09-10",
+        acquired={"TESTOL_infusion_A.wiff": "2026-09-02T15:06:00Z"})
+
+    assert len(made) == 2 and not made.skipped
+    first = made.entries[0]
+    assert first.name == "TESTOL"                    # the compound, not the file
+    # the peaks the table was measured from, not a second opinion about them
+    assert first.peaks == len(summary.rows[0].peaks)
+    assert first.mz == pytest.approx(
+        sorted(m for m, _i in summary.rows[0].peaks))
+    # the formula and the adduct the report identified, and a precursor that
+    # is what they weigh rather than what the method typed
+    assert first.formula and first.precursor_type
+    assert not first.precursor_disagrees
+    assert first.precursor == pytest.approx(first.exact_precursor)
+    assert first.fields["Acquired"] == "2026-09-02T15:06:00Z"
+    assert float(first.fields["Base_peak_intensity"]) > 0
+    # and the provenance: the file and the channel it came from
+    provenance = provenance_of(first)
+    assert provenance.file == "TESTOL_infusion_A.wiff"
+    assert provenance.channel.startswith("TOF PI")
+    assert provenance.scans == 160 and provenance.added == "2026-09-10"
+    assert provenance.rt_range == pytest.approx((0.0, 1.5))
+    assert made.line() == "2 record(s) written."
+
+
+def test_the_provenance_key_is_the_file_and_the_channel(qapp_module, tmp_path):
+    session, _channels = _batch(qapp_module, "TESTOL_infusion_A",
+                                "TESTOL_infusion_B")
+    summary = ir.summarise(session)
+    path = tmp_path / "mine.msp"
+    made = records_from_summary(summary)
+    write_msp(made.entries, path, append=True)
+    assert len(load_library(path)) == 2
+
+    # the same batch offered again: both rows are already in the file, by the
+    # acquisition and the channel their comments name
+    keys = provenance_keys(path)
+    assert keys == {provenance_of(entry).key for entry in made.entries}
+    assert len(keys) == 2
+    assert sorted(file for file, _channel in keys) == [
+        "testol_infusion_a.wiff", "testol_infusion_b.wiff"]
+    assert all(channel.startswith("tof pi") for _file, channel in keys)
+    again = records_from_summary(summary, existing=keys)
+    assert not again.entries and len(again.skipped) == 2
+    assert "already in the file" in again.skipped[0].reason
+    assert "2 skipped" in again.line(0)
+
+    # and a row repeated inside one batch is written once, not twice
+    twice = records_from_summary(list(summary.rows) + list(summary.rows))
+    assert len(twice.entries) == 2 and len(twice.skipped) == 2
+
+
+def test_a_row_that_gives_no_record_says_why():
+    """
+    A row with nothing to write is a row somebody has to decide about, and a
+    count of what was written hides which one it was.
+    """
+    class _Report:
+        compound = ""
+        sample = "nameless.wiff"
+        file = "nameless.wiff"
+        scans = 0
+
+    class _Row:
+        report = _Report()
+        compound = ""
+        peaks: list = []
+
+    empty = _Row()
+    quiet = _Row()
+    quiet.compound = "CA-d4"
+    quiet.report = _Report()
+    quiet.report.compound = "CA-d4"
+    made = records_from_summary([empty, quiet])
+
+    assert not made.entries and len(made.skipped) == 2
+    assert "no compound could be proposed" in made.skipped[0].reason
+    assert "base peak" in made.skipped[1].reason
+    assert str(made.skipped[0]).startswith("nameless.wiff (")
+    assert made.line(0).startswith("0 record(s) written, 2 skipped:")
+
+
+def test_an_empty_provenance_is_never_a_duplicate():
+    entry = a_record(comment="written from something, somewhere")
+    provenance = provenance_of(entry)
+    assert not provenance.keyed and provenance.file == ""
+    assert provenance_of(entry_from_spectrum("bare", MZ, INTENSITY)) \
+        == Provenance()
+    # and the comment a batch writes reads back as what was written
+    comment = provenance_comment(file="/a/b/CA.wiff", sample="Mix1",
+                                 channel="TOF PI 430.35", scans=339,
+                                 rt_range=(0.0031, 8.2455), added="2026-09-10")
+    assert comment.startswith("Mix1 · TOF PI 430.35 · average of 339 scans")
+    assert "CA.wiff" in comment and "/a/b/" not in comment
+
+
+
+def test_a_comment_is_read_by_whole_words_and_not_by_position():
+    """
+    A sample is named by whoever ran it, and the parser has to survive that.
+    `^CE` alone takes `CEramide` for a collision energy, and a date at the
+    front of a name is not a scan count.
+    """
+    def read(comment):
+        return provenance_of(a_record(comment=comment))
+
+    one = read("CEramide-d7_run · TOF PI 520.50 · average of 100 scans · "
+               "RT 0.0–1.0 min · 20260902_CEramide.wiff · added 2026-09-10")
+    assert one.sample == "CEramide-d7_run" and one.channel == "TOF PI 520.50"
+    assert one.file == "20260902_CEramide.wiff" and one.scans == 100
+
+    two = read("20260902_mix1 · TOF MS (50-700) · a.mzML · added 2026-01-01")
+    assert two.sample == "20260902_mix1" and two.channel == "TOF MS (50-700)"
+    assert two.file == "a.mzML" and two.rt_range is None
+    # a background-subtracted average says so, and that is not the channel
+    three = read("Mix1 · TOF PI 430.35 · average of 12 scans (1–12) · "
+                 "background subtracted · a.wiff")
+    assert three.channel == "TOF PI 430.35" and three.scans == 12
+
+# --------------------------------------------------------------------------- #
+# rewritten from the files
+# --------------------------------------------------------------------------- #
+def test_rewriting_finds_the_same_peaks_and_adds_what_was_missing(
+        qapp_module, tmp_path):
+    session, _channels = _batch(qapp_module, "TESTOL_infusion_A")
+    summary = ir.summarise(session)
+    path = tmp_path / "mine.msp"
+    made = records_from_summary(summary, added="2026-09-10")
+    write_msp(made.entries, path, append=True)
+    before = load_library(path).entries[0]
+
+    # an old record of the same acquisition: no Acquired, no base peak
+    # height, and a precursor typed to two decimals
+    old = ("Name: TESTOL (older)\n"
+           f"PrecursorMZ: {before.precursor:.2f}\n"
+           f"Precursor_type: {before.precursor_type}\n"
+           f"Formula: {before.formula}\n"
+           f"Comment: {before.fields['Comment']}\n"
+           "Num Peaks: 1\n"
+           "100.00000 100\n\n")
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(old)
+    assert len(load_library(path)) == 2
+
+    result = rewrite_records(path, folders=[_on_disk(tmp_path, session)],
+                             reader=_reader_for(session))
+
+    assert len(result.rewritten) == 2 and not result.kept
+    assert result.recalibrated == 0
+    assert os.path.exists(result.backup) and result.backup.endswith(".msp.bak")
+    assert "Name: TESTOL (older)" in open(result.backup, encoding="utf-8").read()
+
+    after = {e.name: e for e in load_library(path).entries}
+    fresh = after["TESTOL"]
+    # byte for byte the same measurement: the file was read again and the
+    # same peaks came back out of it
+    assert np.array_equal(fresh.mz, before.mz)
+    assert np.array_equal(fresh.intensity, before.intensity)
+    # and it gains what the row could not supply: the session held the
+    # sample, and the file holds the day the instrument measured on
+    assert "Acquired" not in before.fields
+    assert fresh.fields["Acquired"] == "2026-09-09T09:00:00Z"
+
+    older = after["TESTOL (older)"]
+    assert older.peaks == fresh.peaks          # read from the file, not kept
+    assert older.fields["Acquired"] == "2026-09-09T09:00:00Z"
+    assert float(older.fields["Base_peak_intensity"]) > 0
+    # the precursor it was written with was rounded; its formula's is not
+    assert older.precursor == pytest.approx(older.exact_precursor)
+    assert not older.precursor_disagrees
+    assert provenance_of(older).added == provenance_of(before).added
+
+
+def test_a_record_whose_file_is_gone_is_kept_exactly_as_it_was(
+        qapp_module, tmp_path):
+    session, _channels = _batch(qapp_module, "TESTOL_infusion_A")
+    summary = ir.summarise(session)
+    path = tmp_path / "mine.msp"
+    write_msp(records_from_summary(summary).entries, path, append=True)
+    write_msp([a_record(name="cholic acid-d4",
+                        comment="Mix1 · TOF PI 411.31 · gone.wiff · "
+                                "added 2026-01-01")], path, append=True)
+    write_msp([a_record(name="from somebody else", comment="no file named")],
+              path, append=True)
+    kept_before = {e.name: (e.mz.copy(), e.intensity.copy(), dict(e.fields))
+                   for e in load_library(path).entries}
+
+    result = rewrite_records(path, folders=[_on_disk(tmp_path, session)],
+                             reader=_reader_for(session))
+
+    assert result.rewritten == ["TESTOL"]
+    reasons = dict(result.kept)
+    assert "gone.wiff is not on disk" in reasons["cholic acid-d4"]
+    assert "names no acquisition" in reasons["from somebody else"]
+    assert "1 record(s) rewritten" in result.summary()
+    assert "2 kept as they were" in result.summary()
+    after = {e.name: e for e in load_library(path).entries}
+    for name in ("cholic acid-d4", "from somebody else"):
+        mz, intensity, fields = kept_before[name]
+        assert np.array_equal(after[name].mz, mz)
+        assert np.array_equal(after[name].intensity, intensity)
+        assert after[name].fields == fields
+
+
+def test_a_correction_in_force_moves_the_axis_and_the_comment_says_so(
+        qapp_module, tmp_path):
+    session, _channels = _batch(qapp_module, "TESTOL_infusion_A")
+    summary = ir.summarise(session)
+    path = tmp_path / "mine.msp"
+    write_msp(records_from_summary(summary).entries, path, append=True)
+    before = load_library(path).entries[0]
+
+    result = rewrite_records(
+        path, folders=[_on_disk(tmp_path, session)],
+        reader=_reader_for(session),
+        corrections={"TESTOL_infusion_A.wiff": _Correction(-5.2)})
+
+    assert result.recalibrated == 1
+    after = load_library(path).entries[0]
+    assert after.mz == pytest.approx(before.mz * (1 - 5.2e-6), abs=1e-5)
+    assert "recalibrated -5.2 ppm" in after.fields["Comment"]
+    # and the provenance still reads: a note is not a piece of it
+    assert provenance_of(after).file == "TESTOL_infusion_A.wiff"
+    assert provenance_of(after).channel.startswith("TOF PI")
+
+
+def test_the_peaks_a_record_is_made_of_are_the_ones_the_table_measured(
+        qapp_module):
+    session, channels = _batch(qapp_module, "TESTOL_infusion_A")
+    summary = ir.summarise(session)
+    mz, intensity = channels[0].spectrum_rt_range(0.0, 1.5)
+    assert own_peaks(mz, intensity) == summary.rows[0].peaks
+
+
+def test_the_identity_is_read_off_the_report_and_not_guessed(qapp_module):
+    session, _channels = _batch(qapp_module, "TESTOL_infusion_A")
+    from tests.test_infusion_report import ADDUCT, FORMULA
+
+    row = ir.summarise(session).rows[0]
+    assert identity_of(row.report) == (FORMULA, ADDUCT)
+
+    class _Silent:
+        basis = ""
+        explanation = None
+    assert identity_of(_Silent()) == ("", "")
+
+
+# --------------------------------------------------------------------------- #
+# the two buttons
+# --------------------------------------------------------------------------- #
+def test_the_infusions_tab_writes_a_record_for_every_row(qapp_module, tmp_path):
+    from openquant import audit
+    from openquant.ui.infusions_panel import InfusionsPanel
+
+    session, _channels = _batch(qapp_module, "TESTOL_infusion_A",
+                                "TESTOL_infusion_B")
+    panel = InfusionsPanel(session)
+    path = str(tmp_path / "mine.msp")
+    panel.settings.setValue("library/own_path", path)
+    try:
+        assert not panel.btn_library.isEnabled()      # nothing measured yet
+        panel.measure()
+        assert panel.btn_library.isEnabled()
+
+        made = panel.add_all_to_library()
+        assert len(made.entries) == 2
+        assert "2 record(s) written" in panel.status.text()
+        assert os.path.basename(path) in panel.status.text()
+        assert len(load_library(path)) == 2
+        assert len(session.audit.of(audit.OWN_LIBRARY)) == 1
+
+        # pressed twice, the file does not grow
+        again = panel.add_all_to_library()
+        assert not again.entries and len(again.skipped) == 2
+        assert len(load_library(path)) == 2
+        assert len(session.audit.of(audit.OWN_LIBRARY)) == 1
+    finally:
+        panel.settings.remove("library/own_path")
+        panel.deleteLater()
+
+
+def test_the_library_panel_rewrites_and_leaves_what_it_cannot_find(panel,
+                                                                   tmp_path):
+    path = str(tmp_path / "mine.msp")
+    write_msp([a_record(name="cholic acid-d4",
+                        comment="Mix1 · TOF PI 411.31 · CA-d4_Mix1.wiff · "
+                                "added 2026-01-01")], path)
+    panel.set_own_path(path)
+    assert panel.btn_rewrite.isEnabled()
+
+    result = panel.rewrite_own_library(confirm=False)
+
+    # nothing is on disk here, so nothing is rewritten and nothing is lost
+    assert result is not None and not result.rewritten
+    assert result.backup == "" and len(result.kept) == 1
+    assert "CA-d4_Mix1.wiff is not on disk" in result.kept[0][1]
+    assert "kept as they were" in panel.status.text()
+    assert len(load_library(path)) == 1
+    assert not os.path.exists(path + ".bak")
+
+
+def test_the_library_panel_asks_the_session_where_the_files_are(panel):
+    class _Entry:
+        path = "/data/infusions/CA-d4_Mix1.wiff"
+        key = "/data/infusions/CA-d4_Mix1.wiff|0"
+
+    class _Session:
+        entries = [_Entry()]
+        def correction_for(self, key):
+            return _Correction(-3.0) if key == _Entry.key else None
+
+    panel.session = _Session()
+    assert "/data/infusions" in panel._acquisition_folders()
+    assert set(panel._corrections()) == {"ca-d4_mix1.wiff"}
+    # no session at all is the ordinary case for a panel with nothing open
+    panel.session = None
+    assert panel._corrections() == {}
+
+
+def test_the_rewrite_button_asks_before_it_writes(panel):
+    """
+    `clicked` carries the button's checked state. Connected straight to
+    `rewrite_own_library` it would arrive as `confirm=False`, and the button
+    would write over a library of months' work without asking.
+    """
+    called = []
+    panel.rewrite_own_library = lambda *args, **kwargs: called.append(
+        (args, kwargs))
+    panel.btn_rewrite.setEnabled(True)
+    panel.btn_rewrite.click()
+    assert called == [((), {})]          # no `False` for confirm

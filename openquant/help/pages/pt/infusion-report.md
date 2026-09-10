@@ -147,6 +147,21 @@ linha deixada de fora fica de fora também da comparação. **Export CSV…**
 escreve a tabela inteira, todas as colunas, com ou sem seleção: um resumo com
 linhas faltando não é a coisa que ele diz ser.
 
+**Add all to library** escreve um registro por linha na sua própria
+biblioteca — o MSP ao qual *Add spectrum to library…* acrescenta, veja
+[[spectral-library]]. A tabela já tirou a média, centroidou e identificou
+cada linha, de modo que um registro é exatamente esses números com um nome e
+uma procedência: o composto que a linha propõe, o aduto e a fórmula que ela
+identificou, a energia de colisão e a ativação do canal, o dia em que o
+arquivo diz que foi adquirido, e um comentário nomeando a aquisição, o canal
+e os scans sobre os quais a média foi tomada. Uma linha cujo composto não
+pôde ser proposto é ignorada e nomeada; o mesmo vale para uma linha que já
+está no arquivo com a mesma aquisição e o mesmo canal, que é a chave que
+impede a mesma medição de ser escrita duas vezes — aperte de novo depois de
+abrir mais duas infusões e só essas duas são acrescentadas. A linha abaixo
+da tabela diz o que foi escrito e o que não foi: *7 record(s) written, 2
+skipped: …*.
+
 A linha de resumo sob a tabela é a única frase que a tabela soma — *3
 compound(s) in 9 infusion(s); 4 of 9 precursor(s) confirmed within 25 ppm; 34
 of 458 predicted ion(s) found across 7; 4 with an own record above 60 in

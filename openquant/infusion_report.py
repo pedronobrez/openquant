@@ -2448,7 +2448,12 @@ def _best_record(library, report: InfusionReport):
         # for digits the method never carried
         tolerance = max(tolerance, mass_precision(precursor))
     hits = library.search(sticks[0], sticks[1], precursor,
-                          precursor_tolerance=tolerance)
+                          precursor_tolerance=tolerance,
+                          # the axis these centroids sit on, so the hit can
+                          # say whether it and the record were written from
+                          # the same one — see `library.axis_gap`
+                          query_correction=(report.correction
+                                            if report.recalibrated else None))
     if not hits:
         where = (f" within ±{tolerance:g} Da of {precursor:g}"
                  if precursor else "")

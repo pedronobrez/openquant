@@ -21,8 +21,8 @@ from PyQt6 import QtCore, QtWidgets
 
 from ..qc import OUTLIER_SIGMA, WARN_SIGMA, ControlChart
 from ..standard_history import (METRICS, MIN_RECORDS, Series, StandardHistory,
-                                caveat, ppm_text, read_history, verdict,
-                                write_csv)
+                                axis_split_note, caveat, ppm_text,
+                                read_history, verdict, write_csv)
 from . import theme
 from .help_window import describe, open_manual
 
@@ -36,7 +36,7 @@ TREND_PEN = "#a4262c"
 
 RECORD_COLUMNS = ["Record", "Acquired", "File", "Precursor", "Base peak m/z",
                   "ppm from first", "Base peak intensity", "Score", "Reverse",
-                  "vs previous", "Out on"]
+                  "vs previous", "Out on", "Mass axis"]
 CHART_COLUMNS = ["Chart", "n", "Centre", "Spread", "Drift", "ρ", "Verdict"]
 
 
@@ -133,6 +133,21 @@ class StandardHistoryDialog(QtWidgets.QDialog):
             QtWidgets.QDialogButtonBox.StandardButton.Save)
         self.btn_save.setText("Export CSV…")
         self.btn_save.clicked.connect(self.save)
+        #: offered only where a compound was split across two mass axes, and
+        #: it does not rewrite anything itself: it closes and asks the
+        #: Library tab, which owns the file, the folders the acquisitions
+        #: were opened from and the corrections in force
+        self.rewrite_requested = False
+        self.btn_rewrite = self.buttons.addButton(
+            "Rewrite from files…",
+            QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
+        self.btn_rewrite.setToolTip(
+            "These records sit on different mass axes and are charted "
+            "separately for it. Rewriting reads every record whose "
+            "acquisition is still on disk again and writes them all onto "
+            "the axis in force now")
+        self.btn_rewrite.setVisible(False)
+        self.btn_rewrite.clicked.connect(self._ask_for_rewrite)
         self.buttons.rejected.connect(self.reject)
         self.buttons.helpRequested.connect(lambda: open_manual(self, HELP_PAGE))
         layout.addWidget(self.buttons)
@@ -194,6 +209,14 @@ class StandardHistoryDialog(QtWidgets.QDialog):
         self._fill_charts(series)
         self._draw_chart(series.charts[self.metric.currentText()])
         said = [series.label, series.summary_line(), caveat(series)]
+        # a series cut off from another by the mass axis says so, and says
+        # what puts the two back together — the button is on the Library tab
+        # and this dialog is opened from it, so it offers the same one
+        split = axis_split_note(self.history.split_with(series)) \
+            if self.history is not None else ""
+        if split:
+            said.append(split)
+        self.btn_rewrite.setVisible(bool(split))
         self.status.setText(" · ".join(part for part in said if part))
 
     def _fill_records(self, series: Series) -> None:
@@ -209,6 +232,7 @@ class StandardHistoryDialog(QtWidgets.QDialog):
                 (f"{_percent(record.previous_score)} / "
                  f"{_percent(record.previous_reverse)}"),
                 "; ".join(flagged.get(record.label, [])) or "",
+                record.axis_label,
             ]
             for column, text in enumerate(cells):
                 item = QtWidgets.QTableWidgetItem(text)
@@ -293,6 +317,11 @@ class StandardHistoryDialog(QtWidgets.QDialog):
         item = self.charts.item(row, 0)
         if item is not None:
             self.metric.setCurrentText(item.text())
+
+    def _ask_for_rewrite(self) -> None:
+        """Close, and let the Library tab do the writing."""
+        self.rewrite_requested = True
+        self.accept()
 
     # -- out ------------------------------------------------------------------- #
     def save(self) -> None:

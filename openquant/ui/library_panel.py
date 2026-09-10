@@ -12,6 +12,13 @@ infused deliberately is in no public library, so the spectrum on screen is
 the only record of it there will ever be: *Add spectrum to library…* writes
 it into an MSP file of the analyst's choosing, appending, and reloads that
 file when it is the one loaded so the record is searchable at once.
+
+Both directions carry the **mass axis**. A record written while the
+recalibration was on says so in its comment; a search says, per hit, which
+axis each side was written from and how far apart the two are, and warns
+where that is further than the tolerance its own peaks were paired within.
+*Re-search with the axis matched* then asks the question again with both
+sides on one axis.
 """
 
 from __future__ import annotations
@@ -19,13 +26,15 @@ from __future__ import annotations
 import datetime
 import os
 
-from PyQt6 import QtCore, QtWidgets
+from PyQt6 import QtCore, QtGui, QtWidgets
 
 from ..library import (MIN_MATCHED, OWN_MIN_RELATIVE, PEAK_TOLERANCE_PPM,
                        PRECURSOR_TOLERANCE_DA, LibraryEntry, LibraryHit,
-                       SpectralLibrary, count_records, entry_from_spectrum,
-                       load_library, rewrite_records, write_msp)
+                       SpectralLibrary, axis_named, count_records,
+                       entry_from_spectrum, load_library, recalibration_in,
+                       rewrite_records, to_axis, write_msp)
 from ..lipidmaps import mass_precision
+from . import theme
 from .help_window import describe
 from .library_add_dialog import AddToLibraryDialog, default_adduct
 from .settings import settings
@@ -45,6 +54,9 @@ class LibraryPanel(QtWidgets.QWidget):
         self.library: SpectralLibrary | None = None
         self._hits: list[LibraryHit] = []
         self._spectrum = None
+        #: what the last search did to the query's mass axis, as a phrase for
+        #: the status line: empty unless the axis was matched to a record's
+        self._matched_axis = ""
         #: set by the Explorer: returns (mz, intensity, precursor) on screen,
         #: optionally with a fourth element — a mapping describing where the
         #: spectrum came from, which is what a record of one's own has to say
@@ -145,7 +157,8 @@ class LibraryPanel(QtWidgets.QWidget):
 
         self.hits = QtWidgets.QTreeWidget()
         self.hits.setHeaderLabels(["Record", "Score", "Reverse", "Matched",
-                                   "Precursor", "Δ ppm", "Δ from", "Formula"])
+                                   "Precursor", "Δ ppm", "Δ from", "Formula",
+                                   "Axis"])
         self.hits.setRootIsDecorated(False)
         self.hits.setToolTip(
             "Score: the cosine over everything both spectra hold. Reverse: "
@@ -164,8 +177,18 @@ class LibraryPanel(QtWidgets.QWidget):
         self.btn_overlay = QtWidgets.QPushButton("Overlay on spectrum")
         self.btn_overlay.setEnabled(False)
         self.btn_clear = QtWidgets.QPushButton("Clear overlay")
+        self.btn_axis = QtWidgets.QPushButton("Re-search with the axis matched")
+        self.btn_axis.setEnabled(False)
+        self.btn_axis.setToolTip(
+            "This record and the spectrum on screen were written from "
+            "different mass axes — one of them recalibrated, the other not, "
+            "or both by different amounts. Search again with the spectrum "
+            "moved onto the record's axis, so the score is about the "
+            "compound and not about the correction. Nothing on screen "
+            "changes: the masses are moved for the search only")
         buttons.addWidget(self.btn_overlay)
         buttons.addWidget(self.btn_clear)
+        buttons.addWidget(self.btn_axis)
         buttons.addStretch(1)
         layout.addLayout(buttons)
 
@@ -185,6 +208,7 @@ class LibraryPanel(QtWidgets.QWidget):
         self.hits.currentItemChanged.connect(self._show_pairs)
         self.btn_overlay.clicked.connect(self._overlay)
         self.btn_clear.clicked.connect(self.sigClearOverlay)
+        self.btn_axis.clicked.connect(lambda: self.search_on_record_axis())
 
         remembered = self.settings.value(SETTING_PATH, "", type=str)
         if remembered and os.path.exists(remembered):
@@ -263,16 +287,51 @@ class LibraryPanel(QtWidgets.QWidget):
         except ValueError:
             return None
 
-    def search(self) -> None:
+    def query_recalibration(self) -> float | None:
+        """
+        The mass correction in force on the spectrum on screen, in ppm.
+
+        Read from the sentence the Explorer passes with the spectrum — the
+        one that also goes into a record's comment when the spectrum is
+        written into a library — so the query's axis and a record's are read
+        by the same parser and cannot be read two different ways. None where
+        nothing was applied, which is the ordinary case.
+        """
+        return recalibration_in(self._context.get("recalibration"))
+
+    def search(self, *, onto_ppm: float | None = None,
+               match_axis: bool = False) -> None:
+        """
+        The spectrum on screen against the library.
+
+        `match_axis` searches with the query moved onto `onto_ppm` — the axis
+        a record was written from — so that both sides sit on one axis and
+        the score is about the compound. Nothing on screen changes: the
+        masses are moved for the search and thrown away, because the pane is
+        showing what the acquisition gave.
+        """
         if self.library is None:
             self.status.setText("Load a library first.")
             return
-        self._pull_spectrum()
+        if not match_axis:
+            self._pull_spectrum()
         if self._spectrum is None:
             self.status.setText("Show a spectrum first.")
             return
         mz, intensity = self._spectrum
         polarity = self.query_polarity()
+        query_ppm = self.query_recalibration()
+        moved = ""
+        if match_axis:
+            mz = to_axis(mz, query_ppm, onto_ppm)
+            moved = (f"Searched with the query moved from "
+                     f"{axis_named(query_ppm)} onto {axis_named(onto_ppm)}. "
+                     f"That takes the correction one side carried and the "
+                     f"other did not out of the comparison; it does not put "
+                     f"either on the right axis — Rewrite from files… does "
+                     f"that, by writing every record from the axis in force. ")
+            query_ppm = onto_ppm
+        self._matched_axis = moved
         self._hits = self.library.search(
             mz, intensity, self._query_precursor(),
             tolerance_ppm=self.peak_tol.value(),
@@ -280,7 +339,8 @@ class LibraryPanel(QtWidgets.QWidget):
             min_matched=self.min_matched.value(),
             include_unknown_precursor=self.unknown_precursor.isChecked(),
             polarity=polarity,
-            include_other_polarity=self.other_polarity.isChecked())
+            include_other_polarity=self.other_polarity.isChecked(),
+            query_correction=query_ppm)
         self.hits.clear()
         self.pairs.clear()
         for hit in self._hits:
@@ -291,11 +351,26 @@ class LibraryPanel(QtWidgets.QWidget):
             precursor = "—" if entry.precursor is None else f"{entry.precursor:.4f}"
             if hit.precursor_disagrees:
                 precursor += f" ≠ {entry.exact_precursor:.4f}"
+            # which mass axis this record was written from, and — where the
+            # query was corrected too — how far the two sit apart before the
+            # compound is considered at all
+            axis = ("instrument" if hit.record_ppm is None
+                    else f"corrected {hit.record_ppm:+.1f}")
+            if hit.axis_gap_ppm:
+                axis += f" · {abs(hit.axis_gap_ppm):.1f} ppm apart"
             item = QtWidgets.QTreeWidgetItem([
                 entry.name, f"{hit.score * 100:.0f}", f"{hit.reverse * 100:.0f}",
                 f"{hit.matched}/{hit.of_library}", precursor,
                 "—" if hit.delta_ppm is None else f"{hit.delta_ppm:+.1f}",
-                hit.delta_basis or "—", entry.formula])
+                hit.delta_basis or "—", entry.formula, axis])
+            item.setToolTip(8, hit.axis_sentence
+                            + (f"\n\n{hit.axis_warning}" if hit.axes_differ
+                               else ""))
+            if hit.axes_differ:
+                # the one thing on the row that is not a property of the
+                # record: the score itself is not to be read
+                item.setForeground(
+                    8, QtGui.QBrush(QtGui.QColor(theme.danger())))
             for column in (1, 2, 3, 4, 5):
                 item.setTextAlignment(column, QtCore.Qt.AlignmentFlag.AlignRight)
             item.setToolTip(0, "\n".join(f"{k}: {v}" for k, v in entry.fields.items())
@@ -327,11 +402,22 @@ class LibraryPanel(QtWidgets.QWidget):
                       if precursor is not None else "")
             if polarity and not self.other_polarity.isChecked():
                 scoped += f", {str(polarity).lower()} records only"
-            self.status.setText(f"{len(self._hits)} record(s) matched{scoped}; "
-                                f"best {self._hits[0].score * 100:.0f}.")
+            said = (f"{self._matched_axis}{len(self._hits)} record(s) "
+                    f"matched{scoped}; best "
+                    f"{self._hits[0].score * 100:.0f}.")
+            # the axis warning goes on the line rather than only in a
+            # tooltip: a score measured across two mass axes is not a score,
+            # and a reader who has to hover to find that out will not
+            crossed = [hit for hit in self._hits if hit.axes_differ]
+            if crossed:
+                said += (f" {len(crossed)} of them on a different mass axis "
+                         f"from the spectrum: {crossed[0].axis_warning}. "
+                         f"Re-search with the axis matched.")
+            self.status.setText(said)
         else:
-            self.status.setText("No record matched. Widen the tolerances, or "
-                                "the compound is not in this library.")
+            self.status.setText(f"{self._matched_axis}No record matched. "
+                                f"Widen the tolerances, or the compound is "
+                                f"not in this library.")
         self.btn_overlay.setEnabled(bool(self._hits))
 
     def _current_hit(self) -> LibraryHit | None:
@@ -341,9 +427,35 @@ class LibraryPanel(QtWidgets.QWidget):
         index = self.hits.indexOfTopLevelItem(item)
         return self._hits[index] if 0 <= index < len(self._hits) else None
 
+    def search_on_record_axis(self):
+        """
+        The button: search again with both sides on the record's mass axis.
+
+        The record's axis rather than the query's, in both directions — a
+        corrected query is put back where the instrument read it to meet an
+        uncorrected record, and an uncorrected query is moved to meet a
+        corrected one. Which axis was used is said on the status line, since
+        the scores that come back are not the scores the ordinary search
+        would give and the reader has to know which question was asked.
+
+        It is a diagnosis and not a repair: it says how much of the agreement
+        was the correction, and it can make a match worse, because moving a
+        query onto a record written from an uncorrected axis moves it off its
+        own lock masses. Measured on a real infusion, a hit of 61.0 at a 5
+        ppm tolerance came back as no hit at all that way. What puts every
+        record on one right axis is *Rewrite from files…*.
+        """
+        hit = self._current_hit()
+        if hit is None:
+            self.status.setText("Search first, then choose a record.")
+            return None
+        self.search(onto_ppm=hit.record_ppm, match_axis=True)
+        return self._hits
+
     def _show_pairs(self, *_args) -> None:
         self.pairs.clear()
         hit = self._current_hit()
+        self.btn_axis.setEnabled(hit is not None and bool(hit.axis_gap_ppm))
         if hit is None:
             return
         for pair in sorted(hit.pairs, key=lambda p: -p.library_share):
@@ -406,6 +518,11 @@ class LibraryPanel(QtWidgets.QWidget):
             return None
         dialog = StandardHistoryDialog(path, parent=self)
         dialog.exec()
+        # the dialog offers the repair for a history split across two mass
+        # axes and does not perform it: this panel owns the file, the folders
+        # and the corrections in force, and there is one place that writes
+        if dialog.rewrite_requested:
+            self.rewrite_own_library()
         dialog.deleteLater()
         return dialog
 

@@ -117,6 +117,100 @@ spectrum** draws the record's peaks over the spectrum pane, scaled to its
 base peak, the way the [[mass-calculator]] overlays an isotope pattern.
 **Clear overlay** removes it.
 
+## Two mass axes in one comparison
+
+A record written while [[mass-recalibration]] was switched on carries peaks
+the instrument never reported: every one of them was moved by a few parts
+per million before the record was written, and its comment says so —
+`recalibrated −5.2 ppm`. A record that says nothing was written from the
+numbers the instrument gave. Both are legitimate; they are not the same
+measurement, and a search between them has to say which is which.
+
+So the **Axis** column on every hit says what the record was written from,
+and — when the spectrum on screen is itself on a corrected axis, which the
+Explorer passes with it — how the two combine:
+
+| The two axes | What the hit says |
+|---|---|
+| neither corrected | *record and query both on the instrument's axis* |
+| both corrected | *record corrected −5.2 ppm, query corrected −6.1 ppm: each on the axis its own lock masses define* |
+| one of the two | *record on the instrument's axis, query corrected −5.6 ppm: 5.6 ppm apart by construction* |
+
+**Two corrected spectra are on one axis, however far apart the corrections
+were.** Each was moved onto the masses its own acquisition's lock masses
+define, so the difference between the two corrections is how far apart the
+two runs had drifted — which correcting them is what removed. What is
+*apart by construction* is a correction one side carries and the other does
+not: that one sits in every Δ ppm of the comparison and in every peak the
+pairing had to decide on. Where it is wider than the **Peaks ±** tolerance
+of the search, the row is marked and the line under the hits says so, in
+those words: the score is then measuring the axes and not the compound.
+
+**Re-search with the axis matched** asks the question again with the
+spectrum moved onto the record's axis — a corrected query put back where
+the instrument read it to meet an uncorrected record, or an uncorrected one
+moved to meet a corrected record. Nothing on screen changes; the masses are
+moved for that search only, and the line says which axis was used.
+
+It is a diagnosis, not a repair. It takes out the difference that was put
+there by the corrections; it does not put either side on the *right* axis,
+and where the record is the uncorrected one it moves the query off its own
+lock masses. Measured below, one hit of 61.0 became no hit at all that way.
+What puts a whole library on one axis is **Rewrite from files…**.
+
+### Measured: a record's axis against a query's, four ways
+
+The three bile-acid standards, CID infusions written into a library of
+their own twice — once from the axis the instrument reported and once with
+the recalibration on — and each EAD infusion of the same compound searched
+against both libraries, itself both ways. The corrections are each
+acquisition's own precursor ladder ([[mass-recalibration]]): the CID
+records **+3.8, +6.6 and +2.0 ppm**, the EAD queries **−5.3, −5.6, −8.6 and
+−7.5 ppm**. Each cell is *score / median |Δ ppm| over the paired peaks*.
+
+At the search's default **20 ppm** peak tolerance:
+
+| query | both as measured | record raw, query corrected | record corrected, query raw | **both corrected** |
+|---|---|---|---|---|
+| CA-d4 EAD 12 eV | 6.5 / 11.5 | 6.5 / 7.7 | 6.5 / 9.2 | **6.5 / 4.3** |
+| CA-d4 EAD 22 eV | 29.3 / 10.8 | 29.3 / 5.2 | 29.3 / 7.0 | **29.6 / 3.5** |
+| DCA-d4 EAD 22 eV | 34.3 / 13.0 | 35.3 / 4.6 | 35.3 / 6.4 | **35.5 / 2.4** |
+| TDCA-d4 EAD 22 eV | 61.4 / 9.8 | 61.4 / 3.1 | 61.4 / 7.8 | **61.4 / 2.1** |
+
+At **5 ppm**:
+
+| query | both as measured | record raw, query corrected | record corrected, query raw | **both corrected** |
+|---|---|---|---|---|
+| CA-d4 EAD 12 eV | **no hit** | 1.8 / 0.9 | 1.8 / 2.4 | **5.1 / 3.4** |
+| CA-d4 EAD 22 eV | 1.0 / 3.4 | 16.5 / 2.1 | 15.9 / 2.5 | **26.6 / 2.5** |
+| DCA-d4 EAD 22 eV | **no hit** | 13.8 / 4.1 | 2.7 / 4.3 | **33.5 / 2.2** |
+| TDCA-d4 EAD 22 eV | **no hit** | 61.0 / 3.0 | 2.4 / 4.4 | **61.0 / 2.0** |
+
+Three things come out of it, and one of them changed the program.
+
+**Both corrected is the best of the four, every time.** At 20 ppm the
+scores barely move — a pairing that was already succeeding goes on
+succeeding — but the masses agree far better: the median gap per paired
+peak falls from 9.8–13.0 ppm to 2.1–4.3. At 5 ppm that is the whole result:
+three of the four queries have **no hit at all** when neither side is
+corrected, and all four match when both are.
+
+**And that is so although the two corrections are furthest apart there.**
+TDCA-d4's record was corrected +2.0 ppm and its query −7.5 — 9.5 ppm
+between them — and it gave the best agreement of the row, 2.0 ppm per peak.
+The first version of this warned on that pair, on the arithmetic that two
+different corrections must mean two different axes. The measurement says
+otherwise, and the rule now is the one above: what counts is a correction
+one side carries and the other does not.
+
+**Matching the axis is not the same as correcting it.** TDCA-d4 at 5 ppm
+against the uncorrected record scores 61.0 with the query corrected, and
+**no hit** once the query is moved back onto the record's uncorrected axis
+— because the record itself was 2.0 ppm out. Matching the axes removes the
+difference the corrections put there and leaves whatever error each side
+had of its own. It says how much of the agreement was the correction; it
+does not manufacture agreement, and it is not the repair.
+
 ## Measured on MassBank
 
 The full MassBank export in NIST format — 139,006 records, 137 MB — reads
@@ -210,6 +304,19 @@ was written in a form the parser reads back.
 search computes the ion's real mass from them, measures Δ ppm against it,
 and refuses the record to a scan of the other polarity. A record of your
 own is the one library record you can be sure carries them.
+
+**And the record knows which mass axis it was written from.** With
+[[mass-recalibration]] switched on, the spectrum on screen is not the one
+the instrument reported — every peak has been moved by a few parts per
+million — so the comment carries `recalibrated −5.2 ppm` and what it stood
+on, whether the record was written from the Explorer, from the whole folder
+at once, or by a rewrite. A record that says nothing was written from the
+instrument's own numbers, which is what every record made before this
+existed was. From there the axis is read back everywhere it matters: a
+search states the combination of the two axes and warns when they are
+further apart than its own peak tolerance, and [[standard-history]] keeps a
+corrected record and an uncorrected one in separate series when the
+correction between them is large enough to break the pairing.
 
 ### A whole folder in one go
 

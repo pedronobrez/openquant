@@ -34,6 +34,46 @@ a carrega: as nove infusões do ZenoTOF disponíveis dizem todas `TOF PI` e
 `Product`, e a energia dos elétrons aparece apenas no nome do arquivo. Um
 registro cujo nome não diz é agrupado como *não declarado*, nunca como CID.
 
+### E pelo eixo de massa do qual foi escrito
+
+Um registro escrito enquanto a [[mass-recalibration]] estava ligada carrega
+picos que o instrumento nunca reportou: eles foram movidos por algumas
+partes por milhão antes, e o comentário do registro diz isso. Pontuar um
+registro desses contra um escrito do eixo do próprio instrumento mede a
+correção e a reporta como o padrão tendo mudado, de modo que o eixo é um
+atributo da série exatamente como a energia é. A coluna **Mass axis** da
+tabela diz de qual cada registro veio, e uma série corrigida carrega `axis
+corrected −5.2 ppm` no nome.
+
+Duas regras impedem que isso parta histórias que deveriam estar inteiras:
+
+- **Dois registros corrigidos são um só eixo, por mais distantes que as
+  correções tenham sido.** Cada um está onde as lock masses da própria
+  aquisição dele o põem. Só uma correção que um registro carrega e outro não
+  pode separá-los — veja a medição de quatro modos em [[spectral-library]],
+  onde o par cujas correções eram as mais distantes foi o que melhor
+  concordou.
+- **E só quando ela é maior que os 20 ppm dentro dos quais uma busca pareia
+  picos.** Abaixo disso os dois põem cada pico na mesma janela um do outro,
+  e duas séries seriam uma história partida ao meio por um cinquentavo de
+  largura de pico; a diferença ainda aparece no gráfico de massa, que avisa
+  a 10 ppm e marca a 20.
+
+Onde um composto de fato sai como duas séries por essa razão, a linha sob os
+gráficos diz quais séries são, quanta correção uma carrega e a outra não, e
+que o reparo é **Rewrite from files…** — que lê de novo cada registro cuja
+aquisição ainda está em disco e escreve todos a partir do eixo em vigor
+agora. O botão é oferecido nesta janela quando é isso que está errado, e faz
+a escrita de volta na aba [[spectral-library]], que é dona do arquivo.
+
+Nas infusões reais nada se parte: as correções que as próprias escadas de
+precursor dão são de **+2.0 a −8.6 ppm**, todas dentro dos 20 ppm, de modo
+que um registro corrigido e um não corrigido do mesmo padrão continuam sendo
+uma série e dizem isso no nome da série — *axis corrected +6.6 ppm for 1 of
+2, the rest on the instrument's own*. Esse é o resultado pretendido. A
+divisão em si só é exercitada em registros inventados, e o manual diz isso
+em vez de sugerir uma medição que não foi feita.
+
 ## Os três gráficos
 
 O primeiro registro de uma série é a **referência**, e tudo é medido contra

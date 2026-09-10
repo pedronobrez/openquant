@@ -56,6 +56,17 @@ activation, each with its own reference — the first record *of that series*
 — and the absolute height, which is only comparable within one method
 anyway, is charted inside a series and never across.
 
+**And a record written from a corrected mass axis is not compared with one
+written from the instrument's.** The mass recalibration moves every peak of
+a record by a few parts per million before it is written down, so a
+verification made with it on and one made with it off differ by the
+correction whatever the standard did. The axis is therefore a series
+attribute like the energy — cut by how far apart the two corrections are
+rather than by whether there was one, since under `SAME_AXIS_PPM` they put
+every peak in the same window and are one axis. Where a compound does come
+out as two series for that reason the chart says so and names the repair:
+*Rewrite from files…* writes them all from the same axis again.
+
 What it cannot do
 -----------------
 
@@ -76,9 +87,9 @@ import re
 import numpy as np
 
 from .infusion_report import ENERGY_TOLERANCE_EV, compound_of, energy_of
-from .library import (PEAK_TOLERANCE_PPM, LibraryEntry, SpectralLibrary,
-                      acquired_of, base_intensity_of, field_value, load_library,
-                      match)
+from .library import (CORRECTED_AXIS, INSTRUMENT_AXIS, PEAK_TOLERANCE_PPM,
+                      LibraryEntry, SpectralLibrary, acquired_of,
+                      base_intensity_of, field_value, load_library, match)
 from .qc import (DRIFT_CORRELATION, OUTLIER_SIGMA, WARN_SIGMA, ControlChart,
                  Limits, PERCENT, chart_from_values)
 
@@ -113,6 +124,38 @@ MASS_LIMITS = Limits(warn=WARN_PPM, out=OUT_PPM, always=ALWAYS_OUT_PPM,
 #: infusions came back 950,000 and 1,224,000 ppm from their reference,
 #: which is 377.30 against 839.23 — a different precursor, not a drift.
 SAME_PEAK_PPM = 50.0
+
+#: how close two records' mass axes have to be before they are one axis.
+#:
+#: A record written while the mass recalibration was on carries peaks the
+#: instrument never reported, and one written without it carries the numbers
+#: the instrument wrote; scoring the two against each other measures the
+#: correction and calls it the standard changing. So the axis is a series
+#: attribute, exactly as the collision energy is.
+#:
+#: The cut is between **corrected and not**, and never between two different
+#: corrections: two records each corrected against their own acquisition's
+#: lock masses stand on the axis those lock masses define, which is one axis
+#: however far apart the two corrections were — `library.axis_gap` carries
+#: the measurement that says so. What splits a series is a correction one
+#: record carries and another does not.
+#:
+#: And only where that correction is large enough to matter. The figure is
+#: `library.PEAK_TOLERANCE_PPM`, the ppm a search pairs peaks within: under
+#: it the two put every peak in the same window as each other, so a record
+#: corrected by +0.3 ppm and an uncorrected one are one series and splitting
+#: them would break a history over a fiftieth of a peak width. Measured on
+#: the three bile-acid standards, no correction fitted from an infusion's own
+#: precursor ladder reaches it — the largest was 8.6 ppm — so on that data
+#: nothing splits, which is the intended outcome and not a missing feature.
+SAME_AXIS_PPM = PEAK_TOLERANCE_PPM
+
+#: what to do about a history split across two axes, named in the words the
+#: button carries. The repair is not to rescore anything: it is to write
+#: every record whose acquisition is still on disk from the same axis again.
+REWRITE_REPAIR = ("Rewrite from files… on the Library tab reads every record "
+                  "whose acquisition is still on disk again and writes them "
+                  "all onto the axis in force now")
 
 #: what the three charts are called, in the order they are offered
 SCORE = "score against the first record"
@@ -199,6 +242,9 @@ class Record:
         self.file = file_of(entry)
         self.energy = energy_of(entry)
         self.activation = activation_of(entry)
+        #: the correction in force when the record was written, in ppm, or
+        #: None where it was written from the instrument's own axis
+        self.recalibrated_ppm = entry.recalibrated_ppm
         self.precursor = entry.precursor
         self.base_intensity = base_intensity_of(entry)
         top = int(np.argmax(entry.intensity)) if entry.peaks else 0
@@ -214,6 +260,29 @@ class Record:
         #: and the same figure where it can be read as a mass error at all:
         #: None when the two base peaks are not the same ion
         self.ppm: float | None = None
+
+    @property
+    def axis(self) -> str:
+        """`CORRECTED_AXIS` or `INSTRUMENT_AXIS`, in one word."""
+        return (CORRECTED_AXIS if self.recalibrated_ppm is not None
+                else INSTRUMENT_AXIS)
+
+    @property
+    def axis_ppm(self) -> float:
+        """
+        Where this record's axis sits, in ppm from the instrument's.
+
+        Zero for a record nobody corrected — which is not a claim that its
+        axis is right, only that nothing was added to it. `axis` is what says
+        whether the zero was applied or merely never moved.
+        """
+        return 0.0 if self.recalibrated_ppm is None else self.recalibrated_ppm
+
+    @property
+    def axis_label(self) -> str:
+        """The record's axis in words, for a table cell."""
+        return ("the instrument's" if self.recalibrated_ppm is None
+                else f"corrected {self.recalibrated_ppm:+.1f} ppm")
 
     @property
     def same_base_peak(self) -> bool:
@@ -259,12 +328,14 @@ def _sort_key(record: Record) -> tuple:
 # --------------------------------------------------------------------------- #
 class Series:
     """
-    One compound at one collision energy and activation, in date order.
+    One compound at one collision energy, activation and mass axis, in date
+    order.
 
     The reference is the first record of the *series*, not of the compound.
     The two are the same thing wherever a standard is only ever verified one
     way, and where they differ the series is right: a cosine against a
-    spectrum measured at another energy is a measurement of the energy.
+    spectrum measured at another energy is a measurement of the energy, and
+    a cosine across two mass axes is a measurement of the correction.
     """
 
     def __init__(self, compound: str, energy: float | None, activation: str,
@@ -273,6 +344,17 @@ class Series:
         self.energy = energy
         self.activation = activation
         self.records = sorted(records, key=_sort_key)
+        #: how many of its records were written from a corrected axis
+        self.corrected = sum(1 for r in self.records
+                             if r.recalibrated_ppm is not None)
+        #: what those corrections came to, in ppm: their median, and zero
+        #: where the series is the instrument's own axis. Not an average over
+        #: every record — a series may hold a corrected record beside an
+        #: uncorrected one, when the correction was too small to separate
+        #: them, and the figure worth printing is the correction
+        self.axis_ppm = float(np.median(
+            [r.recalibrated_ppm for r in self.records
+             if r.recalibrated_ppm is not None])) if self.corrected else 0.0
         for order, record in enumerate(self.records, start=1):
             record.order = order
         self._score()
@@ -292,7 +374,7 @@ class Series:
 
     # -- what it is called ---------------------------------------------------- #
     @property
-    def conditions(self) -> str:
+    def method_conditions(self) -> str:
         """The energy and activation, as a person would write them."""
         bits = []
         if self.activation:
@@ -302,13 +384,43 @@ class Series:
         return " ".join(bits)
 
     @property
+    def axis_label(self) -> str:
+        """
+        How this series' mass axis is named, or "" for the instrument's.
+
+        Named only when something was applied, because a name on every series
+        would put five words on the ninety-nine histories where nothing was
+        corrected in order to serve the hundredth.
+        """
+        if not self.corrected:
+            return ""
+        said = f"axis corrected {self.axis_ppm:+.1f} ppm"
+        if self.corrected < len(self.records):
+            said += (f" for {self.corrected} of {len(self.records)}, the rest "
+                     f"on the instrument's own and within {SAME_AXIS_PPM:g} "
+                     f"ppm of it")
+        return said
+
+    @property
+    def conditions(self) -> str:
+        """The energy, the activation and the axis, where the axis was moved."""
+        axis = self.axis_label
+        return f"{self.method_conditions} · {axis}" if axis \
+            else self.method_conditions
+
+    @property
     def label(self) -> str:
         return f"{self.compound} · {self.conditions}"
 
     @property
-    def key(self) -> tuple:
+    def method_key(self) -> tuple:
+        """What makes two series the same measurement but for the axis."""
         return (self.compound, self.activation,
                 float("inf") if self.energy is None else self.energy)
+
+    @property
+    def key(self) -> tuple:
+        return self.method_key + (self.axis_ppm,)
 
     # -- what it holds --------------------------------------------------------- #
     @property
@@ -423,7 +535,8 @@ class StandardHistory:
             grouped.setdefault(_group(record), []).append(record)
         self.series = sorted(
             (Series(compound, energy, activation, members)
-             for (compound, activation, energy), members in grouped.items()),
+             for (compound, activation, energy), together in grouped.items()
+             for members in _by_axis(together)),
             key=lambda series: series.key)
 
     @property
@@ -432,6 +545,29 @@ class StandardHistory:
 
     def for_compound(self, compound: str) -> list[Series]:
         return [series for series in self.series if series.compound == compound]
+
+    def axis_splits(self, compound: str = "") -> list[list[Series]]:
+        """
+        Every set of series that would be one but for the mass axis.
+
+        A list per compound, activation and energy that came out as more than
+        one series because its records sit on axes further apart than
+        `SAME_AXIS_PPM`. This is the finding the chart has to say out loud:
+        the standard was not verified twice, it was written down twice on two
+        axes, and `REWRITE_REPAIR` is what puts them back together.
+        """
+        grouped: dict[tuple, list[Series]] = {}
+        for series in (self.for_compound(compound) if compound
+                       else self.series):
+            grouped.setdefault(series.method_key, []).append(series)
+        return [group for group in grouped.values() if len(group) > 1]
+
+    def split_with(self, series: Series) -> list[Series]:
+        """The series this one was cut from by the axis, itself included."""
+        for group in self.axis_splits():
+            if any(other is series for other in group):
+                return group
+        return [series]
 
     def summary(self, compound: str = "") -> str:
         """What the file holds, in a sentence."""
@@ -466,6 +602,55 @@ def _group(record: Record) -> tuple:
     if energy is not None:
         energy = round(energy / ENERGY_TOLERANCE_EV) * ENERGY_TOLERANCE_EV
     return (record.compound, record.activation, energy)
+
+
+def _by_axis(records: list[Record]) -> list[list[Record]]:
+    """
+    One compound at one energy cut again by the mass axis it was written on.
+
+    Two groups at most, and only ever between corrected and not: records that
+    were each corrected against their own acquisition's lock masses are on
+    one axis whatever the corrections were, and records nobody corrected are
+    on the instrument's. What can separate them is the correction the one
+    side carries and the other does not — and only when it is larger than
+    `SAME_AXIS_PPM`, since under that the two put every peak in the same
+    window as each other and two series would be a history broken in half
+    over a fiftieth of a peak width.
+    """
+    corrected = [r for r in records if r.recalibrated_ppm is not None]
+    plain = [r for r in records if r.recalibrated_ppm is None]
+    if not corrected or not plain:
+        return [list(records)]
+    if max(abs(r.recalibrated_ppm) for r in corrected) <= SAME_AXIS_PPM:
+        return [list(records)]
+    return [plain, corrected]
+
+
+def axis_split_note(group: list[Series]) -> str:
+    """
+    What to say about a compound whose records sit on more than one axis.
+
+    Everything the reader needs to act: which series there are, how far apart
+    their axes are, that the gap is wider than the tolerance a search pairs
+    peaks within, and the repair. An empty string where there is nothing to
+    say, which is the ordinary case.
+    """
+    if len(group) < 2:
+        return ""
+    ordered = sorted(group, key=lambda series: series.corrected)
+    named = ", ".join(
+        f"{len(series.records)} on "
+        + ("the instrument's axis" if not series.corrected
+           else f"an axis corrected {series.axis_ppm:+.1f} ppm")
+        for series in ordered)
+    gap = max(abs(record.axis_ppm) for series in group
+              for record in series.records)
+    return (f"{ordered[0].compound} · {ordered[0].method_conditions} is "
+            f"{len(group)} series, not one: {named} — up to {gap:.1f} ppm of "
+            f"correction carried by one and not the other, further than the "
+            f"{PEAK_TOLERANCE_PPM:g} ppm a search pairs peaks within. Scoring "
+            f"them against each other would measure the correction and "
+            f"report it as the standard changing. {REWRITE_REPAIR}.")
 
 
 def read_history(path: str | os.PathLike) -> StandardHistory:
@@ -533,6 +718,10 @@ def caveat(series: Series) -> str:
     """
     said = [f"{series.conditions}: an absolute intensity is comparable only "
             f"within one method and energy"]
+    if series.corrected:
+        said.append(f"every record here was written from a mass axis "
+                    f"corrected {series.axis_ppm:+.1f} ppm; a record written "
+                    f"from the instrument's own axis is a different series")
     if not series.ordered:
         said.append(f"{len(series.records) - series.dated} of "
                     f"{len(series.records)} record(s) carry no acquisition "
@@ -554,7 +743,7 @@ CSV_HEADER = ("Compound", "Activation", "Collision energy", "Record",
               "Acquired", "File", "Precursor", "Base peak m/z",
               "ppm from first", "Base peak intensity", "Score vs first",
               "Reverse vs first", "Score vs previous", "Reverse vs previous",
-              "Out on")
+              "Out on", "Mass axis")
 
 
 def ppm_text(record: Record) -> str:
@@ -599,6 +788,7 @@ def csv_rows(history: StandardHistory, compound: str = "") -> list[list[str]]:
                 _cell(None if record.previous_reverse is None
                       else record.previous_reverse * 100, 1),
                 "; ".join(flagged.get(record.label, [])),
+                record.axis_label,
             ])
     return rows
 
@@ -613,6 +803,8 @@ def csv_text(history: StandardHistory, compound: str = "") -> str:
     """
     lines = [f"# standard history from {os.path.basename(history.path)}"
              if history.path else "# standard history"]
+    for group in history.axis_splits(compound):
+        lines.append(f"# {axis_split_note(group)}")
     for series in (history.for_compound(compound) if compound
                    else history.series):
         lines.append(f"# {series.label}: {series.summary_line()}")

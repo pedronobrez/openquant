@@ -530,8 +530,23 @@ UV detector, is not implemented there) — untested on real Windows.
   check: 51 analytes with a theoretical mass instead of 15, and over their
   197 measurements within 25 ppm the correction moves the median error
   from −7.0 to −1.4 ppm. `lock_masses_from_drift` has no gate on a lock
-  mass's error against its own formula yet; `C17:0_Ceramide` sits 238 ppm
-  off and was one injection short of qualifying.
+  mass's error against its own formula yet; `C17:0_Ceramide` sat 237 ppm
+  off and was one injection short of qualifying — hence the gate below.
+- **A lock mass has to agree with the compound, not just with itself.**
+  `same_ion` asks the injections whether they agree with each other; a
+  standard whose ±0.25 Da window holds the same *wrong* ion every time
+  passes it. `recalibrate.MAX_LOCK_ERROR_PPM` (50) is the other half: past
+  it in most injections is `lock_mass_refusal` — "measures 237 ppm from its
+  formula: not the ion the formula names" — on the verdict, the panel and
+  the report. Fifty was measured: over 1,439 survey measurements of the
+  batch's 60 formula-bearing in-survey components, |measured − formula| is
+  bimodal, 19.5% under 20 ppm, 53.5% past 200, trough at 30–50, so 50 is
+  the trough's far edge and twice `CONSENSUS_SPREAD_PPM`, with ~5× margin
+  either side. On the batch it names five standards and changes no number
+  (all five had already failed `same_ion` or the count); the near miss
+  says why it exists — `Sphingosine C14:0` holds to 52 ppm across 25
+  injections at 156 ppm from its formula, one steady ion that is not the
+  compound. `check_method` cannot make this check: it never reads a survey.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

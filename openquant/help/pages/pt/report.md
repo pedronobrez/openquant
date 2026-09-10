@@ -59,6 +59,42 @@ próprio pico-base — que é o único modo como dois espectros de tamanhos
 diferentes se comparam numa tabela. Uma massa presente em um e ausente no
 outro é uma diferença, e uma diferença se lê na figura.
 
+## Temas
+
+O diálogo de exportação pergunta em que tema o documento deve ser escrito, e
+lembra a resposta para a próxima vez. Ele muda a aparência do relatório e
+nunca o que ele diz: as mesmas seções, os mesmos números, as mesmas palavras.
+
+| Tema | Para |
+|---|---|
+| Paper | o relatório como sempre foi — o azul do projeto nos títulos, linhas listradas, as figuras nas cores dos próprios traços |
+| Black and white | uma revista que imprime em nenhuma outra cor, ou uma fotocopiadora |
+
+**Black and white** é mais do que um relatório com a cor retirada. Nada leva
+fundo tingido, porque um tom de 4% se reproduz como nada ou como uma
+sujeira: as linhas listradas e as células de cabeçalho sombreadas viram
+filetes, e uma linha reprovada fica em negrito onde estava em vermelho. As
+figuras acompanham — um relatório em preto e branco com um espectro em quatro
+cores não é um relatório em preto e branco —, de modo que os espectros
+comparados são desenhados em dois tons e dois estilos de linha: o primeiro
+traço em preto sólido (21:1 sobre branco), o segundo tracejado em #666666
+(5,7:1) e, onde o desenho é de centroides, uma cabeça cheia nos bastões altos
+do primeiro traço e uma vazada nos do segundo, já que um tracejado não
+aparece num bastão de um ponto de largura. Medido nos dois espectros médios
+de CA-d4 cabeça-com-cauda: com os rótulos de pico mascarados, a tinta do
+traço de cima tem cinza mediano 0 e a do de baixo 102, numa página que é 255,
+e o padrão tracejado continua sendo uma linha tracejada depois de a figura
+ser reduzida à metade.
+
+Há um terceiro tema, **dark**, e ele é só para a exportação em HTML. Um PDF é
+uma coisa que alguém imprime, e uma impressora que recebe uma página escura
+deposita uma folha inteira de toner com as letras vazadas nela, de modo que a
+exportação impressa oferece dois temas e `report.write_pdf` recusa o terceiro.
+Na tela ele é o próprio fundo escuro da aplicação, com todas as cores
+clareadas até passarem de 3:1 sobre ele. Os mesmos três temas são oferecidos
+para uma figura sozinha — ver [[chromatograms-and-spectra]], onde estão os
+valores de contraste medidos.
+
 ## O layout impresso
 
 A4 retrato; um bloco de título; um sumário com números de página; um cabeçalho

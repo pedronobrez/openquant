@@ -162,11 +162,35 @@ twice the drawing's own size, which is what makes the type and the sticks
 sharp when it is printed or dropped into a slide; SVG is the same drawing
 as vectors, for a figure that will be resized. Either way the picture is
 drawn again from the data rather than grabbed off the screen, so it is the
-same whatever the size of the window, and it is always drawn for paper: a
-white ground and dark axes, whatever theme the application is in. A trace
-colour that was lightened to carry on a dark window is darkened until it
-reads on white, keeping its hue, so a trace known by its colour on screen
-is the same trace on the page.
+same whatever the size of the window, and it is drawn for the page it is
+going on rather than for the window it came from.
+
+Which page that is, the dialog asks — a theme beside the file name, kept for
+the next figure:
+
+| Theme | What it draws | Measured |
+|---|---|---|
+| Paper | a white ground, dark axes, and each trace in its own colour, darkened where a dark-window colour would print as a pale line | the light theme's blue is 8.6:1 on white and untouched; #e08a1e is drawn as #c97b1b at 3.3:1 |
+| Black and white | a white ground and no colour at all: the traces are told apart by tone and by line style — the first solid black, the second dashed grey, the third dotted — and centroid sticks by a filled or a hollow head | black is 21:1 on white and #666666 is 5.7:1; on the two averaged CA-d4 spectra the two traces' ink is a median grey of 0 and 102 out of 255, and the dashes survive the figure being halved |
+| Dark | the application's own dark ground, with every colour lightened until it carries on it | on #1e2124: #234b8c drawn as #336ecd at 3.3:1, #e08a1e left alone at 6.0:1, the dark theme's own #6f9be0 at 5.7:1 |
+
+Three to one is what WCAG asks of a line that carries meaning, and it is what
+every trace colour is held to on the ground it is drawn on — a measurement,
+not an opinion about a colour. The hue is never changed, only its lightness,
+so a trace known by its colour on screen is the same trace on the page.
+Black and white is the one that gives the hue up, because a colour a
+greyscale press is about to flatten is not a distinction; what it spends
+instead is line style, which survives anything.
+
+Only the colours and the line styles change: the axes, the peaks and which
+of them are named are the same drawing in all three, so a figure re-exported
+in another theme is the same figure. The one thing that moves is a label
+whose peak has grown a head — black and white marks a centroid stick with
+one, and a label clears it as it clears any other ink, so it sits a row
+further out with a leader down to its apex. On the two averaged CA-d4
+spectra drawn as centroids that is the same thirty-two masses named in both
+themes, fourteen of them lifted on paper and twenty-eight in black and
+white.
 
 The masses printed beside the peaks are the ones the pane names — the same
 budget of a few labels per region of the mass axis — but the printed

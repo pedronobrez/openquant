@@ -161,11 +161,35 @@ bastões nítidos quando ela é impressa ou posta num slide; o SVG é o mesmo
 desenho em vetores, para uma figura que será redimensionada. De um jeito ou
 de outro a figura é desenhada de novo a partir dos dados em vez de capturada
 da tela, de modo que ela é a mesma qualquer que seja o tamanho da janela, e é
-sempre desenhada para o papel: fundo branco e eixos escuros, seja qual for o
-tema em que a aplicação esteja. Uma cor de traço que foi clareada para se
-manter legível numa janela escura é escurecida até se ler sobre branco,
-conservando o seu matiz, de modo que um traço conhecido pela sua cor na tela
-é o mesmo traço na página.
+desenhada para a página em que vai parar, e não para a janela de onde veio.
+
+Que página é essa, o diálogo pergunta — um tema ao lado do nome do arquivo,
+guardado para a figura seguinte:
+
+| Tema | O que desenha | Medido |
+|---|---|---|
+| Paper | fundo branco, eixos escuros e cada traço na sua própria cor, escurecida onde uma cor de janela escura sairia como uma linha pálida | o azul do tema claro está em 8,6:1 sobre branco e não é tocado; #e08a1e é desenhado como #c97b1b, a 3,3:1 |
+| Black and white | fundo branco e cor nenhuma: os traços se distinguem pelo tom e pelo estilo de linha — o primeiro preto sólido, o segundo cinza tracejado, o terceiro pontilhado — e os bastões de centroides por uma cabeça cheia ou vazada | o preto está em 21:1 sobre branco e o #666666 em 5,7:1; nos dois espectros médios de CA-d4 a tinta dos dois traços tem cinza mediano 0 e 102 em 255, e os tracejados sobrevivem à figura ser reduzida à metade |
+| Dark | o próprio fundo escuro da aplicação, com todas as cores clareadas até se manterem legíveis sobre ele | sobre #1e2124: #234b8c desenhado como #336ecd, a 3,3:1; #e08a1e intacto, a 6,0:1; o próprio #6f9be0 do tema escuro, a 5,7:1 |
+
+Três para um é o que a WCAG pede de uma linha que carrega significado, e é o
+que se exige de toda cor de traço sobre o fundo em que ela é desenhada — uma
+medida, não uma opinião sobre uma cor. O matiz nunca muda, só a sua
+luminosidade, de modo que um traço conhecido pela sua cor na tela é o mesmo
+traço na página. O preto e branco é o que abre mão do matiz, porque uma cor
+que a impressão em escala de cinza está prestes a achatar não é uma
+distinção; o que ele gasta no lugar é estilo de linha, que sobrevive a
+qualquer coisa.
+
+Só as cores e os estilos de linha mudam: os eixos, os picos e quais deles são
+nomeados são o mesmo desenho nos três, de modo que uma figura reexportada em
+outro tema é a mesma figura. A única coisa que se move é um rótulo cujo pico
+ganhou uma cabeça — o preto e branco marca um bastão de centroide com uma, e
+um rótulo se afasta dela como se afasta de qualquer outra tinta, ficando uma
+fileira mais para fora com um fio até o seu ápice. Nos dois espectros médios
+de CA-d4 desenhados como centroides, são as mesmas trinta e duas massas
+nomeadas nos dois temas, quatorze delas elevadas no papel e vinte e oito no
+preto e branco.
 
 As massas impressas ao lado dos picos são as que o painel nomeia — o mesmo
 orçamento de alguns rótulos por região do eixo de massas —, mas a figura

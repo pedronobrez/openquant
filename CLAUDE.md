@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.8.1 released; 0.9.0 in progress on main. 1588 tests. Public repository.**
+**Version 0.8.1 released; 0.9.0 in progress on main. 1791 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -1360,7 +1360,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-1588 tests, two skipped (4 bundle-weight tests need a built bundle). `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+1791 tests, two skipped (4 bundle-weight tests need a built bundle). `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `ui/settings.py` is the one place a settings object is made, and
 `tests/conftest.py` sets `OPENQUANT_SETTINGS` before any widget exists so

@@ -270,3 +270,146 @@ def test_the_data_uri_is_something_qt_actually_draws(qapp):
                    if abs(canvas.pixelColor(x, y).red()
                           - canvas.pixelColor(x, y).blue()) > 40)
     assert coloured > 20, "the image did not draw inside the document"
+
+
+# --------------------------------------------------------------------------- #
+# where the labels go
+# --------------------------------------------------------------------------- #
+def crowded(**kwargs):
+    """
+    A comparison built to make the placement work.
+
+    Triplets of peaks a couple of daltons apart, which is a few pixels on a
+    600 Da axis while their labels are fifty: side by side they cannot be
+    drawn, one above the other they can. One triplet sits just under a peak
+    ten times its height, which is the case that has to be dropped — the
+    isotopes beside a base peak, where the stack runs into the ink and the
+    only free room is off the top of the plot.
+    """
+    def triplet(centre, height):
+        return [(centre + 1.4 * i, height) for i in range(3)]
+
+    common = (triplet(120.0, 14000) + triplet(240.0, 22000)
+              + triplet(300.0, 12000) + triplet(430.0, 18000)
+              + triplet(560.0, 16000) + triplet(650.0, 11000))
+    a = profile(common + [(184.0733, 100000), (310.0, 90000)], hi=760.0)
+    b = profile(common + [(184.0733, 61000), (310.0, 74000)], hi=760.0)
+    return sc.SpectrumComparison(
+        traces=[sc.SpectrumTrace("A · scan 3", a[0], a[1], "#234b8c"),
+                sc.SpectrumTrace("B · scan 9", b[0], b[1], "#e08a1e")],
+        title="A against B", normalise=True, **kwargs)
+
+
+def _trace_ink(colour) -> bool:
+    """Is this pixel a trace? The traces are the only saturated colour in the
+    drawing — the text, the axes, the grid and the leaders are all neutral."""
+    channels = (colour.red(), colour.green(), colour.blue())
+    return max(channels) - min(channels) > 40
+
+
+def _labelled(comparison, width=960, height=520):
+    """The drawing and where its labels went, from one render."""
+    return sc._draw(comparison, width, height, 1.0)
+
+
+def test_no_two_labels_overlap(qapp):
+    _image, layout = _labelled(crowded(mirror=True))
+    assert layout.drawn > 10, "nothing was drawn to check"
+    for i, first in enumerate(layout.placed):
+        for second in layout.placed[i + 1:]:
+            assert not first.overlaps(second), (
+                f"{first.text} and {second.text} are on top of one another")
+
+
+def test_a_label_is_never_drawn_over_a_trace(qapp):
+    """
+    Measured off the picture rather than off the model that placed them: a
+    label sitting on the ink is a label with trace-coloured pixels under it,
+    whatever the placement believed.
+    """
+    image, layout = _labelled(crowded(mirror=True))
+    over = []
+    for label in layout.placed:
+        x0, y0 = int(label.x) + 1, int(label.y) + 1
+        x1, y1 = int(label.x + label.width) - 1, int(label.y + label.height) - 1
+        if any(_trace_ink(image.pixelColor(x, y))
+               for y in range(y0, y1) for x in range(x0, x1)):
+            over.append(label.text)
+    assert not over, f"drawn over the trace: {over}"
+
+
+def test_a_label_never_intersects_the_ink_the_placement_measured(qapp):
+    _image, layout = _labelled(crowded(mirror=True))
+    assert layout.ink, "no ink was measured"
+    for label in layout.placed:
+        x0, y0, x1, y1 = label.box
+        for a0, b0, a1, b1 in layout.ink:
+            assert not (x0 < a1 and a0 < x1 and y0 < b1 and b0 < y1), (
+                f"{label.text} is inside the trace's ink")
+
+
+def test_a_lifted_label_is_joined_to_its_peak_by_a_leader(qapp):
+    """A label a row or more away from its apex says which peak it belongs
+    to with a line, and the line is drawn."""
+    image, layout = _labelled(crowded(mirror=True))
+    lifted = [p for p in layout.placed if p.lift]
+    assert lifted, "nothing was lifted, so nothing is being tested"
+    assert all(p.leader for p in lifted)
+    assert not any(p.leader for p in layout.placed if not p.lift)
+    assert layout.with_leader == layout.lifted == len(lifted)
+    for label in lifted:
+        near = label.y if label.down else label.y + label.height
+        middle = (near + label.apex_y) / 2.0
+        x = label.x + label.width / 2.0
+        drawn = any(image.pixelColor(int(round(x)) + dx,
+                                     int(round(middle))).lightness() < 245
+                    for dx in (-1, 0, 1))
+        assert drawn, f"no leader under {label.text}"
+
+
+def test_a_label_that_will_not_fit_is_dropped_and_the_drop_is_counted(qapp,
+                                                                     monkeypatch):
+    """
+    The whole point of the rule: what cannot be placed is left out, not
+    drawn somewhere it cannot be read. Shortening the stack moves labels
+    from drawn to dropped and changes nothing else — the same peaks are
+    offered either way, which is `label_peaks`' business and not this
+    module's.
+    """
+    picture = crowded(mirror=True)
+    full = sc.label_layout(picture, 960, 520, 1.0)
+    assert full.dropped >= 1, "this drawing was meant to be too crowded"
+
+    monkeypatch.setattr(sc, "MAX_LIFT", 0)
+    tight = sc.label_layout(picture, 960, 520, 1.0)
+    assert tight.drawn < full.drawn
+    assert tight.dropped > full.dropped
+    assert tight.drawn + tight.dropped == full.drawn + full.dropped
+
+
+def test_the_mirrored_side_places_its_labels_the_same_way_downwards(qapp):
+    """
+    Two spectra with the same masses in them, head to tail: every label of
+    the trace drawn downwards is the reflection of its opposite number —
+    same lift, same distance from its own apex, on the other side of the
+    zero line.
+    """
+    same = profile([(120.0 + 1.9 * i, 800 + 30 * (i % 5)) for i in range(18)]
+                   + [(184.0733, 100000), (703.5749, 41000)], hi=760.0)
+    both = sc.SpectrumComparison(
+        traces=[sc.SpectrumTrace("A", same[0], same[1], "#234b8c"),
+                sc.SpectrumTrace("B", same[0], same[1], "#e08a1e")],
+        title="the same spectrum twice", normalise=True, mirror=True)
+    layout = sc.label_layout(both, 960, 520, 1.0)
+    up = {p.text: p for p in layout.placed if not p.down}
+    down = {p.text: p for p in layout.placed if p.down}
+    assert up and down
+    assert set(up) == set(down), "the two halves named different peaks"
+    for text, above in up.items():
+        below = down[text]
+        assert above.y + above.height < above.apex_y, "an upward label is above"
+        assert below.y > below.apex_y, "a downward label is below"
+        assert below.lift == above.lift
+        assert abs((above.y + below.y + above.height)
+                   - (above.apex_y + below.apex_y)) < 1e-6, (
+            f"{text} is not the reflection of itself")

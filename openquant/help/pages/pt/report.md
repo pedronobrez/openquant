@@ -47,7 +47,11 @@ espectro no painel de [[chromatograms-and-spectra]] e a seção aparece,
 desafixe e ela some. A figura é desenhada a partir dos dados no momento em
 que o relatório é escrito, com o dobro do tamanho com que é impressa, e viaja
 dentro do documento: um relatório em HTML continua sendo um único arquivo que
-pode ser enviado por e-mail. Sob ela estão os traços, cada um com o seu
+pode ser enviado por e-mail. Os seus rótulos de pico são posicionados para o
+papel: cada um acima do pico que nomeia e nunca sobre um traço ou sobre outro
+rótulo, subindo uma linha com um fio até o seu ápice onde o espaço está
+tomado, e deixados de fora onde não há espaço dentro de seis linhas — veja
+[[chromatograms-and-spectra]]. Sob ela estão os traços, cada um com o seu
 pico-base e quantos picos ele contém, e as massas que todos os espectros
 carregam dentro de 10 ppm, com a altura de cada uma como fração do seu
 próprio pico-base — que é o único modo como dois espectros de tamanhos

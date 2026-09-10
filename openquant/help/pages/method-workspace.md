@@ -46,6 +46,9 @@ The internal-standard and qualifier columns are explained in
   open injections, see [[suggest-from-data]].
 - **Check method** reads the method against itself and the open files,
   see [[check-method]].
+- **Method report…** writes all of that, and the formulas, the lock-mass
+  candidates, the channel serving each component and the schedule the
+  method implies, as one PDF or HTML document: [[method-report]].
 - **Annotate from LIPID MAPS…** proposes species names, see
   [[annotate-from-lipid-maps]].
 - **Fill formulas from names** reads the lipid shorthand the names already

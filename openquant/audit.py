@@ -50,6 +50,8 @@ PROCESSED = "Batch processed"
 REPROCESSED = "Batch reprocessed"
 RECALIBRATION = "Mass recalibration"
 INFUSION_REPORT = "Infusion report"
+#: the method read every way it can be read before it is run, written out
+METHOD_REPORT = "Method report"
 PROJECT_SAVED = "Project saved"
 
 EVENTS: tuple[str, ...] = (
@@ -58,7 +60,7 @@ EVENTS: tuple[str, ...] = (
     COMPONENT_REMOVED, PRECURSOR_REPAIRED, NAME_RENAMED, METHOD_DEFAULT,
     SAMPLE_EDITED,
     PROCESSED, REPROCESSED,
-    RECALIBRATION, INFUSION_REPORT, PROJECT_SAVED,
+    RECALIBRATION, INFUSION_REPORT, METHOD_REPORT, PROJECT_SAVED,
 )
 
 #: the columns of the trail, in the order the panel, the report and the CSV

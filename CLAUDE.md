@@ -101,6 +101,8 @@ openquant/
                   quantitation, for a record — three answers with reasons
   unexplained.py  a hypothesis for every strong peak nothing explained:
                   contaminant, satellite, or a sub-formula of the precursor
+  margin.py       the chosen compound's share against its nearest
+                  impostors, enumerated alike
   audit.py        the trail of hand edits saved with the project
   labels.py       which peaks get a label: a budget per region of the
                   visible axis, shared by the pane and the print
@@ -1074,6 +1076,22 @@ UV detector, is not implemented there) — untested on real Windows.
   neighbour 2.9 mDa away — 12 of 34 read 0.96–40× their own peak), and a
   predicted M+1 under `SATELLITE_DETECTABLE` × the median height is
   unmeasurable, not a disagreement.
+- **A share is not evidence until something else has been scored beside
+  it.** `margin.py` explains the LIPID MAPS records that fit the written
+  precursor at every adduct the polarity allows — `rank_candidates`' own
+  pool and gate — and reports the chosen compound's share less the best of
+  theirs, in points, excluding the compound at any adduct and anything of
+  its own formula (same arithmetic, no contrast). A rival is enumerated
+  the way the compound was: scored the other way — a bile acid's 56
+  predicted masses against structures offering 700–2,900 each — the
+  impostor won five of six real infusions by up to 33 points; enumerated
+  alike, the true compound won all six. Ten nearest by mass overstates it,
+  because mass order inside a 0.7 Da window says nothing, so the whole
+  gated pool is scored (14–29 candidates, 0.05–0.55 s). `THIN_MARGIN` = 10
+  points, the one gap in eleven real spectra (−3.0 2.1 2.1 6.1 | 13.9 …
+  71.2); what falls below is a Cer at 538.6 explaining 9.5% where three
+  lysophospholipids explain 11–12.4%, and TDCA-d4 at 78.4% against a
+  sodiated lysoPC at 72.3% — known from the bottle, not from its spectrum.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

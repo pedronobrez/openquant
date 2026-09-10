@@ -284,3 +284,41 @@ def test_a_rival_route_to_the_same_mass_is_kept_not_dropped():
     for ion in ions:
         assert ion.description not in ion.alternatives
         assert len(set(ion.alternatives)) == len(ion.alternatives)
+
+
+def test_explicit_hydrogens_are_folded_into_the_atoms_that_carry_them():
+    """
+    PubChem writes all forty of a bile acid's hydrogens out.
+
+    Cutting a C–H bond is not a fragment anybody looks for, and forty of
+    them are forty pieces that differ from the whole molecule by one
+    hydrogen — which a hydrogen shift already covers.
+    """
+    from openquant.structure import suppress_hydrogens
+
+    ethanol = parse_molblock(ETHANOL)
+    assert suppress_hydrogens(ethanol) is ethanol      # nothing to fold in
+
+    explicit = """methanol-d3
+  test
+
+  5  4  0  0  0  0  0  0  0  0999 V2000
+    0.0000    0.0000    0.0000 C   0  0  0  0  0  0
+    1.5000    0.0000    0.0000 O   0  0  0  0  0  0
+   -0.5000    0.8660    0.0000 H   0  0  0  0  0  0
+   -0.5000   -0.8660    0.0000 H   0  0  0  0  0  0
+   -1.0000    0.0000    0.0000 H   0  0  0  0  0  0
+  1  2  1  0
+  1  3  1  0
+  1  4  1  0
+  1  5  1  0
+M  ISO  3   3   2   4   2   5   2
+M  END
+"""
+    drawn = parse_molblock(explicit)
+    assert len(drawn.atoms) == 5 and drawn.formula == "CHD3O"
+    folded = suppress_hydrogens(drawn)
+    assert len(folded.atoms) == 2 and len(folded.bonds) == 1
+    assert folded.formula == drawn.formula             # the mass is untouched
+    assert folded.atoms[0].deuterium == 3
+    assert folded.atoms[1].hydrogens == 1              # the hydroxyl's own

@@ -292,3 +292,223 @@ def test_the_panel_explains_with_a_formula():
     assert "no bonds to cut" in panel.status.text()
     panel.deleteLater()
     app.processEvents()
+
+
+# --------------------------------------------------------------------------- #
+# where the labels are
+# --------------------------------------------------------------------------- #
+HEXANOIC = """hexanoic acid
+  test
+
+  8  7  0  0  0  0  0  0  0  0999 V2000
+    0.0000    0.0000    0.0000 C   0  0  0  0  0  0
+    1.5000    0.0000    0.0000 C   0  0  0  0  0  0
+    3.0000    0.0000    0.0000 C   0  0  0  0  0  0
+    4.5000    0.0000    0.0000 C   0  0  0  0  0  0
+    6.0000    0.0000    0.0000 C   0  0  0  0  0  0
+    7.5000    0.0000    0.0000 C   0  0  0  0  0  0
+    8.2500    1.2990    0.0000 O   0  0  0  0  0  0
+    9.0000    0.0000    0.0000 O   0  0  0  0  0  0
+  1  2  1  0
+  2  3  1  0
+  3  4  1  0
+  4  5  1  0
+  5  6  1  0
+  6  7  2  0
+  6  8  1  0
+M  END
+"""
+
+#: the same acid drawn with its three methyl hydrogens written out and
+#: marked heavy — how a vendor draws a d3 standard
+HEXANOIC_D3 = """hexanoic acid-d3
+  test
+
+ 11 10  0  0  0  0  0  0  0  0999 V2000
+    0.0000    0.0000    0.0000 C   0  0  0  0  0  0
+    1.5000    0.0000    0.0000 C   0  0  0  0  0  0
+    3.0000    0.0000    0.0000 C   0  0  0  0  0  0
+    4.5000    0.0000    0.0000 C   0  0  0  0  0  0
+    6.0000    0.0000    0.0000 C   0  0  0  0  0  0
+    7.5000    0.0000    0.0000 C   0  0  0  0  0  0
+    8.2500    1.2990    0.0000 O   0  0  0  0  0  0
+    9.0000    0.0000    0.0000 O   0  0  0  0  0  0
+   -0.5000    0.8660    0.0000 H   0  0  0  0  0  0
+   -0.5000   -0.8660    0.0000 H   0  0  0  0  0  0
+   -1.0000    0.0000    0.0000 H   0  0  0  0  0  0
+  1  2  1  0
+  2  3  1  0
+  3  4  1  0
+  4  5  1  0
+  5  6  1  0
+  6  7  2  0
+  6  8  1  0
+  1  9  1  0
+  1 10  1  0
+  1 11  1  0
+M  ISO  3   9   2  10   2  11   2
+M  END
+"""
+
+
+def labelled_ions(molecule, deuterium=3):
+    from openquant.explain import with_labels
+
+    return with_labels(predict(molecule, charge=-1, max_cuts=1, max_losses=0),
+                       deuterium)
+
+
+def one_ion(ions, atoms, labels):
+    """The predicted ion for one piece carrying one number of labels."""
+    wanted = frozenset(atoms)
+    found = [i for i in ions if i.fragment.atoms == wanted and i.labels == labels]
+    assert found, f"no ion for {sorted(atoms)} carrying {labels}"
+    return sorted(found, key=lambda i: abs(i.hydrogens))[0]
+
+
+def observed(molecule, ions, seen, rivals=None):
+    """An explanation made by hand: these ions, matched exactly."""
+    from openquant.explain import Explanation, PeakMatch, custom_record
+
+    matches = [PeakMatch(mz=ion.mz, intensity=height, ion=ion)
+               for ion, height in seen]
+    total = sum(height for _ion, height in seen)
+    return Explanation(record=custom_record("test", molecule.formula, molecule),
+                       matches=matches, explained=total, total=total,
+                       considered=len(matches),
+                       ions=list(rivals if rivals is not None
+                                 else [ion for ion, _h in seen]))
+
+
+def test_a_piece_that_kept_none_of_the_labels_rules_its_atoms_out():
+    from openquant.explain import infer_labels, read_molfile
+
+    molecule, _name = read_molfile(HEXANOIC)
+    ions = labelled_ions(molecule)
+    # the acid end comes off carrying none of the three labels
+    explanation = observed(molecule, ions,
+                           [(one_ion(ions, {4, 5, 6, 7}, 0), 1000.0)])
+    inference = infer_labels(explanation, molecule, deuterium=3)
+    assert inference.placements
+    placed = {atom for placement in inference.placements
+              for site in placement.sites for atom in site.atoms}
+    assert 4 not in placed and placed <= {0, 1, 2, 3}
+    assert inference.agreement == pytest.approx(1.0)
+
+
+def test_a_piece_that_kept_all_of_them_rules_its_atoms_in_and_ties():
+    from openquant.explain import infer_labels, read_molfile
+
+    molecule, _name = read_molfile(HEXANOIC)
+    ions = labelled_ions(molecule)
+    explanation = observed(molecule, ions,
+                           [(one_ion(ions, {0, 1, 2, 3}, 3), 1000.0)])
+    inference = infer_labels(explanation, molecule, deuterium=3)
+    placed = {atom for placement in inference.placements
+              for site in placement.sites for atom in site.atoms}
+    assert placed <= {0, 1, 2, 3}
+    # three labels over a methyl and three methylenes: seventeen ways
+    assert inference.tied == 17
+    assert inference.total > inference.tied
+    assert not inference.agreed          # no single position is in all of them
+
+
+def test_two_pieces_together_place_the_labels():
+    from openquant.explain import infer_labels, read_molfile
+
+    molecule, _name = read_molfile(HEXANOIC)
+    ions = labelled_ions(molecule)
+    explanation = observed(molecule, ions, [
+        (one_ion(ions, {0, 1, 2, 3}, 3), 1000.0),   # the four keep all three
+        (one_ion(ions, {4, 5, 6, 7}, 0), 500.0),
+    ])
+    inference = infer_labels(explanation, molecule, deuterium=3)
+    # the second piece says nothing the first did not, so the tie stands
+    assert inference.tied == 17
+    explanation = observed(molecule, ions, [
+        (one_ion(ions, {0, 1, 2, 3}, 3), 1000.0),
+        (one_ion(ions, {1, 2, 3, 4, 5, 6, 7}, 0), 500.0),
+    ])
+    inference = infer_labels(explanation, molecule, deuterium=3)
+    assert inference.tied == 1
+    assert [(a.atom, a.labels) for a in inference.agreed] == [(0, 3)]
+    assert "C1" in inference.agreed[0].description
+
+
+def test_heteroatom_bound_positions_are_left_out_unless_asked_for():
+    from openquant.explain import label_positions, read_molfile
+
+    molecule, _name = read_molfile(HEXANOIC)
+    carbon = label_positions(molecule)
+    everything = label_positions(molecule, heteroatoms=True)
+    assert [atom for atom, _capacity in carbon] == [0, 1, 2, 3, 4]
+    assert [atom for atom, _capacity in everything] == [0, 1, 2, 3, 4, 7]
+    assert dict(carbon)[0] == 3                 # a methyl holds three
+
+
+def test_a_drawing_that_places_its_labels_is_checked_not_inferred():
+    from openquant.explain import infer_labels, placed_labels, read_molfile
+
+    molecule, name = read_molfile(HEXANOIC_D3)
+    assert name == "hexanoic acid-d3"
+    assert molecule.formula == "C6H9D3O2"       # the explicit ones folded in
+    assert placed_labels(molecule) == (0, 0, 0)
+    ions = predict(molecule, charge=-1, max_cuts=1, max_losses=0)
+    explanation = observed(molecule, ions,
+                           [(one_ion(ions, {0, 1, 2, 3}, 0), 1000.0)])
+    inference = infer_labels(explanation, molecule)
+    assert inference.placed
+    assert inference.checked == (0, 0, 0)
+    assert inference.checked_top and inference.checked_agreement == pytest.approx(1.0)
+    assert "The drawing places its labels itself" in inference.summary()
+
+
+def test_a_peak_two_label_counts_reach_is_not_used():
+    from openquant.explain import infer_labels, read_molfile
+
+    molecule, _name = read_molfile(HEXANOIC)
+    ions = labelled_ions(molecule)
+    ion = one_ion(ions, {0, 1, 2, 3}, 3)
+    # every prediction is offered as a rival, and a deuterium is 1.55 mDa
+    # from the hydrogen it replaced: at m/z 60 that is 26 ppm
+    explanation = observed(molecule, ions, [(ion, 1000.0)], rivals=ions)
+    wide = infer_labels(explanation, molecule, deuterium=3, tolerance_ppm=40.0)
+    assert wide.undecided == 1 and not wide.placements
+    assert "with a different number" in wide.note
+    assert "1.55 mDa" in wide.note
+    narrow = infer_labels(explanation, molecule, deuterium=3, tolerance_ppm=5.0)
+    assert narrow.undecided == 0 and narrow.placements
+
+
+def test_the_panel_places_the_labels_under_the_table():
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import numpy as np
+    from PyQt6 import QtWidgets
+
+    from openquant.explain import read_molfile
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    from openquant.ui.lipid_panel import LipidPanel
+
+    molecule, _name = read_molfile(HEXANOIC)
+    ions = labelled_ions(molecule)
+    ion = one_ion(ions, {0, 1, 2, 3}, 3)
+    panel = LipidPanel()
+    panel.set_spectrum(np.array([ion.mz]), np.array([1000.0]))
+    panel.explain_adduct.setCurrentText("[M-H]-")
+    panel._own_molecule = molecule
+    panel.own_name.setText("hexanoic acid-d3")
+    panel.own_deuterium.setValue(3)
+    panel.own_cuts.setValue(1)
+    panel.own_losses.setValue(0)
+    panel.explain_own()
+    assert panel.labels_box.isVisibleTo(panel)
+    assert "position" in panel.labels_text.text()
+    before = len(panel._inference.positions)
+    panel.labels_hetero.setChecked(True)
+    assert len(panel._inference.positions) > before
+    panel.own_deuterium.setValue(0)
+    panel.explain_own()
+    assert not panel.labels_box.isVisibleTo(panel)
+    panel.deleteLater()
+    app.processEvents()

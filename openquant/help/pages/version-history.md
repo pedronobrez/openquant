@@ -8,6 +8,7 @@ three installers described on [[installation]].
 
 | Version | Date | What came in |
 |---|---|---|
+| 0.9.0 | 2026-09-11 | the direct-infusion path end to end: the spray mask that leaves out the scans a burst took, with its film in the [[contour-view]] — [[direct-infusion]]; an infusion recalibrated on its own precursor's ladder — [[mass-recalibration]]; what the method isolates checked against the name, the component table and the own library, with the *Isolated* column — [[infusion-report]]; **Report infusions in a folder…** and `--infusion-report` on the [[command-line]], one reader at a time, with the cover of the folder before its pages; [[infusion-quantitation]] — an analyte against its standard in one spray, three responses and a corrected ratio; [[compare-infusions]] — two days matched by compound and conditions, the reference read from its project; [[collision-energy]] — the energy for identification, for quantitation and for a record, chosen separately, and a compound's records read as an energy profile; **New standard…**, the path from a bottle to a component and a record — [[new-standard]]; **Use in method…** from an infusion row; the noise floor measured off the average instead of a hundred counts — [[signal-to-noise]]; the margin of the chosen compound over its impostors, every route asked at once, a hypothesis for every unexplained peak, an adduct confirmed by the survey's isotopes, database candidates at every adduct, and a fragment's own isotope satellite as evidence — [[lipid-maps]]; two corrections are not two axes, **Re-search with the axis matched**, **Add all to library** and **Rewrite from files…** — [[spectral-library]]; the isotopic purity of a labelled standard, refused where the quadrupole took the satellites — [[lipid-maps]]; the [[method-report]]; incremental reprocessing that keeps the rows whose recipe stands — [[analytics-workspace]]; the print in paper, greyscale and dark palettes — [[report]]; the [[python-api]]; averaged spectra cached beside the project and measured off the window; an mzML infusion averaged the way the vendor does; and the whole path measured as one thing — [[integration]] — with `tests/real/` holding every figure in [[measured-facts]] to its tolerance |
 | 0.8.1 | 2026-09-10 | the adduct the precursor actually is — read off the written precursor and the formula in every explanation route, with the reason printed; a labile adduct hands its proton to the fragments and the loss ladder hangs off `[M+H]+`; names of bile-acid standards resolved with their label count — [[lipid-maps]]; the label floor, the pinned spectra and the pane's state saved with the project as recipes — [[projects-and-files]] |
 | 0.8.0 | 2026-09-10 | the label floor — PeakView's triangle beside the spectrum's Y axis, **Label floor (%)**, carried to the print — see [[chromatograms-and-spectra]]; printed labels never over a trace; the [[infusion-report]] per compound with its verdict of summed checks, the *Infusions* tab of the [[analytics-workspace]] and its report section; [[standard-history]], the own library read back as a control chart; **Repair precursors…** with the name suggested where the mass is right — [[method-workspace]]; the lock-mass gate at 50 ppm and the record's precursor measured against its formula — [[mass-recalibration]], [[spectral-library]]; where the deuterium is, inferred from the fragments — [[lipid-maps]]; the [[direct-infusion]] rule after the first second and the *too short to tell* verdict; the workbook opened in Excel — [[export]] |
 | 0.7.9 | 2026-09-10 | the Dock shows the layered icon while the application runs (the bundle no longer sets a window icon); the [[direct-infusion]] rule measured on the bile-acid infusions and corrected — the 99th-percentile scan as reference, 48 of 48 called; the own library measured on the same standards — [[spectral-library]]; **Fill formulas from names** in the [[method-workspace]] with the precursor check, and [[check-method]] naming a standard without a lock mass; the [[mass-recalibration]] measured with formulas on ten standards; `.wiff2` measured to hold no scan data — [[formats]]; peak labels budgeted by region — [[chromatograms-and-spectra]]; the [[audit-trail]] saved with the project, on its own tab, in the [[report]] and as CSV |
@@ -34,18 +35,11 @@ three installers described on [[installation]].
 
 ## Not yet in a released version
 
-A manual read from the source tree describes what the source tree does,
-which runs ahead of the last tag. These pages describe work that is on the
-main branch and has not been in a release: the direct-infusion path end to
-end — [[direct-infusion]]'s spray mask and its film in the
-[[contour-view]], the [[infusion-report]] for a folder with its cover, the
-[[infusion-quantitation]], [[compare-infusions]], [[collision-energy]] and
-[[new-standard]] — the [[method-report]], the [[python-api]], the noise
-floor measured off an infusion ([[signal-to-noise]]), the margin and the
-unexplained-peak hypotheses of [[lipid-maps]], the record's own mass axis
-([[spectral-library]]) and incremental processing
-([[analytics-workspace]]). Each will be named in the row of the version
-that ships it.
+Nothing at the moment: the pages describe what 0.9.0 does. A manual read
+from the source tree describes what the source tree does, which runs ahead
+of the last tag between releases; work on the main branch that has not been
+in a release is listed here, and named in the row of the version that ships
+it.
 
 The manual is part of every release: a version that changes what the
 application does changes the page that describes it, and the printed copy

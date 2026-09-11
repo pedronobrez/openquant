@@ -193,8 +193,27 @@ def _key(path: str) -> str:
 
 
 def _listdir(path: str) -> list[str] | None:
+    """
+    What a folder holds, without the metadata the operating system keeps in it.
+
+    Names beginning with a dot are left out, and the one that matters is
+    macOS's `._name`: on any volume that is not HFS+ or APFS — an exFAT
+    memory stick, an SMB share, which is where instrument data actually
+    travels — the Finder writes a `._X` resource fork beside every `X` it
+    touches. Reading the nine ZenoTOF infusions off an external drive made
+    `._CA-d4_TOFMSMS_EAD_22CE_44DP_13KE_mix1.wiff.scan`, which ends in
+    `.scan` and whose stem is in no folder, so the check reported it as a
+    stray scan belonging to no `.wiff` — a finding about a file the user
+    never made and cannot act on. A `._X.wiff` is worse: `raw.is_supported`
+    says yes and it would have gone into `paths` to be opened.
+
+    This is the only place the module lists a folder, so leaving them out
+    here covers the candidates, the companion check, the strays and the
+    `.wiff2` count at once. A dot-file named outright on the command line
+    still goes through, because a path that was given was meant.
+    """
     try:
-        return sorted(os.listdir(path))
+        return sorted(n for n in os.listdir(path) if not n.startswith("."))
     except OSError:
         return None
 

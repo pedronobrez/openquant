@@ -180,6 +180,18 @@ foi pré-marcado.
 A primeira versão imprimia a um doze avos do seu tamanho. Um relatório de cem
 páginas é diagramado três vezes e leva cerca de dezessete segundos.
 
+## O caminho da infusão medido como uma coisa só
+
+Cada número acima foi medido sobre uma etapa isolada. [[integration]] roda em
+vez disso todo o caminho de infusão direta, de ponta a ponta, sobre as nove
+aquisições do ZenoTOF — a verificação de pasta, o veredicto, a máscara, a
+média, o piso de ruído, o isolamento, o eixo, a explicação, a margem, a
+biblioteca, o relatório, as exportações e a comparação — e dá o que cada
+etapa custa a frio e a quente, o que o todo segura em memória, e os lugares
+onde dois módulos responderam à mesma pergunta de formas diferentes. Seis
+dessas discordâncias estão consertadas e três continuam em aberto, com os
+números de cada uma.
+
 ## Onde o resto está escrito
 
 O `CLAUDE.md` do repositório de código registra os mesmos fatos para quem

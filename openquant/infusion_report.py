@@ -2550,9 +2550,22 @@ def axis_subject(session, compound: str, written_precursor: float | None,
         shim = InfusionReport(compound=compound,
                               written_precursor=written_precursor,
                               polarity=polarity)
-        formula, deuterium, _labels = _headless_labels(component, shim)
+        # `_headless_labels` returns the formula with the labels **already
+        # folded in** together with how many it folded, and `deuterium` here
+        # means "still to fold in". Taking its count as well folded them a
+        # second time and made every d4 standard a d8 one: `C24H36D4O5`
+        # became `C24H32D8O5`, no adduct of which is within 4 Da of the
+        # 430.35 the channel isolates, so the ladder had nothing to look for
+        # and every one of the nine real infusions refused its own axis with
+        # "no lock mass". `_explained` says the same thing about the
+        # explanation's path — "handing over both would count every label
+        # twice" — and this is the place that did.
+        formula, _folded, _labels = _headless_labels(component, shim)
         where = f"the method's formula for {component.name}"
     if not formula:
+        # `resolve_name`, unlike `_headless_labels`, gives the **unlabelled**
+        # formula of the stripped name beside the count, so this branch —
+        # and only this branch — still has labels to fold in below.
         resolved = resolve_name(compound)
         if resolved is None:
             return AxisSubject(why=f"“{compound or 'this file'}” is not in the "

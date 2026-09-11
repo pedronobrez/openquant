@@ -230,9 +230,11 @@ esse o ponto. Um espectro é o mesmo composto de qualquer jeito, e o gráfico do
 terços de uma corrida — de modo que uma rajada que vale 2,9% dele é mais da
 metade disso, e é uma rajada e não o composto.
 
-A máscara lê um cromatograma, o que dá 3 ms por arquivo. Fazer a média dos
+A máscara lê um cromatograma, o que dá 1,6 ms por arquivo. Fazer a média dos
 trechos sobreviventes não é mais lento do que fazer a média da corrida
-inteira: nessas nove, 15,0 s contra 19,4 s, porque há menos scans nela.
+inteira: nessas nove, **10,9 s contra 13,1 s**, porque há menos scans nela.
+Esse par, e o que cada outra etapa do caminho custa ao lado dele, está em
+[[integration]].
 
 ### Numa corrida que não é uma infusão
 
@@ -439,6 +441,14 @@ outro, adotando-se o maior dos dois. Nas nove infusões de ácidos biliares ele
 sai entre **0,068 e 3,53 contagens**, onde o piso fixo que ele substitui era de
 cem; numa delas cem contagens eram quase o espectro inteiro, cujo pico base é
 109. O [[signal-to-noise]] traz os dois métodos e o que eles mediram.
+
+Esses são os números do piso que o **Explorer** segura: medido uma vez por
+canal a partir da corrida inteira, que é o que o piso de rótulos e a linha de
+estado leem. O [[infusion-report]] o mede de novo a partir do espectro que
+está prestes a imprimir — a média mascarada, com a contagem de varreduras que
+entraram nela — e esse vai de 0,068 a **4,27** contagens nas mesmas nove.
+Dois pisos, ambos honestos, nenhum decidindo nada de forma diferente aqui;
+[[integration]] os põe lado a lado e diz qual lê qual.
 
 Duas coisas o acompanham no Explorer. O **piso de rótulos** do painel de uma
 infusão começa no maior entre os 2% do pico mais alto em vista, que é a regra

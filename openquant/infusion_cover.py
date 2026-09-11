@@ -264,14 +264,30 @@ def _precursor_sentence(rows) -> str:
         buckets: dict[str, int] = {}
         errors: list[float] = []
         for row in missed:
+            # the isolation is asked **before** the error, because a row whose
+            # method targets a mass this compound's other runs do not is not a
+            # row with a mass error: its ppm is measured against a precursor
+            # the compound never had, and reporting the two `_TESTEARTIGO`
+            # acquisitions as "at -43.0 ppm" says the instrument was slightly
+            # out where what happened is that the vial is not what the file
+            # name says. Asking second made this dead on the files it was
+            # written for: once the noise floor was measured off the
+            # acquisition instead of fixed at a hundred counts, all five
+            # unconfirmed rows had an error to report and no row ever reached
+            # the bucket. `isolated_precursors` only answers where the
+            # compound has another cluster that *did* confirm, so it cannot
+            # swallow an ordinary miss.
+            mass = isolated.get(str(getattr(row, "sample", "")))
+            if mass is not None:
+                phrase = f"whose method isolates {mass:g}"
+                buckets[phrase] = buckets.get(phrase, 0) + 1
+                continue
             error = _error_ppm(row)
             if error is not None:
                 errors.append(error)
                 continue
-            mass = isolated.get(str(getattr(row, "sample", "")))
-            phrase = (f"whose method isolates {mass:g}" if mass is not None
-                      else _not_measured_reason(row))
-            buckets[phrase] = buckets.get(phrase, 0) + 1
+            buckets[_not_measured_reason(row)] = \
+                buckets.get(_not_measured_reason(row), 0) + 1
         parts = [f"{count} {phrase}" for phrase, count in
                  sorted(buckets.items(), key=lambda item: (-item[1], item[0]))]
         if errors:

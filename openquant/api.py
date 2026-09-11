@@ -433,19 +433,46 @@ class Acquisition:
 
     def infusion_average(self) -> Spectrum | None:
         """
-        Every scan of the infusion channel averaged into one spectrum — the
-        view the Explorer opens an infusion on. None when there is nothing
-        to average.
+        The infusion channel averaged into one spectrum — the view the
+        Explorer opens an infusion on. None when there is nothing to average.
+
+        The scans the spray faltered on are left out, which is what makes
+        this the Explorer's view rather than merely the whole run: this used
+        to average `run_range` end to end, so on the three of the nine real
+        bile-acid infusions whose spray bursts it disagreed with the
+        Explorer, with the [[infusion-report]] and with `infusion_report`
+        below — by 2.9% of the base peak on the worst of them. Worse, it
+        disagreed with itself: `infusion_report` explained and searched
+        *this* spectrum and then printed the masked one beside the figures.
+        `Spectrum.scans` is how many went into it, so a script can say what
+        it read.
+
+        A run that is not an infusion has no mask worth applying — a
+        chromatographic peak departs from its neighbours further than any
+        spray does — so `average` over the whole range is what to call
+        there, and `is_infusion` is the gate.
         """
         channel = self.infusion_channel()
         if channel is None:
             return None
-        from .infusion import run_range
+        from .infusion import average_stable, mask_for, run_range
 
         window = run_range(channel.reader)
         if window is None:
             return None
-        return channel.average(window[0], window[1])
+        mask = mask_for(self.sample, channel.reader)
+        mz, intensity = average_stable(channel.reader, mask)
+        if not len(mz):
+            return None
+        label = (f"{channel.label} · {window[0]:.2f}–{window[1]:.2f} min"
+                 + (f" · {mask.kept:,} of {mask.n_scans:,} scans"
+                    if mask.excluded else ""))
+        return Spectrum(
+            np.asarray(mz, dtype=float), np.asarray(intensity, dtype=float),
+            label=label, rt_range=window, precursor=channel.precursor,
+            polarity=channel.polarity,
+            collision_energy=channel.collision_energy,
+            scans=(mask.kept if mask.n_scans else channel.n_scans))
 
     def _infusion_verdict(self):
         if self._verdict is None:

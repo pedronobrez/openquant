@@ -225,9 +225,10 @@ way, and the [[standard-history]] chart holds the same standard's base peak
 to 4.5% between thirds of one run — so a burst worth 2.9% of it is over half
 that, and it is a burst rather than the compound.
 
-The mask reads one chromatogram, which is 3 ms a file. Averaging the surviving
-stretches is no slower than averaging the whole run: on those nine, 15.0 s
-against 19.4 s, because there are fewer scans in it.
+The mask reads one chromatogram, which is 1.6 ms a file. Averaging the
+surviving stretches is no slower than averaging the whole run: on those nine,
+**10.9 s against 13.1 s**, because there are fewer scans in it. That pair, and
+what every other stage of the path costs beside it, is in [[integration]].
 
 ### On a run that is not an infusion
 
@@ -425,6 +426,14 @@ between **0.068 and 3.53 counts**, where the fixed floor it replaces was a
 hundred; on one of them a hundred counts was almost the whole spectrum, whose
 base peak is 109. [[signal-to-noise]] has the two methods and what they
 measured.
+
+Those are the figures for the floor the **Explorer** holds: measured once per
+channel from the whole run, which is what the label floor and the status line
+read. The [[infusion-report]] measures it again from the spectrum it is about
+to print — the masked average, with the count of scans that went into it — and
+that one runs from 0.068 to **4.27** counts on the same nine. Two floors,
+both honest, neither deciding anything differently here; [[integration]] has
+them side by side and says which reads which.
 
 Two things follow it in the Explorer. The **label floor** of an infusion pane
 starts at the higher of the drawing's 2% of the tallest peak in view and the

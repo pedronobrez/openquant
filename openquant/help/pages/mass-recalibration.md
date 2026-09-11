@@ -244,16 +244,19 @@ corrected one:
 |---|---|---|---|---|---|---|---|---|
 | CA-d4, EAD 12 eV | 3 | −5.3 ppm | 7.5 ppm | 54 Da | 2 of 56 | 2 of 56 | 2.8% | **83.7%** |
 | CA-d4, EAD 22 eV | 8 | −5.6 | 6.3 | 72 | 5 of 56 | **8 of 56** | 14.0% | **63.6%** |
-| CA-d4, CID 45 eV | 3 | +3.6 | 1.3 | 19 | 2 of 56 | 2 of 56 | 24.2% | 24.2% |
+| CA-d4, CID 45 eV | 3 | +3.8 | 1.3 | 19 | 2 of 56 | 2 of 56 | 24.2% | 24.2% |
 | DCA-d4, EAD 22 eV | 8 | −8.6 | 19.9 | 72 | 2 of 41 | **5 of 41** | 16.2% | **53.0%** |
-| DCA-d4, CID 40 eV | 3 | +6.2 | 2.5 | 18 | 1 of 41 | **3 of 41** | 1.6% | **17.1%** |
+| DCA-d4, CID 40 eV | 3 | +6.6 | 2.8 | 18 | 1 of 41 | **3 of 41** | 1.6% | **17.1%** |
 | TDCA-d4, EAD 22 eV | 5 | −7.5 | 3.3 | 37 | 0 of 104 | **5 of 104** | 0.0% | **78.4%** |
-| TDCA-d4, CID 30 eV | 4 | +1.8 | 4.1 | 37 | 4 of 104 | 4 of 104 | 72.1% | 72.1% |
+| TDCA-d4, CID 30 eV | 4 | +2.0 | 2.2 | 37 | 4 of 104 | 4 of 104 | 72.1% | 72.1% |
 | CA-d4, EAD 12 eV, `_TESTEARTIGO` | — | — | — | — | — | — | — | — |
 | CA-d4, EAD 22 eV, `_TESTEARTIGO` | — | — | — | — | — | — | — | — |
 
 Seven of the nine are corrected, from three to eight rungs each, by −8.6 to
-+6.2 ppm. The two that are not are the right refusal: the `_TESTEARTIGO` pair
++6.6 ppm. The three CID offsets read +3.6, +6.2 and +1.8 ppm when this table
+was first written; re-measured for [[integration]] they read as above, to the
+figures [[spectral-library]] quotes, with the same rungs. The two that are not
+are the right refusal: the `_TESTEARTIGO` pair
 is named for cholic acid-d4 and isolates **839.56**, which is none of that
 formula's adducts, so there is no ladder to look for and the row reads *no
 lock mass* with that reason. The sign is not the same for all seven — the

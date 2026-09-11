@@ -137,7 +137,10 @@ foi feita não ganha frase nenhuma:
   medir, com a altura que foi encontrada, em vez de virar um centroide tirado
   sobre ruído. O piso era de cem contagens, fizesse o instrumento o que
   fizesse; agora é medido da média — de 0,068 a 4,27 contagens nas nove
-  infusões daqui — e a frase diz contra qual dos dois recusou. O que supera o
+  infusões daqui, medido sobre a média mascarada que esta página imprime, que
+  não é bem o piso da corrida inteira que o [[explorer]] mostra: veja
+  [[integration]] para os dois lado a lado — e a frase diz contra qual dos
+  dois recusou. O que supera o
   piso é um pico que está realmente ali; se ele é o composto, quem diz é o ppm
   ao lado, que é outra pergunta e ganha outro número.
 - **"8 of the 56 ions predicted for … were found"** — o denominador é quantos
@@ -176,7 +179,7 @@ registro feito da corrida CID:
 | pico base | 359,2870 | 377,3015 |
 | precursor 430,35 no espectro de íons produto | 430,3196 a 84 contagens, 1,49%, **−70,7 ppm** (piso 1,43) | 430,3489 a 9.415 contagens, **+20,7 ppm** |
 | íons encontrados, de 56 previstos | 2 — 24,2% da intensidade | 8 — 63,6% |
-| contra o registro CID | 100 / 100, o seu próprio registro | **29 / 39**, 22 de 200 picos |
+| contra o registro CID | 97 / 100, o seu próprio registro — veja abaixo | **29 / 39**, 20 de 179 picos |
 | energia de colisão contra a do registro | igual | **22 contra 45 eV** |
 | contra o mesmo composto a 12 eV | 7 / 29 | 67 / 81 |
 
@@ -189,8 +192,9 @@ imprimir. Dois compostos num só documento deram oito páginas em dois
 segundos.
 
 As duas linhas que vale reler são as duas últimas da coluna CID. A pontuação
-de 100 na biblioteca é um registro casado contra o espectro do qual ele foi
-feito, o que prova que o arquivo foi escrito e lido de volta e mais nada; e
+na biblioteca — 97, com cada um dos picos do registro encontrado — é um
+registro casado contra o espectro do qual ele foi feito, o que prova que o
+arquivo foi escrito e lido de volta e mais nada; e
 2 de 56 íons é o que uma fórmula com três perdas neutras consegue dizer sobre
 um espectro CID cuja escada já correu até o fim — os dois que ela acha são a
 perda de três águas e o mesmo íon com uma marcação a menos. Nenhuma das duas
@@ -454,9 +458,9 @@ Dois desses vêm de onde o relatório de um frasco os recebe de uma pessoa:
 - **a biblioteca.** A biblioteca própria — o MSP a que *Add spectrum to
   library…* acrescenta, veja [[spectral-library]] — buscada na precisão do
   próprio precursor escrito. Um registro feito de uma destas mesmas infusões
-  vai bater consigo mesmo em 100, o que diz que o arquivo foi escrito e lido
-  de volta e mais nada; a linha que vale ler é a do mesmo composto sob outra
-  ativação.
+  vai bater consigo mesmo com cada um dos seus picos encontrado, o que diz
+  que o arquivo foi escrito e lido de volta e mais nada; a linha que vale ler
+  é a do mesmo composto sob outra ativação.
 
 **Uma célula que não pôde ser preenchida diz por quê em vez de ficar em
 branco.** *only 84 counts survive* não é a mesma resposta que *nothing within
@@ -511,10 +515,10 @@ figuras cabeça-cauda que cinco infusões de um composto produzem.
 
 | | precursor encontrado | íons dentre os previstos | registro próprio |
 |---|---|---|---|
-| CA-d4 CID 45 eV | 430,3196, −70,7 ppm, 84 contagens | 2 de 56 | 100, o dele mesmo |
+| CA-d4 CID 45 eV | 430,3196, −70,7 ppm, 84 contagens | 2 de 56 | 97, o dele mesmo |
 | CA-d4 EAD 22 eV | 430,3489, **+20,7 ppm** | 8 de 56 | **29** a 45 eV |
 | CA-d4 EAD 12 eV | 430,3488, +20,4 ppm | 3 de 56 | **6** a 45 eV |
-| DCA-d4 CID 40 eV | 414,3275, −30,1 ppm, 33 contagens | 3 de 41 | 99, o dele mesmo |
+| DCA-d4 CID 40 eV | 414,3275, −30,1 ppm, 33 contagens | 3 de 41 | 96, o dele mesmo |
 | DCA-d4 EAD 22 eV | 414,3525, +30,3 ppm | 8 de 41 | **33** a 40 eV |
 | TDCA-d4 CID 30 eV | 504,3273, +14,4 ppm, 123 contagens | 5 de 104 | 100, o dele |
 | TDCA-d4 EAD 22 eV | 504,3325, +24,9 ppm | 5 de 104 | **61** a 30 eV |
@@ -581,8 +585,13 @@ Quatro coisas nessa tabela merecem ser lidas em vez de puladas:
   de dezenas.
 
 A coluna da biblioteca é a que diz algo que o resto não diz. Um registro feito
-de uma corrida bate com essa corrida em 100, o que prova que o arquivo foi
-escrito e lido de volta; os números que significam alguma coisa são 6, 29, 33
+de uma corrida bate com essa corrida com **cada um dos seus picos encontrado**
+— *179 of its 179 peak(s) matched*, uma pontuação reversa de 100 — o que prova
+que o arquivo foi escrito e lido de volta. A pontuação *direta* é 97, 96 e 100
+nas três, e não 100 em todas: o registro é escrito a um por cento do pico base
+e a busca lê cada centroide, então a consulta tem picos que o registro nunca
+recebeu. [[integration]] traz as três contagens de picos e por que nenhum dos
+lados está errado. Os números que significam alguma coisa aqui são 6, 29, 33
 e 61 — o mesmo composto, o mesmo frasco, sob outra ativação, e um registro não
 viaja entre elas.
 
@@ -725,7 +734,7 @@ OpenQuant --infusion-report ~/dados/acidos --out ~/relatorios/acidos.pdf \
 A pasta inteira pela linha de comando, com as três corridas CID como
 biblioteca própria e as três fórmulas como CSV de componentes: **9 arquivos
 lidos, nada excluído, um PDF de 58 páginas** — duas de capa e 56 de seções —
-em **31 s**, com 1,4 GB de pico de memória; `--per-compound` dá quatro
+em **31 s**, com 1,2 GB de pico de memória; `--per-compound` dá quatro
 documentos, a capa e um por composto, as mesmas 58 páginas. Escritas sem
 capa, as mesmas nove seções dão 56, de modo que a capa custa exatamente as
 duas que ela é. Os segundos são o único número aqui que não é do programa —
@@ -796,9 +805,8 @@ lista número de página nenhum, porque não os tem.
 O parágrafo que as nove infusões reais produzem, por inteiro:
 
 > 4 of 9 precursor(s) confirmed within 25 ppm; 5 not: 2 whose method isolates
-> 839.56, 2 with too little precursor surviving fragmentation, 1 at
-> +30.3 ppm. Own records: 4 above 60, 3 below — all across a collision-energy
-> change; 2 matched no record at all. Predicted ions: 34 of 458 found across 7
+> 839.56, 3 at -70.7 and -30.1 and +30.3 ppm. Own records: 4 above 60, 3
+> below — all across a collision-energy change; 2 matched no record at all. Predicted ions: 34 of 458 found across 7
 > spectrum(s); 2 had nothing to predict from — no formula in the component
 > table for that compound.
 

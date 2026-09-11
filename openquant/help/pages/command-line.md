@@ -89,8 +89,9 @@ whether or not anything is shown.
 Measured on nine ZenoTOF bile-acid infusions, from source on macOS, with the
 three CID runs as a library of one's own and the three formulas as a
 components CSV: **31 s** for the whole folder — nine files read and one
-58-page PDF written, a two-page cover and 56 of sections — at **1.4 GB** peak
-resident memory (two runs: 30.8 and 31.5 s, 1.42 and 1.40 GB), and
+58-page PDF written, a two-page cover and 56 of sections — at **1.2 GB** peak
+resident memory (two runs: 30.8 and 31.5 s, 1.42 and 1.40 GB; measured again
+for [[integration]], 52 and 42 s at 1.15 and 1.21 GB), and
 `--per-compound` four documents of the same 58 pages, the cover two of
 them and one document per compound the other 56. Written without a cover the
 same nine sections come to 56 pages, so the cover costs the two it is. The

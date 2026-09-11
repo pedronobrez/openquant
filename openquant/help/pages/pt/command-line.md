@@ -88,8 +88,9 @@ ou não algo a mostrar.
 Medido em nove infusões de ácidos biliares em um ZenoTOF, a partir do código
 no macOS, com as três corridas CID como biblioteca própria e as três fórmulas
 como CSV de componentes: **31 s** para a pasta inteira — nove arquivos lidos
-e um PDF de 58 páginas escrito, duas de capa e 56 de seções — com **1,4 GB**
-de pico de memória residente (duas execuções: 30,8 e 31,5 s, 1,42 e 1,40 GB),
+e um PDF de 58 páginas escrito, duas de capa e 56 de seções — com **1,2 GB**
+de pico de memória residente (duas execuções: 30,8 e 31,5 s, 1,42 e 1,40 GB;
+medido de novo para [[integration]], 52 e 42 s a 1,15 e 1,21 GB),
 e `--per-compound` quatro documentos das mesmas 58 páginas, duas
 delas a capa e as outras 56 um documento por composto. Escritas sem capa, as
 mesmas nove seções dão 56 páginas, de modo que a capa custa exatamente as

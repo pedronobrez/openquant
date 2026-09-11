@@ -256,16 +256,19 @@ de 5 ppm, no eixo como medido e no eixo corrigido:
 |---|---|---|---|---|---|---|---|---|
 | CA-d4, EAD 12 eV | 3 | −5.3 ppm | 7.5 ppm | 54 Da | 2 de 56 | 2 de 56 | 2.8% | **83.7%** |
 | CA-d4, EAD 22 eV | 8 | −5.6 | 6.3 | 72 | 5 de 56 | **8 de 56** | 14.0% | **63.6%** |
-| CA-d4, CID 45 eV | 3 | +3.6 | 1.3 | 19 | 2 de 56 | 2 de 56 | 24.2% | 24.2% |
+| CA-d4, CID 45 eV | 3 | +3.8 | 1.3 | 19 | 2 de 56 | 2 de 56 | 24.2% | 24.2% |
 | DCA-d4, EAD 22 eV | 8 | −8.6 | 19.9 | 72 | 2 de 41 | **5 de 41** | 16.2% | **53.0%** |
-| DCA-d4, CID 40 eV | 3 | +6.2 | 2.5 | 18 | 1 de 41 | **3 de 41** | 1.6% | **17.1%** |
+| DCA-d4, CID 40 eV | 3 | +6.6 | 2.8 | 18 | 1 de 41 | **3 de 41** | 1.6% | **17.1%** |
 | TDCA-d4, EAD 22 eV | 5 | −7.5 | 3.3 | 37 | 0 de 104 | **5 de 104** | 0.0% | **78.4%** |
-| TDCA-d4, CID 30 eV | 4 | +1.8 | 4.1 | 37 | 4 de 104 | 4 de 104 | 72.1% | 72.1% |
+| TDCA-d4, CID 30 eV | 4 | +2.0 | 2.2 | 37 | 4 de 104 | 4 de 104 | 72.1% | 72.1% |
 | CA-d4, EAD 12 eV, `_TESTEARTIGO` | — | — | — | — | — | — | — | — |
 | CA-d4, EAD 22 eV, `_TESTEARTIGO` | — | — | — | — | — | — | — | — |
 
 Sete das nove são corrigidas, com três a oito degraus cada, por −8.6 a
-+6.2 ppm. As duas que não são constituem a recusa correta: o par
++6.6 ppm. Os três desvios CID liam +3.6, +6.2 e +1.8 ppm quando esta tabela
+foi escrita; medidos de novo para [[integration]], leem como acima, nos
+mesmos números que [[spectral-library]] cita, com os mesmos degraus. As duas
+que não são constituem a recusa correta: o par
 `_TESTEARTIGO` tem o nome do ácido cólico-d4 e isola **839.56**, que não é
 nenhum dos adutos daquela fórmula, de modo que não há escada a procurar e a
 linha diz *no lock mass* com esse motivo. O sinal não é o mesmo para as sete

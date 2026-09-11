@@ -133,8 +133,10 @@ gets no sentence:
   with the height that was found, rather than as a centroid taken over noise.
   The floor used to be a hundred counts whatever the instrument had done; it
   is now measured off the average — 0.068 to 4.27 counts on the nine
-  infusions here — and the sentence names which of the two it refused
-  against. What
+  infusions here, measured on the masked average this page prints, which is
+  not quite the whole-run floor the [[explorer]] shows: see [[integration]]
+  for the two side by side — and the sentence names which of the two it
+  refused against. What
   clears the floor is a peak that is really there; whether it is the compound
   is the ppm beside it, which is a different question and gets a different
   number.
@@ -174,7 +176,7 @@ made from the CID run:
 | base peak | 359.2870 | 377.3015 |
 | precursor 430.35 in the product-ion spectrum | 430.3196 at 84 counts, 1.49%, **−70.7 ppm** (floor 1.43) | 430.3489 at 9,415 counts, **+20.7 ppm** |
 | ions found, of 56 predicted | 2 — 24.2% of the intensity | 8 — 63.6% |
-| against the CID record | 100 / 100, its own record | **29 / 39**, 22 of 200 peaks |
+| against the CID record | 97 / 100, its own record — see below | **29 / 39**, 20 of 179 peaks |
 | collision energy against the record | same | **22 against 45 eV** |
 | against the same compound at 12 eV | 7 / 29 | 67 / 81 |
 
@@ -186,8 +188,9 @@ head-to-tail picture, **three**; with one other infusion compared as well,
 in one document came to eight pages in two seconds.
 
 The two rows worth reading twice are the last two of the CID column. Its
-library score of 100 is a record matched against the spectrum it was made
-from, which proves the file was written and read back and nothing else; and
+library score — 97, with every one of the record's peaks found — is a record
+matched against the spectrum it was made from, which proves the file was
+written and read back and nothing else; and
 2 of 56 ions is what a formula with three neutral losses can say about a CID
 spectrum whose ladder has already run to completion — the two it finds are
 the three-water loss and the same ion with a label gone. Neither is a
@@ -450,9 +453,9 @@ person:
 - **the library.** The library of your own — the MSP that *Add spectrum to
   library…* appends to, see [[spectral-library]] — searched at the written
   precursor's own precision. A record made from one of these very infusions
-  will match itself at 100, which says the file was written and read back and
-  nothing else; the row worth reading is the same compound under another
-  activation.
+  will match itself with every one of its peaks found, which says the file
+  was written and read back and nothing else; the row worth reading is the
+  same compound under another activation.
 
 **A cell that could not be filled says why rather than being blank.** *only
 84 counts survive* is not the same answer as *nothing within ±0.25 Da*, and
@@ -504,10 +507,10 @@ head-to-tail pictures that five infusions of one compound make.
 
 | | precursor found | ions of predicted | own record |
 |---|---|---|---|
-| CA-d4 CID 45 eV | 430.3196, −70.7 ppm, 84 counts | 2 of 56 | 100, its own |
+| CA-d4 CID 45 eV | 430.3196, −70.7 ppm, 84 counts | 2 of 56 | 97, its own |
 | CA-d4 EAD 22 eV | 430.3489, **+20.7 ppm** | 8 of 56 | **29** at 45 eV |
 | CA-d4 EAD 12 eV | 430.3488, +20.4 ppm | 3 of 56 | **6** at 45 eV |
-| DCA-d4 CID 40 eV | 414.3275, −30.1 ppm, 33 counts | 3 of 41 | 99, its own |
+| DCA-d4 CID 40 eV | 414.3275, −30.1 ppm, 33 counts | 3 of 41 | 96, its own |
 | DCA-d4 EAD 22 eV | 414.3525, +30.3 ppm | 8 of 41 | **33** at 40 eV |
 | TDCA-d4 CID 30 eV | 504.3273, +14.4 ppm, 123 counts | 5 of 104 | 100, its own |
 | TDCA-d4 EAD 22 eV | 504.3325, +24.9 ppm | 5 of 104 | **61** at 30 eV |
@@ -574,9 +577,14 @@ Four things in that table are worth reading rather than skipping:
   against thousands of masses instead of dozens.
 
 The library column is the one that says something the rest does not. A record
-made from a run matches that run at 100, which proves the file was written and
-read back; the figures that mean anything are 6, 29, 33 and 61 — the same
-compound, the same vial, under another activation, and a record does not
+made from a run matches that run with **every one of its peaks found** —
+*179 of its 179 peak(s) matched*, a reverse score of 100 — which proves the
+file was written and read back. Its *forward* score is 97, 96 and 100 on the
+three, not 100 throughout: the record is written at one per cent of the base
+peak and the search reads every centroid, so the query holds peaks the record
+was never given. [[integration]] has the three peak counts and why neither
+side is wrong. The figures that mean anything here are 6, 29, 33 and 61 — the
+same compound, the same vial, under another activation, and a record does not
 travel between them.
 
 ## When the name and the method disagree
@@ -717,7 +725,7 @@ OpenQuant --infusion-report ~/data/bile-acids --out ~/reports/bile.pdf \
 The whole folder from the command line, with the three CID runs as the own
 library and the three formulas as a components CSV: **9 files read, nothing
 skipped, one 58-page PDF** — two of cover and 56 of sections — in **31 s** at
-1.4 GB peak memory; `--per-compound` gives four documents, the cover and one
+1.2 GB peak memory; `--per-compound` gives four documents, the cover and one
 per compound, the same 58 pages. Written without a cover the same nine
 sections come to 56, so the cover costs the two it is. The seconds are the
 one figure here that is not the program's — the same run has taken anything
@@ -787,9 +795,8 @@ numbers there, because it has none for them.
 The paragraph the nine real infusions produce, in full:
 
 > 4 of 9 precursor(s) confirmed within 25 ppm; 5 not: 2 whose method isolates
-> 839.56, 2 with too little precursor surviving fragmentation, 1 at
-> +30.3 ppm. Own records: 4 above 60, 3 below — all across a collision-energy
-> change; 2 matched no record at all. Predicted ions: 34 of 458 found across 7
+> 839.56, 3 at -70.7 and -30.1 and +30.3 ppm. Own records: 4 above 60, 3
+> below — all across a collision-energy change; 2 matched no record at all. Predicted ions: 34 of 458 found across 7
 > spectrum(s); 2 had nothing to predict from — no formula in the component
 > table for that compound.
 

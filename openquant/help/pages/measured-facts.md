@@ -196,6 +196,18 @@ what the program does **now** and records the older figure beside it with what
 is known about the difference. Six on this page and in `CLAUDE.md` are in that
 position; `tests/real/README.md` lists them.
 
+## The infusion path measured as one thing
+
+Every figure above was measured on one stage in isolation. [[integration]]
+runs the whole direct-infusion path end to end on the nine ZenoTOF
+acquisitions instead — the folder check, the verdict, the mask, the
+average, the noise floor, the isolation, the axis, the explanation, the
+margin, the library, the report, the exports and the comparison — and
+gives what each stage costs cold and warm, what the whole holds in memory,
+and the places where two modules answered the same question differently.
+Six of those disagreements are fixed and three are still open, with the
+figures for each.
+
 ## Where the rest is written down
 
 The source repository's `CLAUDE.md` records the same facts for whoever

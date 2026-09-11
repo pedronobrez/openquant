@@ -1453,6 +1453,30 @@ class OwnRecords:
         return said + "."
 
 
+def _averaged(report) -> int:
+    """
+    How many scans the record's spectrum is actually the average of.
+
+    `report.scans` is how many the *run* holds, and on an infusion whose
+    spray faltered those are not the same number: the mask leaves the
+    unstable ones out. Writing the run's count made the record's comment
+    say `average of 473 scans` where the report's header, the pane's title
+    and the Infusions tab's *Scans* column all said `464 of 473` — four
+    accounts of one average, one of them counting nine scans that are not
+    in it. `InfusionReport.scans_averaged` is the one the other three
+    already agree on, and it answers whether *Include unstable scans* was
+    on as well. Read defensively: a row that is not a report still has to
+    give a number.
+    """
+    averaged = getattr(report, "scans_averaged", None)
+    if callable(averaged):
+        try:
+            return int(averaged() or 0)
+        except (TypeError, ValueError):
+            pass
+    return int(getattr(report, "scans", 0) or 0)
+
+
 def records_from_summary(rows, existing=(), added: str = "",
                          identify=None, acquired=None,
                          lot: str = "") -> OwnRecords:
@@ -1521,7 +1545,7 @@ def records_from_summary(rows, existing=(), added: str = "",
         provenance = Provenance(
             file=os.path.basename(file),
             sample=str(getattr(report, "sample", "") or ""),
-            channel=channel, scans=int(getattr(report, "scans", 0) or 0),
+            channel=channel, scans=_averaged(report),
             rt_range=getattr(report, "rt_range", None), lot=str(lot or ""))
         if provenance.keyed and provenance.key in seen:
             made.skipped.append(Skipped(

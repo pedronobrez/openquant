@@ -1103,21 +1103,40 @@ def pairs_of(method) -> list[tuple[Component, Component]]:
     return out
 
 
-def centroids_of(channel):
+def centroids_of(channel, sample=None):
     """
-    The channel's whole run averaged and centroided.
+    The channel's run averaged and centroided — the spectrum a response is read
+    from.
 
     Centroids because every height here is a peak height: a profile trace
     hands back the instrument's peak shape, and reading one point of it as a
     response would make the answer depend on the resolving power.
+
+    The scans the spray faltered on are left out, exactly as the Explorer,
+    the [[infusion-report]] and a record of one's own leave them out. This
+    used to average the whole run instead, so a response measured here and
+    the same ion's height on the page beside it came off two different
+    spectra: on the three of the nine real bile-acid infusions whose spray
+    bursts, by 0.6%, 1.7% and 2.9% of the run's ion current. A ratio of two
+    responses is meant to divide that sort of thing out, and it does not
+    when the burst is in one vial's run and not the other's.
+
+    `sample` is what says whether the mask applies at all — `mask_for` gates
+    on the infusion verdict, since the same arithmetic on a gradient leaves
+    out the only scans worth keeping. Without one the whole run is averaged,
+    which is what this did before and is still right for a caller that
+    cannot say.
     """
-    from .infusion import run_range
+    from .infusion import average_stable, mask_for, run_range
     from .processing import centroid_spectrum
 
     window = run_range(channel)
     if window is None:
         return None
-    mz, intensity = channel.spectrum_rt_range(*window)
+    if sample is None:
+        mz, intensity = channel.spectrum_rt_range(*window)
+    else:
+        mz, intensity = average_stable(channel, mask_for(sample, channel))
     mz = np.asarray(mz, dtype=float)
     intensity = np.asarray(intensity, dtype=float)
     if mz.size == 0:
@@ -1173,7 +1192,8 @@ def quantify_infusions(session, on: str = ON_LADDER,
     done, total = 0, len(entries)
     for entry in entries:
         channel = strongest_channel(getattr(entry, "sample", None))
-        sticks = centroids_of(channel) if channel is not None else None
+        sticks = (centroids_of(channel, getattr(entry, "sample", None))
+                  if channel is not None else None)
         done += 1
         if progress is not None and progress(done, total) is False:
             out.note = "stopped"

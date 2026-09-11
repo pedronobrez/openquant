@@ -223,7 +223,10 @@ def test_search_reads_the_language_shown(translated):
         # the whole of it: the index is built with the same tokeniser
         words = re.findall(r"(?<![\w-])[a-z]{7,}(?![\w-])", page.text.lower())
         assert words, f"{pid} has no word to search for"
-        found = {hit.page.id for hit in translated.search(words[0])}
+        # a common word can be on more pages than the search window shows;
+        # the question is whether the page is found at all, so ask for all
+        hits = translated.search(words[0], limit=len(translated.pages))
+        found = {hit.page.id for hit in hits}
         assert pid in found, f"searching {words[0]!r} does not find {pid}"
 
 

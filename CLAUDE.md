@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.8.1 released; 0.9.0 in progress on main. 1791 tests. Public repository.**
+**Version 0.8.1 released; 0.9.0 in progress on main. 1835 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -1194,6 +1194,35 @@ UV detector, is not implemented there) — untested on real Windows.
   of the infusion corrections. Each test asserts what the program does now
   and keeps the old number in its docstring with what is known about the
   difference.
+- **Modules written in parallel answer one question twice, and only running
+  them side by side finds it.** `tests/test_integration_path.py` runs the
+  whole infusion path on a synthetic spray that *bursts* — without a burst
+  the masked and unmasked routes agree for the wrong reason — and asserts
+  the agreements rather than the values. Six disagreements came out of
+  running it on the nine real ZenoTOF infusions (`help/pages/integration.md`
+  has the timings and the figures): `axis_subject` folded a d4 standard's
+  labels in twice (`labelled_formula` returns the folded formula *and* the
+  count), so all nine refused their own axis with "no lock mass" while the
+  isolation verdict on the same page named the compound right — fixed,
+  seven of nine correct again at 3–8 rungs and −8.6 to +6.6 ppm, the CID
+  offsets re-measured at +3.8, +6.6 and +2.0 ppm (the recalibration page
+  had carried +3.6/+6.2/+1.8 from an earlier run); `records_from_summary`
+  wrote the run's scan count where three other places write the averaged
+  one; `folder._listdir` called macOS's `._name` a stray scan and would have
+  opened a `._X.wiff`; `infusion_cover` asked for the ppm before the
+  isolated mass, so `isolated_precursors` went dead the moment the measured
+  noise floor let those windows report an error; and `api.infusion_average`
+  and `infusion_quant.centroids_of` averaged the whole run where everything
+  else masks it — 2.90% of the base peak on the worst file, and
+  `api.infusion_report` explained the unmasked average and printed the
+  masked one. Three stand: two measured noise floors (whole-run 0.068–3.53
+  counts for the Explorer, the report's masked one 0.068–4.27), a record
+  scoring 97 rather than 100 against its own run (179 record peaks against
+  204 query peaks at ≥1%; reverse is 100 and every record peak is found),
+  and the CLI and API documents predicting from a formula and from a
+  drawing (8 of 56 against 15 of 882, each saying which). Reading and
+  averaging is 25 of the 27 seconds for nine files; warm buys nothing but
+  reopening them, because no averaged spectrum is cached across a process.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and
@@ -1404,7 +1433,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-1791 tests, two skipped (4 bundle-weight tests need a built bundle). `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+1835 tests, two skipped (4 bundle-weight tests need a built bundle), plus 56 under `tests/real/` that run only with `OPENQUANT_REAL_DATA=1`. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `ui/settings.py` is the one place a settings object is made, and
 `tests/conftest.py` sets `OPENQUANT_SETTINGS` before any widget exists so

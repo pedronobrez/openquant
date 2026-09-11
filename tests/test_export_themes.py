@@ -133,7 +133,11 @@ def test_the_two_black_and_white_traces_differ_in_greyscale(qapp):
     upper, lower = _halves(_without_labels(image, layout, scale))
     assert upper.size > 500 and lower.size > 500, "nothing was drawn to measure"
     assert int(np.median(upper)) < 40, "the first trace is not black"
-    assert 80 < int(np.median(lower)) < 130, "the second trace is not the grey"
+    # the median of the masked lower half is 102 on macOS and Linux and 80
+    # on the Windows runner, whose antialiasing of the dashes lands
+    # differently; the count of pixels at exactly 102 below is what says the
+    # grey belongs to the second trace
+    assert 70 < int(np.median(lower)) < 130, "the second trace is not the grey"
     assert int(np.median(lower)) - int(np.median(upper)) > 50, (
         "the two traces are the same tone once the colour is gone")
     # and the grey is the second trace's alone: on the real CA-d4 pair it is

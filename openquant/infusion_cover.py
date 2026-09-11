@@ -119,7 +119,11 @@ def folder_of(result) -> str:
     paths = paths or [str(p) for p in getattr(result, "requested", ()) if p]
     if not paths:
         return ""
-    folders = [p if os.path.isdir(p) else os.path.dirname(os.path.abspath(p))
+    # dirname as written, so a folder read off another machine keeps its
+    # own spelling; abspath only for a bare file name, since on Windows it
+    # would put this machine's drive in front of a path that had none
+    folders = [p if os.path.isdir(p)
+               else (os.path.dirname(p) or os.path.dirname(os.path.abspath(p)))
                for p in paths]
     if len(set(folders)) == 1:
         return folders[0]

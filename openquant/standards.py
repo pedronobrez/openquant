@@ -303,6 +303,14 @@ def _formula_from(report, method=None) -> tuple[str, int, str]:
     if formula:
         return with_labels(formula, "the explanation this spectrum was scored "
                                     "against")
+    # the formula the report was built with: what the analyst typed into the
+    # dialog, labelled by `report_for`. A typed formula is a decision, and
+    # resolving the name again behind it found a different compound on a
+    # machine with LIPID MAPS installed (`Testol` → testolactone) and nothing
+    # on one without, so the same file was refused for two different reasons
+    built_with = str(getattr(report, "formula", "") or "")
+    if built_with:
+        return with_labels(built_with, "the formula this report was built with")
     existing = component_named(method, compound)
     if existing is not None and existing.formula:
         return with_labels(existing.formula, "the component table")

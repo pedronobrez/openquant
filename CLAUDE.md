@@ -1141,7 +1141,10 @@ UV detector, is not implemented there) — untested on real Windows.
   carries writes no component and still writes the record. Measured on
   CA-d4: 1 of 5 adducts reaches 430.35, 2.6 s to open, average and
   identify, 0.05–0.08 s to re-identify after an edit; on `_TESTEARTIGO`
-  0 of 5, Create disabled, nothing written.
+  0 of 5, Create disabled, nothing written. The plan takes the formula the
+  report was built with — the typed one — before it resolves the name
+  again: CI found `Testol` reaching testolactone on a machine with LIPID
+  MAPS installed and nothing on one without, two refusals for one file.
 - **A summary of nine reports is four blocks and no fifth.**
   `infusion_cover.build_html` prints the folder, the rows, what they add up
   to, what was left out and where each compound is — then stops. A row

@@ -378,6 +378,11 @@ def _pixels(image) -> np.ndarray:
         image.height(), image.bytesPerLine() // 4, 4)[:, :image.width(), :3]
 
 
+#: coloured pixels a renderer may leave on a page drawn without colour
+#: (Ubuntu 24.04's QtPdf: 8 of 1,144,800); a tinted cell is thousands
+MONO_STRAY_PIXELS = 100
+
+
 def test_the_printed_black_and_white_page_has_no_colour_on_it(qapp, tmp_path):
     """
     Measured on the page rather than in the style sheet: a page rendered
@@ -385,6 +390,12 @@ def test_the_printed_black_and_white_page_has_no_colour_on_it(qapp, tmp_path):
     blue within a point of one another — while the same report on paper is
     not, because its headings and its heading cells carry the project's
     blue. That is the tinted rows and the coloured type in one assertion.
+
+    "Neutral" is measured, not zero: Ubuntu's PDF renderer leaves 8 pixels
+    with a spread above 2 on the mono page (macOS leaves none), where the
+    paper page measures 313,697 and one tinted heading cell alone is
+    thousands, so `MONO_STRAY_PIXELS` is the floor under the renderer and
+    not under the theme.
     """
     pdf = pytest.importorskip("PyQt6.QtPdf")
 
@@ -403,7 +414,8 @@ def test_the_printed_black_and_white_page_has_no_colour_on_it(qapp, tmp_path):
         if theme == "mono":
             coloured = int(((pixels.max(axis=2)
                              - pixels.min(axis=2)) > 2).sum())
-            assert coloured == 0, f"{coloured} coloured pixels on a mono page"
+            assert coloured <= MONO_STRAY_PIXELS, \
+                f"{coloured} coloured pixels on a mono page"
     assert spread["paper"] > 20, "the paper report lost its colour"
 
 

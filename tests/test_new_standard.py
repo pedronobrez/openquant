@@ -300,6 +300,7 @@ def test_a_precursor_no_adduct_fits_disables_create_and_writes_nothing(
     assert dialog.expected == [], "nothing reaches 839.56"
     assert not dialog.btn_create.isEnabled()
     assert "none of the adducts" in dialog.plan.refusal
+    assert FORMULA in dialog.plan.refusal, "refused on the typed formula"
     assert "closest" in dialog.plan.refusal
     assert "0 of 5 adduct(s)" in dialog.adduct_note.text()
     assert "Nothing is written" in dialog.preview_html()
@@ -389,3 +390,40 @@ def test_the_file_menu_offers_it_and_the_shell_refreshes_what_it_wrote(qapp):
         shell.refresh_standards()
     finally:
         shell.close()
+
+
+def test_a_typed_formula_beats_whatever_the_name_resolves_to(
+        qapp, tmp_path, monkeypatch):
+    """
+    The plan used to resolve the name again behind the dialog's back. On a
+    machine with LIPID MAPS installed `Testol` reached testolactone
+    (C19H24O3) and the refusal named that compound's adducts; on a machine
+    without it the same file was refused for having no formula at all —
+    the CI failure that found this. A typed formula is a decision.
+    """
+    from openquant import explain
+    from openquant.explain import NamedCompound
+
+    def elsewhere(written):
+        return NamedCompound(written=written, compound="testolactone",
+                             formula="C19H24O3", labels=0, source="LIPID MAPS")
+    # `standards` and the dialog both import it from `explain` at call time
+    monkeypatch.setattr(explain, "resolve_name", elsewhere)
+
+    ions = _ions()
+    mz = _grid(ions[:3])
+    channel = FakeChannel(0, mz, {ions[1]: 4_000.0}, precursor=839.56)
+    entry = SampleEntry("/d/TESTOL_stray.wiff", 0, "TESTOL_stray")
+    entry.sample = FakeSample([channel], name="TESTOL_stray")
+    dialog = _ready(_session(entry), entry, channel)
+
+    assert FORMULA in dialog.plan.refusal
+    assert "C19H24O3" not in dialog.plan.refusal
+    assert not dialog.btn_create.isEnabled()
+
+    # and with nothing to resolve the name to, the same refusal for the
+    # same reason
+    monkeypatch.setattr(explain, "resolve_name", lambda written: None)
+    dialog = _ready(_session(entry), entry, channel)
+    assert FORMULA in dialog.plan.refusal
+    assert "none of the adducts" in dialog.plan.refusal

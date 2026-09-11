@@ -371,11 +371,17 @@ def test_a_dark_report_is_for_the_screen_and_says_so(qapp, tmp_path):
 
 
 def _pixels(image) -> np.ndarray:
+    # `frombuffer` views the converted image's memory, and the converted
+    # image is a local: returned as a view it dangled, and Windows reused the
+    # memory before the assertion read it (an access violation in CI where
+    # macOS and Linux read the freed bytes without noticing). Copied while
+    # the image is alive.
     image = image.convertToFormat(QtGui.QImage.Format.Format_RGB32)
     bits = image.constBits()
     bits.setsize(image.sizeInBytes())
-    return np.frombuffer(bits, np.uint8).reshape(
+    view = np.frombuffer(bits, np.uint8).reshape(
         image.height(), image.bytesPerLine() // 4, 4)[:, :image.width(), :3]
+    return view.copy()
 
 
 #: coloured pixels a renderer may leave on a page drawn without colour

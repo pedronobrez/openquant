@@ -30,7 +30,7 @@ What is drawn on a found peak:
 
 | Control | Effect |
 |---|---|
-| **Columns** and **Rows** | the grid's shape; paging appears when the batch is larger than a page |
+| **Columns** and **Rows** | the grid's shape; paging appears when the batch is larger than a page. The panels are kept and re-placed rather than rebuilt, so a change of shape is immediate and does not resize the window — see [[workspaces]] |
 | **Manual** | dragging across a panel integrates exactly that range (Shift+drag does the same without the switch) |
 | **Show IS** | draw the internal standard behind the analyte, rescaled to its height — the two rarely share a magnitude, and only the shape and the time are being compared |
 | **Same Y** | one intensity scale across the panels, so heights compare directly |

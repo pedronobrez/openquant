@@ -1271,6 +1271,20 @@ UV detector, is not implemented there) — untested on real Windows.
   a geometry saved on a bigger one back inside it, because that geometry
   outlives the fix. `tests/test_window_fits_screen.py` fails if any
   workspace ever again asks for more than 1280 x 760.
+- **A pyqtgraph panel costs 5 ms, and the grid holds 64 of them.** Changing
+  **Columns** or **Rows** rebuilt every panel: 0.52 s at 8 x 8, paid once per
+  *step* of the spin box, so dragging from 3 to 8 paid it five times. The
+  panels are interchangeable — `_fill` hands each one its data — so
+  `_relayout` now grows and shrinks a pool and re-places what it has, and a
+  panel the new shape does not need is hidden and kept rather than deleted.
+  Both spin boxes stop at 8, so the pool is bounded at 64 panels, about
+  14 MB. Measured: 8 x 8 0.521 → 0.107 s, back to 3 x 2 0.166 → 0.008 s, the
+  sequence's peak resident size 232 → 156 MB. A spare has to be hidden
+  *before* it is left out of the layout, for the reason the ninety piled-up
+  combo boxes above give. `_PanelViewBox(enableMenu=False)` is the other
+  half: pyqtgraph builds the whole right-click menu in the ViewBox's
+  constructor, and these panels have always called `setMenuEnabled(False)`
+  straight afterwards — building and throwing away a menu 64 times.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

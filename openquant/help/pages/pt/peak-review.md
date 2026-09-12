@@ -31,7 +31,7 @@ O que é desenhado sobre um pico encontrado:
 
 | Controle | Efeito |
 |---|---|
-| **Columns** e **Rows** | a forma da grade; a paginação aparece quando o lote é maior que uma página |
+| **Columns** e **Rows** | a forma da grade; a paginação aparece quando o lote é maior que uma página. Os painéis são guardados e recolocados em vez de reconstruídos, pelo que mudar a forma é imediato e não redimensiona a janela — ver [[workspaces]] |
 | **Manual** | arrastar sobre um painel integra exatamente aquele intervalo (Shift+arrastar faz o mesmo sem a chave) |
 | **Show IS** | desenha o padrão interno atrás do analito, reescalado à altura dele — os dois raramente compartilham uma magnitude, e só a forma e o tempo estão sendo comparados |
 | **Same Y** | uma única escala de intensidade em todos os painéis, para que as alturas se comparem diretamente |

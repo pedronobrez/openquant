@@ -60,7 +60,12 @@ class PeakPanel(pg.PlotWidget):
     sigContextMenu = QtCore.pyqtSignal(str, object)         # key, global pos
 
     def __init__(self, parent=None):
-        self.viewbox = _PanelViewBox()
+        # `enableMenu=False` rather than `setMenuEnabled(False)` after the
+        # fact: pyqtgraph builds the whole right-click menu in the ViewBox's
+        # constructor, and building a menu nobody can open was 3 ms of the
+        # 5.5 ms a panel cost — 64 panels' worth every time the grid's shape
+        # changed.
+        self.viewbox = _PanelViewBox(enableMenu=False)
         super().__init__(parent, background=theme.background(),
                          viewBox=self.viewbox)
         self.sample_key = ""
@@ -306,6 +311,8 @@ class PeakReviewGrid(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._panels: list[PeakPanel] = []
+        #: panels a smaller shape left over, kept for the next larger one
+        self._spare: list[PeakPanel] = []
         self._items: list[tuple] = []   # (result, x, y, expected, is_trace)
         #: when set, items are fetched a page at a time instead of held here
         self._fetch = None
@@ -419,28 +426,52 @@ class PeakReviewGrid(QtWidgets.QWidget):
             return 0
         return (self.item_count + self.page_size - 1) // self.page_size
 
-    def _relayout(self) -> None:
-        """Rebuild the panel widgets for the current rows x columns."""
-        while self.grid.count():
-            item = self.grid.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.setParent(None)
-                widget.deleteLater()
-        self._panels.clear()
+    def _new_panel(self) -> PeakPanel:
+        """One panel, wired to the grid."""
+        panel = PeakPanel()
+        panel.sigClicked.connect(self._on_panel_clicked)
+        panel.sigDoubleClicked.connect(self.sigMagnified)
+        panel.sigManualRange.connect(self.sigManualRange)
+        panel.sigContextMenu.connect(self.sigContextMenu)
+        panel.set_manual_mode(self._manual_mode)
+        panel.getViewBox().sigXRangeChanged.connect(
+            lambda _vb, rng, p=panel: self._link(p, rng))
+        return panel
 
+    def _relayout(self) -> None:
+        """
+        Re-place the panels for the current rows x columns, keeping them.
+
+        A panel costs 5 ms to build — pyqtgraph's expense, not ours — so
+        throwing all of them away and building `columns x rows` fresh ones
+        took 0.52 s at 8 x 8, once per *step* of a spin box. The panels are
+        interchangeable: `_fill` gives each one its data and clears the ones
+        a short page does not reach, so a change of shape needs nothing but
+        enough of them in the right cells.
+
+        A panel the new shape does not need is kept, hidden and out of the
+        layout, rather than deleted: both spin boxes stop at 8, so the pool
+        cannot grow past 64 panels — about 14 MB — and going back to a shape
+        already used costs nothing. It must be hidden before it is left out,
+        because a child widget nobody is laying out keeps the geometry it had
+        and would be drawn over the first cell.
+        """
         columns, rows = self.col_spin.value(), self.row_spin.value()
-        for index in range(columns * rows):
-            panel = PeakPanel()
-            panel.sigClicked.connect(self._on_panel_clicked)
-            panel.sigDoubleClicked.connect(self.sigMagnified)
-            panel.sigManualRange.connect(self.sigManualRange)
-            panel.sigContextMenu.connect(self.sigContextMenu)
-            panel.set_manual_mode(self._manual_mode)
-            panel.getViewBox().sigXRangeChanged.connect(
-                lambda _vb, rng, p=panel: self._link(p, rng))
+        wanted = columns * rows
+
+        while self.grid.count():           # detach, do not destroy
+            self.grid.takeAt(0)
+        while len(self._panels) > wanted:
+            spare = self._panels.pop()
+            spare.clear_panel()
+            spare.hide()                   # out of the layout, still a child
+            self._spare.append(spare)
+        while len(self._panels) < wanted:
+            self._panels.append(self._spare.pop() if self._spare
+                                else self._new_panel())
+
+        for index, panel in enumerate(self._panels):
             self.grid.addWidget(panel, index // columns, index % columns)
-            self._panels.append(panel)
         self.set_page(self._page)
 
     def _link(self, source: PeakPanel, rng) -> None:

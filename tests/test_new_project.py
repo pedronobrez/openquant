@@ -254,6 +254,11 @@ def test_the_selftest_reports_without_opening_a_window(qapp, capsys):
     assert "OpenQuant" in out
     assert "LIPID MAPS index:" in out
     assert "SCIEX libraries:" in out
+    # the index is an SQLite database, so a build without the sqlite3
+    # extension cannot hold one at all — which is invisible until somebody
+    # searches, on a machine nobody is watching. The line proves the reader
+    # works whether or not an index is installed on this machine.
+    assert "unreadable by this build" not in out
 
 
 def test_a_file_it_cannot_read_is_a_failure_not_a_silence(qapp, tmp_path):

@@ -250,6 +250,31 @@ def _digest(files: list[str]) -> int:
     return 0
 
 
+def _lipidmaps_line() -> str:
+    """
+    What this build can do about a LIPID MAPS index, not just whether one is
+    there.
+
+    The index is an SQLite database, and a packaged application either
+    carries the `sqlite3` extension module or it does not — which is
+    invisible until somebody searches, on a machine nobody is watching. So
+    the count is read here, which opens the database, and where no index is
+    installed the reader is exercised on an empty one in memory. A build
+    that cannot do that says so on the line where it matters.
+    """
+    from .lipidmaps import is_installed, record_count
+
+    try:
+        import sqlite3
+        sqlite3.connect(":memory:").close()
+    except Exception as exc:                         # pragma: no cover - a broken build
+        return f"unreadable by this build — {type(exc).__name__}: {exc}"
+    if not is_installed():
+        return "not installed; this build can read one"
+    count = record_count()
+    return f"{count:,} structures" if count else "installed"
+
+
 def _selftest(files: list[str]) -> int:
     """
     Report what this build can actually do, and exit.
@@ -265,8 +290,7 @@ def _selftest(files: list[str]) -> int:
     print(f"OpenQuant {__version__} on {platform.system()} "
           f"{platform.machine()}, Python {platform.python_version()}")
 
-    from .lipidmaps import is_installed
-    print(f"LIPID MAPS index: {'installed' if is_installed() else 'not installed'}")
+    print(f"LIPID MAPS index: {_lipidmaps_line()}")
 
     from . import bootstrap
     try:

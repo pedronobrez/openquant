@@ -127,7 +127,7 @@ bibliotecas da SCIEX estão indisponíveis.
 
 O banco de dados de lipídios não é distribuído junto. O primeiro uso da aba
 **LIPID MAPS** no Explorer oferece baixá-lo: um arquivo de 21 MB de
-lipidmaps.org vira um índice local de 1.3 MB com 49,969 estruturas
+lipidmaps.org vira um índice local de 45 MB com 49,969 estruturas
 curadas, depois do que as consultas não precisam de rede. Ver [[lipid-maps]].
 
 ## Verificar uma instalação

@@ -1,8 +1,7 @@
 """Tests for the local LIPID MAPS index."""
 
-import gzip
 import io
-import json
+import sqlite3
 import zipfile
 
 import pytest
@@ -209,27 +208,31 @@ def test_trailing_zeros_count_as_measured():
 
 # --- persistence -------------------------------------------------------------------- #
 def test_index_round_trip(database, tmp_path):
-    path = tmp_path / "index.json.gz"
+    path = tmp_path / "index.sqlite"
     database.save(path)
     back = lm.LipidDatabase.load(path)
     assert len(back) == len(database)
     assert back.by_id("LMFA02000164").name == "12,13-DiHOME(9)"
 
 
-def test_index_is_compressed(database, tmp_path):
-    path = tmp_path / "index.json.gz"
+def test_the_index_is_a_database(database, tmp_path):
+    path = tmp_path / "index.sqlite"
     database.save(path)
-    with gzip.open(path, "rt", encoding="utf-8") as handle:
-        payload = json.load(handle)
-    assert payload["version"] == lm.INDEX_VERSION
-    assert payload["count"] == 4
+    with sqlite3.connect(path) as connection:
+        assert dict(connection.execute("SELECT key, value FROM meta")) == {
+            "version": str(lm.INDEX_VERSION), "source": lm.DATABASE_URL,
+            "count": "4"}
+        # mass order, so the row number is the position the list used to have
+        masses = [m for (m,) in connection.execute(
+            "SELECT exact_mass FROM records ORDER BY id")]
+        assert masses == sorted(masses)
 
 
 def test_build_index_from_an_archive(tmp_path):
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("structures.sdf", SDF)
-    path = tmp_path / "index.json.gz"
+    path = tmp_path / "index.sqlite"
     database = lm.build_index(buffer.getvalue(), path)
     assert len(database) == 4
     assert path.exists()
@@ -240,11 +243,14 @@ def test_archive_without_an_sdf_is_refused(tmp_path):
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("readme.txt", "nothing here")
     with pytest.raises(ValueError, match="no .sdf"):
-        lm.build_index(buffer.getvalue(), tmp_path / "i.json.gz")
+        lm.build_index(buffer.getvalue(), tmp_path / "i.sqlite")
 
 
-def test_is_installed_reports_a_missing_index(tmp_path):
-    assert not lm.is_installed(tmp_path / "absent.json.gz")
+def test_is_installed_reports_a_missing_index(tmp_path, monkeypatch):
+    # not the one this machine may really have under the old cache directory:
+    # adopting moves it, and a tmp_path is thrown away afterwards
+    monkeypatch.setattr(lm, "LEGACY_INDEX_PATH", tmp_path / "nowhere.json.gz")
+    assert not lm.is_installed(tmp_path / "absent.sqlite")
 
 
 # --- batch proposals ------------------------------------------------------------- #

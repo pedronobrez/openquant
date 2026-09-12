@@ -545,10 +545,13 @@ class LipidPanel(QtWidgets.QWidget):
                        self.btn_explain, self.explain_precursor):
             widget.setEnabled(installed)
         if installed:
-            database = lipidmaps.database()
+            # the count is a question about the file, and it is read off the
+            # file: opening the database here loaded fifty thousand records
+            # into the window before anybody had searched for anything
+            count = lipidmaps.record_count()
             self.status.setText(
-                f"{len(database):,} curated structures indexed locally."
-                if database else "")
+                f"{count:,} curated structures indexed locally." if count
+                else "Curated structures indexed locally.")
 
     def install(self) -> None:
         self.btn_install.setEnabled(False)

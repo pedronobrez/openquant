@@ -10,10 +10,22 @@ is built.
 ## The database
 
 The first use offers **Download the database**. One 21 MB file from
-lipidmaps.org becomes a 1.3 MB index of 49,969 curated structures, stored
-under `~/.openquant/lipidmaps/`. Lookups take under a millisecond. LMSD is
-redistributed by LIPID MAPS under CC BY 4.0 and is downloaded on request,
-not bundled.
+lipidmaps.org becomes a 45 MB index of 49,969 curated structures — their
+annotation and their connection tables — stored as
+`~/.openquant/lipidmaps/lmsd-index.sqlite`. LMSD is redistributed by LIPID
+MAPS under CC BY 4.0 and is downloaded on request, not bundled.
+
+The index is a database and is read a row at a time, not held in memory.
+Measured on this machine over the 49,969 records: opening it takes 0.1 ms
+and no measurable memory, an LM_ID 0.012 ms, a formula 0.058 ms, a mass
+window 0.083 ms, and a name looked up whole 0.03 ms — a name searched as a
+substring of every other is the one question still answered by reading
+every name, at 5 ms. Before this the index was one compressed
+document that had to be decoded whole before it could answer anything: 0.74
+seconds and 591 MB, which the window paid on startup merely to print how
+many structures were indexed. An index installed by an earlier version is
+rewritten in place the first time it is opened, once, and nothing is
+downloaded again.
 
 Searches are restricted to structures built from C, H, N, O, P, S and Se.
 LMSD holds organoarsenic and fluorinated lipids; they are valid records and

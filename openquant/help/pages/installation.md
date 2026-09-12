@@ -123,7 +123,7 @@ still open; `.wiff` files report that the SCIEX libraries are unavailable.
 
 The lipid database is not bundled. The first use of the **LIPID MAPS** tab
 in the Explorer offers to download it: one 21 MB file from lipidmaps.org
-becomes a 1.3 MB local index of 49,969 curated structures, after which
+becomes a 45 MB local index of 49,969 curated structures, after which
 lookups need no network. See [[lipid-maps]].
 
 ## Checking an installation

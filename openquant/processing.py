@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from dataclasses import dataclass
 
 import numpy as np
@@ -140,6 +141,40 @@ def centroid_mz(mz: np.ndarray, intensity: np.ndarray, apex: int,
     return float((mz[lo:hi] * weights).sum() / total)
 
 
+def centroids_at(mz: np.ndarray, intensity: np.ndarray, apexes: np.ndarray,
+                 span: int = 2) -> np.ndarray:
+    """
+    `centroid_mz` for every index in `apexes` at once, to the last bit.
+
+    The same arithmetic in the same order: the window's weights are added
+    left to right starting from zero, as numpy adds a slice shorter than
+    eight points, and a point past either end of the spectrum contributes a
+    zero, which leaves a sum exactly where it was. So a centroid read here
+    is the centroid `centroid_mz` reads for the same apex — asserted on the
+    real infusions, not assumed — and a spectrum's ten thousand maxima are
+    centroided in a few array operations rather than a Python call each.
+    """
+    apexes = np.asarray(apexes, dtype=int)
+    n = mz.size
+    if apexes.size == 0 or n == 0:
+        return np.zeros(0, dtype=float)
+    total = None
+    moment = None
+    for offset in range(-span, span + 1):
+        at = apexes + offset
+        inside = (at >= 0) & (at < n)
+        weights = intensity[np.clip(at, 0, n - 1)].copy()
+        weights[~inside] = 0
+        products = mz[np.clip(at, 0, n - 1)] * weights
+        products[~inside] = 0
+        total = weights if total is None else total + weights
+        moment = products if moment is None else moment + products
+    with np.errstate(divide="ignore", invalid="ignore"):
+        out = np.where(total > 0, moment / np.where(total > 0, total, 1),
+                       mz[apexes])
+    return np.asarray(out, dtype=float)
+
+
 def pick_peaks(mz: np.ndarray, intensity: np.ndarray, max_peaks: int = 15,
                min_relative: float = 0.01, centroid: bool = True,
                min_distance: float = 0.03) -> list[tuple[float, float]]:
@@ -150,6 +185,14 @@ def pick_peaks(mz: np.ndarray, intensity: np.ndarray, max_peaks: int = 15,
     are dropped. `min_distance` (in Da) merges neighbouring local maxima: in
     profile data the top of a single peak usually yields several maxima, which
     would otherwise show up as repeated masses.
+
+    The maxima are taken strongest first and one is kept when no peak already
+    kept lies within `min_distance` of it. The kept masses are held sorted,
+    so that question is asked of the two neighbours a bisection finds rather
+    than of every peak kept so far: centroiding a whole TOF average keeps
+    seven thousand peaks, and asking each of ten thousand candidates about
+    all of them was 290 million comparisons over one report of nine
+    infusions. The peaks come back the same, in the same order.
     """
     if mz.size == 0 or intensity.size == 0:
         return []
@@ -161,12 +204,21 @@ def pick_peaks(mz: np.ndarray, intensity: np.ndarray, max_peaks: int = 15,
     if idx.size == 0:
         return []
     order = idx[np.argsort(intensity[idx])[::-1]]
+    if centroid:
+        masses = centroids_at(mz, intensity, order).tolist()
+    else:
+        masses = np.asarray(mz[order], dtype=float).tolist()
+    heights = [float(h) for h in intensity[order]]
     peaks: list[tuple[float, float]] = []
-    for i in order:
-        m = centroid_mz(mz, intensity, int(i)) if centroid else float(mz[i])
-        if any(abs(m - kept) < min_distance for kept, _ in peaks):
+    kept: list[float] = []
+    for m, height in zip(masses, heights):
+        at = bisect_left(kept, m)
+        if at and abs(m - kept[at - 1]) < min_distance:
             continue
-        peaks.append((m, float(intensity[i])))
+        if at < len(kept) and abs(m - kept[at]) < min_distance:
+            continue
+        kept.insert(at, m)
+        peaks.append((m, height))
         if len(peaks) >= max_peaks:
             break
     return peaks

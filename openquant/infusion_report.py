@@ -771,6 +771,13 @@ class InfusionReport:
     #: view of, and a compound infused once has none to write.
     energy_advice: str = ""
     taken: _dt.datetime = field(default_factory=_dt.datetime.now)
+    #: what has already been picked off the averaged trace — the scoring
+    #: peaks, the listed ones, the annotation pool, the centroids — keyed on
+    #: the picking and holding the trace it was picked from, so a trace put
+    #: in its place is picked afresh and a trace still standing is picked
+    #: once. Measured before this existed: one report of nine infusions
+    #: centroided each average five times and scored it three. Never saved.
+    _picked: dict = field(default_factory=dict, repr=False, compare=False)
 
     # -- derived ------------------------------------------------------------- #
     @property
@@ -811,11 +818,7 @@ class InfusionReport:
         name the same peaks — which is the whole reason the floor travels
         with the comparison rather than being a constant here.
         """
-        trace = self.trace
-        if trace is None or self.spectrum is None:
-            return []
-        return self.spectrum.peaks(trace, most=most,
-                                   min_relative=self.label_floor)
+        return picked(self, most=most, min_relative=self.label_floor)
 
     def base_peak(self) -> tuple[float, float] | None:
         trace = self.trace
@@ -874,9 +877,8 @@ class InfusionReport:
         trace = self.trace
         if trace is None:
             return []
-        pool = self.spectrum.peaks(
-            trace, most=ANNOTATION_POOL_PEAKS,
-            min_relative=max(self.label_floor / ANNOTATION_POOL, 1e-5))
+        pool = picked(self, most=ANNOTATION_POOL_PEAKS,
+                      min_relative=max(self.label_floor / ANNOTATION_POOL, 1e-5))
         if not pool:
             return []
         formula = self.formula or getattr(self.explanation.record, "formula", "")
@@ -1421,9 +1423,7 @@ def report_for(entry: SampleEntry, channel=None, compound: str = "",
     # — the same centroids `_sticks` hands the library search.
     report.margin = _margin.for_report(report, _sticks(report))
 
-    mine = (report.spectrum.peaks(report.trace, most=SCORE_PEAKS,
-                                  min_relative=SCORE_SHARE)
-            if report.trace is not None else [])
+    mine = score_peaks(report)
     for other_entry, other_channel in others:
         other = _compared(report, mine, other_entry, other_channel,
                           centroid=centroid, label_floor=label_floor,
@@ -1877,16 +1877,57 @@ def component_for(method, compound: str):
     return None
 
 
+def picked(report: InfusionReport, most: int,
+           min_relative: float) -> list[tuple[float, float]]:
+    """
+    `report.spectrum.peaks(report.trace, most, min_relative)`, picked once.
+
+    The pick is remembered on the report against the trace object it was
+    made from: the same trace asked the same question again is answered
+    from memory, and a trace that has been replaced — recalibrated, or
+    averaged again — is picked afresh. What comes back is a copy, so a
+    caller that sorts or trims it changes nothing for the next.
+    """
+    trace = report.trace
+    if trace is None or report.spectrum is None:
+        return []
+    key = ("peaks", int(most), float(min_relative),
+           bool(report.spectrum.centroid))
+    held = report._picked.get(key)
+    if held is not None and held[0] is trace:
+        return list(held[1])
+    peaks = report.spectrum.peaks(trace, most=most, min_relative=min_relative)
+    report._picked[key] = (trace, peaks)
+    return list(peaks)
+
+
+def score_peaks(report: InfusionReport) -> list[tuple[float, float]]:
+    """The peaks an infusion is scored on: `SCORE_PEAKS` at `SCORE_SHARE`."""
+    return picked(report, most=SCORE_PEAKS, min_relative=SCORE_SHARE)
+
+
 def _sticks(report: InfusionReport):
-    """The averaged spectrum as centroids: what a search and a score read."""
+    """
+    The averaged spectrum as centroids: what a search and a score read.
+
+    Centroided once per trace and remembered on the report, the way
+    `picked` remembers a pick: the search, the margin, the explanation and
+    the raw axis all read the same sticks, and centroiding a quarter of a
+    million points is the cost of the report once the file is cached.
+    """
     trace = report.trace
     if trace is None or trace.mz.size == 0:
         return None
     if report.spectrum is not None and report.spectrum.centroid:
         return trace.mz, trace.intensity
+    held = report._picked.get("sticks")
+    if held is not None and held[0] is trace:
+        return held[1]
     from .processing import centroid_spectrum
 
-    return centroid_spectrum(trace.mz, trace.intensity)
+    sticks = centroid_spectrum(trace.mz, trace.intensity)
+    report._picked["sticks"] = (trace, sticks)
+    return sticks
 
 
 def raw_sticks(report: InfusionReport):
@@ -2290,10 +2331,7 @@ def cross_compare(reports, peaks=None, centroid: bool = False) -> None:
     """
     reports = list(reports)
     if peaks is None:
-        peaks = [r.spectrum.peaks(r.trace, most=SCORE_PEAKS,
-                                  min_relative=SCORE_SHARE)
-                 if r.spectrum is not None and r.trace is not None else []
-                 for r in reports]
+        peaks = [score_peaks(r) for r in reports]
     for index, report in enumerate(reports):
         report.compared = []
         trace = report.trace
@@ -2938,10 +2976,7 @@ def _row_for(session, entry, channel, compound, method, library, name,
     report.margin = _margin.for_report(report, _sticks(report))
     return InfusionRow(
         report=report,
-        peaks=(report.spectrum.peaks(report.trace, most=SCORE_PEAKS,
-                                     min_relative=SCORE_SHARE)
-               if report.spectrum is not None
-               and report.trace is not None else []),
+        peaks=score_peaks(report),
         explanation_note=note, library_note=library_note,
         precursor_note=_precursor_reason(report),
         energy=_energy_match(library, report, compound))

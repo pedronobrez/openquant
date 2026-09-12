@@ -44,8 +44,10 @@ end — [[direct-infusion]]'s spray mask and its film in the
 floor measured off an infusion ([[signal-to-noise]]), the margin and the
 unexplained-peak hypotheses of [[lipid-maps]], the record's own mass axis
 ([[spectral-library]]) and incremental processing
-([[analytics-workspace]]). Each will be named in the row of the version
-that ships it.
+([[analytics-workspace]]); and the Infusions tab's *Measure* with its
+averages cached on disk and its peak picker no longer quadratic — a warm
+*Measure* of nine infusions from 7.7 – 8.5 s to 1.7 ([[infusion-report]]).
+Each will be named in the row of the version that ships it.
 
 The manual is part of every release: a version that changes what the
 application does changes the page that describes it, and the printed copy

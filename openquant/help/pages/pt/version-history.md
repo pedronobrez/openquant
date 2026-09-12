@@ -45,8 +45,10 @@ sua capa, a [[infusion-quantitation]], a [[compare-infusions]], a
 [[python-api]], o piso de ruído medido numa infusão ([[signal-to-noise]]), a
 margem e as hipóteses para picos não explicados do [[lipid-maps]], o eixo de
 massa próprio do registro ([[spectral-library]]) e o processamento
-incremental ([[analytics-workspace]]). Cada uma será nomeada na linha da
-versão que a publicar.
+incremental ([[analytics-workspace]]); e o *Measure* da aba Infusions com as
+médias em cache no disco e o detector de picos já não quadrático — um
+*Measure* morno de nove infusões de 7,7 – 8,5 s para 1,7 ([[infusion-report]]).
+Cada uma será nomeada na linha da versão que a publicar.
 
 O manual faz parte de cada versão: uma versão que muda o que o aplicativo faz
 muda a página que a descreve, e a cópia impressa é regerada a partir das mesmas

@@ -182,6 +182,23 @@ class ResultsSet:
             index.setdefault(result.key, result)
         return index
 
+    def by_component(self) -> dict[str, list[PeakResult]]:
+        """
+        Every row grouped by component, in the order the rows are held.
+
+        `for_component` filters the whole list, which is right for one
+        component and quadratic for one per component: the sampling report,
+        the calibration pass and the algorithm comparison each ask for every
+        component in turn, so on a 141-component batch of 3,666 rows they
+        walked half a million rows to read 3,666. Anything looping over the
+        method's components builds this once instead — the same shape, and
+        the same reason, as `by_key`.
+        """
+        index: dict[str, list[PeakResult]] = {}
+        for result in self.results:
+            index.setdefault(result.component, []).append(result)
+        return index
+
     def for_component(self, component: str) -> list[PeakResult]:
         return [r for r in self.results if r.component == component]
 
@@ -713,10 +730,11 @@ def build_calibrations(results: ResultsSet, entries: list[SampleEntry],
             excluded[(name, point.sample_key)] = point.used
 
     curves: dict[str, Calibration] = {}
+    rows_of = results.by_component()
     for component in method.components:
         mode = component.calibration_response
         points: list[CalibrationPoint] = []
-        for result in results.for_component(component.name):
+        for result in rows_of.get(component.name, ()):
             entry = by_key.get(result.sample_key)
             if entry is None or entry.sample_type not in CALIBRATION_TYPES:
                 continue

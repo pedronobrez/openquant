@@ -140,6 +140,12 @@ openquant/
                   help_window.py is Help ▸ Manual; settings.py the one
                   settings constructor;
                   help/pages/pt/ the Portuguese manual, same slugs
+tools/bench.py    what the application costs here, scenario by scenario:
+                  wall, CPU and peak RSS, `--profile <name>` (warm, after a
+                  throwaway pass), `--json` and `--compare before after`. A
+                  scenario whose data is not on this machine skips and says
+                  so. Reaches into the main checkout for the acquisitions,
+                  so it runs from a worktree.
 packaging/        PyInstaller spec, DMG script, WiX source, wine/ shim; icons/ is the
                   suite's mark (the two co-eluting peaks), drawn by OpenDIAL's
                   tools/make_icon.py through packaging/make_icon.py and committed —
@@ -1197,6 +1203,52 @@ UV detector, is not implemented there) — untested on real Windows.
   reader. What is left in a warm Measure is the reader's `average_stable`
   when no cache is passed, and the noise floor still centroids twice at
   0.001 (`spectrum_noise` and `quiet_window` do not share their peaks).
+- **Every number Clearcore2 returns crossed the managed boundary one double
+  at a time.** `wiff._to_numpy` was `np.asarray(list(net_array))`, and
+  pythonnet marshals each element of that `list()` separately: 0.194 ms for
+  one 1,143-point TOF scan against 0.0009 ms taking the same array as a
+  buffer — **216×**, the same doubles byte for byte. It was 84% of
+  `build_contour` and two thirds of an average, and it sat under every
+  chromatogram, spectrum and XIC in the program. `np.array(memoryview(x),
+  dtype=np.float64, copy=True)` now, with the element walk kept as a
+  fallback for anything the buffer protocol refuses (a `List<double>`
+  raises `TypeError`, which is the whole guard). **The copy is the point:**
+  `np.frombuffer` and `np.asarray` on the .NET object hand back a view whose
+  memory is the managed heap's — right until the collector moves or frees
+  it, and on macOS that reads as plausible numbers rather than as a crash.
+  Measured, per-scenario, `tools/bench.py --repeats 3`: contour 0.201 →
+  0.075 s, spectra 0.087 → 0.039, average 0.292 → 0.187, quantify 0.589 →
+  0.490, digest 1.177 → 1.082; `--digest` byte-identical, sha256
+  `6f0f2d42…` on this machine's five files.
+- **The quadratic `by_key` was written for was still in three other
+  places.** `ResultsSet.get` walks the whole list, and so does
+  `for_component`; `compare._delta` called `get` once per row, `_precision`
+  once per replicate, and `sampling_report`, `build_calibrations`,
+  `compare._figures` and `batches._side` filtered the whole set once per
+  component. `ResultsSet.by_component()` is `by_key`'s twin and the callers
+  build both once. Measured on synthetic rows at the real batch's size
+  (3,666): the per-component filter 0.010 → 0.0002 s and the per-row lookup
+  0.106 → 0.0031 s, and both grow with the square — at 7,332 rows the walks
+  are 0.032 s and 0.518 s while the indexes do not move. On the five
+  `260904_EICs_*` (405 rows) it is worth 0.09 s of the comparison and
+  nothing you would notice, which is exactly why it survived: **the shape
+  is only visible at batch size, so measure it there or synthetically.**
+  `sampling._cycle` had the same shape in a different dress — the cycle
+  belongs to the channel's time axis, and it was re-measured once per
+  component onto the same handful of channels; it memoises per channel now.
+- **Two things that looked like the next win and were not.** mzML header
+  reading builds one `ET.fromstring` per spectrum, 23,722 of them, and one
+  `XMLPullParser` fed the whole run measures **0.494 s against 0.504 s** —
+  the cost is parsing 47 MB of XML, not constructing parsers, so the
+  rewrite buys 2% and is not worth the risk. And `Channel.__init__` is 0.36
+  ms of `GetMSExperiment` per channel, 405 of them to open five files: that
+  is Clearcore2's, and every channel's `Details` is needed for matching
+  anyway, so laziness would only move it. What did help on the mzML side
+  was one walk instead of three — `_params`, `_minutes` and `_activation`
+  each iterated every descendant of the same spectrum, so `_scan_facts`
+  does all three in one pass (1,485,831 `_local` calls → 635,301, and
+  `_local` memoises the namespace strip): 0.799 → 0.736 s, verified equal
+  on all 23,722 spectra of the real file, three answers at a time.
 - **A measured figure that nothing runs is prose.** Every number in this
   file came from a real acquisition and, until `tests/real/`, none was
   checked: the fixtures are synthetic by design, because raw data is never

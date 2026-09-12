@@ -190,11 +190,11 @@ class BatchComparison:
         return "; ".join(parts) + "."
 
 
-def _side(batch: BatchSnapshot, component) -> Side:
-    rows = batch.results.for_component(component.name)
+def _side(batch: BatchSnapshot, component, index: "_Index") -> Side:
+    rows = index.rows_of.get(component.name, [])
     found = [r for r in rows if r.found]
     points = [float(r.points) for r in found if r.points is not None]
-    precision, replicates = _precision(batch.results, component,
+    precision, replicates = _precision(index.by_key, component,
                                        _replicate_set(component, batch.entries))
     return Side(
         rows=len(rows), found=len(found),
@@ -203,6 +203,24 @@ def _side(batch: BatchSnapshot, component) -> Side:
         median_rt=float(np.median([r.rt for r in found])) if found else None,
         precision=precision, replicates=replicates,
     )
+
+
+@dataclass(frozen=True)
+class _Index:
+    """
+    One batch's rows, looked up by component and by (sample, component).
+
+    Both sides are asked about every shared component, and `_precision` about
+    every replicate of each; done against the list itself that is a walk of
+    every row per component per batch. Built once here instead.
+    """
+
+    rows_of: dict
+    by_key: dict
+
+    @classmethod
+    def of(cls, batch: BatchSnapshot) -> "_Index":
+        return cls(batch.results.by_component(), batch.results.by_key())
 
 
 def compare_batches(current: BatchSnapshot, reference: BatchSnapshot) -> BatchComparison:
@@ -220,6 +238,7 @@ def compare_batches(current: BatchSnapshot, reference: BatchSnapshot) -> BatchCo
         current_injections=current.injections)
     ref_by_name = {c.name: c for c in reference.method.components if c.is_valid}
     cur_by_name = {c.name: c for c in current.method.components if c.is_valid}
+    ref_index, cur_index = _Index.of(reference), _Index.of(current)
     for name, component in cur_by_name.items():
         other = ref_by_name.get(name)
         if other is None:
@@ -228,8 +247,8 @@ def compare_batches(current: BatchSnapshot, reference: BatchSnapshot) -> BatchCo
         comparison.rows.append(ComponentDelta(
             component=name,
             is_internal_standard=component.is_internal_standard,
-            reference=_side(reference, other),
-            current=_side(current, component)))
+            reference=_side(reference, other, ref_index),
+            current=_side(current, component, cur_index)))
     comparison.only_reference = [name for name in ref_by_name if name not in cur_by_name]
     return comparison
 

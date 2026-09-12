@@ -211,11 +211,18 @@ def _replicate_set(component, entries: list[SampleEntry]) -> list[SampleEntry]:
     return [e for e in entries if e.sample_type == QC]
 
 
-def _precision(results: ResultsSet, component, replicates: list[SampleEntry]
+def _precision(by_key: dict, component, replicates: list[SampleEntry]
                ) -> tuple[float | None, int]:
+    """
+    The %CV of one component over the injections it was meant to repeat on.
+
+    `by_key` is `ResultsSet.by_key()`, built once by the caller: asking the
+    set itself walked every row for every replicate of every component of
+    every algorithm.
+    """
     values = []
     for entry in replicates:
-        row = results.get(entry.key, component.name)
+        row = by_key.get((entry.key, component.name))
         if row is not None and row.found:
             values.append(row.area)
     if len(values) < MIN_REPLICATES:
@@ -227,15 +234,15 @@ def _precision(results: ResultsSet, component, replicates: list[SampleEntry]
     return abs(float(array.std(ddof=1)) / mean * 100.0), len(values)
 
 
-def _figures(algorithm: str, results: ResultsSet, curves: dict[str, Calibration],
+def _figures(algorithm: str, rows: list, by_key: dict,
+             curves: dict[str, Calibration],
              component, entries: list[SampleEntry]) -> Figures:
-    rows = results.for_component(component.name)
     found = [r for r in rows if r.found]
     # a row the algorithm could not run on is labelled with what did run
     fell = [r for r in found if r.algorithm and r.algorithm != algorithm]
     sparse = sum(1 for r in fell if "above the baseline" in r.note
                  or "narrower than the sampling" in r.note)
-    precision, replicates = _precision(results, component,
+    precision, replicates = _precision(by_key, component,
                                        _replicate_set(component, entries))
     curve = curves.get(component.name)
     return Figures(
@@ -247,12 +254,20 @@ def _figures(algorithm: str, results: ResultsSet, curves: dict[str, Calibration]
     )
 
 
-def _delta(algorithm: str, reference: ResultsSet, other: ResultsSet,
+def _delta(algorithm: str, reference_rows: list, other_by_key: dict,
            component) -> Delta:
+    """
+    How far one algorithm's areas sit from the reference's, per component.
+
+    Both sides arrive indexed. Looking the counterpart up with
+    `ResultsSet.get` walked the whole result list for every row — 3,666 rows
+    against 3,666, once per component and once per algorithm — which is the
+    quadratic `by_key` was written for and which had survived here.
+    """
     percents = []
     only_reference = only_other = 0
-    for row in reference.for_component(component.name):
-        counterpart = other.get(row.sample_key, row.component)
+    for row in reference_rows:
+        counterpart = other_by_key.get((row.sample_key, row.component))
         found_other = counterpart is not None and counterpart.found
         if row.found and found_other:
             percents.append(abs(counterpart.area - row.area) / row.area * 100.0)
@@ -318,16 +333,21 @@ def compare_algorithms(entries: list[SampleEntry], method: ProcessingMethod,
         results[algorithm] = run
         calibrations[algorithm] = curves
 
+    # indexed once per algorithm, not once per component per algorithm
+    rows_of = {a: results[a].by_component() for a in algorithms}
+    keyed = {a: results[a].by_key() for a in algorithms}
+
     compared: list[ComponentComparison] = []
     for component in components:
         item = ComponentComparison(component.name, component.is_internal_standard)
         for algorithm in algorithms:
             item.figures[algorithm] = _figures(
-                algorithm, results[algorithm], calibrations[algorithm],
-                component, loaded)
+                algorithm, rows_of[algorithm].get(component.name, []),
+                keyed[algorithm], calibrations[algorithm], component, loaded)
             if algorithm != reference:
                 item.deltas[algorithm] = _delta(
-                    algorithm, results[reference], results[algorithm], component)
+                    algorithm, rows_of[reference].get(component.name, []),
+                    keyed[algorithm], component)
         compared.append(item)
     return Comparison(reference=reference, algorithms=algorithms,
                       results=results, calibrations=calibrations,

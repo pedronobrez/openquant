@@ -145,8 +145,18 @@ class SamplingReport:
         return "; ".join(parts) + "."
 
 
-def _cycle(entries: list[SampleEntry], component) -> float | None:
-    """The channel's cycle time, in seconds, from the first sample that has it."""
+def _cycle(entries: list[SampleEntry], component,
+           measured: dict | None = None) -> float | None:
+    """
+    The channel's cycle time, in seconds, from the first sample that has it.
+
+    `measured` memoises the answer per channel rather than per component. The
+    cycle is a property of the channel's own time axis, and a method's
+    components crowd onto far fewer channels than there are components — on
+    the 141-component method 59 transitions share a handful — so without it
+    the same `np.median(np.diff(...))` over the same 339-point axis was
+    computed once for every row of the report.
+    """
     for entry in entries:
         if not entry.is_loaded:
             continue
@@ -156,9 +166,19 @@ def _cycle(entries: list[SampleEntry], component) -> float | None:
             channel = None
         if channel is None:
             continue
+        # the entry's key and the channel's index identify the time axis;
+        # the channel object itself is not hashable across readers
+        token = (entry.key, getattr(channel, "index", id(channel)))
+        if measured is not None and token in measured:
+            return measured[token]
         times = np.asarray(channel.rt, dtype=float)
-        if times.size >= 2:
-            return float(np.median(np.diff(times))) * 60.0
+        cycle = (float(np.median(np.diff(times))) * 60.0
+                 if times.size >= 2 else None)
+        if cycle is None:
+            continue
+        if measured is not None:
+            measured[token] = cycle
+        return cycle
     return None
 
 
@@ -176,10 +196,12 @@ def sampling_report(results: ResultsSet, entries: list[SampleEntry],
     if not len(results):
         report.note = "no results yet; process the batch"
         return report
+    rows_of = results.by_component()
+    cycles: dict = {}
     for component in method.components:
         if not component.is_valid:
             continue
-        rows = [r for r in results.for_component(component.name) if r.found]
+        rows = [r for r in rows_of.get(component.name, ()) if r.found]
         counted = [r for r in rows if r.points is not None]
         widths = [r.width * 60.0 for r in counted if r.width and r.width > 0]
         points = [float(r.points) for r in counted]
@@ -190,7 +212,7 @@ def sampling_report(results: ResultsSet, entries: list[SampleEntry],
             component=component.name,
             is_internal_standard=component.is_internal_standard,
             found=len(rows),
-            cycle=_cycle(entries, component),
+            cycle=_cycle(entries, component, cycles),
             width=float(np.median(widths)) if widths else None,
             points=float(np.median(points)) if points else None,
             sparse=sum(1 for r in counted if r.points < MIN_FIT_POINTS),

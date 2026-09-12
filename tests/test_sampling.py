@@ -150,3 +150,42 @@ def test_the_report_section_and_the_qc_tab_show_it(tmp_path):
     assert "fewer than three points" in panel.status.text()
     panel.deleteLater()
     app.processEvents()
+
+
+def test_the_cycle_memo_answers_what_the_plain_measurement_answered():
+    """
+    The cycle belongs to the channel, so it is measured once per channel and
+    not once per component. The memo must not change the answer, and a second
+    component on the same channel must get the same number.
+    """
+    from openquant.sampling import _cycle
+
+    entries, method = _entries(3), _method()
+    component = method.components[0]
+    plain = _cycle(entries, component)
+    memo: dict = {}
+    first = _cycle(entries, component, memo)
+    second = _cycle(entries, component, memo)
+    assert plain == first == second
+    assert len(memo) == 1                      # measured once, not three times
+
+
+def test_a_component_no_channel_serves_still_reports_no_cycle():
+    from openquant.components import Component
+    from openquant.sampling import _cycle
+
+    stranger = Component("Z", 1234.5, 99.0, rt=6.4, rt_halfwidth=0.5)
+    memo: dict = {}
+    assert _cycle(_entries(2), stranger, memo) is None
+    assert memo == {}
+
+
+def test_the_report_reads_the_same_with_the_index_as_without():
+    """`by_component` replaced a filter of the whole list per component."""
+    entries, method = _entries(3), _method()
+    results = process(entries, method)
+    report = sampling_report(results, entries, method)
+    for row in report.rows:
+        rows = [r for r in results.for_component(row.component) if r.found]
+        assert row.found == len(rows)
+    assert results.by_component()["A"] == results.for_component("A")

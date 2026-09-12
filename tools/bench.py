@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import cProfile
+import functools
 import gc
 import glob
 import json
@@ -54,13 +55,18 @@ def peak_rss_mb() -> float:
 # --------------------------------------------------------------------------- #
 # where the data is
 # --------------------------------------------------------------------------- #
-def _checkouts() -> list[str]:
+@functools.cache
+def _checkouts() -> tuple[str, ...]:
     """
     This checkout, and the main one if this is a worktree.
 
     A `git worktree` holds only what git tracks and the acquisitions are
     ignored, so an agent measuring from a worktree has to reach into the main
     checkout for them — the same way `tests/real/data.py` does.
+
+    Cached, because it forks a subprocess: uncached it charged every scenario
+    that names a file 18 ms of somebody else's process, which is a quarter of
+    what reading all 81 chromatograms costs.
     """
     import subprocess
     found = [ROOT]
@@ -70,14 +76,15 @@ def _checkouts() -> list[str]:
              "--git-common-dir"],
             capture_output=True, text=True, timeout=10, check=True).stdout.strip()
     except (OSError, subprocess.SubprocessError):
-        return found
+        return tuple(found)
     main = os.path.dirname(common)
     if main and main not in found:
         found.append(main)
-    return found
+    return tuple(found)
 
 
-def eics() -> list[str]:
+@functools.cache
+def eics() -> tuple[str, ...]:
     """The five `260904_EICs_Isabela_*.wiff`, in the working directory."""
     roots = [os.environ.get("OPENQUANT_REAL_EICS"), *_checkouts()]
     for root in roots:
@@ -85,7 +92,7 @@ def eics() -> list[str]:
             continue
         files = sorted(glob.glob(os.path.join(root, "260904_EICs_Isabela_*.wiff")))
         if files:
-            return files
+            return tuple(files)
     raise Skip("no 260904_EICs_Isabela_*.wiff in "
                + ", ".join(r for r in roots if r))
 
@@ -248,6 +255,56 @@ def _quantify():
     return len(results)
 
 
+@scenario("bpc", "a base peak chromatogram over the busiest channel")
+def _bpc():
+    from openquant import api
+    with api.open(one_wiff()) as acquisition:
+        return len(_busiest(acquisition).reader.bpc())
+
+
+@scenario("mzml-spectra", "decode 25 spectra out of one mzML")
+def _mzml_spectra():
+    from openquant import api
+    with api.open(one_mzml()) as acquisition:
+        channel = _busiest(acquisition)
+        scans = len(channel.tic())
+        step = max(1, scans // 25)
+        return sum(len(channel.spectrum(i)) for i in range(0, scans, step))
+
+
+@scenario("sampling", "the sampling report over the batch")
+def _sampling():
+    from openquant import sampling
+    session, results = _processed()
+    report = sampling.sampling_report(results, session.entries, session.method)
+    session.close_all()
+    return len(report.rows)
+
+
+@scenario("compare", "every integration algorithm run over the batch")
+def _compare():
+    from openquant import compare
+    session, _ = _processed()
+    comparison = compare.compare_algorithms(session.entries, session.method,
+                                            cache=session.cache)
+    session.close_all()
+    return comparison is not None and len(comparison.components)
+
+
+def _processed():
+    """The five acquisitions opened, componented and integrated once."""
+    _qt_app()
+    from openquant.session import Session
+    from openquant import quantify
+    session = Session()
+    for path in eics():
+        session.open_file(path)
+    session.set_components(session.generate_components())
+    results = quantify.process(session.entries, session.method,
+                               cache=session.cache)
+    return session, results
+
+
 @scenario("mzml-read", "read one mzML end to end")
 def _mzml_read():
     from openquant import api
@@ -361,8 +418,23 @@ def run_one(name: str, repeats: int) -> dict:
             "repeats": repeats}
 
 
-def profile_one(name: str, out: str | None) -> None:
+def profile_one(name: str, out: str | None, warm: bool = True) -> None:
+    """
+    cProfile one scenario, after a warm-up pass.
+
+    Without the warm-up the profile of any scenario that touches a `.wiff` is
+    two thirds importing numpy and bringing up .NET — one-time costs that say
+    nothing about what the scenario does every time it runs. The first run is
+    thrown away and the second is the one measured. `--cold` keeps the old
+    behaviour for when the import cost is the question.
+    """
     _, func = SCENARIOS[name]
+    if warm:
+        try:
+            func()
+        except Skip as skipped:
+            print(f"{name} skipped — {skipped}")
+            return
     profiler = cProfile.Profile()
     profiler.enable()
     func()
@@ -390,6 +462,8 @@ def main(argv=None) -> int:
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--profile", help="cProfile one scenario instead")
     parser.add_argument("--profile-out", help="where to write the .prof")
+    parser.add_argument("--cold", action="store_true",
+                        help="profile without the warm-up pass")
     parser.add_argument("--json", help="write the table as JSON")
     parser.add_argument("--compare", nargs=2, metavar=("BEFORE", "AFTER"))
     args = parser.parse_args(argv)
@@ -403,7 +477,7 @@ def main(argv=None) -> int:
         return _compare(*args.compare)
 
     if args.profile:
-        profile_one(args.profile, args.profile_out)
+        profile_one(args.profile, args.profile_out, warm=not args.cold)
         return 0
 
     names = args.only.split(",") if args.only else list(SCENARIOS)

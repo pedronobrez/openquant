@@ -240,8 +240,15 @@ def test_loading_an_index_that_is_not_there_says_so(tmp_path):
 
 
 # -- the connection belongs to its thread ------------------------------------ #
-def test_a_worker_thread_gets_a_connection_of_its_own(stored):
-    """The measuring worker explains spectra off the window's thread."""
+def test_a_worker_thread_can_search(stored):
+    """
+    The measuring worker explains spectra off the window's thread.
+
+    There is one connection, shared and taken in turn, rather than one per
+    thread: a connection belongs to the thread that made it, so per-thread
+    connections could never all be closed, and a file Windows still has open
+    cannot be replaced or removed.
+    """
     found = []
 
     def search():
@@ -252,3 +259,64 @@ def test_a_worker_thread_gets_a_connection_of_its_own(stored):
     worker.start()
     worker.join()
     assert found == ["LMFA02000230", "LMSP03010002"]
+
+
+# -- letting go of the file -------------------------------------------------- #
+def test_closing_lets_go_of_the_file(tmp_path):
+    """
+    An open database is an open file, and Windows will not replace one.
+
+    This is what `WinError 32` on the runner was: the index is rewritten in
+    place on a reinstall, and a test writes one and removes it. On macOS and
+    Linux removing an open file is allowed and nothing was ever noticed, so
+    what is asserted here is the state rather than the removal — the removal
+    would pass on this machine either way.
+    """
+    path = LipidDatabase(records()).save(tmp_path / "index.sqlite")
+    database = LipidDatabase.load(path)
+    assert database.by_id("LMFA02000230") is not None
+    assert database._db is not None
+
+    database.close()
+    assert database._db is None, "the file is still open after close"
+    path.unlink()                       # the point, where Windows is watching
+    assert not path.exists()
+
+
+def test_a_closed_database_opens_again_when_asked(stored):
+    """Closing is letting go of the file, not breaking the object."""
+    first = stored.by_id("LMFA02000230").name
+    stored.close()
+    assert stored.by_id("LMFA02000230").name == first
+
+
+def test_a_database_in_memory_can_be_closed_too(stored):
+    """
+    Every caller closes and only one of them has anything to do.
+
+    `LipidDatabase.load` gives back the stored kind and `LipidDatabase(...)`
+    the in-memory kind, and nothing that holds one knows which it has.
+    """
+    plain = LipidDatabase(records())
+    plain.close()
+    assert len(plain) == len(stored)
+    with LipidDatabase(records()) as held:
+        assert len(held) == len(stored)
+
+
+def test_a_worker_leaves_no_connection_behind(stored):
+    """
+    One connection, not one per thread.
+
+    A `sqlite3.Connection` belongs to the thread that made it, so per-thread
+    connections could never all be closed from anywhere — which is why there
+    is one, taken in turn.
+    """
+    def search():
+        stored.find_by_name("12,13-DiHOME", limit=1)
+
+    worker = threading.Thread(target=search)
+    worker.start()
+    worker.join()
+    stored.close()
+    assert stored._db is None

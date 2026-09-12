@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.10.0 released. 1913 tests. Public repository.**
+**Version 0.10.0 released. 1918 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -1371,6 +1371,21 @@ UV detector, is not implemented there) — untested on real Windows.
   0 disagreements. An index in the old format is rewritten in place the
   first time it is opened (2.4 s, once): a 21 MB download does not happen
   twice because the format changed.
+- **One connection per thread is the usual advice and it cannot be closed.**
+  A `sqlite3.Connection` belongs to the thread that made it, so a
+  thread-local pool's `close` can only ever release the calling thread's —
+  and the LIPID MAPS index is a file the program replaces (a reinstall) and
+  a test writes and removes. On macOS and Linux removing a file something
+  still has open is allowed and nothing is ever noticed; Windows refuses it,
+  and the v0.10.0 tag went red on `WinError 32` with the measuring worker's
+  connection still holding `_tmp-index.json.gz`. `_StoredDatabase` now keeps
+  **one** connection, opened `check_same_thread=False` and taken under an
+  `RLock`, so `close()` really does let go; a read is a millisecond at most,
+  so taking turns costs nothing worth measuring, and a closed database
+  reopens on the next question. `LipidDatabase.close()` exists on the plain
+  kind too and does nothing, so nothing holding one has to know which it
+  has. `tests/test_lipidmaps_index.py` asserts the *state* rather than the
+  removal, because the removal passes on this machine either way.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and
@@ -1581,7 +1596,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-1913 tests, two skipped (4 bundle-weight tests need a built bundle), plus 56 under `tests/real/` that run only with `OPENQUANT_REAL_DATA=1`. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+1918 tests, two skipped (4 bundle-weight tests need a built bundle), plus 56 under `tests/real/` that run only with `OPENQUANT_REAL_DATA=1`. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `ui/settings.py` is the one place a settings object is made, and
 `tests/conftest.py` sets `OPENQUANT_SETTINGS` before any widget exists so

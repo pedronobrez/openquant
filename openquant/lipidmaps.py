@@ -437,6 +437,22 @@ class LipidDatabase:
         return None
 
     # -- persistence ------------------------------------------------------------ #
+    def close(self) -> None:
+        """
+        Let go of whatever this is holding.
+
+        Nothing, for a database built in memory. The one read off a file
+        holds the file open, and Windows will not remove or replace a file
+        something has open — so every caller closes, and only one of them
+        has anything to do.
+        """
+
+    def __enter__(self) -> "LipidDatabase":
+        return self
+
+    def __exit__(self, *_exception) -> None:
+        self.close()
+
     def save(self, path: str | os.PathLike = INDEX_PATH) -> Path:
         return _write_index(self.records, path)
 
@@ -586,8 +602,15 @@ def _is_index_database(path: Path) -> bool:
 
 
 def _open_read_only(path: Path) -> sqlite3.Connection:
+    """
+    The index, read-only, usable from any thread.
+
+    `check_same_thread=False` because there is one connection and the
+    measuring worker searches off the window's thread; `_StoredDatabase`
+    takes a lock around every statement, which is what makes that safe.
+    """
     uri = Path(path).resolve().as_uri() + "?mode=ro"
-    return sqlite3.connect(uri, uri=True)
+    return sqlite3.connect(uri, uri=True, check_same_thread=False)
 
 
 class _StoredRecords(Sequence):
@@ -628,36 +651,47 @@ class _StoredDatabase(LipidDatabase):
 
     def __init__(self, path: str | os.PathLike):
         self.path = Path(path)
-        self._local = threading.local()
-        row = self._connection().execute(
-            "SELECT value FROM meta WHERE key='count'").fetchone()
-        self._count = int(row[0]) if row else self._connection().execute(
-            "SELECT COUNT(*) FROM records").fetchone()[0]
+        self._lock = threading.RLock()
+        self._db: sqlite3.Connection | None = _open_read_only(self.path)
+        row = self.query("SELECT value FROM meta WHERE key='count'")
+        self._count = int(row[0][0]) if row else self.query(
+            "SELECT COUNT(*) FROM records")[0][0]
         self.records = _StoredRecords(self)
 
     # -- the connection -------------------------------------------------------- #
-    def _connection(self) -> sqlite3.Connection:
-        """
-        One connection per thread.
-
-        A `sqlite3.Connection` belongs to the thread that made it, and the
-        measuring worker explains spectra off the window's thread.
-        """
-        connection = getattr(self._local, "connection", None)
-        if connection is None:
-            connection = _open_read_only(self.path)
-            self._local.connection = connection
-        return connection
+    # One connection, shared by every thread and taken in turn.
+    #
+    # It was one connection per thread, which is the usual advice, and it is
+    # wrong here for a reason Windows enforces and nothing else does: a
+    # connection belongs to the thread that made it, so `close` could only
+    # ever close the calling thread's, and a file Windows still has open
+    # cannot be deleted or replaced. The measuring worker searches the
+    # library off the window's thread, so a reinstall — or a test that
+    # writes an index and removes it — failed with `WinError 32` on the
+    # runner and silently worked everywhere else. A read takes a millisecond
+    # at most, so taking turns costs nothing worth measuring.
+    def query(self, sql: str, parameters=()) -> list:
+        with self._lock:
+            if self._db is None:
+                self._db = _open_read_only(self.path)
+            return self._db.execute(sql, parameters).fetchall()
 
     def close(self) -> None:
-        connection = getattr(self._local, "connection", None)
-        if connection is not None:
-            connection.close()
-            self._local.connection = None
+        """Let go of the file, so it can be replaced or removed."""
+        with self._lock:
+            if self._db is not None:
+                self._db.close()
+                self._db = None
+
+    def __enter__(self) -> "_StoredDatabase":
+        return self
+
+    def __exit__(self, *_exception) -> None:
+        self.close()
 
     # -- reading rows ---------------------------------------------------------- #
     def _rows(self, where: str, parameters=()) -> list[LipidRecord]:
-        return [LipidRecord(*row) for row in self._connection().execute(
+        return [LipidRecord(*row) for row in self.query(
             f"SELECT {_COLUMNS} FROM records {where}", parameters)]
 
     def at(self, position: int) -> LipidRecord | None:
@@ -724,11 +758,11 @@ class _StoredDatabase(LipidDatabase):
             where = "instr(n.squashed, :needle) > 0"
             parameters = {"needle": needle, "length": len(needle),
                           "limit": limit}
-        return self._connection().execute(
+        return self.query(
             f"SELECT n.record, {rank} AS rank, r.sort_length "
             f"FROM names n JOIN records r ON r.id = n.record WHERE {where} "
             "GROUP BY n.record ORDER BY rank, r.sort_length, n.record "
-            "LIMIT :limit", parameters).fetchall()
+            "LIMIT :limit", parameters)
 
     # -- persistence ------------------------------------------------------------ #
     def save(self, path: str | os.PathLike = INDEX_PATH) -> Path:
@@ -738,7 +772,10 @@ class _StoredDatabase(LipidDatabase):
         path.parent.mkdir(parents=True, exist_ok=True)
         target = sqlite3.connect(path)
         try:
-            self._connection().backup(target)
+            with self._lock:
+                if self._db is None:
+                    self._db = _open_read_only(self.path)
+                self._db.backup(target)
         finally:
             target.close()
         return path

@@ -221,14 +221,17 @@ def test_the_connection_table_is_kept_when_the_sdf_is_read():
     assert molecule.formula == "C2H6O"
     assert molecule.reliable
 
-    # and it survives being written to the index and read back
+    # and it survives being written to the index and read back. The index is
+    # a database and a database is an open file: Windows will not remove one,
+    # so it is closed before the file is, which is what `close` is for.
     saved = LipidDatabase(records)
-    reloaded = LipidDatabase.load(
-        saved.save(Path(__file__).parent / "fixtures" / "_tmp-index.json.gz"))
+    written = Path(__file__).parent / "fixtures" / "_tmp-index.json.gz"
+    reloaded = LipidDatabase.load(saved.save(written))
     try:
         assert reloaded.records[0].molecule().formula == "C2H6O"
     finally:
-        (Path(__file__).parent / "fixtures" / "_tmp-index.json.gz").unlink()
+        reloaded.close()
+        written.unlink(missing_ok=True)
 
 
 def test_a_record_with_no_structure_says_so_rather_than_failing():

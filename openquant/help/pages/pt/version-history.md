@@ -36,11 +36,13 @@ instaladores. Cada versão abaixo traz os três instaladores descritos em
 
 ## Ainda não em uma versão publicada
 
-Nada no momento: as páginas descrevem o que a 0.9.0 faz. Um manual lido da
-árvore de código descreve o que a árvore de código faz, e entre versões ela
-corre à frente da última tag; o trabalho no ramo principal que ainda não
-entrou em uma versão é listado aqui, e nomeado na linha da versão que o
-publicar.
+Um manual lido da árvore de código descreve o que a árvore de código faz,
+que anda à frente da última etiqueta entre versões; o trabalho no ramo
+principal que ainda não saiu numa versão está listado aqui, e é nomeado na
+linha da versão que o publica. De momento é a rapidez do *Medir* do
+separador Infusões: o detetor de picos já não percorre as massas que
+guardou, pelo que um *Medir* morno de nove infusões passou de 7,7 – 8,5 s
+para 1,7 ([[infusion-report]]).
 
 O manual faz parte de cada versão: uma versão que muda o que o aplicativo faz
 muda a página que a descreve, e a cópia impressa é regerada a partir das mesmas

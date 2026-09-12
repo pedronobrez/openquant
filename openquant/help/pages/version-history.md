@@ -35,11 +35,13 @@ three installers described on [[installation]].
 
 ## Not yet in a released version
 
-Nothing at the moment: the pages describe what 0.9.0 does. A manual read
-from the source tree describes what the source tree does, which runs ahead
-of the last tag between releases; work on the main branch that has not been
-in a release is listed here, and named in the row of the version that ships
-it.
+A manual read from the source tree describes what the source tree does,
+which runs ahead of the last tag between releases; work on the main branch
+that has not been in a release is listed here, and named in the row of the
+version that ships it. At the moment that is the speed of the Infusions
+tab's *Measure*: the peak picker no longer walks its own kept masses, so a
+warm *Measure* of nine infusions fell from 7.7 – 8.5 s to 1.7
+([[infusion-report]]).
 
 The manual is part of every release: a version that changes what the
 application does changes the page that describes it, and the printed copy

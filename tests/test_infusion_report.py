@@ -913,3 +913,55 @@ def test_the_explorer_names_the_rungs_in_the_title(qapp):
 
     explorer.deleteLater()
     qapp.processEvents()
+
+
+def test_a_trace_is_picked_once_and_a_new_trace_again(monkeypatch):
+    """`picked` answers the same question about the same trace from memory,
+    hands back a copy, and picks afresh when the trace is replaced."""
+    from openquant import spectra_compare as sc
+
+    mz = np.linspace(100.0, 110.0, 2001)
+    intensity = np.exp(-((mz - 103.0) ** 2) / 0.0002) * 1000 + \
+        np.exp(-((mz - 107.0) ** 2) / 0.0002) * 400
+    comparison = sc.SpectrumComparison(
+        traces=[sc.SpectrumTrace("one", mz, intensity)])
+    report = ir.InfusionReport(spectrum=comparison)
+    calls = []
+    real = sc.pick_peaks
+
+    def counting(*args, **kwargs):
+        calls.append(kwargs.get("max_peaks"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(sc, "pick_peaks", counting)
+    first = ir.score_peaks(report)
+    again = ir.score_peaks(report)
+    assert first == again and first is not again
+    assert len(first) == 2 and abs(first[0][0] - 103.0) < 1e-3
+    assert calls == [ir.SCORE_PEAKS]
+    again.clear()
+    assert ir.score_peaks(report) == first
+    assert len(calls) == 1
+    # a different question is a different pick
+    ir.picked(report, most=5, min_relative=0.5)
+    assert calls == [ir.SCORE_PEAKS, 5]
+    # the centroids, likewise once
+    sticks = ir._sticks(report)
+    assert ir._sticks(report) is sticks
+    # a trace put in its place is picked afresh
+    comparison.traces[0] = sc.SpectrumTrace("two", mz, intensity * 2)
+    assert ir.score_peaks(report)[0][1] == first[0][1] * 2
+    assert calls == [ir.SCORE_PEAKS, 5, ir.SCORE_PEAKS]
+    assert ir._sticks(report) is not sticks
+
+
+def test_the_memo_is_not_part_of_the_report_and_starts_empty():
+    from dataclasses import fields
+
+    report = ir.InfusionReport()
+    assert report._picked == {}
+    other = ir.InfusionReport(taken=report.taken)
+    other._picked["sticks"] = (None, None)
+    assert other == report
+    assert not [f for f in fields(ir.InfusionReport)
+                if f.name == "_picked" and (f.repr or f.compare)]

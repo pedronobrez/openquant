@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.9.0 released. 1835 tests. Public repository.**
+**Version 0.9.0 released. 1840 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -1173,8 +1173,30 @@ UV detector, is not implemented there) — untested on real Windows.
   `.wiff` in two threads — the single sequential worker is our constraint
   (the session's samples memoise without locks). A modal
   `QProgressDialog.setValue` pumps the event loop and can close the dialog
-  underneath its own handler. Left: `processing.pick_peaks` is 64% of what
-  remains, 188 M generator calls, the same trace picked three times.
+  underneath its own handler.
+- **A picker that asks every candidate about every peak kept is quadratic,
+  and centroiding is where it shows.** With the file reads cached,
+  `processing.pick_peaks` was 40 of the 53 s a profiled `summarise` took
+  over the nine infusions — 292 M steps of the generator on the
+  `min_distance` line, because `centroid_spectrum` picks with a ceiling of
+  100,000 and the kept list reaches 7,101 on a TOF average, and every one
+  of ten thousand candidates was compared with all of them. Now the kept
+  masses are held sorted and a bisection asks the two neighbours, and the
+  centroids are taken for every candidate at once (`centroids_at`: the
+  window's weights added left to right from zero, as numpy adds a slice
+  under eight points, a point past the end contributing a zero) — asserted
+  bit for bit against `centroid_mz` and the old loop on 51,200 random cases
+  and on the 27 distinct picks of the real report, 25,740 peaks identical.
+  The other half was repetition: each report centroided its average five
+  times (the margin, the search, the raw axis, the explanation) and scored
+  it three (`report_for`, the row, `cross_compare`), so `picked` and
+  `_sticks` remember the answer on the report against the trace object it
+  came from, and a replaced trace is picked afresh. Measured: 81 picks →
+  36, `pick_peaks` 40.2 s → 0.06 s under cProfile, a headless `summarise`
+  without the disk cache 19.1 → 10.6 s wall, of which 8.9 s is now the
+  reader. What is left in a warm Measure is the reader's `average_stable`
+  when no cache is passed, and the noise floor still centroids twice at
+  0.001 (`spectrum_noise` and `quiet_window` do not share their peaks).
 - **A measured figure that nothing runs is prose.** Every number in this
   file came from a real acquisition and, until `tests/real/`, none was
   checked: the fixtures are synthetic by design, because raw data is never
@@ -1436,7 +1458,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-1835 tests, two skipped (4 bundle-weight tests need a built bundle), plus 56 under `tests/real/` that run only with `OPENQUANT_REAL_DATA=1`. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+1840 tests, two skipped (4 bundle-weight tests need a built bundle), plus 56 under `tests/real/` that run only with `OPENQUANT_REAL_DATA=1`. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `ui/settings.py` is the one place a settings object is made, and
 `tests/conftest.py` sets `OPENQUANT_SETTINGS` before any widget exists so

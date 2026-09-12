@@ -409,18 +409,24 @@ process:
 
 | | *Measure* | cache |
 |---|---|---|
-| cold — nothing cached | 12.6 – 20.9 s | 9 read from file |
-| warm — the same nine again | **7.7 – 8.5 s** | 9 from the cache |
-| one `.wiff.scan` touched | 8.9 s | 8 from the cache, 1 re-read |
-| twenty-seven infusions, cold | 55.1 s | 27 read from file |
-| twenty-seven infusions, warm | **23.5 s** | 27 from the cache |
+| cold — nothing cached | 11.8 s | 9 read from file |
+| warm — the same nine again | **1.6 – 1.7 s** | 9 from the cache |
+| one `.wiff.scan` touched | 2.4 s | 8 from the cache, 1 re-read |
+| twenty-seven infusions, cold | 32.5 s | 27 read from file |
+| twenty-seven infusions, warm | **3.5 s** | 27 from the cache |
 
-Roughly **half**, and the half that goes is the half that varied: the warm
-figure repeats to within a tenth of a second while the cold one moves by
-eight, because what varies is the disk and the reader and that is exactly
-what is no longer being done. The nine averages take **39.1 MB** on disk,
-4.3 MB each — against the 47 MB of `.wiff.scan` they save reading. What is
-left is arithmetic, and the thread is what stops it freezing the window.
+A warm *Measure* is a seventh of a cold one, and the cold one is what the
+disk and the reader cost: the warm figure repeats to within a tenth of a
+second, the cold one moves by seconds from one drive to another. The nine
+averages take **39.1 MB** on disk, 4.3 MB each — against the 47 MB of
+`.wiff.scan` they save reading. When the cache first existed a warm
+*Measure* still took 7.7 – 8.5 s, and most of that was one line: the peak
+picker asked every candidate maximum about every peak it had already kept,
+and centroiding a quarter of a million points keeps seven thousand. It now
+asks the two nearest, and each average is centroided and scored once per
+report instead of five times and three — the same peaks, checked to the
+last digit on these nine files. What is left is arithmetic, and the thread
+is what stops it freezing the window.
 
 Each row carries the compound and the sample, the mode and collision energy,
 how many scans were averaged — *464 of 473* where the spray lost some, with

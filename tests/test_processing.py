@@ -274,3 +274,69 @@ def test_the_area_still_measures_the_peak():
     # a gaussian's area is height * sigma * sqrt(2 pi)
     expected = 1000.0 * 0.05 * np.sqrt(2 * np.pi)
     assert peak.area == pytest.approx(expected, rel=0.05)
+
+
+def _pick_peaks_one_at_a_time(mz, y, max_peaks, min_relative, centroid,
+                              min_distance):
+    """The picker as it was written: every candidate asked about every peak
+    kept so far. The reference the bisection has to reproduce exactly."""
+    idx = pr.local_maxima(y)
+    if idx.size == 0:
+        idx = np.array([int(y.argmax())])
+    idx = idx[y[idx] >= y.max() * min_relative]
+    order = idx[np.argsort(y[idx])[::-1]]
+    peaks = []
+    for i in order:
+        m = pr.centroid_mz(mz, y, int(i)) if centroid else float(mz[i])
+        if any(abs(m - kept) < min_distance for kept, _ in peaks):
+            continue
+        peaks.append((m, float(y[i])))
+        if len(peaks) >= max_peaks:
+            break
+    return peaks
+
+
+def test_centroids_at_is_centroid_mz_to_the_last_bit():
+    rng = np.random.default_rng(3)
+    n = 400
+    mz = np.sort(rng.random(n)) * 1000
+    for y in (rng.random(n) * 1e5, rng.integers(0, 9, size=n),
+              (rng.random(n) * 7).astype(np.float32)):
+        y = np.asarray(y)
+        y[5:9] = 0  # a window whose weights sum to nothing
+        got = pr.centroids_at(mz, y, np.arange(n))
+        want = np.array([pr.centroid_mz(mz, y, i) for i in range(n)])
+        assert np.array_equal(got, want)
+    assert pr.centroids_at(mz, mz, np.zeros(0, dtype=int)).size == 0
+
+
+def test_pick_peaks_bisection_reproduces_the_linear_scan():
+    """Same peaks, same order, same floats — including the apex on an edge,
+    ties, integer counts and a ceiling the picker never reaches."""
+    rng = np.random.default_rng(11)
+    cases = 0
+    for trial in range(24):
+        n = int(rng.integers(3, 600))
+        mz = np.sort(rng.random(n)) * 500
+        y = rng.random(n) * 1e4
+        if trial % 3 == 1:
+            y = rng.integers(0, 40, size=n)
+        if trial % 4 == 0:
+            y[0] = y.max() * 2
+        if trial % 5 == 0:
+            y[-1] = y.max() * 2
+        for max_peaks in (1, 15, 100_000):
+            for min_relative in (0.0, 0.01, 0.5):
+                for centroid in (True, False):
+                    for distance in (0.0, 0.005, 0.03, 5.0):
+                        want = _pick_peaks_one_at_a_time(
+                            mz, y, max_peaks, min_relative, centroid, distance)
+                        got = pr.pick_peaks(mz, y, max_peaks=max_peaks,
+                                            min_relative=min_relative,
+                                            centroid=centroid,
+                                            min_distance=distance)
+                        assert got == want
+                        assert all(type(m) is float and type(h) is float
+                                   for m, h in got)
+                        cases += 1
+    assert cases == 24 * 3 * 3 * 2 * 4

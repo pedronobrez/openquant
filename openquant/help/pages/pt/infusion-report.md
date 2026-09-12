@@ -415,18 +415,24 @@ processo novo:
 
 | | *Measure* | cache |
 |---|---|---|
-| frio — nada em cache | 12,6 – 20,9 s | 9 lidos do arquivo |
-| morno — as mesmas nove de novo | **7,7 – 8,5 s** | 9 do cache |
-| um `.wiff.scan` tocado | 8,9 s | 8 do cache, 1 relido |
-| vinte e sete infusões, frio | 55,1 s | 27 lidos do arquivo |
-| vinte e sete infusões, morno | **23,5 s** | 27 do cache |
+| frio — nada em cache | 11,8 s | 9 lidos do arquivo |
+| morno — as mesmas nove de novo | **1,6 – 1,7 s** | 9 do cache |
+| um `.wiff.scan` tocado | 2,4 s | 8 do cache, 1 relido |
+| vinte e sete infusões, frio | 32,5 s | 27 lidos do arquivo |
+| vinte e sete infusões, morno | **3,5 s** | 27 do cache |
 
-Cerca de **metade**, e a metade que se vai é a metade que variava: o número
-morno se repete dentro de um décimo de segundo enquanto o frio se move oito,
-porque o que varia é o disco e o leitor e é exatamente isso que já não está
-sendo feito. As nove médias ocupam **39,1 MB** em disco, 4,3 MB cada — contra
-os 47 MB de `.wiff.scan` que elas poupam de ler. O que sobra é aritmética, e a
-thread é o que impede que ela congele a janela.
+Um *Measure* morno é um sétimo de um frio, e o frio é o que o disco e o
+leitor custam: o número morno se repete dentro de um décimo de segundo, o
+frio se move segundos de um disco para outro. As nove médias ocupam
+**39,1 MB** em disco, 4,3 MB cada — contra os 47 MB de `.wiff.scan` que
+elas poupam de ler. Quando o cache passou a existir, um *Measure* morno ainda
+levava 7,7 – 8,5 s, e a maior parte disso era uma linha: o detector de picos
+perguntava a cada máximo candidato sobre cada pico que já tinha guardado, e
+centroidar um quarto de milhão de pontos guarda sete mil. Agora pergunta aos
+dois mais próximos, e cada média é centroidada e pontuada uma vez por
+relatório em vez de cinco e três — os mesmos picos, conferidos até o último
+dígito nestes nove arquivos. O que sobra é aritmética, e a thread é o que
+impede que ela congele a janela.
 
 Cada linha traz o composto e a amostra, o modo e a energia de colisão, quantos
 scans foram promediados — *464 of 473* onde a pulverização perdeu alguns, com

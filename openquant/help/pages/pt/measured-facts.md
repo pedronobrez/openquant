@@ -184,6 +184,43 @@ foi pré-marcado.
 A primeira versão imprimia a um doze avos do seu tamanho. Um relatório de cem
 páginas é diagramado três vezes e leva cerca de dezessete segundos.
 
+## O que custa numa máquina
+
+A rapidez é uma medição como outra qualquer, por isso é feita da mesma
+maneira: o `tools/bench.py` da árvore de código corre cada peça de trabalho
+real como um cenário com nome, num processo próprio, cronometrado no
+relógio de parede e com o pico de memória residente do processo. Estas são
+as cinco aquisições do TripleTOF num Apple M4 com 16 GB, Python 3.14,
+contra os mesmos cenários corridos na versão 0.9.0.
+
+| O quê | 0.9.0 | agora |
+|---|---|---|
+| centroidar 25 espectros de perfil | 0,568 s | 0,045 s |
+| a grade de revisão remodelada de 1x1 a 8x8 e de volta | 1,185 s, 400 MB | 0,212 s, 187 MB |
+| a corrida como grade de contorno | 0,182 s | 0,066 s |
+| 25 espectros de um canal | 0,075 s | 0,034 s |
+| média de 100 varrimentos | 0,287 s | 0,175 s |
+| um cromatograma de íon extraído | 0,047 s | 0,036 s |
+| abrir cinco aquisições na janela | 0,541 s | 0,444 s |
+| 81 componentes integrados em cinco aquisições | 0,523 s | 0,496 s |
+| todos os algoritmos comparados no lote | 0,665 s | 0,668 s |
+| ler um mzML de ponta a ponta | 0,764 s | 0,699 s |
+| a impressão digital `--digest` de cinco aquisições | 0,965 s | 0,909 s |
+| o manual impresso em PDF, 106 páginas | 1,466 s | 1,462 s |
+
+Dois números não estão nessa tabela porque não são medidos nestes
+ficheiros. A janela principal, com um índice LIPID MAPS instalado, levava
+cerca de um segundo e **688 MB** de memória a construir, quase tudo o
+índice a ser lido para escrever quantas estruturas tem; agora constrói-se
+com **144 MB** sem o ler — ver [[lipid-maps]]. E as nove infusões de ácidos
+biliares medidas juntas no separador Infusões, mornas, passaram de 7,7 –
+8,5 segundos para 1,7 — ver [[infusion-report]].
+
+As três últimas linhas da tabela são a parte honesta: a comparação, o
+leitor de mzML e o manual impresso quase não se mexeram, porque o que
+consomem é a paginação do Qt e a análise de 47 MB de XML, e nenhuma das
+duas é nossa para acelerar.
+
 ## Estes números são testados
 
 Um número escrito numa página não tem como falhar. Como as aquisições nunca

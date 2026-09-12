@@ -9,7 +9,7 @@ history. It records what is true, what was measured, and what is not settled.
 `README.md` is for someone using the application; this is for someone changing
 it.
 
-**Version 0.9.0 released. 1840 tests. Public repository.**
+**Version 0.9.0 released. 1913 tests. Public repository.**
 
 The repository was recreated on 2026-09-07 to drop a history that showed a
 person's name and unpublished results in its screenshots. Rewriting was not
@@ -1581,7 +1581,7 @@ package produces installers named after the wrong one.
 
 ## Test suite
 
-1840 tests, two skipped (4 bundle-weight tests need a built bundle), plus 56 under `tests/real/` that run only with `OPENQUANT_REAL_DATA=1`. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
+1913 tests, two skipped (4 bundle-weight tests need a built bundle), plus 56 under `tests/real/` that run only with `OPENQUANT_REAL_DATA=1`. `QT_QPA_PLATFORM=offscreen python3 -m pytest -q`.
 
 `ui/settings.py` is the one place a settings object is made, and
 `tests/conftest.py` sets `OPENQUANT_SETTINGS` before any widget exists so

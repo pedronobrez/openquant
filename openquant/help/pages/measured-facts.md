@@ -176,6 +176,43 @@ pre-ticked.
 The first version printed at a twelfth of its size. A hundred-page report
 is laid out three times and takes about seventeen seconds.
 
+## What it costs on one machine
+
+Speed is a measurement like any other, so it is made the same way:
+`tools/bench.py` in the source tree runs each piece of real work as a named
+scenario, in its own process, timed on the wall clock with the process's
+peak resident size. These are the five TripleTOF acquisitions on an Apple
+M4 with 16 GB, Python 3.14, against the same scenarios run on version
+0.9.0.
+
+| What | 0.9.0 | now |
+|---|---|---|
+| centroid 25 profile spectra | 0.568 s | 0.045 s |
+| the peak review grid reshaped 1x1 to 8x8 and back | 1.185 s, 400 MB | 0.212 s, 187 MB |
+| the run as a contour grid | 0.182 s | 0.066 s |
+| 25 spectra off a channel | 0.075 s | 0.034 s |
+| average 100 scans | 0.287 s | 0.175 s |
+| an extracted ion chromatogram | 0.047 s | 0.036 s |
+| open five acquisitions in the window | 0.541 s | 0.444 s |
+| 81 components integrated over five acquisitions | 0.523 s | 0.496 s |
+| every algorithm compared over the batch | 0.665 s | 0.668 s |
+| read one mzML end to end | 0.764 s | 0.699 s |
+| the `--digest` fingerprint of five acquisitions | 0.965 s | 0.909 s |
+| the manual printed to PDF, 106 pages | 1.466 s | 1.462 s |
+
+Two figures are not in that table because they are not measured on these
+files. The main window, with a LIPID MAPS index installed, took about one
+second and **688 MB** of memory to build, almost all of it the index being
+read to print how many structures it holds; it now builds at **144 MB**
+without reading it at all — see [[lipid-maps]]. And the nine bile-acid
+infusions measured together in the Infusions tab, warm, went from 7.7 – 8.5
+seconds to 1.7 — see [[infusion-report]].
+
+The last three rows of the table are the honest part: the comparison, the
+mzML reader and the printed manual barely moved, because what they spend
+their time on is Qt's page layout and the parsing of 47 MB of XML, neither
+of which is ours to make faster.
+
 ## These figures are tested
 
 A number written on a page cannot fail. Since the acquisitions themselves are

@@ -324,6 +324,45 @@ def _digest():
                    cwd=ROOT, check=True, capture_output=True)
 
 
+@scenario("explorer-open", "open one .wiff in the window and list its channels")
+def _explorer_open():
+    """
+    What opening a file costs through the window rather than through the
+    reader: the sample opened, the tree and the channel list rebuilt.
+
+    The window is closed with its session marked clean. Opening a file makes
+    the session dirty, and closing a dirty window puts up the modal "discard
+    changes?" box — which, offscreen, nobody can answer.
+    """
+    app = _qt_app()
+    from openquant.ui.shell import MainShell
+    window = MainShell()
+    window.show()
+    app.processEvents()
+    window.session.open_file(one_wiff())
+    window.explorer.rebuild_tree()
+    app.processEvents()
+    window.session.dirty = False
+    window.close()
+    app.processEvents()
+
+
+@scenario("open-five", "open all five acquisitions in the window")
+def _open_five():
+    app = _qt_app()
+    from openquant.ui.shell import MainShell
+    window = MainShell()
+    window.show()
+    app.processEvents()
+    for path in eics():
+        window.session.open_file(path)
+    window.explorer.rebuild_tree()
+    app.processEvents()
+    window.session.dirty = False
+    window.close()
+    app.processEvents()
+
+
 @scenario("shell", "build the main window")
 def _shell():
     app = _qt_app()

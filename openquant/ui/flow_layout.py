@@ -89,6 +89,23 @@ class FlowLayout(QtWidgets.QLayout):
         del stretch, alignment
         super().addWidget(widget)
 
+    def addPair(self, text: str, widget) -> None:   # noqa: N802
+        """
+        A label and the control it names, wrapped as one item.
+
+        A wrapping bar breaks between any two items, and breaking between
+        "Zoom" and the box that says what the zoom is leaves a word stranded
+        at the end of a line above the control it belongs to. They go in one
+        widget, so the line either takes both or takes neither.
+        """
+        holder = QtWidgets.QWidget()
+        row = QtWidgets.QHBoxLayout(holder)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+        row.addWidget(QtWidgets.QLabel(text))
+        row.addWidget(widget)
+        self.addWidget(holder)
+
     def addSpacing(self, width: int) -> None:   # noqa: N802
         """A gap between two groups of controls, which may end a line."""
         self.addItem(QtWidgets.QSpacerItem(

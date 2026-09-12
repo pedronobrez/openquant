@@ -152,6 +152,20 @@ def test_a_flow_layout_grows_taller_as_it_narrows(qapp):
     assert narrow > one_line, "a bar that cannot wrap is not wrapping"
 
 
+def test_a_label_and_its_control_wrap_together(qapp):
+    """
+    Breaking between "Zoom" and the box saying what the zoom is leaves a word
+    stranded above the control it names.
+    """
+    box = QtWidgets.QWidget()
+    flow = FlowLayout(box)
+    combo = QtWidgets.QComboBox()
+    combo.addItems(["Expected window", "Peak", "Whole run"])
+    flow.addPair("Zoom", combo)
+    assert flow.count() == 1, "the label and the control are two items"
+    assert combo.parent() is not box, "the control moved into the pair's holder"
+
+
 def test_a_flow_layout_takes_the_calls_a_box_layout_takes(qapp):
     """The bars were written against QHBoxLayout and only the word changed."""
     box = QtWidgets.QWidget()

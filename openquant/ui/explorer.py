@@ -43,6 +43,7 @@ from .plots import SpectrumView, Trace, colour
 from .. import labels as label_rule
 from .results_panel import Result, ResultsPanel
 from .sample_info import SampleInfoPanel
+from .flow_layout import FlowLayout
 
 ROLE_REF = QtCore.Qt.ItemDataRole.UserRole
 
@@ -204,6 +205,9 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.spectrum = SpectrumView()
         #: built contours, by channel and by the ranges they were built over
         self._contour_cache: dict[tuple, object] = {}
+        #: each dock panel and the scroller it was put in, so a panel can
+        #: still be brought to the front by name
+        self._tab_hosts: dict = {}
 
         self._build_ui()
         self._connect()
@@ -236,7 +240,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         layout.setContentsMargins(4, 4, 4, 0)
         layout.setSpacing(4)
 
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         bar.addWidget(QtWidgets.QLabel("View:"))
         self.view_combo = QtWidgets.QComboBox()
         self.view_combo.addItems([VIEW_CHROMATOGRAM, VIEW_CONTOUR])
@@ -251,7 +255,14 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         bar.addSpacing(16)
         bar.addWidget(QtWidgets.QLabel("Active channel (spectra / XIC):"))
         self.active_combo = QtWidgets.QComboBox()
-        self.active_combo.setMinimumWidth(320)
+        # a channel is named in full — "TOF MSMS 647.5 [+], 40 eV" and longer
+        # — and a minimum width is what the window has to give this box before
+        # anything else gets any. It wants to be wide; it does not need to be,
+        # and the difference decided how narrow the window could be made.
+        self.active_combo.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContentsOnFirstShow)
+        self.active_combo.setMinimumContentsLength(18)
+        self.active_combo.setMinimumWidth(180)
         bar.addWidget(self.active_combo, 1)
         layout.addLayout(bar)
 
@@ -267,7 +278,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         layout.setContentsMargins(4, 0, 4, 4)
         layout.setSpacing(4)
 
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         self.btn_prev = QtWidgets.QToolButton()
         self.btn_prev.setText("◀")
         self.btn_prev.setToolTip("Previous scan (left arrow)")
@@ -324,7 +335,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         )
         layout.addWidget(self.tree, 1)
 
-        buttons = QtWidgets.QHBoxLayout()
+        buttons = FlowLayout()
         self.btn_none = QtWidgets.QPushButton("Uncheck all")
         self.btn_ms1 = QtWidgets.QPushButton("TOF MS only")
         self.btn_collapse = QtWidgets.QPushButton("Collapse all")
@@ -346,6 +357,46 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
             dock, "Samples and channels", "Ctrl+Shift+S",
             "The tree of open files and their channels, on the left")
 
+    #: the least width a dock panel is given before it starts to scroll. A
+    #: panel narrower than this is unreadable rather than merely cramped.
+    PANEL_WIDTH = 300
+
+    def _scrolled(self, panel: QtWidgets.QWidget) -> QtWidgets.QWidget:
+        """
+        A dock panel in a scroller, so its own height is not the window's.
+
+        The LIPID MAPS panel asks for 712 pixels of height and the Library
+        panel for 520; a dock is as tall as its tallest tab, a window is as
+        tall as its dock, and the result was a window 864 pixels high on a
+        screen with 913 to give. In a scroller the panel keeps the size it
+        wants and the dock keeps the size the screen has.
+        """
+        area = QtWidgets.QScrollArea()
+        area.setWidgetResizable(True)
+        area.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        area.setWidget(panel)
+        area.setMinimumWidth(self.PANEL_WIDTH)
+        self._tab_hosts[panel] = area
+        return area
+
+    def _tab_of(self, panel: QtWidgets.QWidget) -> QtWidgets.QWidget:
+        """The scroller a panel was put in, so the tab can still be selected."""
+        return self._tab_hosts.get(panel, panel)
+
+    def showing_panel(self) -> QtWidgets.QWidget | None:
+        """
+        The dock panel on show, not the scroller holding it.
+
+        Every panel sits in a `QScrollArea`, so the tab widget's current
+        widget is the scroller; what anything asking this question means is
+        the panel.
+        """
+        current = self.tabs.currentWidget()
+        for panel, host in self._tab_hosts.items():
+            if host is current:
+                return panel
+        return current
+
     def _build_side_dock(self) -> None:
         dock = QtWidgets.QDockWidget("Panels", self)
         dock.setObjectName("dock_side")
@@ -360,20 +411,20 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
 
         from .help_window import describe
         xic_tab, peaks_tab = self._build_xic_tab(), self._build_peaks_tab()
-        self.tabs.addTab(self.component_list, "Components")
-        self.tabs.addTab(self.results_panel, "Results")
-        self.tabs.addTab(xic_tab, "Manual XIC")
-        self.tabs.addTab(peaks_tab, "Spectrum peaks")
-        self.tabs.addTab(self.mass_calc, "Mass calc")
-        self.tabs.addTab(self.formula_panel, "Formula finder")
-        self.tabs.addTab(self.lipid_panel, "LIPID MAPS")
+        self.tabs.addTab(self._scrolled(self.component_list), "Components")
+        self.tabs.addTab(self._scrolled(self.results_panel), "Results")
+        self.tabs.addTab(self._scrolled(xic_tab), "Manual XIC")
+        self.tabs.addTab(self._scrolled(peaks_tab), "Spectrum peaks")
+        self.tabs.addTab(self._scrolled(self.mass_calc), "Mass calc")
+        self.tabs.addTab(self._scrolled(self.formula_panel), "Formula finder")
+        self.tabs.addTab(self._scrolled(self.lipid_panel), "LIPID MAPS")
         from .library_panel import LibraryPanel
         self.library_panel = LibraryPanel()
         self.library_panel.spectrum_source = self._library_spectrum
         # for *Rewrite from files…*: which folders the open acquisitions came
         # from, and whether their masses are being corrected
         self.library_panel.session = self.session
-        self.tabs.addTab(self.library_panel, "Library")
+        self.tabs.addTab(self._scrolled(self.library_panel), "Library")
         for widget, page in ((self.component_list, "explorer-components-and-results"),
                              (self.results_panel, "explorer-components-and-results"),
                              (xic_tab, "manual-xic"),
@@ -391,7 +442,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         # buttons keep the full names and let the reader page through them
         self.tabs.setUsesScrollButtons(True)
         self.tabs.tabBar().setElideMode(QtCore.Qt.TextElideMode.ElideNone)
-        self.tabs.addTab(self.sample_info, "Sample")
+        self.tabs.addTab(self._scrolled(self.sample_info), "Sample")
 
         # the eight tabs need twice the width the dock has, so five of them sit
         # behind two small arrows and are found by accident or not at all. This
@@ -439,7 +490,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         self.xic_all_channels = QtWidgets.QCheckBox("Extract from every checked channel")
         layout.addWidget(self.xic_all_channels)
 
-        buttons = QtWidgets.QHBoxLayout()
+        buttons = FlowLayout()
         self.btn_xic = QtWidgets.QPushButton("Extract XIC")
         self.btn_xic_clear = QtWidgets.QPushButton("Clear XICs")
         buttons.addWidget(self.btn_xic)
@@ -2095,7 +2146,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
         progress.setValue(total)
 
         self.results_panel.set_results(results)
-        self.tabs.setCurrentWidget(self.results_panel)
+        self.tabs.setCurrentWidget(self._tab_of(self.results_panel))
         found = sum(1 for r in results if r.area > 0)
         self._update_status(
             f"{len(results)} extractions across {len(samples)} sample(s); "
@@ -2161,7 +2212,7 @@ class ExplorerWorkspace(QtWidgets.QMainWindow):
                 )
         self.chrom.set_peak_markers(markers)
         self.results_panel.set_results(results)
-        self.tabs.setCurrentWidget(self.results_panel)
+        self.tabs.setCurrentWidget(self._tab_of(self.results_panel))
         self._update_status(
             f"{len(results)} peak(s) integrated across {len(traces)} trace(s)."
         )

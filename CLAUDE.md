@@ -1248,6 +1248,29 @@ UV detector, is not implemented there) — untested on real Windows.
   drawing (8 of 56 against 15 of 882, each saying which). Reading and
   averaging is 25 of the 27 seconds for nine files; warm buys nothing but
   reopening them, because no averaged spectrum is cached across a process.
+- **A widget's least width is the window's, and a bar of buttons has no
+  least width of its own.** The Method workspace put thirteen buttons in a
+  `QHBoxLayout`, whose minimum is all thirteen side by side: 1,994 pixels,
+  which became the main window's, so on a 1512 by 913 laptop the window
+  opened wider than the screen and could not be dragged back — the title bar
+  moves the top left corner and the problem is at the bottom right. Worse,
+  every layout invalidation re-applied it, so changing **Columns** or **Rows**
+  in the peak review grid, which is done constantly, pushed the window out
+  over the edge again; that is what it looked like from the outside, and the
+  spin boxes had nothing to do with it. `ui/flow_layout.FlowLayout` asks for
+  its *widest single item* and wraps the rest onto the next line, and the
+  fourteen bars that were `QHBoxLayout` now say `FlowLayout` and nothing
+  else changed — it takes `addStretch`, `addSpacing` and `addWidget(w, 1)`
+  so the call sites read the same. The other two halves: each Explorer side
+  panel goes in a `QScrollArea` (the LIPID MAPS panel alone wanted 712
+  pixels of height, and a dock is as tall as its tallest tab), and a label
+  holding a sentence gets `setWordWrap` (the calibration panel's "No
+  standards for this component…" was 720 pixels of minimum width). Measured,
+  the window's least size: **2,000 x 864 → 888 x 515**. `MainShell.
+  size_for_screen` opens no larger than the screen and `fit_on_screen` pulls
+  a geometry saved on a bigger one back inside it, because that geometry
+  outlives the fix. `tests/test_window_fits_screen.py` fails if any
+  workspace ever again asks for more than 1280 x 760.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

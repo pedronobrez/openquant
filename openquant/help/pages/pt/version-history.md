@@ -42,7 +42,8 @@ principal que ainda não saiu numa versão está listado aqui, e é nomeado na
 linha da versão que o publica. De momento é a rapidez do *Medir* do
 separador Infusões: o detetor de picos já não percorre as massas que
 guardou, pelo que um *Medir* morno de nove infusões passou de 7,7 – 8,5 s
-para 1,7 ([[infusion-report]]).
+para 1,7 ([[infusion-report]]); e a janela, que não podia ficar mais
+estreita do que 2000 pixels e agora desce até 888 ([[workspaces]]).
 
 O manual faz parte de cada versão: uma versão que muda o que o aplicativo faz
 muda a página que a descreve, e a cópia impressa é regerada a partir das mesmas

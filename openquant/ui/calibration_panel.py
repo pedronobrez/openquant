@@ -8,6 +8,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 from . import theme
 from ..calibration import REGRESSIONS, WEIGHTINGS, Calibration
+from .flow_layout import FlowLayout
 
 POINT_USED = "#1f77b4"
 POINT_EXCLUDED = "#c0c0c0"
@@ -29,7 +30,7 @@ class CalibrationPanel(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         bar.addWidget(QtWidgets.QLabel("Regression"))
         self.regression = QtWidgets.QComboBox()
         self.regression.addItems(list(REGRESSIONS))
@@ -81,6 +82,10 @@ class CalibrationPanel(QtWidgets.QWidget):
 
         self.status = QtWidgets.QLabel("No curve yet.")
         self.status.setProperty("role", "caption")
+        # a sentence is not a width: without this the longest message this
+        # panel can show — the one about marking samples as standards — set
+        # the least width of the whole window
+        self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
         self.regression.currentTextChanged.connect(self._emit_settings)

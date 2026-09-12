@@ -10,6 +10,7 @@ from ..session import Session
 from ..validation import acquisition_order
 from .plots import colour
 from .results_table import COLUMNS
+from .flow_layout import FlowLayout
 
 #: only numeric columns can be plotted
 NUMERIC = [c for c in COLUMNS if c.decimals is not None]
@@ -54,7 +55,7 @@ class MetricPlotPanel(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         bar.addWidget(QtWidgets.QLabel("X"))
         self.x_combo = QtWidgets.QComboBox()
         self.x_combo.addItems([INJECTION_ORDER, ROW_ORDER])

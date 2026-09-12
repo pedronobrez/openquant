@@ -27,6 +27,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 from . import theme
 from ..contour import Contour
+from .flow_layout import FlowLayout
 
 #: how the intensities are compressed before they become colour. Square root
 #: is the default because it lifts the minor ions into view without the
@@ -91,7 +92,7 @@ class ContourView(QtWidgets.QWidget):
         layout.setContentsMargins(4, 4, 4, 0)
         layout.setSpacing(4)
 
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         bar.addWidget(QtWidgets.QLabel("Intensity"))
         self.scale = QtWidgets.QComboBox()
         self.scale.addItems(list(SCALES))
@@ -180,7 +181,7 @@ class ContourView(QtWidgets.QWidget):
     # -- the film -------------------------------------------------------- #
     def _build_film_bar(self) -> QtWidgets.QHBoxLayout:
         """Play, its speed, and what is being left out of the average."""
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         self.btn_play = QtWidgets.QToolButton()
         self.btn_play.setCheckable(True)
         self.btn_play.setText("▶ Play")

@@ -42,6 +42,22 @@ onde foi salvo, se os painéis Integration e Acceptance da área de trabalho
 Analytics estavam recolhidos, e se o aviso inicial foi dispensado de vez. Nada
 sobre um lote é lembrado fora do arquivo de projeto dele.
 
+## A janela e o ecrã
+
+A janela abre a 1650 por 1000 pixels, ou ao tamanho do ecrã quando este é
+menor, e é trazida de volta para dentro do ecrã quando se restaura uma
+geometria guardada num ecrã maior. Pode ser reduzida até 888 por 515 pixels:
+as barras de ferramentas passam para uma segunda linha à medida que a janela
+estreita, e cada painel lateral do Explorer rola dentro da sua doca em vez de
+ditar a altura da janela.
+
+Até à versão 0.9.0 a janela não podia ficar mais estreita do que 2000 pixels
+— treze botões lado a lado na barra da área de trabalho Method, e a largura
+mínima de um widget é a da janela — pelo que num portátil de 1512 por 913
+abria mais larga do que o ecrã, e qualquer mudança de disposição, como o
+**Columns** e o **Rows** de [[peak-review]], a empurrava outra vez para fora
+da borda.
+
 ## A barra de status
 
 Toda área de trabalho reporta o que fez por último na barra de status ao pé da

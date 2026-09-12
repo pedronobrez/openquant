@@ -10,6 +10,7 @@ from ..statistics import (GROUP_BY_SAMPLE_GROUP, GROUPINGS, QUANTITIES,
                           summarise)
 from ..session import Session
 from . import theme
+from .flow_layout import FlowLayout
 
 FIXED = ["Component", "Group", "n", "Mean", "SD", "%CV", "Accuracy %"]
 
@@ -25,7 +26,7 @@ class StatisticsPanel(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         bar.addWidget(QtWidgets.QLabel("Group by"))
         self.grouping = QtWidgets.QComboBox()
         self.grouping.addItems(list(GROUPINGS))

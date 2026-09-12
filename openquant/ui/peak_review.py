@@ -15,6 +15,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 from . import theme
 from ..processing import GaussianModel
 from ..quantify import PeakResult
+from .flow_layout import FlowLayout
 
 FOUND_PEN = "#1f77b4"
 #: a fitted curve, drawn over the points it was fitted to
@@ -323,7 +324,7 @@ class PeakReviewGrid(QtWidgets.QWidget):
         layout.setContentsMargins(2, 2, 2, 2)
         layout.setSpacing(4)
 
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         self.title = QtWidgets.QLabel("—")
         font = self.title.font()
         font.setBold(True)

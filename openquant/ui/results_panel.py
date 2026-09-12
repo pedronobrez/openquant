@@ -6,6 +6,7 @@ import csv
 from dataclasses import dataclass
 
 from PyQt6 import QtCore, QtWidgets
+from .flow_layout import FlowLayout
 
 COLUMNS = ["Component", "Sample", "Channel", "m/z", "RT", "Area", "Height",
            "Width", "S/N", "Note"]
@@ -70,7 +71,7 @@ class ResultsPanel(QtWidgets.QWidget):
         self.table.setToolTip("Double-click to bring the chromatogram to the peak")
         layout.addWidget(self.table, 1)
 
-        buttons = QtWidgets.QHBoxLayout()
+        buttons = FlowLayout()
         self.btn_export = QtWidgets.QPushButton("Export CSV…")
         self.btn_clear = QtWidgets.QPushButton("Clear")
         buttons.addWidget(self.btn_export)

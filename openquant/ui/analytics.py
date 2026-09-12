@@ -38,6 +38,7 @@ from .qc_panel import QualityPanel
 from .statistics_panel import StatisticsPanel
 from .peak_review import PeakReviewGrid
 from .results_table import ResultsTable
+from .flow_layout import FlowLayout
 
 ROLE_NAME = QtCore.Qt.ItemDataRole.UserRole
 
@@ -104,7 +105,7 @@ class AnalyticsWorkspace(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         # a tool button rather than a push button so the full reprocess can
         # hang off the same control: it is the same command with the saving
         # switched off, and a separate button would read as a different one

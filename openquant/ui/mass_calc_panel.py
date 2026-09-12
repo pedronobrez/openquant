@@ -16,6 +16,7 @@ from ..chemistry import (
     parse_formula,
     rdbe,
 )
+from .flow_layout import FlowLayout
 
 
 class MassCalcPanel(QtWidgets.QWidget):
@@ -86,7 +87,7 @@ class MassCalcPanel(QtWidgets.QWidget):
         self.table.verticalHeader().setDefaultSectionSize(20)
         layout.addWidget(self.table, 1)
 
-        buttons = QtWidgets.QHBoxLayout()
+        buttons = FlowLayout()
         self.btn_overlay = QtWidgets.QPushButton("Overlay on spectrum")
         self.btn_clear = QtWidgets.QPushButton("Clear overlay")
         buttons.addWidget(self.btn_overlay)

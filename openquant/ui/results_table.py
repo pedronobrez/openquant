@@ -11,6 +11,7 @@ from ..audit import ROW_USED
 from ..quantify import FAIL, MARGINAL, PASS, PeakResult, ResultsSet
 from ..session import Session
 from . import theme
+from .flow_layout import FlowLayout
 
 #: colours of the confidence traffic light
 CONFIDENCE_COLOURS = {PASS: "#2ca02c", MARGINAL: "#e8a33d", FAIL: "#d62728"}
@@ -416,7 +417,7 @@ class ResultsTable(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)
 
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         self.filter_edit = QtWidgets.QLineEdit()
         self.filter_edit.setPlaceholderText("Filter rows…")
         self.filter_edit.setClearButtonEnabled(True)

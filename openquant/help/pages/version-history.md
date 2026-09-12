@@ -41,7 +41,8 @@ that has not been in a release is listed here, and named in the row of the
 version that ships it. At the moment that is the speed of the Infusions
 tab's *Measure*: the peak picker no longer walks its own kept masses, so a
 warm *Measure* of nine infusions fell from 7.7 – 8.5 s to 1.7
-([[infusion-report]]).
+([[infusion-report]]); and the window, which could not be made narrower
+than 2,000 pixels and now goes down to 888 ([[workspaces]]).
 
 The manual is part of every release: a version that changes what the
 application does changes the page that describes it, and the printed copy

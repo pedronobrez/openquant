@@ -236,7 +236,9 @@ def test_every_panel_can_be_reached_by_name(qapp):
 
     assert workspace.show_panel_named("LIPID MAPS")
     qapp.processEvents()
-    assert workspace.tabs.currentWidget() is workspace.lipid_panel
+    # every panel sits in a scroller, so the tab's widget is the scroller and
+    # the panel is what `showing_panel` unwraps
+    assert workspace.showing_panel() is workspace.lipid_panel
     assert workspace.tabs.cornerWidget(QtCore.Qt.Corner.TopRightCorner) is not None
     workspace.close()
 

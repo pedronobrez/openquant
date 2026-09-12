@@ -8,6 +8,7 @@ from ..audit import SAMPLE_EDITED
 from ..samples import SAMPLE_TYPES
 from ..session import Session
 from . import style
+from .flow_layout import FlowLayout
 
 COLUMNS = ["File", "Sample", "Type", "Group", "Actual conc.", "Dilution",
            "Vial", "Acquired", "Comment"]
@@ -32,7 +33,7 @@ class SamplesWorkspace(QtWidgets.QWidget):
 
         layout = QtWidgets.QVBoxLayout(self)
 
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         self.btn_open = QtWidgets.QPushButton("Add data files…")
         self.btn_close = QtWidgets.QPushButton("Close all")
         bar.addWidget(self.btn_open)

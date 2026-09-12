@@ -14,6 +14,7 @@ from ..components import (RESPONSES, Component, fill_formulas, load_components,
 from ..session import Session
 from . import style, theme
 from .annotate_dialog import AnnotateDialog, _looks_unnamed, propose
+from .flow_layout import FlowLayout
 from .help_window import describe
 
 COLUMNS = ["Name", "Group", "Precursor", "Fragment", "RT", "± RT", "Tol.",
@@ -66,7 +67,7 @@ class MethodWorkspace(QtWidgets.QWidget):
 
         layout = QtWidgets.QVBoxLayout(self)
 
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         self.btn_add = QtWidgets.QPushButton("Add")
         self.btn_remove = QtWidgets.QPushButton("Remove")
         self.btn_generate = QtWidgets.QPushButton("Generate from acquisition method")
@@ -143,7 +144,7 @@ class MethodWorkspace(QtWidgets.QWidget):
         self.table.verticalHeader().setDefaultSectionSize(30)
         layout.addWidget(self.table, 1)
 
-        defaults = QtWidgets.QHBoxLayout()
+        defaults = FlowLayout()
         defaults.addWidget(QtWidgets.QLabel("Default tolerance ±"))
         self.tol_spin = QtWidgets.QDoubleSpinBox()
         self.tol_spin.setDecimals(4)

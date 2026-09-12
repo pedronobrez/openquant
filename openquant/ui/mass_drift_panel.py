@@ -18,6 +18,7 @@ from ..mass_drift import DRIFT_PPM, MassDrift, MassTrend, mass_drift
 from ..recalibrate import describe as describe_corrections
 from ..recalibrate import MAX_LOCK_ERROR_PPM, fit_batch, lock_mass_refusal
 from ..session import Session
+from .flow_layout import FlowLayout
 
 TREND_PEN = "#e08a1e"
 
@@ -35,7 +36,7 @@ class MassDriftPanel(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         bar.addWidget(QtWidgets.QLabel("Component"))
         self.component = QtWidgets.QComboBox()
         self.component.setToolTip(

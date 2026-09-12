@@ -33,10 +33,32 @@ SETTING_CACHE_DIR = "cache/dir"
 class MainShell(QtWidgets.QMainWindow):
     """Holds the session and switches between workspaces."""
 
+    #: the size the window opens at where the screen has room for it
+    WANTED_SIZE = (1650, 1000)
+
+    @staticmethod
+    def size_for_screen(wanted: tuple[int, int] | None = None) -> tuple[int, int]:
+        """
+        The size to open at: what is wanted, or what the screen has.
+
+        1650 by 1000 is the size this window was written for and it is larger
+        than a 1512 by 913 laptop screen, which is the screen it is most often
+        opened on. A window bigger than the screen cannot be moved back onto
+        it by dragging, because the title bar is the only handle and the
+        bottom right corner is off the edge.
+        """
+        wanted = wanted or MainShell.WANTED_SIZE
+        screen = QtWidgets.QApplication.primaryScreen()
+        if screen is None:
+            return wanted
+        available = screen.availableGeometry()
+        return (min(wanted[0], available.width()),
+                min(wanted[1], available.height()))
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("OpenQuant")
-        self.resize(1650, 1000)
+        self.resize(*self.size_for_screen())
         self.settings = settings()
 
         self.session = Session(self)
@@ -86,6 +108,33 @@ class MainShell(QtWidgets.QMainWindow):
         geometry = self.settings.value("shell/geometry")
         if geometry is not None:
             self.restoreGeometry(geometry)
+        self.fit_on_screen()
+
+    def fit_on_screen(self) -> None:
+        """
+        Bring the window back inside the screen, whatever it was saved at.
+
+        A geometry saved on a bigger screen — or saved by a version of this
+        window that could not be made smaller than 2,000 pixels — reopens the
+        window with its corner off the edge, where nothing can reach it: the
+        title bar is the only handle, and it drags the window's top left, not
+        its bottom right.
+        """
+        screen = self.screen() or QtWidgets.QApplication.primaryScreen()
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        chrome = self.frameGeometry().size() - self.size()
+        self.resize(min(self.width(), available.width() - chrome.width()),
+                    min(self.height(), available.height() - chrome.height()))
+        frame = self.frameGeometry()
+        if available.contains(frame):
+            return
+        frame.moveLeft(max(available.left(),
+                           min(frame.left(), available.right() - frame.width())))
+        frame.moveTop(max(available.top(),
+                          min(frame.top(), available.bottom() - frame.height())))
+        self.move(frame.topLeft())
 
     # -- start ----------------------------------------------------------------- #
     def offer_start(self) -> None:

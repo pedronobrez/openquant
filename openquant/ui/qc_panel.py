@@ -18,6 +18,7 @@ from ..qc import (ALWAYS_OUT_PERCENT, MIN_SNR, OUTLIER_SIGMA,
                   OUT_PERCENT, WARN_SIGMA, BatchQC, ControlChart,
                   batch_qc, exclude_failed, failed_injections)
 from ..session import Session
+from .flow_layout import FlowLayout
 
 POINT = "#234b8c"
 POINT_OUT = "#a4262c"
@@ -48,7 +49,7 @@ class QualityPanel(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         bar.addWidget(QtWidgets.QLabel("Component"))
         self.component = QtWidgets.QComboBox()
         self.component.setToolTip(

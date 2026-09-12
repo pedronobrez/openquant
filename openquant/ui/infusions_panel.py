@@ -34,6 +34,7 @@ from ..library import (identity_of, provenance_keys, records_from_summary,
                        write_msp)
 from ..session import Session
 from .settings import settings
+from .flow_layout import FlowLayout
 
 HELP_PAGE = "infusion-report"
 
@@ -95,7 +96,7 @@ class InfusionsPanel(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         self.btn_measure = QtWidgets.QPushButton("Measure")
         self.btn_measure.setToolTip(
             "Average every open infusion over its whole run, read the "

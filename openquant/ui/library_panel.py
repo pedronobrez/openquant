@@ -39,6 +39,7 @@ from . import theme
 from .help_window import describe
 from .library_add_dialog import AddToLibraryDialog, default_adduct
 from .settings import settings
+from .flow_layout import FlowLayout
 
 SETTING_PATH = "library/path"
 #: the MSP the analyst's own records are appended to, chosen once
@@ -72,7 +73,7 @@ class LibraryPanel(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
 
-        top = QtWidgets.QHBoxLayout()
+        top = FlowLayout()
         self.btn_load = QtWidgets.QPushButton("Load library…")
         self.btn_load.setToolTip("An MSP (NIST, MassBank, MoNA, GNPS) or MGF file")
         top.addWidget(self.btn_load)
@@ -81,7 +82,7 @@ class LibraryPanel(QtWidgets.QWidget):
         top.addWidget(self.library_label, 1)
         layout.addLayout(top)
 
-        own = QtWidgets.QHBoxLayout()
+        own = FlowLayout()
         self.btn_add = QtWidgets.QPushButton("Add spectrum to library…")
         self.btn_add.setToolTip(
             "Write the spectrum on screen into a library of your own — an "
@@ -191,7 +192,7 @@ class LibraryPanel(QtWidgets.QWidget):
         self.pairs.setRootIsDecorated(False)
         layout.addWidget(self.pairs, 2)
 
-        buttons = QtWidgets.QHBoxLayout()
+        buttons = FlowLayout()
         self.btn_overlay = QtWidgets.QPushButton("Overlay on spectrum")
         self.btn_overlay.setEnabled(False)
         self.btn_clear = QtWidgets.QPushButton("Clear overlay")

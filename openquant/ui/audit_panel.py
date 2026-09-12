@@ -22,6 +22,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 from ..audit import COLUMNS, write_csv
 from ..session import Session
 from .settings import settings
+from .flow_layout import FlowLayout
 
 #: the column the trail opens sorted on, and which way
 SORT_COLUMN = 0
@@ -40,7 +41,7 @@ class AuditPanel(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        bar = QtWidgets.QHBoxLayout()
+        bar = FlowLayout()
         self.filter_edit = QtWidgets.QLineEdit()
         self.filter_edit.setPlaceholderText("Filter changes…")
         self.filter_edit.setClearButtonEnabled(True)

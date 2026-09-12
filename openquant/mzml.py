@@ -113,9 +113,25 @@ class MzmlError(RuntimeError):
 # --------------------------------------------------------------------------- #
 # reading
 # --------------------------------------------------------------------------- #
+#: `{namespace}name` → `name`. mzML's element vocabulary is a few dozen names
+#: and every one of them recurs once per scan, so the split is worth doing
+#: once each: reading a 23,722-spectrum run asked for one 1,485,831 times.
+_LOCAL_NAMES: dict[str, str] = {}
+
+#: a file whose tags really are unbounded (a converter stamping an id into
+#: the element name) must not grow the table without limit. Past this the
+#: split simply runs every time, which is what it always did.
+_LOCAL_NAMES_MAX = 4096
+
+
 def _local(tag: str) -> str:
     """The tag without its namespace — mzML declares one and never varies it."""
-    return tag.rsplit("}", 1)[-1]
+    name = _LOCAL_NAMES.get(tag)
+    if name is None:
+        name = tag.rsplit("}", 1)[-1]
+        if len(_LOCAL_NAMES) < _LOCAL_NAMES_MAX:
+            _LOCAL_NAMES[tag] = name
+    return name
 
 
 def _params(element) -> dict[str, str]:
@@ -676,8 +692,7 @@ class MzmlFile:
         return headers
 
     def _header_of(self, element, index: int, start: int, stop: int) -> _ScanHeader:
-        params = _params(element)
-        rt = _minutes(element)
+        params, rt, activation = _scan_facts(element)
         # `selected ion m/z` is what the instrument decided to fragment and is
         # the number to prefer. Some converters write only the isolation
         # window, and a channel with no precursor at all would be read as a
@@ -699,7 +714,7 @@ class MzmlFile:
             rt=rt,
             precursor=precursor,
             collision_energy=ce,
-            activation=_activation(element),
+            activation=activation,
             charge=int(charge) if charge is not None else None,
             low=low if low is not None else 0.0,
             high=high if high is not None else 0.0,
@@ -935,17 +950,23 @@ def _activation(element) -> str:
     being dropped for not being recognised.
     """
     for child in element.iter():
-        if _local(child.tag) != "activation":
-            continue
-        for param in child:
-            if _local(param.tag) != "cvParam":
-                continue
-            if param.get("accession") in NOT_A_DISSOCIATION:
-                continue
-            name = (param.get("name") or "").strip()
-            if name:
-                return name
+        if _local(child.tag) == "activation":
+            return _activation_name(child)
+    return ""
+
+
+def _activation_name(activation) -> str:
+    """The method named inside one `<activation>`, or "" — see `_activation`."""
+    if activation is None:
         return ""
+    for param in activation:
+        if _local(param.tag) != "cvParam":
+            continue
+        if param.get("accession") in NOT_A_DISSOCIATION:
+            continue
+        name = (param.get("name") or "").strip()
+        if name:
+            return name
     return ""
 
 
@@ -972,17 +993,64 @@ def _minutes(element) -> float:
             continue
         if child.get("accession") != SCAN_START_TIME:
             continue
-        value = _float_or_none(child.get("value"))
-        if value is None:
-            return 0.0
-        unit = (child.get("unitAccession") or "").strip()
-        unit_name = (child.get("unitName") or "").lower()
-        if unit == "UO:0000010" or unit_name.startswith("second"):
-            return value / 60.0
-        if unit == "UO:0000032" or unit_name.startswith("hour"):
-            return value * 60.0
-        return value
+        return _minutes_of(child)
     return 0.0
+
+
+def _minutes_of(param) -> float:
+    """One `scan start time` cvParam in minutes — see `_minutes` for the units."""
+    value = _float_or_none(param.get("value"))
+    if value is None:
+        return 0.0
+    unit = (param.get("unitAccession") or "").strip()
+    unit_name = (param.get("unitName") or "").lower()
+    if unit == "UO:0000010" or unit_name.startswith("second"):
+        return value / 60.0
+    if unit == "UO:0000032" or unit_name.startswith("hour"):
+        return value * 60.0
+    return value
+
+
+def _scan_facts(element) -> tuple[dict[str, str], float, str]:
+    """
+    One spectrum's parameters, its retention time and its activation, in a
+    single walk of the element.
+
+    `_params`, `_minutes` and `_activation` each walk every descendant, and
+    `_header_of` wanted all three: reading a 23,722-spectrum run therefore
+    visited about 4.5 million nodes to look at 1.5 million. The three answers
+    come off one pass here. Each is computed exactly as its own function
+    computes it — first `scan start time` in document order, first
+    `<activation>` in document order, `cvParam` and `userParam` indexed by
+    both accession and name — and `tests/test_mzml.py` asserts the two routes
+    agree element for element on a file holding both.
+
+    `<activation>`'s own cvParams stay in the parameter dictionary, because
+    `_params` collects them: only the element that holds them is singled out.
+    """
+    params: dict[str, str] = {}
+    rt = 0.0
+    have_rt = False
+    activation = None
+    for child in element.iter():
+        tag = _local(child.tag)
+        if tag == "activation":
+            if activation is None:
+                activation = child
+            continue
+        if tag not in ("cvParam", "userParam"):
+            continue
+        value = child.get("value", "")
+        accession = child.get("accession")
+        if accession:
+            params[accession] = value
+            if not have_rt and accession == SCAN_START_TIME:
+                rt = _minutes_of(child)
+                have_rt = True
+        name = child.get("name")
+        if name:
+            params[name] = value
+    return params, rt, _activation_name(activation)
 
 
 def _element_ranges(data: bytes, name: bytes):

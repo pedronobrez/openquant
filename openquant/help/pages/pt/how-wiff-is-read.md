@@ -28,6 +28,25 @@ Docker, sem Wine e sem o Analyst instalado. A cultura é fixada em `en-US`
 enquanto as montagens rodam, de modo que uma máquina cujo separador decimal
 é a vírgula lê os mesmos números que uma cujo separador é o ponto.
 
+## A travessia de .NET para numpy
+
+O Clearcore2 devolve um `double[]` do .NET, e todo cromatograma, todo
+espectro e todo cromatograma de íon extraído chega assim. O pythonnet expõe
+esse arranjo como um buffer contíguo em C, de modo que o numpy pode levar
+tudo em uma cópia só; percorrê-lo com `list()` empacota um `double` de cada
+vez através da fronteira gerenciada. Medido em uma varredura TOF real de
+1.143 pontos: **0,194 ms um elemento por vez contra 0,0009 ms pelo buffer**,
+os mesmos `double` byte a byte. Essa travessia era 84% do custo de construir
+um contorno e dois terços do de calcular a média de cem varreduras.
+
+O arranjo é **copiado** para fora do buffer, e não visto através dele. Uma
+vista seria um fio mais rápida, e sua memória pertence ao heap do .NET:
+correta enquanto o arranjo existe, e uma leitura de memória liberada no
+instante em que o coletor a recolhe — o que no macOS aparece como números
+plausíveis, não como uma falha. O que o protocolo de buffer recusar recai
+sobre o percurso elemento a elemento, de modo que um Clearcore2 futuro que
+devolva outra coisa fica mais lento e nunca errado.
+
 ## Acesso compartilhado
 
 Os arquivos são abertos com `OpenFileMode.ReadOnlyShared`. Qualquer outra

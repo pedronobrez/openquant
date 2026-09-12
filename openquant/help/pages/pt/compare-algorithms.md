@@ -17,6 +17,16 @@ sendo reportado. Um diálogo de progresso percorre os três; no lote para o qual
 isto foi escrito, 3,666 linhas de três maneiras levaram menos de quatro
 segundos.
 
+A comparação das execuções, depois, é indexada e não pesquisada. As linhas de
+cada componente eram filtradas do conjunto inteiro de resultados, e a linha
+correspondente em outra execução era encontrada percorrendo aquela execução
+desde o início — por linha, por componente, por algoritmo. Em 3.666 linhas
+essas duas buscas medem **0,010 s e 0,106 s** percorrendo contra **0,0002 s e
+0,0031 s** indexadas, e crescem com o quadrado do lote: dobrar para 7.332
+linhas leva o percurso a 0,032 s e 0,518 s enquanto o índice não se move. Os
+números reportados são os mesmos de um jeito ou de outro; o que muda é quanto
+um lote grande espera por eles.
+
 ## O diálogo
 
 **Summary.** Um parágrafo: linhas encontradas por cada algoritmo, quantas

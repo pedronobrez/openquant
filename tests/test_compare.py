@@ -251,3 +251,53 @@ def test_the_report_carries_the_section_only_when_a_comparison_was_run(session_w
     session.comparison = None
     document = report.build_html(session, sections=("summary", "algorithms"))
     assert "Integration algorithms" not in document
+
+
+def test_the_indexed_lookups_report_what_the_walks_reported():
+    """
+    `_figures`, `_delta` and `_precision` are handed prebuilt indexes now:
+    the counterpart of a row used to be found by walking the whole result
+    set, once per row, once per component, once per algorithm. What the
+    comparison says has to be exactly what it said.
+    """
+    from openquant import compare as cm
+
+    entries, method = _entries(), _method()
+    comparison = compare_algorithms(entries, method)
+    assert comparison is not None
+    reference = comparison.reference
+
+    for item in comparison.components:
+        component = next(c for c in method.components if c.name == item.component)
+        for algorithm in comparison.algorithms:
+            results = comparison.results[algorithm]
+            # the same figures, computed the slow way from the set itself
+            rows = results.for_component(component.name)
+            found = [r for r in rows if r.found]
+            assert item.figures[algorithm].total == len(rows)
+            assert item.figures[algorithm].found == len(found)
+
+            walked = []
+            for entry in cm._replicate_set(component, entries):
+                row = results.get(entry.key, component.name)
+                if row is not None and row.found:
+                    walked.append(row.area)
+            assert item.figures[algorithm].replicates == len(walked)
+
+            if algorithm == reference:
+                continue
+            both = 0
+            for row in comparison.results[reference].for_component(component.name):
+                counterpart = results.get(row.sample_key, row.component)
+                if row.found and counterpart is not None and counterpart.found:
+                    both += 1
+            assert item.deltas[algorithm].both == both
+
+
+def test_a_component_missing_from_one_run_is_still_compared():
+    """`.get(name, [])`: an absent key must read as no rows, not as a crash."""
+    from openquant import compare as cm
+
+    delta = cm._delta("summation", [], {}, _method().components[0])
+    assert delta.both == 0 and delta.median_percent is None
+    assert delta.only_reference == 0 and delta.only_other == 0

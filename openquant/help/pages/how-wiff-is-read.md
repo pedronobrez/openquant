@@ -26,6 +26,26 @@ no Wine and no Analyst installed. The culture is pinned to `en-US` while
 the assemblies run, so a machine whose decimal separator is a comma reads
 the same numbers as one whose separator is a point.
 
+## Crossing from .NET to numpy
+
+Clearcore2 hands back a .NET `double[]`, and every chromatogram, every
+spectrum and every extracted ion chromatogram arrives that way. pythonnet
+exports such an array as a plain C-contiguous buffer, so numpy can take the
+whole thing in one copy; walking it with `list()` instead marshals one double
+at a time across the managed boundary. Measured on one 1,143-point TOF scan
+of a real acquisition: **0.194 ms the element at a time against 0.0009 ms
+through the buffer**, the same doubles byte for byte. That crossing was 84%
+of the cost of building a contour and two thirds of averaging a hundred
+scans.
+
+The array is **copied** out of the buffer rather than viewed through it. A
+view would be faster still by a hair, and its memory belongs to the .NET
+heap: correct while the array is alive, and a read of freed memory the moment
+the collector takes it — which on macOS shows up as plausible numbers rather
+than as a crash. Anything the buffer protocol refuses falls back to the
+element walk, so a future Clearcore2 returning something else is slower and
+never wrong.
+
 ## Shared access
 
 Files are opened with `OpenFileMode.ReadOnlyShared`. Anything else takes an

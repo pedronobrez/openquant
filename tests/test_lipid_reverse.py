@@ -250,3 +250,42 @@ def test_an_unknown_panel_name_reports_rather_than_switching(qapp):
     workspace = ExplorerWorkspace(Session())
     assert not workspace.show_panel_named("Nothing")
     workspace.close()
+
+
+# -- the label is a question about the file ---------------------------------- #
+def test_the_panel_counts_the_index_without_opening_it(qapp, monkeypatch):
+    """
+    Printing "49,969 curated structures indexed locally." used to load all
+    49,969 of them: 0.84 s and 570 MB of the window's startup.
+    """
+    from openquant.ui.lipid_panel import LipidPanel
+
+    opened = []
+    monkeypatch.setattr(lipidmaps, "is_installed", lambda *a, **k: True)
+    monkeypatch.setattr(lipidmaps, "record_count", lambda *a, **k: 49969)
+    monkeypatch.setattr(lipidmaps, "database",
+                        lambda *a, **k: opened.append(1))
+
+    widget = LipidPanel()
+    try:
+        widget.refresh_availability()
+        assert widget.status.text() == \
+            "49,969 curated structures indexed locally."
+        assert opened == []
+    finally:
+        widget.close()
+
+
+def test_an_index_that_will_not_say_how_many_still_says_it_is_there(qapp,
+                                                                    monkeypatch):
+    from openquant.ui.lipid_panel import LipidPanel
+
+    monkeypatch.setattr(lipidmaps, "is_installed", lambda *a, **k: True)
+    monkeypatch.setattr(lipidmaps, "record_count", lambda *a, **k: None)
+    widget = LipidPanel()
+    try:
+        widget.refresh_availability()
+        assert widget.status.text() == "Curated structures indexed locally."
+        assert widget.btn_search.isEnabled()
+    finally:
+        widget.close()

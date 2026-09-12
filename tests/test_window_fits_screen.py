@@ -69,17 +69,28 @@ def test_every_workspace_fits_it_too(qapp):
 
 
 def test_changing_rows_and_columns_does_not_grow_the_window(qapp):
-    """The complaint this came from: the grid's spin boxes resized the window."""
+    """
+    The complaint this came from: the grid's spin boxes resized the window.
+
+    The size asked for is the window's own least size and a little over, not
+    a round number, because Qt will not go below the minimum and what is
+    being tested is that a change of shape does not move the window — not
+    what the minimum happens to be. `test_the_window_fits_a_small_laptop`
+    is what holds the minimum down.
+    """
     shell = MainShell()
     shell.show()
-    shell.resize(900, 600)
+    least = _least_size(shell)
+    wanted = QtCore.QSize(least[0] + 40, least[1] + 40)
+    shell.resize(wanted)
     qapp.processEvents()
+    assert shell.size() == wanted, "the window would not take the size asked"
     grid = shell.analytics.grid
     for columns, rows in ((1, 1), (8, 8), (3, 2)):
         grid.col_spin.setValue(columns)
         grid.row_spin.setValue(rows)
         qapp.processEvents()
-        assert shell.size() == QtCore.QSize(900, 600), (
+        assert shell.size() == wanted, (
             f"{columns}x{rows} moved the window to {shell.size()}")
     shell.close()
 

@@ -10,10 +10,22 @@ vez construído o índice.
 ## O banco de dados
 
 O primeiro uso oferece **Download the database**. Um arquivo de 21 MB de
-lipidmaps.org vira um índice de 1.3 MB com 49,969 estruturas curadas,
-guardado sob `~/.openquant/lipidmaps/`. As consultas levam menos de um
-milissegundo. O LMSD é redistribuído pelo LIPID MAPS sob CC BY 4.0 e é
-baixado sob demanda, não distribuído junto.
+lipidmaps.org vira um índice de 45 MB com 49,969 estruturas curadas — a
+anotação delas e as suas tabelas de conexão — guardado como
+`~/.openquant/lipidmaps/lmsd-index.sqlite`. O LMSD é redistribuído pelo
+LIPID MAPS sob CC BY 4.0 e é baixado sob demanda, não distribuído junto.
+
+O índice é um banco de dados e é lido uma linha de cada vez, não mantido em
+memória. Medido nesta máquina sobre os 49,969 registros: abri-lo leva
+0,1 ms e nenhuma memória mensurável, um LM_ID 0,012 ms, uma fórmula
+0,058 ms, uma janela de massa 0,083 ms e um nome procurado inteiro 0,03 ms
+— um nome procurado como trecho de todos os outros é a única pergunta ainda
+respondida lendo todos os nomes, a 5 ms. Antes disso o índice era um
+único documento comprimido que precisava ser decodificado inteiro antes de
+responder qualquer coisa: 0,74 segundo e 591 MB, que a janela pagava ao
+abrir apenas para escrever quantas estruturas estavam indexadas. Um índice
+instalado por uma versão anterior é reescrito no lugar na primeira vez que
+é aberto, uma só vez, e nada é baixado de novo.
 
 As buscas são restritas a estruturas construídas a partir de C, H, N, O, P, S
 e Se. O LMSD contém lipídios organoarsênicos e fluorados; são registros

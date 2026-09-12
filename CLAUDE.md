@@ -1337,6 +1337,40 @@ UV detector, is not implemented there) — untested on real Windows.
   half: pyqtgraph builds the whole right-click menu in the ViewBox's
   constructor, and these panels have always called `setMenuEnabled(False)`
   straight afterwards — building and throwing away a menu 64 times.
+- **A label that counts something is not a reason to load it.** The LIPID
+  MAPS panel printed "49,969 curated structures indexed locally." and got the
+  number by opening the whole database: 0.84 s and 570 MB of the window's
+  1.02 s and 685 MB, before anybody had searched for anything. The count was
+  already written in the index's header. `lipidmaps.record_count` reads it —
+  off the database's `meta` table, or off the first 4 KB of an old index's
+  gzip stream — and the window builds in 0.23 s at 146 MB. Then the loaded
+  form was made cheap too, because a real search still has to load it. Four
+  shapes over the same 49,969 records, each in a fresh process: today's
+  nested dicts 0.74 s / 591 MB; the connection tables kept as JSON *text*
+  0.25 s / 362 MB; ten parallel lists 0.11 s / 303 MB; **one SQLite file
+  0.0001 s / 41 MB**, which also turns three linear walks into index lookups
+  — `by_id` 0.312 → 0.012 ms and a name looked up whole (`precursor`,
+  `resolve_name`) 18.8 → 0.03 ms. `search_mass` and `search_formula` are
+  *slower* in absolute terms (0.023 → 0.083 and 0.001 → 0.058 ms): they now build
+  records from disk instead of handing back objects already in memory, and
+  that is the trade the 550 MB bought. `find_by_name` on a substring is
+  still a walk — of a names table, in C, 18.8 → 5.3 ms — and it is skipped
+  entirely when the exact and leading matches already fill the limit, since
+  nothing ranked below them can reach the answer. The index costs 45 MB on
+  disk against 8.4 MB gzipped; the connection tables are 51 MB of it stored
+  plainly, so they are deflated per record (20 MB) and inflated only in
+  `molecule()`, which is why `LipidRecord.structure` may be a dict, a string
+  or bytes and `compact()` is the one place that knows. `records` is a lazy
+  sequence, `id` is the position in mass order so every search answers in the
+  order the list answered, and the connection is per thread because the
+  measuring worker explains spectra off the window's thread. Verified before
+  it was believed: 77,874 comparisons against the old in-memory
+  implementation over the real index — all 49,969 records field for field,
+  3,000 molfiles rebuilt both ways, 2,003 `by_id`, 2,002 `search_formula`,
+  8,000 mass and m/z searches, 9,500 `find_by_name` and 400 `precursor` —
+  0 disagreements. An index in the old format is rewritten in place the
+  first time it is opened (2.4 s, once): a 21 MB download does not happen
+  twice because the format changed.
 - **A `.wiff` without its `.wiff.scan` opens and looks whole.** The method,
   the metadata and every channel's TIC are in the `.wiff`; the scans are
   not, so the first spectrum throws, and so do BPC, XIC, the contour and

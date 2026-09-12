@@ -262,6 +262,35 @@ def _bpc():
         return len(_busiest(acquisition).reader.bpc())
 
 
+@scenario("mzml-xic", "six extracted ion chromatograms off one mzML channel")
+def _mzml_xic():
+    """
+    Where an mzML is actually read twice.
+
+    A chromatogram off an mzML channel used to re-parse every scan of that
+    channel on every call and keep nothing, so a method asking for eighty
+    components asked eighty times.
+    """
+    from openquant import api
+    with api.open(one_mzml()) as acquisition:
+        channel = _busiest(acquisition)
+        info = channel.reader.info
+        low, high = info.start_mass, info.end_mass
+        total = 0
+        for step in range(6):
+            centre = low + (high - low) * (step + 1) / 7.0
+            total += len(channel.xic_range(centre - 0.25, centre + 0.25))
+        return total
+
+
+@scenario("mzml-bpc", "every channel's base peak chromatogram off one mzML")
+def _mzml_bpc():
+    from openquant import api
+    with api.open(one_mzml()) as acquisition:
+        return sum(len(channel.reader.bpc()[0])
+                   for channel in acquisition.channels)
+
+
 @scenario("mzml-spectra", "decode 25 spectra out of one mzML")
 def _mzml_spectra():
     from openquant import api

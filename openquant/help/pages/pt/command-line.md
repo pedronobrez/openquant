@@ -83,7 +83,11 @@ números de página porque não os tem.
 
 Em uma máquina sem tela — um servidor de build, uma sessão por ssh — defina
 `QT_QPA_PLATFORM=offscreen`: o documento é desenhado e paginado pelo Qt haja
-ou não algo a mostrar.
+ou não algo a mostrar. No Windows essa plataforma não encontra fonte
+nenhuma por conta própria e desenhava cada glifo como um quadrado — um
+relatório de 47 páginas sem texto algum — de modo que a aplicação a aponta
+para a pasta de fontes do sistema (`QT_QPA_FONTDIR`), a menos que já
+esteja definida.
 
 Medido em nove infusões de ácidos biliares em um ZenoTOF, a partir do código
 no macOS, com as três corridas CID como biblioteca própria e as três fórmulas

@@ -197,6 +197,8 @@ M4 with 16 GB, Python 3.14, against the same scenarios run on version
 | 81 components integrated over five acquisitions | 0.523 s | 0.496 s |
 | every algorithm compared over the batch | 0.665 s | 0.668 s |
 | read one mzML end to end | 0.764 s | 0.699 s |
+| six extractions off one mzML channel | 0.856 s | 0.707 s |
+| every channel's base peak chromatogram, mzML | 1.738 s | 1.024 s |
 | the `--digest` fingerprint of five acquisitions | 0.965 s | 0.909 s |
 | the manual printed to PDF, 106 pages | 1.466 s | 1.462 s |
 

@@ -119,7 +119,10 @@ Nenhuma curva porque nenhuma injeção desse lote está marcada como padrão:
 não relata nada quando não há nenhuma. `report()` desenha através do Qt e
 cria a aplicação fora da tela sozinho, de modo que um script simples não
 precisa de `headless()`; mantenha uma aberta à mão quando um script escrever
-vários documentos, ou quiser o Qt para algo próprio.
+vários documentos, ou quiser o Qt para algo próprio. No Windows a
+plataforma fora da tela recebe as fontes do sistema (`QT_QPA_FONTDIR`, a
+menos que já esteja definida), porque sozinha não tem nenhuma e um
+relatório saiu com quadrados onde deviam estar as palavras.
 
 ## Um espectro contra uma biblioteca
 

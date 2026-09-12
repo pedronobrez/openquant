@@ -205,6 +205,8 @@ contra os mesmos cenários corridos na versão 0.9.0.
 | 81 componentes integrados em cinco aquisições | 0,523 s | 0,496 s |
 | todos os algoritmos comparados no lote | 0,665 s | 0,668 s |
 | ler um mzML de ponta a ponta | 0,764 s | 0,699 s |
+| seis extrações de um canal de mzML | 0,856 s | 0,707 s |
+| cromatograma de pico base de cada canal, mzML | 1,738 s | 1,024 s |
 | a impressão digital `--digest` de cinco aquisições | 0,965 s | 0,909 s |
 | o manual impresso em PDF, 106 páginas | 1,466 s | 1,462 s |
 

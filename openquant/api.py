@@ -75,6 +75,30 @@ __all__ = [
 _APPLICATION = None
 
 
+def offscreen_fonts() -> None:
+    """
+    Give Qt's offscreen platform the system's fonts on Windows.
+
+    On macOS and Linux the offscreen platform reads the same font
+    directories the desktop does. On Windows it reads none — `QFontDatabase`
+    comes up with zero families — and every glyph is drawn as a box:
+    measured on Windows 11, a batch report written through `Batch.report`
+    was 47 pages of black rectangles with no text to extract, and the test
+    that reads greyscale off a printed comparison failed for the same
+    reason. `QT_QPA_FONTDIR` is how the platform is told where to look;
+    this points it at the system's directory when nothing else has, and
+    only where the offscreen platform is the one in force. Called by
+    everything that makes an offscreen application, before it is made.
+    """
+    import sys
+
+    if sys.platform != "win32" or os.environ.get("QT_QPA_PLATFORM") != "offscreen":
+        return
+    fonts = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")
+    if os.path.isdir(fonts):
+        os.environ.setdefault("QT_QPA_FONTDIR", fonts)
+
+
 @contextmanager
 def headless():
     """
@@ -103,6 +127,7 @@ def headless():
         # only when we are the ones making it: a caller who set up their own
         # display has said what they want
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        offscreen_fonts()
         _APPLICATION = QtWidgets.QApplication(["openquant"])
     else:
         _APPLICATION = existing

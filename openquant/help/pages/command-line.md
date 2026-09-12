@@ -84,7 +84,10 @@ in one file per compound, so the cover is written on its own as
 
 On a machine with no display — a build server, a session over ssh — set
 `QT_QPA_PLATFORM=offscreen`: the document is drawn and laid out through Qt
-whether or not anything is shown.
+whether or not anything is shown. On Windows that platform finds no fonts
+on its own and drew every glyph as a box — a 47-page report with no text
+in it — so the application points it at the system's font directory
+(`QT_QPA_FONTDIR`) unless that is already set.
 
 Measured on nine ZenoTOF bile-acid infusions, from source on macOS, with the
 three CID runs as a library of one's own and the three formulas as a

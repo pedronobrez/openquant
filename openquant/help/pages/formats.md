@@ -144,6 +144,23 @@ stood before — gave the run **eight points for 164 spectra**. The total was
 right and the shape was fiction, and the shape is exactly what
 [[direct-infusion]] reads to decide what a sample is.
 
+An extracted ion chromatogram needs every scan of its channel, and each
+scan is decoded straight from the file's bytes — the arrays' positions
+and encodings are found the first time a scan is wanted, and the XML
+parser is not run again for it. A channel once decoded is kept for the
+next component that asks, under a budget of 256 MB for the whole
+process, oldest channel out first; the file itself is mapped rather than
+read into memory, so a batch of many open files costs the system's file
+cache and not the application's. Measured on a synthetic 81-channel run
+of 19,440 spectra on Windows 11: an extraction went from 32 ms to 11 ms
+where the channel had to be decoded and to 0.1 ms where it had been, and
+integrating 80 components over six such injections from 15.5 s to 4.8 s.
+Nothing in the numbers changes: the same points are summed. The same measurement on a
+real 107 MB acquisition on an Apple M4: all 23,722 spectra decode in 0.41 s
+against 1.09 s the old way, and the 81 channels' extracted and base peak
+chromatograms in 0.21 s against 1.03 s — with every one of 7,608,772 values
+identical between the two routes.
+
 ## Infusions from mzML
 
 An infusion from another instrument goes through the whole of

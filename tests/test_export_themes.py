@@ -133,11 +133,14 @@ def test_the_two_black_and_white_traces_differ_in_greyscale(qapp):
     upper, lower = _halves(_without_labels(image, layout, scale))
     assert upper.size > 500 and lower.size > 500, "nothing was drawn to measure"
     assert int(np.median(upper)) < 40, "the first trace is not black"
-    # the median of the masked lower half is 102 on macOS and Linux and 60
-    # on the Windows runner, whose antialiasing of the dashes lands
-    # differently, so the median only says the half is lighter than black;
-    # the count of pixels at exactly 102 below is what says the grey
-    # belongs to the second trace
+    # the median of the masked lower half is 102 on macOS and Linux and read
+    # 60 on the Windows runner — which turned out not to be antialiasing but
+    # a renderer with no fonts at all, drawing every label as a box of ink;
+    # `api.offscreen_fonts` gives the offscreen platform %WINDIR%\Fonts and
+    # a Windows 11 machine then measures 102 like the others. The bound
+    # stays wide until a runner confirms that, and it is not what the test
+    # rests on: the count of pixels at exactly 102 below is what says the
+    # grey belongs to the second trace
     assert 40 < int(np.median(lower)) < 130, "the second trace is not the grey"
     assert int(np.median(lower)) - int(np.median(upper)) > 50, (
         "the two traces are the same tone once the colour is gone")

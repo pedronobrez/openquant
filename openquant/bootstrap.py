@@ -276,9 +276,14 @@ def _use_managed_structured_storage(Assembly, BindingFlags, ext_dir: str) -> Non
 
 def _main(argv: list[str]) -> int:
     if "--install" in argv:
-        if find_dotnet_root() is None:
-            install_dotnet()
-        ensure_shims()
+        # Windows runs Clearcore2 on the .NET Framework it already has, and
+        # `find_dotnet_root` looks for the .NET 8 the other systems need:
+        # measured on a Windows 11 desktop with no .NET 8, `--install`
+        # refused a machine on which `ensure()` then worked in 0.06 s
+        if not _IS_WINDOWS:
+            if find_dotnet_root() is None:
+                install_dotnet()
+            ensure_shims()
     ensure(auto_install_dotnet=True)
     print("[openquant] .NET runtime and SCIEX libraries ready.")
     return 0

@@ -871,3 +871,94 @@ def test_the_report_builds_for_an_infusion_from_another_vendor(thermo_infusion,
     assert report.scans == INFUSION_SCANS
     assert report.base_peak()[0] == pytest.approx(377.3018, abs=1e-3)
     assert "430.3489" in infusion_report.build_section(report, heading="one")
+
+
+# --------------------------------------------------------------------------- #
+# extraction without the XML parser
+# --------------------------------------------------------------------------- #
+def test_the_arrays_read_from_the_bytes_agree_with_the_parser(written):
+    """
+    Every spectrum's arrays are located the first time they are wanted and
+    decoded straight from the file's bytes; the XML path is what they are
+    checked against.
+    """
+    from xml.etree import ElementTree as ET
+
+    file = mzml.MzmlFile(written)
+    assert file.headers
+    for header in file.headers:
+        binaries = file._binaries_for(header)
+        assert binaries is not None
+        fast = file._decode(binaries)
+        slow = mzml._arrays(ET.fromstring(file._data[header.offset:header.end]))
+        assert np.array_equal(fast["mz"], slow["mz"])
+        assert np.array_equal(fast["intensity"], slow["intensity"])
+    file.close()
+
+
+def test_extraction_agrees_with_a_scan_by_scan_sum(written):
+    channel = mzml.MzmlFile(written).sample(0).channels[0]
+    lo, hi = 264.2, 264.3
+    x, y = channel.xic_range(lo, hi)
+    _, top = channel.bpc(lo, hi)
+    for scan in range(3):
+        mz, intensity = channel.spectrum(scan)
+        inside = intensity[(mz >= lo) & (mz <= hi)]
+        assert y[scan] == pytest.approx(float(inside.sum()))
+        assert top[scan] == pytest.approx(float(inside.max()))
+    assert x.tolist() == pytest.approx([0.1, 0.2, 0.3])
+    # a window holding nothing is a chromatogram of zeros, not an error
+    assert channel.xic_range(900.0, 901.0)[1].tolist() == [0.0, 0.0, 0.0]
+    assert channel.bpc(900.0, 901.0)[1].tolist() == [0.0, 0.0, 0.0]
+
+
+def test_a_spectrum_the_bytes_cannot_read_is_left_to_the_parser(tmp_path):
+    """A numpress array is refused with its name, through the XML path."""
+    body = (
+        '<spectrum index="0" id="scan=1" defaultArrayLength="1">'
+        '<cvParam accession="MS:1000511" name="ms level" value="1"/>'
+        '<binaryDataArrayList count="1"><binaryDataArray>'
+        '<cvParam accession="MS:1000523" name="64-bit float" value=""/>'
+        '<cvParam accession="MS:1002312" name="MS-Numpress linear" value=""/>'
+        '<cvParam accession="MS:1000514" name="m/z array" value=""/>'
+        f"<binary>{_binary([1.0])}</binary>"
+        "</binaryDataArray></binaryDataArrayList></spectrum>"
+    )
+    file = mzml.MzmlFile(_hand_written(tmp_path, spectrum_body=body, name="np.mzML"))
+    assert file._binaries_for(file.headers[0]) is None
+    with pytest.raises(mzml.MzmlError, match="numpress"):
+        file.sample(0).channels[0].spectrum(0)
+
+
+def test_a_decoded_channel_is_kept_under_a_budget_and_dropped_on_close(
+        written, monkeypatch):
+    """
+    One budget for the process, oldest out first, and a closed file's
+    channels go with it — a batch is dozens of files, and a budget per
+    file would be the budget times the batch.
+    """
+    monkeypatch.setattr(mzml, "DECODED_BUDGET", 1)      # room for the newest only
+    mzml._DECODED.clear()
+    monkeypatch.setattr(mzml, "_DECODED_BYTES", 0)
+    file = mzml.MzmlFile(written)
+    sample = file.sample(0)
+    sample.channels[0].xic(264.2686)
+    assert list(mzml._DECODED) == [(file._token, 0)]
+    sample.channels[1].xic(264.2686)
+    assert list(mzml._DECODED) == [(file._token, 1)]
+    # what is held is what the channel measured, not a stale neighbour
+    assert mzml._DECODED[(file._token, 1)][0].tolist() == pytest.approx(
+        [264.2686, 282.2791, 264.2686, 264.2686, 282.2791])
+    file.close()
+    assert not mzml._DECODED and mzml._DECODED_BYTES == 0
+
+
+def test_closing_lets_go_of_the_file(written):
+    """Mapped, not read: on Windows a mapped file cannot be removed."""
+    import os
+
+    file = mzml.MzmlFile(written)
+    file.sample(0).channels[0].spectrum(0)
+    file.close()
+    os.remove(written)
+    assert not os.path.exists(written)
